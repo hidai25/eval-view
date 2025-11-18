@@ -1,0 +1,31 @@
+name: "Stock Analysis Test"
+description: "Test agent's ability to analyze stock data comprehensively"
+
+input:
+  query: "Provide a comprehensive analysis of Apple (AAPL) stock, including financial metrics, recent performance, and analyst recommendations"
+  context:
+    symbol: "AAPL"
+
+expected:
+  tools:
+    - fetch_stock_data
+    - get_financial_metrics
+    - fetch_analyst_ratings
+  tool_sequence:
+    - fetch_stock_data
+    - get_financial_metrics
+    - fetch_analyst_ratings
+  output:
+    contains:
+      - "revenue"
+      - "earnings"
+      - "price"
+      - "market cap"
+    not_contains:
+      - "error"
+      - "failed"
+
+thresholds:
+  min_score: 85
+  max_cost: 1.00
+  max_latency: 10000
