@@ -64,12 +64,25 @@ class TestCase(BaseModel):
 # ============================================================================
 
 
+class TokenUsage(BaseModel):
+    """Token usage breakdown."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cached_tokens: int = 0
+
+    @property
+    def total_tokens(self) -> int:
+        """Total tokens used."""
+        return self.input_tokens + self.output_tokens + self.cached_tokens
+
+
 class StepMetrics(BaseModel):
     """Metrics for a single step."""
 
     latency: float  # in milliseconds
     cost: float  # in dollars
-    tokens: Optional[int] = None
+    tokens: Optional[TokenUsage] = None
 
 
 class StepTrace(BaseModel):
@@ -90,7 +103,7 @@ class ExecutionMetrics(BaseModel):
 
     total_cost: float
     total_latency: float
-    total_tokens: int = 0
+    total_tokens: Optional[TokenUsage] = None
 
 
 class ExecutionTrace(BaseModel):

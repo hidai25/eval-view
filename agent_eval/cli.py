@@ -11,6 +11,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from dotenv import load_dotenv
 
 from agent_eval.core.loader import TestCaseLoader
+from agent_eval.core.pricing import MODEL_PRICING, get_model_pricing_info
 from agent_eval.adapters.http_adapter import HTTPAdapter
 from agent_eval.adapters.tapescope_adapter import TapeScopeAdapter
 from agent_eval.evaluators.evaluator import Evaluator
@@ -36,9 +37,14 @@ def main():
     default=".",
     help="Directory to initialize (default: current directory)",
 )
-def init(dir: str):
+@click.option(
+    "--interactive/--no-interactive",
+    default=True,
+    help="Interactive setup (default: True)",
+)
+def init(dir: str, interactive: bool):
     """Initialize AgentEval in the current directory."""
-    console.print("[blue]Initializing AgentEval project...[/blue]\n")
+    console.print("[blue]━━━ AgentEval Setup ━━━[/blue]\n")
 
     base_path = Path(dir)
 
@@ -46,19 +52,104 @@ def init(dir: str):
     (base_path / ".agenteval").mkdir(exist_ok=True)
     (base_path / "tests" / "test-cases").mkdir(parents=True, exist_ok=True)
 
+    # Interactive configuration
+    adapter_type = "http"
+    endpoint = "http://localhost:3000/api/agent"
+    timeout = 30.0
+    model_name = "gpt-5-mini"
+    custom_pricing = None
+
+    if interactive:
+        console.print("[bold]Step 1: API Configuration[/bold]")
+
+        # Ask adapter type
+        console.print("\nWhat type of API does your agent use?")
+        console.print("  1. Standard REST API (returns complete JSON)")
+        console.print("  2. Streaming API (JSONL/Server-Sent Events)")
+        adapter_choice = click.prompt("Choice", type=int, default=1)
+        adapter_type = "streaming" if adapter_choice == 2 else "http"
+
+        # Ask endpoint
+        endpoint = click.prompt("\nAPI endpoint URL", default=endpoint)
+        timeout = click.prompt("Timeout (seconds)", type=float, default=timeout)
+
+        console.print("\n[bold]Step 2: Model & Pricing Configuration[/bold]")
+        console.print("\nWhich model does your agent use?")
+        console.print("  1. gpt-5-mini (recommended for testing)")
+        console.print("  2. gpt-5")
+        console.print("  3. gpt-5-nano")
+        console.print("  4. gpt-4o or gpt-4o-mini")
+        console.print("  5. Custom model")
+
+        model_choice = click.prompt("Choice", type=int, default=1)
+
+        model_map = {
+            1: "gpt-5-mini",
+            2: "gpt-5",
+            3: "gpt-5-nano",
+            4: "gpt-4o-mini",
+        }
+
+        if model_choice == 5:
+            model_name = click.prompt("Model name")
+        else:
+            model_name = model_map.get(model_choice, "gpt-5-mini")
+
+        # Show pricing
+        pricing = get_model_pricing_info(model_name)
+        console.print(f"\n[cyan]Pricing for {model_name}:[/cyan]")
+        console.print(f"  • Input tokens:  ${pricing['input_price_per_1m']:.2f} per 1M tokens")
+        console.print(f"  • Output tokens: ${pricing['output_price_per_1m']:.2f} per 1M tokens")
+        console.print(f"  • Cached tokens: ${pricing['cached_price_per_1m']:.3f} per 1M tokens")
+
+        # Ask if pricing is correct
+        if click.confirm("\nIs this pricing correct for your use case?", default=True):
+            console.print("[green]✅ Using standard pricing[/green]")
+        else:
+            console.print("\n[yellow]Let's set custom pricing:[/yellow]")
+            input_price = click.prompt("Input tokens ($ per 1M)", type=float, default=pricing['input_price_per_1m'])
+            output_price = click.prompt("Output tokens ($ per 1M)", type=float, default=pricing['output_price_per_1m'])
+            cached_price = click.prompt("Cached tokens ($ per 1M)", type=float, default=pricing['cached_price_per_1m'])
+
+            custom_pricing = {
+                "input": input_price,
+                "output": output_price,
+                "cached": cached_price,
+            }
+            console.print("[green]✅ Custom pricing saved[/green]")
+
     # Create config file
     config_path = base_path / ".agenteval" / "config.yaml"
     if not config_path.exists():
-        config_content = """# AgentEval Configuration
-adapter: http
-endpoint: http://localhost:3000/api/agent
-timeout: 30.0
-headers: {}
+        config_content = f"""# AgentEval Configuration
+adapter: {adapter_type}
+endpoint: {endpoint}
+timeout: {timeout}
+headers: {{}}
+
+# Model configuration
+model:
+  name: {model_name}
 """
+        if custom_pricing:
+            config_content += f"""  pricing:
+    input_per_1m: {custom_pricing['input']}
+    output_per_1m: {custom_pricing['output']}
+    cached_per_1m: {custom_pricing['cached']}
+"""
+        else:
+            config_content += """  # Uses standard OpenAI pricing
+  # Override with custom pricing if needed:
+  # pricing:
+  #   input_per_1m: 0.25
+  #   output_per_1m: 2.0
+  #   cached_per_1m: 0.025
+"""
+
         config_path.write_text(config_content)
-        console.print("[green]✅ Created .agenteval/config.yaml[/green]")
+        console.print("\n[green]✅ Created .agenteval/config.yaml[/green]")
     else:
-        console.print("[yellow]⚠️  .agenteval/config.yaml already exists[/yellow]")
+        console.print("\n[yellow]⚠️  .agenteval/config.yaml already exists[/yellow]")
 
     # Create example test case
     example_path = base_path / "tests" / "test-cases" / "example.yaml"
@@ -108,13 +199,21 @@ thresholds:
     default=".agenteval/results",
     help="Output directory for results",
 )
-def run(pattern: str, output: str):
+@click.option(
+    "--verbose",
+    is_flag=True,
+    help="Enable verbose logging (shows API requests/responses)",
+)
+def run(pattern: str, output: str, verbose: bool):
     """Run test cases against the agent."""
-    asyncio.run(_run_async(pattern, output))
+    asyncio.run(_run_async(pattern, output, verbose))
 
 
-async def _run_async(pattern: str, output: str):
+async def _run_async(pattern: str, output: str, verbose: bool):
     """Async implementation of run command."""
+    if verbose:
+        console.print("[dim]🔍 Verbose mode enabled[/dim]\n")
+
     console.print("[blue]Running test cases...[/blue]\n")
 
     # Load config
@@ -128,19 +227,32 @@ async def _run_async(pattern: str, output: str):
     with open(config_path) as f:
         config = yaml.safe_load(f)
 
+    # Extract model config
+    model_config = config.get("model", {})
+    if verbose and model_config:
+        console.print(f"[dim]💰 Model: {model_config.get('name', 'gpt-5-mini')}[/dim]")
+        if "pricing" in model_config:
+            console.print(f"[dim]💵 Custom pricing: ${model_config['pricing']['input_per_1m']:.2f} in, ${model_config['pricing']['output_per_1m']:.2f} out[/dim]")
+
     # Initialize adapter based on type
     adapter_type = config.get("adapter", "http")
-    if adapter_type == "tapescope" or adapter_type == "streaming":
+    if adapter_type in ["streaming", "tapescope", "jsonl"]:
+        # Streaming adapter supports JSONL streaming APIs
+        # (tapescope/jsonl are aliases for backward compatibility)
         adapter = TapeScopeAdapter(
             endpoint=config["endpoint"],
             headers=config.get("headers", {}),
             timeout=config.get("timeout", 60.0),
+            verbose=verbose,
+            model_config=model_config,
         )
     else:
+        # HTTP adapter for standard REST APIs
         adapter = HTTPAdapter(
             endpoint=config["endpoint"],
             headers=config.get("headers", {}),
             timeout=config.get("timeout", 30.0),
+            model_config=model_config,
         )
 
     # Initialize evaluator

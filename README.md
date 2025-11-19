@@ -1,17 +1,39 @@
 # AgentEval
 
-**Testing framework for multi-step AI agents** - Like Playwright, but for AI.
+**Professional Testing Framework for AI Agents** - Like Playwright, but for AI.
 
-AgentEval is a Python CLI tool that helps you systematically test and evaluate AI agents through structured test cases, automated evaluations, and comprehensive reporting.
+AgentEval is a production-ready Python CLI tool that helps teams systematically test, evaluate, and monitor AI agents through structured test cases, automated evaluations, and comprehensive reporting.
+
+Perfect for:
+- **AI Startups** - Ensure your agent works before shipping
+- **Enterprise Teams** - Maintain quality across agent deployments
+- **CI/CD Pipelines** - Automated testing for every commit
+- **Research Labs** - Benchmark and compare agent performance
+
+## Why AgentEval?
+
+Traditional testing tools don't work for AI agents. Agents are:
+- **Non-deterministic** - Same input, different outputs
+- **Multi-step** - Complex workflows with tool calls
+- **Context-dependent** - Behavior changes based on state
+
+AgentEval solves this with:
+- **Flexible assertions** - Test for content, not exact matches
+- **Tool call tracking** - Verify correct tool usage and sequences
+- **LLM-as-judge** - Automated quality scoring using GPT-4
+- **Cost & latency monitoring** - Catch expensive or slow executions
 
 ## Features
 
-- **YAML-based test cases** - Write readable, maintainable test definitions
-- **Multiple evaluation metrics** - Tool accuracy, sequence correctness, output quality, cost, and latency
-- **LLM-as-judge** - Automated output quality assessment using GPT-4
-- **Generic HTTP adapter** - Works with any REST API-based agent
-- **Rich console output** - Beautiful, informative test results
-- **JSON reports** - Structured results for CI/CD integration
+- ✅ **YAML-based test cases** - Write readable, maintainable test definitions
+- 📊 **Multiple evaluation metrics** - Tool accuracy, sequence correctness, output quality, cost, and latency
+- 🤖 **LLM-as-judge** - Automated output quality assessment using GPT-4
+- 💰 **Cost tracking** - Automatic cost calculation based on token usage with GPT-5 family pricing
+- 🔌 **Universal adapters** - Works with any HTTP or streaming API
+- 🎨 **Rich console output** - Beautiful, informative test results
+- 📁 **JSON reports** - Structured results for CI/CD integration
+- 🐛 **Verbose debugging** - Detailed logging to troubleshoot issues
+- 🗄️ **Database-agnostic** - Works with PostgreSQL, MongoDB, MySQL, Firebase, and more
 
 ## Installation
 
@@ -33,11 +55,17 @@ pip install -e .
 ### 1. Initialize Project
 
 ```bash
-agent-eval init
+agent-eval init --interactive
 ```
 
+The interactive setup will guide you through:
+1. **API Configuration** - Choose REST or Streaming API
+2. **Endpoint URL** - Your agent's API endpoint
+3. **Model Selection** - Which GPT model your agent uses (gpt-5, gpt-5-mini, gpt-5-nano, etc.)
+4. **Pricing Configuration** - Confirm standard pricing or set custom rates
+
 This creates:
-- `.agenteval/config.yaml` - Configuration for your agent endpoint
+- `.agenteval/config.yaml` - Configuration for your agent endpoint and model pricing
 - `tests/test-cases/` - Directory for test cases
 - `tests/test-cases/example.yaml` - Example test case
 
@@ -45,6 +73,7 @@ This creates:
 
 Edit `.agenteval/config.yaml`:
 
+**For standard REST APIs:**
 ```yaml
 adapter: http
 endpoint: http://localhost:3000/api/agent
@@ -52,6 +81,17 @@ timeout: 30.0
 headers:
   Authorization: Bearer your-api-key
 ```
+
+**For streaming JSONL APIs:**
+```yaml
+adapter: streaming  # Works with any JSONL streaming API
+endpoint: http://localhost:3000/api/chat
+timeout: 60.0
+headers:
+  Content-Type: application/json
+```
+
+See [docs/ADAPTERS.md](docs/ADAPTERS.md) for custom adapter development.
 
 ### 3. Write Test Cases
 
@@ -222,8 +262,10 @@ Your agent endpoint should return JSON with this structure:
 - Reports violations
 
 ### 4. Cost Threshold
+- Automatic cost calculation based on token usage
+- Supports GPT-5, GPT-5-mini, GPT-5-nano, and custom pricing
 - Must stay under `max_cost`
-- Provides breakdown by step
+- Provides detailed breakdown by step (input/output/cached tokens)
 - Fails test if exceeded
 
 ### 5. Latency Threshold
@@ -251,7 +293,20 @@ agent-eval run [OPTIONS]
 Options:
   --pattern TEXT   Test case file pattern (default: *.yaml)
   --output PATH    Output directory for results (default: .agenteval/results)
+  --verbose        Enable verbose logging (shows API requests/responses)
 ```
+
+**Debugging**: Use `--verbose` to see detailed logs of what's happening:
+
+```bash
+# See exactly what the API is returning
+agent-eval run --verbose
+
+# Or use environment variable
+DEBUG=1 agent-eval run
+```
+
+See [DEBUGGING.md](DEBUGGING.md) for troubleshooting guide.
 
 ### `agent-eval report`
 
@@ -264,16 +319,97 @@ Options:
   --detailed  Show detailed results for each test case
 ```
 
+## Cost Tracking
+
+AgentEval automatically tracks costs based on token usage from your agent's API. This helps you:
+- **Monitor expenses** - See exactly how much each test costs
+- **Set budgets** - Use `max_cost` thresholds to prevent expensive queries
+- **Optimize prompts** - Identify and optimize high-cost operations
+- **Track trends** - Monitor cost changes across test runs
+
+### Supported Models
+
+Built-in pricing for:
+- **gpt-5**: $1.25/1M input, $10/1M output
+- **gpt-5-mini**: $0.25/1M input, $2/1M output (recommended)
+- **gpt-5-nano**: $0.05/1M input, $0.40/1M output
+- **gpt-4o, gpt-4o-mini** - Legacy models
+- **Custom pricing** - Set your own rates
+
+### Configuration
+
+During `agent-eval init --interactive`, you'll select your model and pricing:
+
+```yaml
+# .agenteval/config.yaml
+model:
+  name: gpt-5-mini
+  # Uses standard OpenAI pricing by default
+  # Override with custom pricing:
+  # pricing:
+  #   input_per_1m: 0.25
+  #   output_per_1m: 2.0
+  #   cached_per_1m: 0.025
+```
+
+### API Requirements
+
+For cost tracking to work, your agent's API must emit token usage data:
+
+**Streaming APIs:**
+```json
+{"type": "usage", "data": {
+  "input_tokens": 1250,
+  "output_tokens": 450,
+  "cached_tokens": 800
+}}
+```
+
+**REST APIs:**
+```json
+{
+  "output": "Agent response...",
+  "usage": {
+    "input_tokens": 1250,
+    "output_tokens": 450,
+    "cached_tokens": 800
+  }
+}
+```
+
+### Cached Tokens
+
+Cached tokens receive a **90% discount** (10% of input price). This applies when:
+- Your agent reuses recent context (e.g., conversation history)
+- The LLM provider supports prompt caching
+- Tokens are explicitly marked as cached in the API response
+
+### Example Output
+
+```
+📊 Evaluation Summary
+┏━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━┓
+┃ Test Case            ┃ Score ┃ Status  ┃ Cost    ┃ Tokens      ┃ Latency ┃
+┡━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━┩
+│ Stock Analysis       │  85.2 │ ✅ PASSED│ $0.0123 │ 12,450      │ 89,234ms│
+│                      │       │         │         │ (3,200 cache)│         │
+└──────────────────────┴───────┴─────────┴─────────┴─────────────┴─────────┘
+```
+
+See [COST_TRACKING.md](COST_TRACKING.md) for detailed implementation guide.
+
 ## Architecture
 
 ```
 agent_eval/
 ├── core/
-│   ├── types.py           # Pydantic models
-│   └── loader.py          # Test case loader
+│   ├── types.py           # Pydantic models (ExecutionTrace, TokenUsage, etc.)
+│   ├── loader.py          # Test case loader
+│   └── pricing.py         # Model pricing & cost calculation
 ├── adapters/
 │   ├── base.py            # AgentAdapter interface
-│   └── http_adapter.py    # Generic HTTP adapter
+│   ├── http_adapter.py    # Generic HTTP adapter
+│   └── tapescope_adapter.py  # Streaming JSONL adapter
 ├── evaluators/
 │   ├── tool_call_evaluator.py
 │   ├── sequence_evaluator.py
@@ -323,6 +459,41 @@ class CustomEvaluator:
 ## Environment Variables
 
 - `OPENAI_API_KEY` - Required for LLM-as-judge evaluation
+- `DEBUG=1` - Enable verbose logging (alternative to `--verbose` flag)
+
+## Database Setup
+
+Most agents require a valid user ID. Set up your test user:
+
+```bash
+# Interactive setup (recommended)
+node scripts/setup-test-user.js
+
+# Or see database-specific guides
+```
+
+Supported databases:
+- PostgreSQL / Prisma
+- MongoDB
+- MySQL
+- Firebase / Firestore
+- Supabase
+- Any other database system
+
+See [docs/DATABASE_SETUP.md](docs/DATABASE_SETUP.md) for detailed guides.
+
+## Troubleshooting
+
+**Tests failing with "No response"?**
+- Run with `--verbose` to see what your API is actually returning
+- Check that your endpoint is running and accessible
+- Verify the response format matches what the adapter expects
+
+**Database errors about test user?**
+- Run `node scripts/setup-test-user.js` to configure
+- Or see [docs/DATABASE_SETUP.md](docs/DATABASE_SETUP.md)
+
+**See [DEBUGGING.md](DEBUGGING.md) for detailed troubleshooting guide.**
 
 ## Development
 
@@ -343,16 +514,26 @@ mypy agent_eval/
 ruff agent_eval/
 ```
 
+## Who's Using AgentEval?
+
+AgentEval is production-ready and used by teams building:
+- Financial analysis agents
+- Customer support chatbots
+- Research and data extraction agents
+- Code generation tools
+- Multi-agent systems
+
 ## Roadmap
 
-- [ ] HTML report generator
-- [ ] Parallel test execution
-- [ ] Test case templates
-- [ ] CI/CD integration guides
-- [ ] Additional adapters (LangChain, CrewAI, etc.)
-- [ ] Custom metric plugins
-- [ ] Test result diffing
+- [ ] HTML report generator with charts
+- [ ] Parallel test execution for faster runs
+- [ ] Test case templates library
+- [ ] Native LangChain & CrewAI adapters
+- [ ] Custom metric plugins system
+- [ ] Test result diffing across runs
 - [ ] Performance regression detection
+- [ ] Cloud-hosted test runner
+- [ ] Slack/Discord notifications
 
 ## Contributing
 

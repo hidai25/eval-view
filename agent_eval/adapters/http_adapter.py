@@ -9,7 +9,9 @@ from agent_eval.core.types import (
     StepTrace,
     StepMetrics,
     ExecutionMetrics,
+    TokenUsage,
 )
+from agent_eval.core.pricing import calculate_cost
 
 
 class HTTPAdapter(AgentAdapter):
@@ -20,6 +22,7 @@ class HTTPAdapter(AgentAdapter):
         endpoint: str,
         headers: Optional[Dict[str, str]] = None,
         timeout: float = 30.0,
+        model_config: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize HTTP adapter.
@@ -28,10 +31,12 @@ class HTTPAdapter(AgentAdapter):
             endpoint: API endpoint URL
             headers: Optional HTTP headers
             timeout: Request timeout in seconds
+            model_config: Model configuration with name and optional custom pricing
         """
         self.endpoint = endpoint
         self.headers = headers or {}
         self.timeout = timeout
+        self.model_config = model_config or {}
 
     @property
     def name(self) -> str:
