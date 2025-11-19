@@ -8,6 +8,7 @@ import click
 import yaml
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from dotenv import load_dotenv
 
 from agent_eval.core.loader import TestCaseLoader
 from agent_eval.adapters.http_adapter import HTTPAdapter
@@ -15,6 +16,9 @@ from agent_eval.adapters.tapescope_adapter import TapeScopeAdapter
 from agent_eval.evaluators.evaluator import Evaluator
 from agent_eval.reporters.json_reporter import JSONReporter
 from agent_eval.reporters.console_reporter import ConsoleReporter
+
+# Load environment variables from .env.local
+load_dotenv(dotenv_path=".env.local")
 
 console = Console()
 
