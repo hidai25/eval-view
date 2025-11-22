@@ -1,6 +1,6 @@
-# AgentEval - Productization Summary
+# EvalView - Productization Summary
 
-This document summarizes the changes made to make AgentEval production-ready and sellable to the public.
+This document summarizes the changes made to make EvalView production-ready and sellable to the public.
 
 ## What Was Done
 
@@ -44,7 +44,7 @@ This document summarizes the changes made to make AgentEval production-ready and
 - Any JSONL-based API
 
 **Files:**
-- `agent_eval/adapters/tapescope_adapter.py` - Now fully generic
+- `evalview/adapters/tapescope_adapter.py` - Now fully generic
 - `docs/ADAPTERS.md` - Complete adapter development guide
 
 ### 3. Professional Documentation ✅
@@ -72,13 +72,13 @@ This document summarizes the changes made to make AgentEval production-ready and
 pip install -e .
 
 # 2. Initialize
-agent-eval init
+evalview init
 
 # 3. Configure test user (interactive)
 node scripts/setup-test-user.js
 
 # 4. Run tests
-agent-eval run --verbose
+evalview run --verbose
 ```
 
 **Features:**
@@ -98,9 +98,9 @@ agent-eval run --verbose
 
 **Usage:**
 ```bash
-agent-eval run --verbose
+evalview run --verbose
 # or
-DEBUG=1 agent-eval run
+DEBUG=1 evalview run
 ```
 
 ### 6. Generic Configuration ✅

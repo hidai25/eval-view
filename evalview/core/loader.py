@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import List, Union
 import yaml
-from agent_eval.core.types import TestCase
+from evalview.core.types import TestCase
 
 
 class TestCaseLoader:

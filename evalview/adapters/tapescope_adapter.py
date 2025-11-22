@@ -7,15 +7,15 @@ import json
 import logging
 import os
 import asyncio
-from agent_eval.adapters.base import AgentAdapter
-from agent_eval.core.types import (
+from evalview.adapters.base import AgentAdapter
+from evalview.core.types import (
     ExecutionTrace,
     StepTrace,
     StepMetrics,
     ExecutionMetrics,
     TokenUsage,
 )
-from agent_eval.core.pricing import calculate_cost
+from evalview.core.pricing import calculate_cost
 
 # Set up logging
 logger = logging.getLogger(__name__)

@@ -1,4 +1,4 @@
-"""Core type definitions for AgentEval."""
+"""Core type definitions for EvalView."""
 
 from datetime import datetime
 from typing import Any, Optional, List, Dict

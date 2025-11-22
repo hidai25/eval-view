@@ -1,7 +1,7 @@
 {
-  "name": "@agent-eval/node",
+  "name": "@evalview/node",
   "version": "0.1.0",
-  "description": "Drop-in Node.js middleware for AgentEval testing framework",
+  "description": "Drop-in Node.js middleware for EvalView testing framework",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -10,12 +10,12 @@
     "prepublish": "npm run build"
   },
   "keywords": [
-    "agent-eval",
+    "evalview",
     "testing",
     "ai-agents",
     "middleware"
   ],
-  "author": "AgentEval",
+  "author": "EvalView",
   "license": "MIT",
   "peerDependencies": {
     "next": ">=13.0.0"

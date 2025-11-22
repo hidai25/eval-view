@@ -1,6 +1,6 @@
 """Latency threshold evaluator."""
 
-from agent_eval.core.types import (
+from evalview.core.types import (
     TestCase,
     ExecutionTrace,
     LatencyEvaluation,

@@ -1,22 +1,23 @@
-"""CLI entry point for AgentEval."""
+"""CLI entry point for EvalView."""
 
 import asyncio
 import os
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
 import click
 import yaml
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from dotenv import load_dotenv
 
-from agent_eval.core.loader import TestCaseLoader
-from agent_eval.core.pricing import MODEL_PRICING, get_model_pricing_info
-from agent_eval.adapters.http_adapter import HTTPAdapter
-from agent_eval.adapters.tapescope_adapter import TapeScopeAdapter
-from agent_eval.evaluators.evaluator import Evaluator
-from agent_eval.reporters.json_reporter import JSONReporter
-from agent_eval.reporters.console_reporter import ConsoleReporter
+from evalview.core.loader import TestCaseLoader
+from evalview.core.pricing import MODEL_PRICING, get_model_pricing_info
+from evalview.adapters.http_adapter import HTTPAdapter
+from evalview.adapters.tapescope_adapter import TapeScopeAdapter
+from evalview.evaluators.evaluator import Evaluator
+from evalview.reporters.json_reporter import JSONReporter
+from evalview.reporters.console_reporter import ConsoleReporter
 
 # Load environment variables from .env.local
 load_dotenv(dotenv_path=".env.local")
@@ -27,7 +28,7 @@ console = Console()
 @click.group()
 @click.version_option(version="0.1.0")
 def main():
-    """AgentEval - Testing framework for multi-step AI agents."""
+    """EvalView - Testing framework for multi-step AI agents."""
     pass
 
 
@@ -43,13 +44,13 @@ def main():
     help="Interactive setup (default: True)",
 )
 def init(dir: str, interactive: bool):
-    """Initialize AgentEval in the current directory."""
-    console.print("[blue]━━━ AgentEval Setup ━━━[/blue]\n")
+    """Initialize EvalView in the current directory."""
+    console.print("[blue]━━━ EvalView Setup ━━━[/blue]\n")
 
     base_path = Path(dir)
 
     # Create directories
-    (base_path / ".agenteval").mkdir(exist_ok=True)
+    (base_path / ".evalview").mkdir(exist_ok=True)
     (base_path / "tests" / "test-cases").mkdir(parents=True, exist_ok=True)
 
     # Interactive configuration
@@ -119,9 +120,9 @@ def init(dir: str, interactive: bool):
             console.print("[green]✅ Custom pricing saved[/green]")
 
     # Create config file
-    config_path = base_path / ".agenteval" / "config.yaml"
+    config_path = base_path / ".evalview" / "config.yaml"
     if not config_path.exists():
-        config_content = f"""# AgentEval Configuration
+        config_content = f"""# EvalView Configuration
 adapter: {adapter_type}
 endpoint: {endpoint}
 timeout: {timeout}
@@ -147,9 +148,9 @@ model:
 """
 
         config_path.write_text(config_content)
-        console.print("\n[green]✅ Created .agenteval/config.yaml[/green]")
+        console.print("\n[green]✅ Created .evalview/config.yaml[/green]")
     else:
-        console.print("\n[yellow]⚠️  .agenteval/config.yaml already exists[/yellow]")
+        console.print("\n[yellow]⚠️  .evalview/config.yaml already exists[/yellow]")
 
     # Create example test case
     example_path = base_path / "tests" / "test-cases" / "example.yaml"
@@ -183,9 +184,9 @@ thresholds:
         console.print("[yellow]⚠️  tests/test-cases/example.yaml already exists[/yellow]")
 
     console.print("\n[blue]Next steps:[/blue]")
-    console.print("  1. Edit .agenteval/config.yaml with your agent endpoint")
+    console.print("  1. Edit .evalview/config.yaml with your agent endpoint")
     console.print("  2. Write test cases in tests/test-cases/")
-    console.print("  3. Run: agent-eval run\n")
+    console.print("  3. Run: evalview run\n")
 
 
 @main.command()
@@ -196,7 +197,7 @@ thresholds:
 )
 @click.option(
     "--output",
-    default=".agenteval/results",
+    default=".evalview/results",
     help="Output directory for results",
 )
 @click.option(
@@ -217,10 +218,10 @@ async def _run_async(pattern: str, output: str, verbose: bool):
     console.print("[blue]Running test cases...[/blue]\n")
 
     # Load config
-    config_path = Path(".agenteval/config.yaml")
+    config_path = Path(".evalview/config.yaml")
     if not config_path.exists():
         console.print(
-            "[red]❌ Config file not found. Run 'agent-eval init' first.[/red]"
+            "[red]❌ Config file not found. Run 'evalview init' first.[/red]"
         )
         return
 
@@ -307,10 +308,23 @@ async def _run_async(pattern: str, output: str, verbose: bool):
                     )
 
             except Exception as e:
+                import httpx
                 failed += 1
+
+                # Provide helpful error messages
+                error_msg = str(e)
+                if isinstance(e, httpx.ConnectError):
+                    error_msg = f"Cannot connect to {config['endpoint']}"
+                    console.print(f"\n[red]❌ Connection Error:[/red] Agent server not reachable at {config['endpoint']}")
+                    console.print("[yellow]💡 Tip:[/yellow] Run 'evalview connect' to test and configure your endpoint\n")
+                elif isinstance(e, httpx.TimeoutException):
+                    error_msg = "Request timeout"
+                    console.print(f"\n[yellow]⏱️  Timeout:[/yellow] Agent took too long to respond (>{config.get('timeout', 30)}s)")
+                    console.print("[yellow]💡 Tip:[/yellow] Increase timeout in .evalview/config.yaml or optimize your agent\n")
+
                 progress.update(
                     task,
-                    description=f"[red]❌ {test_case.name} - ERROR: {str(e)}[/red]",
+                    description=f"[red]❌ {test_case.name} - ERROR: {error_msg}[/red]",
                 )
 
             progress.remove_task(task)
@@ -347,7 +361,7 @@ def report(results_file: str, detailed: bool):
         return
 
     # Convert back to EvaluationResult objects
-    from agent_eval.core.types import EvaluationResult
+    from evalview.core.types import EvaluationResult
 
     results = [EvaluationResult(**data) for data in results_data]
 
@@ -358,6 +372,136 @@ def report(results_file: str, detailed: bool):
             reporter.print_detailed(result)
     else:
         reporter.print_summary(results)
+
+
+@main.command()
+@click.option(
+    "--endpoint",
+    help="Agent endpoint URL to test (optional - will auto-detect common ones)",
+)
+def connect(endpoint: str):
+    """Test connection to your agent API and auto-configure endpoint."""
+    asyncio.run(_connect_async(endpoint))
+
+
+async def _connect_async(endpoint: Optional[str]):
+    """Async implementation of connect command."""
+    import httpx
+
+    console.print("[blue]🔍 Testing agent connection...[/blue]\n")
+
+    # Common endpoints to try
+    common_endpoints = [
+        ("LangGraph", "http://localhost:8000/api/chat"),
+        ("LangGraph (alt)", "http://localhost:8000/invoke"),
+        ("LangServe", "http://localhost:8000/agent"),
+        ("TapeScope", "http://localhost:3000/api/unifiedchat"),
+        ("Custom FastAPI", "http://localhost:8000/api/agent"),
+        ("Custom Express", "http://localhost:3000/api/agent"),
+    ]
+
+    endpoints_to_test = []
+    if endpoint:
+        # User provided specific endpoint
+        endpoints_to_test = [("Custom", endpoint)]
+    else:
+        # Try common ones
+        endpoints_to_test = common_endpoints
+
+    successful = None
+
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        for name, url in endpoints_to_test:
+            try:
+                console.print(f"[dim]Testing {name}: {url}...[/dim]", end=" ")
+
+                # Try a simple POST request
+                response = await client.post(
+                    url,
+                    json={"query": "test", "message": "test"},
+                    headers={"Content-Type": "application/json"},
+                )
+
+                if response.status_code in [200, 201, 422]:  # 422 might be validation error but server is running
+                    console.print(f"[green]✅ Connected![/green]")
+                    successful = (name, url, response)
+                    break
+                else:
+                    console.print(f"[yellow]❌ HTTP {response.status_code}[/yellow]")
+
+            except httpx.ConnectError:
+                console.print(f"[red]❌ Connection refused[/red]")
+            except httpx.TimeoutException:
+                console.print(f"[yellow]❌ Timeout[/yellow]")
+            except Exception as e:
+                console.print(f"[red]❌ {type(e).__name__}[/red]")
+
+    console.print()
+
+    if successful:
+        name, url, response = successful
+        console.print(f"[green]✅ Successfully connected to {name}![/green]\n")
+
+        # Show response info
+        console.print("[cyan]Response details:[/cyan]")
+        console.print(f"  • Status: {response.status_code}")
+        console.print(f"  • Content-Type: {response.headers.get('content-type', 'N/A')}")
+
+        # Try to show response preview
+        try:
+            if response.headers.get('content-type', '').startswith('application/json'):
+                data = response.json()
+                console.print(f"  • Response keys: {list(data.keys())}")
+        except:
+            pass
+
+        # Ask if user wants to update config
+        console.print()
+        if click.confirm(f"Update .evalview/config.yaml to use this endpoint?", default=True):
+            config_path = Path(".evalview/config.yaml")
+
+            if not config_path.exists():
+                console.print("[yellow]⚠️  Config file not found. Run 'evalview init' first.[/yellow]")
+                return
+
+            with open(config_path) as f:
+                config = yaml.safe_load(f)
+
+            # Determine adapter type
+            is_streaming = "stream" in url.lower() or name == "TapeScope"
+            adapter_type = "streaming" if is_streaming else "http"
+
+            # Update config
+            config["adapter"] = adapter_type
+            config["endpoint"] = url
+
+            with open(config_path, "w") as f:
+                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+            console.print(f"[green]✅ Updated config:[/green]")
+            console.print(f"  • adapter: {adapter_type}")
+            console.print(f"  • endpoint: {url}")
+            console.print()
+            console.print("[blue]Next steps:[/blue]")
+            console.print("  1. Create test cases in tests/test-cases/")
+            console.print("  2. Run: evalview run --verbose")
+    else:
+        console.print("[red]❌ Could not connect to any agent endpoint.[/red]\n")
+        console.print("[yellow]Common issues:[/yellow]")
+        console.print("  1. Agent server not running")
+        console.print("  2. Wrong port number")
+        console.print("  3. Firewall blocking connection")
+        console.print()
+        console.print("[blue]To start LangGraph agent:[/blue]")
+        console.print("  cd /path/to/langgraph-example")
+        console.print("  python main.py")
+        console.print("  # or")
+        console.print("  uvicorn main:app --reload --port 8000")
+        console.print()
+        console.print("[blue]Then run:[/blue]")
+        console.print("  evalview connect")
+        console.print("  # or specify endpoint:")
+        console.print("  evalview connect --endpoint http://localhost:8000/api/chat")
 
 
 if __name__ == "__main__":

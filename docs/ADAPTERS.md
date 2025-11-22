@@ -1,6 +1,6 @@
-# AgentEval Adapters
+# EvalView Adapters
 
-Adapters connect AgentEval to your AI agent's API. AgentEval includes adapters for common patterns and makes it easy to build custom ones.
+Adapters connect EvalView to your AI agent's API. EvalView includes adapters for common patterns and makes it easy to build custom ones.
 
 ## Built-in Adapters
 
@@ -15,7 +15,7 @@ For standard REST APIs that return a complete JSON response.
 
 **Configuration:**
 ```yaml
-# .agenteval/config.yaml
+# .evalview/config.yaml
 adapter: http
 endpoint: http://localhost:3000/api/agent
 timeout: 30.0
@@ -58,7 +58,7 @@ For JSONL (JSON Lines) streaming APIs.
 
 **Configuration:**
 ```yaml
-# .agenteval/config.yaml
+# .evalview/config.yaml
 adapter: streaming  # or 'jsonl' or 'tapescope'
 endpoint: http://localhost:3000/api/chat
 timeout: 60.0
@@ -104,11 +104,11 @@ Build a custom adapter for your specific agent implementation.
 ### Basic Template
 
 ```python
-# agent_eval/adapters/my_adapter.py
+# evalview/adapters/my_adapter.py
 from datetime import datetime
 from typing import Any, Optional, Dict
-from agent_eval.adapters.base import AgentAdapter
-from agent_eval.core.types import (
+from evalview.adapters.base import AgentAdapter
+from evalview.core.types import (
     ExecutionTrace,
     StepTrace,
     StepMetrics,
@@ -215,9 +215,9 @@ class MyCustomAdapter(AgentAdapter):
 ### Register Your Adapter
 
 ```python
-# agent_eval/cli.py
+# evalview/cli.py
 
-from agent_eval.adapters.my_adapter import MyCustomAdapter
+from evalview.adapters.my_adapter import MyCustomAdapter
 
 # In _run_async function:
 adapter_type = config.get("adapter", "http")
@@ -347,7 +347,7 @@ class CrewAIAdapter(AgentAdapter):
 ```python
 # test_my_adapter.py
 import asyncio
-from agent_eval.adapters.my_adapter import MyCustomAdapter
+from evalview.adapters.my_adapter import MyCustomAdapter
 
 async def test_adapter():
     adapter = MyCustomAdapter(
@@ -377,8 +377,8 @@ asyncio.run(test_adapter())
 
 ## Need Help?
 
-- See `agent_eval/adapters/http_adapter.py` for simple example
-- See `agent_eval/adapters/tapescope_adapter.py` for streaming example
+- See `evalview/adapters/http_adapter.py` for simple example
+- See `evalview/adapters/tapescope_adapter.py` for streaming example
 - Open an issue on GitHub with your use case
 - Check [DEBUGGING.md](../DEBUGGING.md) for troubleshooting
 
@@ -386,7 +386,7 @@ asyncio.run(test_adapter())
 
 Have an adapter for a popular framework? We'd love to include it!
 
-1. Create adapter in `agent_eval/adapters/your_adapter.py`
+1. Create adapter in `evalview/adapters/your_adapter.py`
 2. Add tests in `tests/adapters/test_your_adapter.py`
 3. Document in this file
 4. Submit PR with examples

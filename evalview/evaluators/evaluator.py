@@ -2,17 +2,17 @@
 
 from datetime import datetime
 from typing import Optional
-from agent_eval.core.types import (
+from evalview.core.types import (
     TestCase,
     ExecutionTrace,
     EvaluationResult,
     Evaluations,
 )
-from agent_eval.evaluators.tool_call_evaluator import ToolCallEvaluator
-from agent_eval.evaluators.sequence_evaluator import SequenceEvaluator
-from agent_eval.evaluators.output_evaluator import OutputEvaluator
-from agent_eval.evaluators.cost_evaluator import CostEvaluator
-from agent_eval.evaluators.latency_evaluator import LatencyEvaluator
+from evalview.evaluators.tool_call_evaluator import ToolCallEvaluator
+from evalview.evaluators.sequence_evaluator import SequenceEvaluator
+from evalview.evaluators.output_evaluator import OutputEvaluator
+from evalview.evaluators.cost_evaluator import CostEvaluator
+from evalview.evaluators.latency_evaluator import LatencyEvaluator
 
 
 class Evaluator:

@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from typing import Any, Optional, Dict
-from agent_eval.core.types import ExecutionTrace
+from evalview.core.types import ExecutionTrace
 
 
 class AgentAdapter(ABC):

@@ -3,10 +3,10 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agent-eval"
+name = "evalview"
 version = "0.1.0"
 description = "Testing framework for multi-step AI agents"
-authors = [{name = "AgentEval Team"}]
+authors = [{name = "EvalView Team"}]
 requires-python = ">=3.9"
 dependencies = [
     "click>=8.1.0",
@@ -29,11 +29,11 @@ dev = [
 ]
 
 [project.scripts]
-agent-eval = "agent_eval.cli:main"
+evalview = "evalview.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["agent_eval*"]
+include = ["evalview*"]
 
 [tool.black]
 line-length = 100

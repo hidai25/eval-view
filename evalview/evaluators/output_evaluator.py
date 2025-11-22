@@ -4,7 +4,7 @@ import json
 import os
 from typing import Optional, List, Dict, Any
 from openai import AsyncOpenAI
-from agent_eval.core.types import (
+from evalview.core.types import (
     TestCase,
     ExecutionTrace,
     OutputEvaluation,

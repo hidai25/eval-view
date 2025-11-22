@@ -1,6 +1,6 @@
-# Debugging AgentEval
+# Debugging EvalView
 
-This guide helps you troubleshoot issues when running AgentEval tests.
+This guide helps you troubleshoot issues when running EvalView tests.
 
 ## Common Issues
 
@@ -14,10 +14,10 @@ This guide helps you troubleshoot issues when running AgentEval tests.
 
 ```bash
 # Option 1: Use --verbose flag
-agent-eval run --verbose
+evalview run --verbose
 
 # Option 2: Set DEBUG environment variable
-DEBUG=1 agent-eval run
+DEBUG=1 evalview run
 ```
 
 This will show you:
@@ -67,7 +67,7 @@ input:
 **Solutions**:
 1. Increase timeout in config:
 ```yaml
-# .agenteval/config.yaml
+# .evalview/config.yaml
 timeout: 120.0  # Increase from 60.0
 ```
 
@@ -109,12 +109,12 @@ If your API uses different event types, you can:
 
 1. **Check logs**: Run with `--verbose` to see what event types your API sends
 
-2. **Extend the adapter**: Edit `agent_eval/adapters/tapescope_adapter.py` to handle your event types
+2. **Extend the adapter**: Edit `evalview/adapters/tapescope_adapter.py` to handle your event types
 
 3. **Use HTTPAdapter**: If your API returns a simple JSON response (non-streaming), use the HTTPAdapter instead:
 
 ```yaml
-# .agenteval/config.yaml
+# .evalview/config.yaml
 adapter: http  # Instead of tapescope
 endpoint: http://localhost:3000/api/your-endpoint
 ```
@@ -143,7 +143,7 @@ Running test cases...
 
 If you're still having issues:
 
-1. Check the results JSON file: `.agenteval/results/TIMESTAMP.json`
+1. Check the results JSON file: `.evalview/results/TIMESTAMP.json`
 2. Look at the `trace` section to see what was captured
 3. Compare `expected` vs `actual` in the evaluations
 4. Open an issue with the verbose output and your test case

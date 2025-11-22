@@ -1,10 +1,10 @@
-# Database Setup for AgentEval
+# Database Setup for EvalView
 
-AgentEval can test any agent that uses a database for user management. This guide shows you how to set up test users for different database systems.
+EvalView can test any agent that uses a database for user management. This guide shows you how to set up test users for different database systems.
 
 ## Overview
 
-Many AI agents require a valid user ID when processing requests. AgentEval needs a test user in your database to run tests without affecting production users.
+Many AI agents require a valid user ID when processing requests. EvalView needs a test user in your database to run tests without affecting production users.
 
 ## Quick Setup
 
@@ -51,11 +51,11 @@ const prisma = new PrismaClient();
 async function main() {
   const testUser = await prisma.user.upsert({
     where: { email: 'test@agenteval.local' },
-    update: { name: 'AgentEval Test User' },
+    update: { name: 'EvalView Test User' },
     create: {
       id: 'test-user',
       email: 'test@agenteval.local',
-      name: 'AgentEval Test User',
+      name: 'EvalView Test User',
       // Add other required fields based on your schema
     },
   });
@@ -71,7 +71,7 @@ main().then(() => prisma.$disconnect());
 npx tsx prisma/seed-test-user.ts
 ```
 
-3. **Configure AgentEval:**
+3. **Configure EvalView:**
 
 ```bash
 cd /path/to/EvalView
@@ -101,7 +101,7 @@ async function main() {
       $set: {
         _id: 'test-user',
         email: 'test@agenteval.local',
-        name: 'AgentEval Test User',
+        name: 'EvalView Test User',
         createdAt: new Date()
       }
     },
@@ -122,9 +122,9 @@ For MySQL databases:
 ```sql
 -- create_test_user.sql
 INSERT INTO users (id, email, name, created_at)
-VALUES ('test-user', 'test@agenteval.local', 'AgentEval Test User', NOW())
+VALUES ('test-user', 'test@agenteval.local', 'EvalView Test User', NOW())
 ON DUPLICATE KEY UPDATE
-  name = 'AgentEval Test User';
+  name = 'EvalView Test User';
 ```
 
 Run with:
@@ -150,7 +150,7 @@ async function createTestUser() {
     const user = await admin.auth().createUser({
       uid: 'test-user',
       email: 'test@agenteval.local',
-      displayName: 'AgentEval Test User'
+      displayName: 'EvalView Test User'
     });
     console.log('Test user created:', user.uid);
   } catch (error) {
@@ -215,7 +215,7 @@ db.users.findOne({ email: "your@email.com" }, { _id: 1, email: 1 })
 SELECT id, email FROM users WHERE email = 'your@email.com';
 ```
 
-### 2. Configure AgentEval
+### 2. Configure EvalView
 
 ```bash
 node scripts/setup-test-user.js
@@ -304,8 +304,8 @@ thresholds:
 
 ## Next Steps
 
-- **Run tests:** `agent-eval run --verbose`
-- **See results:** Check `.agenteval/results/`
+- **Run tests:** `evalview run --verbose`
+- **See results:** Check `.evalview/results/`
 - **Debug issues:** See [DEBUGGING.md](../DEBUGGING.md)
 
 ## Need Help?

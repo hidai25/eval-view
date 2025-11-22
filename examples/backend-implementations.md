@@ -1,6 +1,6 @@
 # Backend Implementation Examples
 
-Copy-paste examples for implementing each tier of AgentEval support.
+Copy-paste examples for implementing each tier of EvalView support.
 
 ## Level 1: Basic Agent (5 minutes)
 
@@ -352,7 +352,7 @@ res.write(JSON.stringify(event) + '\n');  // Correct JSONL
 1. **Start with Level 1** - Get basic tests running (5 minutes)
 2. **Add metadata** - Enable cost/token tracking (10 more minutes)
 3. **Add streaming** (optional) - Full tool tracking (20 more minutes)
-4. **Run tests**: `agent-eval run`
+4. **Run tests**: `evalview run`
 5. **Check results**: `.agenteval/results/TIMESTAMP.json`
 
 ## Questions?

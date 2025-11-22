@@ -1,6 +1,6 @@
-# Backend Requirements for AgentEval Testing
+# Backend Requirements for EvalView Testing
 
-This document outlines requirements for AI agent backends to work properly with AgentEval testing framework.
+This document outlines requirements for AI agent backends to work properly with EvalView testing framework.
 
 ## Quick Start (5 Minutes)
 
@@ -41,14 +41,14 @@ Stream JSONL events (see Level 3 below).
 
 ## Overview
 
-AgentEval is a **general-purpose testing framework** for AI agents. It works with any agent that:
+EvalView is a **general-purpose testing framework** for AI agents. It works with any agent that:
 - Accepts queries via HTTP API
 - Returns responses (streaming or non-streaming)
 - Can emit structured execution data (optional but recommended)
 
 ## Three-Tier Support Model
 
-AgentEval supports agents at different levels of sophistication:
+EvalView supports agents at different levels of sophistication:
 
 | Level | What You Provide | What Gets Tested | Setup Time |
 |-------|-----------------|-----------------|------------|
@@ -294,14 +294,14 @@ To enable cost evaluation, emit usage events:
 }}
 ```
 
-AgentEval will:
+EvalView will:
 - Sum tokens across all steps
 - Calculate costs using built-in pricing
 - Compare against test thresholds
 
 ## Testing Your Backend
 
-Before running AgentEval tests:
+Before running EvalView tests:
 
 1. **Test response time:**
    ```bash
@@ -362,5 +362,5 @@ If you're using TapeScope backend:
 ## Questions?
 
 - See `examples/` directory for reference implementations
-- Check `agent_eval/adapters/` for adapter code
+- Check `evalview/adapters/` for adapter code
 - File issues at: https://github.com/hidai25/EvalView/issues

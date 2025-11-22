@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 from typing import List, Union, Dict, Any
-from agent_eval.core.types import EvaluationResult
+from evalview.core.types import EvaluationResult
 
 
 class JSONReporter:

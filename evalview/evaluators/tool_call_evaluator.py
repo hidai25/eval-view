@@ -1,7 +1,7 @@
 """Tool call accuracy evaluator."""
 
 from typing import List
-from agent_eval.core.types import TestCase, ExecutionTrace, ToolEvaluation
+from evalview.core.types import TestCase, ExecutionTrace, ToolEvaluation
 
 
 class ToolCallEvaluator:

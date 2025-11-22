@@ -2,16 +2,16 @@
 
 ## Overview
 
-AgentEval now includes comprehensive cost tracking based on model token usage. This feature automatically calculates costs per test run based on GPT-5 family pricing (or custom pricing) and provides detailed breakdowns.
+EvalView now includes comprehensive cost tracking based on model token usage. This feature automatically calculates costs per test run based on GPT-5 family pricing (or custom pricing) and provides detailed breakdowns.
 
 ## Features Implemented
 
-### 1. **Token Usage Tracking** (`agent_eval/core/types.py`)
+### 1. **Token Usage Tracking** (`evalview/core/types.py`)
 - Added `TokenUsage` class to track input, output, and cached tokens separately
 - Updated `StepMetrics` to use `TokenUsage` instead of simple token count
 - Updated `ExecutionMetrics` to track total token usage across all steps
 
-### 2. **Pricing Module** (`agent_eval/core/pricing.py`)
+### 2. **Pricing Module** (`evalview/core/pricing.py`)
 - **Built-in pricing** for GPT-5 family models:
   - `gpt-5`: $1.25/1M input, $10/1M output, $0.125/1M cached
   - `gpt-5-mini`: $0.25/1M input, $2/1M output, $0.025/1M cached
@@ -22,28 +22,28 @@ AgentEval now includes comprehensive cost tracking based on model token usage. T
   - `calculate_cost(model_name, input_tokens, output_tokens, cached_tokens)` - Calculate cost for token usage
   - `get_model_pricing_info(model_name)` - Get pricing details for a model
 
-### 3. **Interactive Onboarding** (`agent_eval/cli.py`)
-Enhanced `agent-eval init` command with:
+### 3. **Interactive Onboarding** (`evalview/cli.py`)
+Enhanced `evalview init` command with:
 - **Model selection**: Choose from gpt-5, gpt-5-mini, gpt-5-nano, gpt-4o-mini, or custom
 - **Pricing display**: Shows pricing per 1M tokens before running tests
 - **Custom pricing**: Allows users to set their own rates if they have special pricing
-- **Config persistence**: Saves model config to `.agenteval/config.yaml`
+- **Config persistence**: Saves model config to `.evalview/config.yaml`
 
 ### 4. **Adapter Integration**
 Both adapters now support cost tracking:
 
-#### **TapeScopeAdapter** (`agent_eval/adapters/tapescope_adapter.py`)
+#### **TapeScopeAdapter** (`evalview/adapters/tapescope_adapter.py`)
 - Listens for `usage` events in the streaming response
 - Extracts `input_tokens`, `output_tokens`, and `cached_tokens` from API
 - Calculates costs using pricing module
 - Attaches costs to individual steps
 - Logs token usage and costs in verbose mode
 
-#### **HTTPAdapter** (`agent_eval/adapters/http_adapter.py`)
+#### **HTTPAdapter** (`evalview/adapters/http_adapter.py`)
 - Accepts model_config parameter
 - Ready to parse token usage from REST API responses
 
-### 5. **Enhanced Reporting** (`agent_eval/reporters/console_reporter.py`)
+### 5. **Enhanced Reporting** (`evalview/reporters/console_reporter.py`)
 - **Summary table**: Added "Tokens" column showing total tokens used
 - **Cached tokens**: Displays cached token count (90% discount) in summary
 - **Detailed view**: Shows complete token breakdown:
@@ -57,7 +57,7 @@ Both adapters now support cost tracking:
 ### First-time Setup
 
 ```bash
-agent-eval init --interactive
+evalview init --interactive
 ```
 
 You'll be prompted for:
@@ -68,10 +68,10 @@ You'll be prompted for:
 
 ### Configuration File
 
-`.agenteval/config.yaml` example:
+`.evalview/config.yaml` example:
 
 ```yaml
-# AgentEval Configuration
+# EvalView Configuration
 adapter: streaming
 endpoint: http://localhost:3000/api/unifiedchat
 timeout: 60.0
@@ -105,7 +105,7 @@ model:
 
 ```bash
 # Run with verbose mode to see token usage in real-time
-agent-eval run --verbose
+evalview run --verbose
 
 # Results will show:
 # - Cost per test case
@@ -137,7 +137,7 @@ When your agent processes a query, the streaming API sends events like:
 {"type": "message_complete", "data": {"content": "Apple stock is..."}}
 ```
 
-AgentEval:
+EvalView:
 1. Captures the `step_narration` event → Creates a `StepTrace`
 2. Captures the `usage` event → Calculates cost using pricing module
 3. Attaches cost and token usage to the step
@@ -166,7 +166,7 @@ The system integrates at multiple levels:
 ```
 User runs test
      ↓
-CLI loads model config from .agenteval/config.yaml
+CLI loads model config from .evalview/config.yaml
      ↓
 Adapter receives model_config parameter
      ↓
@@ -214,12 +214,12 @@ Potential future features:
 
 ### File Changes
 
-- `agent_eval/core/types.py` - Added `TokenUsage` class
-- `agent_eval/core/pricing.py` - **NEW** pricing module
-- `agent_eval/adapters/tapescope_adapter.py` - Added usage event handling
-- `agent_eval/adapters/http_adapter.py` - Added model_config parameter
-- `agent_eval/cli.py` - Enhanced init with model selection
-- `agent_eval/reporters/console_reporter.py` - Added token display
+- `evalview/core/types.py` - Added `TokenUsage` class
+- `evalview/core/pricing.py` - **NEW** pricing module
+- `evalview/adapters/tapescope_adapter.py` - Added usage event handling
+- `evalview/adapters/http_adapter.py` - Added model_config parameter
+- `evalview/cli.py` - Enhanced init with model selection
+- `evalview/reporters/console_reporter.py` - Added token display
 
 ### Dependencies
 

@@ -1,4 +1,4 @@
-# AgentEval Test Improvements
+# EvalView Test Improvements
 
 ## What Was Fixed
 
@@ -95,7 +95,7 @@ expected:
 
 **Option B: Add tool name mapping** (Generic solution)
 ```python
-# agent_eval/adapters/tapescope_adapter.py
+# evalview/adapters/tapescope_adapter.py
 TOOL_NAME_MAPPINGS = {
     "analyzeStock": ["fetch_stock_data", "analyze_fundamentals", "get_stock_info"],
     "screenStocks": ["screen_stocks", "stock_screener"],
@@ -128,7 +128,7 @@ expected:
 **Where to look:**
 ```bash
 # Run with verbose to see all events
-agent-eval run --verbose | grep -i "cost\|token\|price"
+evalview run --verbose | grep -i "cost\|token\|price"
 ```
 
 ### 3. 🔧 Latency Issues
@@ -202,7 +202,7 @@ def print_api_calls(self, result):
 
 3. **Run tests again:**
    ```bash
-   agent-eval run --verbose
+   evalview run --verbose
    ```
 
 ### Short-term (Improvements)

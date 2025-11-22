@@ -1,0 +1,12 @@
+# EvalView Configuration
+# Updated for LangGraph - Standard REST API
+adapter: http
+endpoint: http://localhost:8000/api/chat
+
+# Maximum time (seconds) to wait for agent response
+# If your backend refines multiple times, this prevents infinite waits
+# Recommended: 30-90s depending on complexity
+timeout: 90.0
+
+headers:
+  Content-Type: application/json

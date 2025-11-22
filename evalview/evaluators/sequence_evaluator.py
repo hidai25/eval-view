@@ -1,7 +1,7 @@
 """Tool sequence correctness evaluator."""
 
 from typing import List
-from agent_eval.core.types import TestCase, ExecutionTrace, SequenceEvaluation
+from evalview.core.types import TestCase, ExecutionTrace, SequenceEvaluation
 
 
 class SequenceEvaluator:

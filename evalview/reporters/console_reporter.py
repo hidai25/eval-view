@@ -4,7 +4,7 @@ from typing import List
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
-from agent_eval.core.types import EvaluationResult
+from evalview.core.types import EvaluationResult
 
 
 class ConsoleReporter:

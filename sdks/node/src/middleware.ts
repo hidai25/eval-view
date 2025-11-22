@@ -1,19 +1,19 @@
 /**
- * AgentEval Middleware for Node.js/Next.js
+ * EvalView Middleware for Node.js/Next.js
  * 
- * Drop-in middleware that translates AgentEval standard format
+ * Drop-in middleware that translates EvalView standard format
  * to your agent's API format and back.
  * 
  * Usage:
- *   import { createAgentEvalMiddleware } from '@agent-eval/node'
+ *   import { createEvalViewMiddleware } from '@evalview/node'
  *   
- *   app.post('/api/agenteval', createAgentEvalMiddleware({
+ *   app.post('/api/agenteval', createEvalViewMiddleware({
  *     targetEndpoint: '/api/unifiedchat',
  *     parseResponse: (ndjson) => ({ output, steps, cost, latency })
  *   }))
  */
 
-export interface AgentEvalRequest {
+export interface EvalViewRequest {
   query: string;
   context?: {
     route?: string;
@@ -25,7 +25,7 @@ export interface AgentEvalRequest {
   enable_tracing?: boolean;
 }
 
-export interface AgentEvalStep {
+export interface EvalViewStep {
   id: string;
   name: string;
   tool: string;
@@ -37,10 +37,10 @@ export interface AgentEvalStep {
   tokens?: number;
 }
 
-export interface AgentEvalResponse {
+export interface EvalViewResponse {
   session_id: string;
   output: string;
-  steps: AgentEvalStep[];
+  steps: EvalViewStep[];
   cost: number;
   latency: number;
   tokens?: number;
@@ -50,11 +50,11 @@ export interface MiddlewareConfig {
   /** Endpoint to forward requests to (e.g., '/api/unifiedchat') */
   targetEndpoint: string;
 
-  /** Optional: Transform AgentEval request to your API format */
-  transformRequest?: (req: AgentEvalRequest) => any;
+  /** Optional: Transform EvalView request to your API format */
+  transformRequest?: (req: EvalViewRequest) => any;
 
-  /** Optional: Parse your API response to AgentEval format */
-  parseResponse?: (responseText: string, startTime: number) => AgentEvalResponse;
+  /** Optional: Parse your API response to EvalView format */
+  parseResponse?: (responseText: string, startTime: number) => EvalViewResponse;
 
   /** Optional: Base URL for requests (defaults to current host) */
   baseUrl?: string;
@@ -63,13 +63,13 @@ export interface MiddlewareConfig {
   defaultUserId?: string;
 
   /** Optional: Function to get/create user ID dynamically */
-  getUserId?: (req: AgentEvalRequest) => string | Promise<string>;
+  getUserId?: (req: EvalViewRequest) => string | Promise<string>;
 }
 
 /**
  * Default Tapescope request transformer
  */
-function defaultTransformRequest(req: AgentEvalRequest) {
+function defaultTransformRequest(req: EvalViewRequest) {
   const timestamp = Date.now();
   return {
     message: req.query,
@@ -84,7 +84,7 @@ function defaultTransformRequest(req: AgentEvalRequest) {
  * Default Tapescope NDJSON response parser
  * Handles both pure NDJSON and SSE format (with "data: " prefix)
  */
-function defaultParseResponse(ndjsonText: string, startTime: number): AgentEvalResponse {
+function defaultParseResponse(ndjsonText: string, startTime: number): EvalViewResponse {
   const lines = ndjsonText.trim().split('\n');
   const events = lines
     .filter(line => line.trim())
@@ -94,13 +94,13 @@ function defaultParseResponse(ndjsonText: string, startTime: number): AgentEvalR
         const jsonLine = line.startsWith('data: ') ? line.slice(6) : line;
         return JSON.parse(jsonLine);
       } catch (e) {
-        console.warn('[AgentEval] Failed to parse NDJSON line:', line);
+        console.warn('[EvalView] Failed to parse NDJSON line:', line);
         return null;
       }
     })
     .filter(Boolean);
 
-  const steps: AgentEvalStep[] = [];
+  const steps: EvalViewStep[] = [];
   let finalOutput = '';
   let totalCost = 0;
   let totalTokens = 0;
@@ -162,12 +162,12 @@ function defaultParseResponse(ndjsonText: string, startTime: number): AgentEvalR
 }
 
 /**
- * Create AgentEval middleware handler
+ * Create EvalView middleware handler
  *
  * @param config - Middleware configuration
  * @returns Request handler function
  */
-export function createAgentEvalMiddleware(config: MiddlewareConfig) {
+export function createEvalViewMiddleware(config: MiddlewareConfig) {
   const {
     targetEndpoint,
     transformRequest = defaultTransformRequest,
@@ -181,8 +181,8 @@ export function createAgentEvalMiddleware(config: MiddlewareConfig) {
     const startTime = Date.now();
 
     try {
-      // Parse AgentEval request (Next.js App Router)
-      const agentEvalReq: AgentEvalRequest = await req.json();
+      // Parse EvalView request (Next.js App Router)
+      const agentEvalReq: EvalViewRequest = await req.json();
 
       // Resolve user ID (priority: context.userId > getUserId() > defaultUserId)
       if (!agentEvalReq.context) {
@@ -194,14 +194,14 @@ export function createAgentEvalMiddleware(config: MiddlewareConfig) {
           : defaultUserId;
       }
 
-      console.log('[AgentEval] Received request:', {
+      console.log('[EvalView] Received request:', {
         query: agentEvalReq.query,
         route: agentEvalReq.context?.route,
       });
 
       // Transform to target API format
       const targetReq = transformRequest(agentEvalReq);
-      console.log('[AgentEval] Calling target endpoint:', targetEndpoint);
+      console.log('[EvalView] Calling target endpoint:', targetEndpoint);
 
       // Determine base URL
       const host = req.headers?.get?.('host') || req.headers?.host || 'localhost:3000';
@@ -222,11 +222,11 @@ export function createAgentEvalMiddleware(config: MiddlewareConfig) {
 
       // Get response text
       const responseText = await response.text();
-      console.log('[AgentEval] Received response, parsing...');
+      console.log('[EvalView] Received response, parsing...');
 
       // Parse and translate response
       const agentEvalRes = parseResponse(responseText, startTime);
-      console.log('[AgentEval] Translated response:', {
+      console.log('[EvalView] Translated response:', {
         steps: agentEvalRes.steps.length,
         outputLength: agentEvalRes.output.length,
         cost: agentEvalRes.cost,
@@ -239,10 +239,10 @@ export function createAgentEvalMiddleware(config: MiddlewareConfig) {
         headers: { 'Content-Type': 'application/json' },
       });
     } catch (error: any) {
-      console.error('[AgentEval] Error:', error);
+      console.error('[EvalView] Error:', error);
       return new Response(
         JSON.stringify({
-          error: error.message || 'AgentEval middleware failed',
+          error: error.message || 'EvalView middleware failed',
           session_id: `error-${startTime}`,
           output: '',
           steps: [],

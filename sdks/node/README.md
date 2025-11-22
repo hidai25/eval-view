@@ -1,11 +1,11 @@
-# @agent-eval/node
+# @evalview/node
 
-Drop-in Node.js/Next.js middleware for [AgentEval](https://github.com/hidai25/EvalView) testing framework.
+Drop-in Node.js/Next.js middleware for [EvalView](https://github.com/hidai25/EvalView) testing framework.
 
 ## Installation
 
 ```bash
-npm install @agent-eval/node
+npm install @evalview/node
 ```
 
 ## Quick Start
@@ -14,9 +14,9 @@ npm install @agent-eval/node
 
 ```typescript
 // app/api/agenteval/route.ts
-import { createAgentEvalMiddleware } from '@agent-eval/node';
+import { createEvalViewMiddleware } from '@evalview/node';
 
-export const POST = createAgentEvalMiddleware({
+export const POST = createEvalViewMiddleware({
   targetEndpoint: '/api/unifiedchat',  // Your agent's endpoint
 });
 ```
@@ -24,9 +24,9 @@ export const POST = createAgentEvalMiddleware({
 ### Express.js
 
 ```javascript
-const { createAgentEvalMiddleware } = require('@agent-eval/node');
+const { createEvalViewMiddleware } = require('@evalview/node');
 
-app.post('/api/agenteval', createAgentEvalMiddleware({
+app.post('/api/agenteval', createEvalViewMiddleware({
   targetEndpoint: '/api/your-agent',
 }));
 ```
@@ -34,7 +34,7 @@ app.post('/api/agenteval', createAgentEvalMiddleware({
 ## Configuration
 
 ```typescript
-createAgentEvalMiddleware({
+createEvalViewMiddleware({
   // Required: Endpoint to forward requests to
   targetEndpoint: '/api/unifiedchat',
 
@@ -50,14 +50,14 @@ createAgentEvalMiddleware({
     return user.id;
   },
 
-  // Optional: Transform AgentEval request to your API format
+  // Optional: Transform EvalView request to your API format
   transformRequest: (req) => ({
     message: req.query,
     userId: req.context?.userId, // Automatically set by middleware
     // ... your custom mapping
   }),
 
-  // Optional: Parse your API response to AgentEval format
+  // Optional: Parse your API response to EvalView format
   parseResponse: (responseText, startTime) => ({
     session_id: `session-${startTime}`,
     output: '...',
@@ -79,17 +79,17 @@ Works out-of-the-box with Tapescope-style APIs that:
 
 ## Testing
 
-Point AgentEval CLI to your endpoint:
+Point EvalView CLI to your endpoint:
 
 ```yaml
-# .agenteval/config.yaml
+# .evalview/config.yaml
 adapter: http
 endpoint: http://localhost:3000/api/agenteval
 ```
 
 Then run tests:
 ```bash
-agent-eval run
+evalview run
 ```
 
 ## License

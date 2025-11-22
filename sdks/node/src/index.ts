@@ -1,13 +1,13 @@
 /**
- * @agent-eval/node
+ * @evalview/node
  * 
- * Drop-in Node.js middleware for AgentEval testing framework
+ * Drop-in Node.js middleware for EvalView testing framework
  */
 
 export {
-  createAgentEvalMiddleware,
-  type AgentEvalRequest,
-  type AgentEvalResponse,
-  type AgentEvalStep,
+  createEvalViewMiddleware,
+  type EvalViewRequest,
+  type EvalViewResponse,
+  type EvalViewStep,
   type MiddlewareConfig,
 } from './middleware';

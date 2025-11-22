@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Generic test user setup script for AgentEval
+ * Generic test user setup script for EvalView
  * Works with any database/API setup
  */
 
@@ -19,10 +19,10 @@ function question(prompt) {
 
 async function main() {
   console.log('┌─────────────────────────────────────────────┐');
-  console.log('│   AgentEval - Test User Setup               │');
+  console.log('│   EvalView - Test User Setup               │');
   console.log('└─────────────────────────────────────────────┘\n');
 
-  console.log('This script helps you configure a test user for AgentEval.\n');
+  console.log('This script helps you configure a test user for EvalView.\n');
 
   const setupType = await question(
     'How would you like to set up the test user?\n' +
@@ -33,7 +33,7 @@ async function main() {
   );
 
   let userId = 'test-user';
-  let configPath = path.join(process.cwd(), '.agenteval', 'config.yaml');
+  let configPath = path.join(process.cwd(), '.evalview', 'config.yaml');
 
   if (setupType.trim() === '2') {
     userId = await question('Enter your existing user ID: ');
@@ -91,16 +91,16 @@ async function main() {
     }
   }
 
-  // Create a .agenteval/test-user.txt file for reference
-  const testUserFile = path.join(process.cwd(), '.agenteval', 'test-user.txt');
+  // Create a .evalview/test-user.txt file for reference
+  const testUserFile = path.join(process.cwd(), '.evalview', 'test-user.txt');
   fs.writeFileSync(testUserFile, userId);
 
   console.log(`\n✅ Test user configured: ${userId}`);
-  console.log(`   Saved to: .agenteval/test-user.txt\n`);
+  console.log(`   Saved to: .evalview/test-user.txt\n`);
 
   console.log('Next steps:');
   console.log('  1. Review your test cases in tests/test-cases/');
-  console.log('  2. Run: agent-eval run --verbose');
+  console.log('  2. Run: evalview run --verbose');
   console.log('  3. See DEBUGGING.md if you encounter issues\n');
 
   rl.close();

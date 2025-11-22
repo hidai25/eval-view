@@ -1,27 +1,56 @@
-# AgentEval
+# EvalView
 
-**Professional Testing Framework for AI Agents** - Like Playwright, but for AI.
+**Playwright-style testing for AI agents.** Catch hallucinations, regressions, and cost spikes before they reach production.
 
-AgentEval is a production-ready Python CLI tool that helps teams systematically test, evaluate, and monitor AI agents through structured test cases, automated evaluations, and comprehensive reporting.
+---
 
-Perfect for:
-- **AI Startups** - Ensure your agent works before shipping
-- **Enterprise Teams** - Maintain quality across agent deployments
-- **CI/CD Pipelines** - Automated testing for every commit
-- **Research Labs** - Benchmark and compare agent performance
+## What it does
 
-## Why AgentEval?
+- **Write test cases in YAML** – Define expected tools, outputs, and thresholds
+- **Automated evaluation** – Tool accuracy, output quality (LLM-as-judge), cost, and latency
+- **CI/CD ready** – JSON reports and exit codes for automated testing
 
-Traditional testing tools don't work for AI agents. Agents are:
-- **Non-deterministic** - Same input, different outputs
-- **Multi-step** - Complex workflows with tool calls
-- **Context-dependent** - Behavior changes based on state
+## Quick taste
 
-AgentEval solves this with:
-- **Flexible assertions** - Test for content, not exact matches
-- **Tool call tracking** - Verify correct tool usage and sequences
-- **LLM-as-judge** - Automated quality scoring using GPT-4
-- **Cost & latency monitoring** - Catch expensive or slow executions
+```yaml
+# tests/test-cases/stock-analysis.yaml
+name: "Stock Analysis Test"
+input:
+  query: "Analyze Apple stock performance"
+
+expected:
+  tools: [fetch_stock_data, analyze_metrics]
+  output:
+    contains: ["revenue", "earnings"]
+
+thresholds:
+  min_score: 80
+  max_cost: 0.50
+  max_latency: 5000
+```
+
+```bash
+$ evalview run
+
+✅ Stock Analysis Test - PASSED (score: 92.5)
+   Cost: $0.0234 | Latency: 3.4s
+```
+
+---
+
+## Why this exists
+
+**Agents hallucinate, regress, and silently break.**
+
+Unlike deterministic code, AI agents can:
+- Start using the wrong tools after a prompt change
+- Generate plausible-but-wrong answers
+- Suddenly cost 10x more due to a config change
+- Get slower as context windows grow
+
+Traditional testing doesn't catch this. EvalView lets you write repeatable tests and run them like CI – so you know *before* your users do.
+
+---
 
 ## Features
 
@@ -35,12 +64,62 @@ AgentEval solves this with:
 - 🐛 **Verbose debugging** - Detailed logging to troubleshoot issues
 - 🗄️ **Database-agnostic** - Works with PostgreSQL, MongoDB, MySQL, Firebase, and more
 
+---
+
+## Quickstart
+
+### Step 1: Install
+
+```bash
+# Clone and install
+git clone https://github.com/hidai25/EvalView.git
+cd EvalView
+python3 -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -e .
+```
+
+### Step 2: Initialize
+
+```bash
+# Set up your project
+evalview init --interactive
+```
+
+This creates:
+- `.evalview/config.yaml` - Agent endpoint configuration
+- `tests/test-cases/example.yaml` - Example test case
+
+### Step 3: Configure (Optional)
+
+Edit `.evalview/config.yaml` if needed:
+
+```yaml
+adapter: http
+endpoint: http://localhost:3000/api/agent  # Your agent URL
+timeout: 30.0
+```
+
+### Step 4: Run
+
+```bash
+# Set OpenAI API key for LLM-as-judge
+export OPENAI_API_KEY=your-key
+
+# Run tests
+evalview run
+```
+
+Done! 🎉
+
+---
+
 ## Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/agent-eval.git
-cd agent-eval
+git clone https://github.com/hidai25/EvalView.git
+cd EvalView
 
 # Create virtual environment
 python3 -m venv venv
@@ -50,12 +129,12 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -e .
 ```
 
-## Quick Start
+## Detailed Setup
 
 ### 1. Initialize Project
 
 ```bash
-agent-eval init --interactive
+evalview init --interactive
 ```
 
 The interactive setup will guide you through:
@@ -65,13 +144,13 @@ The interactive setup will guide you through:
 4. **Pricing Configuration** - Confirm standard pricing or set custom rates
 
 This creates:
-- `.agenteval/config.yaml` - Configuration for your agent endpoint and model pricing
+- `.evalview/config.yaml` - Configuration for your agent endpoint and model pricing
 - `tests/test-cases/` - Directory for test cases
 - `tests/test-cases/example.yaml` - Example test case
 
 ### 2. Configure Your Agent
 
-Edit `.agenteval/config.yaml`:
+Edit `.evalview/config.yaml`:
 
 **For standard REST APIs:**
 ```yaml
@@ -134,15 +213,15 @@ thresholds:
 export OPENAI_API_KEY=your-openai-api-key
 
 # Run all tests
-agent-eval run
+evalview run
 
 # Run specific pattern
-agent-eval run --pattern "stock-*.yaml"
+evalview run --pattern "stock-*.yaml"
 ```
 
 ### 5. View Results
 
-Results are displayed in the console and saved to `.agenteval/results/`:
+Results are displayed in the console and saved to `.evalview/results/`:
 
 ```
 📊 Evaluation Summary
@@ -160,7 +239,7 @@ Results are displayed in the console and saved to `.agenteval/results/`:
 Generate detailed reports:
 
 ```bash
-agent-eval report .agenteval/results/20241118_004830.json --detailed
+evalview report .evalview/results/20241118_004830.json --detailed
 ```
 
 ## Test Case Format
@@ -275,24 +354,24 @@ Your agent endpoint should return JSON with this structure:
 
 ## CLI Reference
 
-### `agent-eval init`
+### `evalview init`
 
-Initialize AgentEval in current directory.
+Initialize EvalView in current directory.
 
 ```bash
-agent-eval init [--dir PATH]
+evalview init [--dir PATH]
 ```
 
-### `agent-eval run`
+### `evalview run`
 
 Run test cases.
 
 ```bash
-agent-eval run [OPTIONS]
+evalview run [OPTIONS]
 
 Options:
   --pattern TEXT   Test case file pattern (default: *.yaml)
-  --output PATH    Output directory for results (default: .agenteval/results)
+  --output PATH    Output directory for results (default: .evalview/results)
   --verbose        Enable verbose logging (shows API requests/responses)
 ```
 
@@ -300,20 +379,20 @@ Options:
 
 ```bash
 # See exactly what the API is returning
-agent-eval run --verbose
+evalview run --verbose
 
 # Or use environment variable
-DEBUG=1 agent-eval run
+DEBUG=1 evalview run
 ```
 
 See [DEBUGGING.md](DEBUGGING.md) for troubleshooting guide.
 
-### `agent-eval report`
+### `evalview report`
 
 Generate report from results.
 
 ```bash
-agent-eval report RESULTS_FILE [OPTIONS]
+evalview report RESULTS_FILE [OPTIONS]
 
 Options:
   --detailed  Show detailed results for each test case
@@ -321,7 +400,7 @@ Options:
 
 ## Cost Tracking
 
-AgentEval automatically tracks costs based on token usage from your agent's API. This helps you:
+EvalView automatically tracks costs based on token usage from your agent's API. This helps you:
 - **Monitor expenses** - See exactly how much each test costs
 - **Set budgets** - Use `max_cost` thresholds to prevent expensive queries
 - **Optimize prompts** - Identify and optimize high-cost operations
@@ -338,10 +417,10 @@ Built-in pricing for:
 
 ### Configuration
 
-During `agent-eval init --interactive`, you'll select your model and pricing:
+During `evalview init --interactive`, you'll select your model and pricing:
 
 ```yaml
-# .agenteval/config.yaml
+# .evalview/config.yaml
 model:
   name: gpt-5-mini
   # Uses standard OpenAI pricing by default
@@ -401,7 +480,7 @@ See [COST_TRACKING.md](COST_TRACKING.md) for detailed implementation guide.
 ## Architecture
 
 ```
-agent_eval/
+evalview/
 ├── core/
 │   ├── types.py           # Pydantic models (ExecutionTrace, TokenUsage, etc.)
 │   ├── loader.py          # Test case loader
@@ -423,15 +502,15 @@ agent_eval/
 └── cli.py                 # Click CLI
 ```
 
-## Extending AgentEval
+## Extending EvalView
 
 ### Custom Adapters
 
 Create a custom adapter by subclassing `AgentAdapter`:
 
 ```python
-from agent_eval.adapters.base import AgentAdapter
-from agent_eval.core.types import ExecutionTrace
+from evalview.adapters.base import AgentAdapter
+from evalview.core.types import ExecutionTrace
 
 class MyCustomAdapter(AgentAdapter):
     @property
@@ -448,7 +527,7 @@ class MyCustomAdapter(AgentAdapter):
 Add custom evaluation logic:
 
 ```python
-from agent_eval.core.types import TestCase, ExecutionTrace
+from evalview.core.types import TestCase, ExecutionTrace
 
 class CustomEvaluator:
     def evaluate(self, test_case: TestCase, trace: ExecutionTrace):
@@ -497,6 +576,30 @@ See [docs/DATABASE_SETUP.md](docs/DATABASE_SETUP.md) for detailed guides.
 
 ## Development
 
+We use a Makefile for common development tasks. Here's how to get started:
+
+```bash
+# Install with dev dependencies
+make dev-install
+
+# Run all quality checks (format + lint + typecheck)
+make check
+
+# Run tests
+make test
+
+# Individual commands
+make format      # Format code with black
+make lint        # Lint with ruff
+make typecheck   # Type check with mypy
+make clean       # Clean build artifacts
+
+# See all commands
+make help
+```
+
+Or use the commands directly:
+
 ```bash
 # Install development dependencies
 pip install -e ".[dev]"
@@ -505,18 +608,20 @@ pip install -e ".[dev]"
 pytest
 
 # Format code
-black agent_eval/
+black evalview/
 
 # Type checking
-mypy agent_eval/
+mypy evalview/
 
 # Linting
-ruff agent_eval/
+ruff evalview/
 ```
 
-## Who's Using AgentEval?
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelines.
 
-AgentEval is production-ready and used by teams building:
+## Who's Using EvalView?
+
+EvalView is production-ready and used by teams building:
 - Financial analysis agents
 - Customer support chatbots
 - Research and data extraction agents
@@ -545,9 +650,9 @@ MIT License - see LICENSE file for details.
 
 ## Support
 
-- Issues: https://github.com/yourusername/agent-eval/issues
-- Discussions: https://github.com/yourusername/agent-eval/discussions
+- Issues: https://github.com/hidai25/EvalView/issues
+- Discussions: https://github.com/hidai25/EvalView/discussions
 
 ---
 
-**Built for the AI agent community** 🤖
+**Built for teams shipping AI agents to production** 🚀
