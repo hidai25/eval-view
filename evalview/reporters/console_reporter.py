@@ -126,6 +126,19 @@ class ConsoleReporter:
         self.console.print(f"Score: {result.score:.1f}/100")
         self.console.print(f"Status: {'✅ PASSED' if result.passed else '❌ FAILED'}")
 
+        # Show query and response
+        if result.input_query:
+            self.console.print(f"\n[bold]Query:[/bold]")
+            self.console.print(f"  {result.input_query}")
+
+        if result.actual_output:
+            self.console.print(f"\n[bold]Response:[/bold]")
+            # Truncate long responses
+            output = result.actual_output
+            if len(output) > 300:
+                output = output[:300] + "..."
+            self.console.print(f"  {output}")
+
         # Tool accuracy
         tool_eval = result.evaluations.tool_accuracy
         self.console.print(f"\n[bold]Tool Accuracy:[/bold] {tool_eval.accuracy * 100:.1f}%")

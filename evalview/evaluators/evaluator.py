@@ -66,6 +66,8 @@ class Evaluator:
             evaluations=evaluations,
             trace=trace,
             timestamp=datetime.now(),
+            input_query=test_case.input.query,
+            actual_output=trace.final_output,
         )
 
     def _compute_overall_score(

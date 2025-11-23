@@ -212,3 +212,7 @@ class EvaluationResult(BaseModel):
     evaluations: Evaluations
     trace: ExecutionTrace
     timestamp: datetime
+
+    # User-facing fields for reports
+    input_query: Optional[str] = None
+    actual_output: Optional[str] = None
