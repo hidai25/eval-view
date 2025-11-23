@@ -41,6 +41,8 @@ class LangGraphAdapter(AgentAdapter):
         streaming: bool = False,
         verbose: bool = False,
         model_config: Optional[Dict[str, Any]] = None,
+        assistant_id: Optional[str] = None,
+        use_cloud_api: Optional[bool] = None,  # Auto-detect if None
     ):
         self.endpoint = endpoint
         self.headers = headers or {"Content-Type": "application/json"}
@@ -48,6 +50,14 @@ class LangGraphAdapter(AgentAdapter):
         self.streaming = streaming
         self.verbose = verbose
         self.model_config = model_config or {}
+        self.assistant_id = assistant_id or "agent"  # Default assistant ID
+
+        # Auto-detect Cloud API if not specified
+        if use_cloud_api is None:
+            # If endpoint contains /threads or port 2024, likely Cloud API
+            self.use_cloud_api = "/threads" in endpoint or ":2024" in endpoint
+        else:
+            self.use_cloud_api = use_cloud_api
 
     @property
     def name(self) -> str:
@@ -60,10 +70,110 @@ class LangGraphAdapter(AgentAdapter):
         context = context or {}
         start_time = datetime.now()
 
-        if self.streaming:
+        if self.use_cloud_api:
+            return await self._execute_cloud_api(query, context, start_time)
+        elif self.streaming:
             return await self._execute_streaming(query, context, start_time)
         else:
             return await self._execute_standard(query, context, start_time)
+
+    async def _execute_cloud_api(
+        self, query: str, context: Dict[str, Any], start_time: datetime
+    ) -> ExecutionTrace:
+        """Execute LangGraph Cloud API (threads + runs pattern)."""
+        import asyncio
+
+        assistant_id = context.get("assistant_id", self.assistant_id)
+
+        # Extract base URL (remove /threads if present)
+        base_url = self.endpoint.replace("/threads", "").rstrip("/")
+
+        if self.verbose:
+            logger.info(f"🚀 Executing LangGraph Cloud API: {query}...")
+            logger.debug(f"Assistant ID: {assistant_id}")
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            # Step 1: Create thread
+            thread_response = await client.post(
+                f"{base_url}/threads",
+                json={"metadata": {"test": "evalview"}},
+                headers=self.headers,
+            )
+            thread_response.raise_for_status()
+            thread_data = thread_response.json()
+            thread_id = thread_data["thread_id"]
+
+            if self.verbose:
+                logger.debug(f"Created thread: {thread_id}")
+
+            # Step 2: Create run with streaming
+            run_payload = {
+                "assistant_id": assistant_id,
+                "input": {"messages": [{"role": "user", "content": query}]},
+                "stream_mode": ["values", "updates"],
+            }
+
+            steps: List[StepTrace] = []
+            final_output = ""
+
+            async with client.stream(
+                "POST",
+                f"{base_url}/threads/{thread_id}/runs/stream",
+                json=run_payload,
+                headers=self.headers,
+            ) as response:
+                response.raise_for_status()
+
+                async for line in response.aiter_lines():
+                    if not line or line.startswith("event:"):
+                        continue
+
+                    if line.startswith("data: "):
+                        try:
+                            data = json.loads(line[6:])
+
+                            # Extract messages from streaming data
+                            if isinstance(data, list) and len(data) > 0:
+                                last_item = data[-1]
+                                if "messages" in last_item:
+                                    messages = last_item["messages"]
+                                    if messages and isinstance(messages, list):
+                                        last_msg = messages[-1]
+                                        if isinstance(last_msg, dict):
+                                            final_output = last_msg.get("content", "")
+
+                            # Try to extract tool calls
+                            # LangGraph Cloud may include these in updates
+                            if isinstance(data, dict) and "tool_calls" in data:
+                                for tool_call in data["tool_calls"]:
+                                    step = StepTrace(
+                                        step_id=tool_call.get("id", f"step-{len(steps)}"),
+                                        step_name=tool_call.get("name", "Tool Call"),
+                                        tool_name=tool_call.get("name"),
+                                        parameters=tool_call.get("args", {}),
+                                        output=None,
+                                        success=True,
+                                        metrics=StepMetrics(latency=0.0, cost=0.0),
+                                    )
+                                    steps.append(step)
+
+                        except json.JSONDecodeError:
+                            continue
+
+        end_time = datetime.now()
+        metrics = self._calculate_metrics(steps, start_time, end_time)
+
+        if self.verbose:
+            logger.info(f"✅ Run completed: {final_output[:50]}...")
+
+        return ExecutionTrace(
+            session_id=thread_id,
+            start_time=start_time,
+            end_time=end_time,
+            steps=steps,
+            final_output=final_output,
+            metrics=metrics,
+        )
 
     async def _execute_standard(
         self, query: str, context: Dict[str, Any], start_time: datetime

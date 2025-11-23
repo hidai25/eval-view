@@ -249,6 +249,7 @@ async def _run_async(pattern: str, output: str, verbose: bool):
             streaming=config.get("streaming", False),
             verbose=verbose,
             model_config=model_config,
+            assistant_id=config.get("assistant_id", "agent"),  # Cloud API support
         )
     elif adapter_type == "crewai":
         adapter = CrewAIAdapter(

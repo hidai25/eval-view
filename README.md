@@ -38,6 +38,27 @@ $ evalview run
 
 ---
 
+## ⚡ Zero-Config Connection
+
+**Before:** Manual port configuration, endpoint guessing, adapter selection...
+**After:** Just run `evalview connect` - it figures everything out!
+
+```bash
+# Start your agent (LangGraph, CrewAI, whatever)
+langgraph dev
+
+# Auto-detect and connect
+evalview connect  # Scans ports, detects framework, configures everything
+
+# Run tests
+evalview run
+```
+
+Supports 7+ frameworks with automatic detection:
+✅ LangGraph • ✅ LangServe • ✅ CrewAI • ✅ OpenAI Assistants • ✅ TapeScope • ✅ Custom APIs
+
+---
+
 ## Why this exists
 
 **Agents hallucinate, regress, and silently break.**

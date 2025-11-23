@@ -1,0 +1,128 @@
+[
+  {
+    "test_case": "TapeScope Stock Analysis Test",
+    "passed": false,
+    "score": 55.0,
+    "evaluations": {
+      "tool_accuracy": {
+        "accuracy": 1.0,
+        "missing": [],
+        "unexpected": [],
+        "correct": []
+      },
+      "sequence_correctness": {
+        "correct": true,
+        "expected_sequence": [],
+        "actual_sequence": [],
+        "violations": []
+      },
+      "output_quality": {
+        "score": 10.0,
+        "rationale": "The agent's response indicates a technical error rather than providing any analysis of AAPL stock performance. It does not contain any relevant information about AAPL, stock metrics, or insights, thus failing to meet the criteria for accuracy, completeness, relevance, and clarity.",
+        "contains_checks": {
+          "passed": [],
+          "failed": [
+            "AAPL",
+            "stock",
+            "P/E"
+          ]
+        },
+        "not_contains_checks": {
+          "passed": [
+            "failed"
+          ],
+          "failed": [
+            "error"
+          ]
+        }
+      },
+      "cost": {
+        "total_cost": 0.0,
+        "threshold": 1.0,
+        "passed": true,
+        "breakdown": []
+      },
+      "latency": {
+        "total_latency": 90000.0,
+        "threshold": 120000.0,
+        "passed": true,
+        "breakdown": []
+      }
+    },
+    "trace": {
+      "session_id": "timeout-1763676154",
+      "start_time": "2025-11-21T00:02:34.764243",
+      "end_time": "2025-11-21T00:02:34.764244",
+      "steps": [],
+      "final_output": "Error: Request timed out after 90.0 seconds. Backend may be stuck in refinement loops or processing. Check backend logs and consider reducing complexity.",
+      "metrics": {
+        "total_cost": 0.0,
+        "total_latency": 90000.0,
+        "total_tokens": null
+      }
+    },
+    "timestamp": "2025-11-21T00:02:37.128795"
+  },
+  {
+    "test_case": "TapeScope Conversational Test",
+    "passed": true,
+    "score": 97.5,
+    "evaluations": {
+      "tool_accuracy": {
+        "accuracy": 1.0,
+        "missing": [],
+        "unexpected": [],
+        "correct": []
+      },
+      "sequence_correctness": {
+        "correct": true,
+        "expected_sequence": [],
+        "actual_sequence": [],
+        "violations": []
+      },
+      "output_quality": {
+        "score": 95.0,
+        "rationale": "The agent's response is highly accurate, providing a comprehensive overview of the main factors affecting tech stocks today. It covers various aspects such as macroeconomic conditions, company fundamentals, innovation cycles, and geopolitical influences, which are all relevant to the query. The structure is clear, with well-defined sections and explanations that enhance understanding. The response could be slightly improved by summarizing the key points more concisely, but overall, it effectively addresses the query with depth and clarity.",
+        "contains_checks": {
+          "passed": [
+            "tech",
+            "stocks"
+          ],
+          "failed": []
+        },
+        "not_contains_checks": {
+          "passed": [
+            "error",
+            "failed"
+          ],
+          "failed": []
+        }
+      },
+      "cost": {
+        "total_cost": 0.0,
+        "threshold": 0.5,
+        "passed": true,
+        "breakdown": []
+      },
+      "latency": {
+        "total_latency": 57439.168000000005,
+        "threshold": 80000.0,
+        "passed": true,
+        "breakdown": []
+      }
+    },
+    "trace": {
+      "session_id": "tapescope-1763676157",
+      "start_time": "2025-11-21T00:02:37.129924",
+      "end_time": "2025-11-21T00:03:34.569092",
+      "steps": [],
+      "final_output": "Quick answer \u2014 TL;DR:\nTech stocks are mainly driven by macroeconomic conditions (interest rates, growth), company fundamentals (revenue/earnings growth, margins, cash flow), industry-specific supply/innovation cycles (semiconductors, AI), regulation/geopolitics, investor sentiment/liquidity, and short-term technicals.\n\nCore explanation \u2014 main factors (what they are and why they matter)\n- Interest rates & monetary policy  \n  - Why: Tech companies\u2019 valuations are sensitive to discount rates because much of their value is in expected future cash flows. Higher rates typically reduce the present value of long-duration growth cash flows, which can pressure high-multiple tech stocks.  \n  - What to watch: Fed guidance, real rates, 10\u2011year Treasury yield, inflation prints.\n\n- Economic growth & demand environment  \n  - Why: Enterprise IT spending, ad budgets, consumer device demand, and cloud adoption track macro growth. A slowdown tends to compress revenues and margins; a pickup supports cyclical tech revenue.  \n  - What to watch: GDP, PMI, corporate IT spend surveys, capex trends.\n\n- Company fundamentals & execution  \n  - Why: Revenue growth, profitability (gross margin, operating margin), free cash flow, and unit economics drive long-term outcomes. Profitability/cash flow matter more for valuation resilience.  \n  - What to watch: Quarterly earnings, guidance, churn metrics (for SaaS), FCF and capex levels.\n\n- Innovation/product cycles & competitive positioning  \n  - Why: New product cycles (AI, cloud features, chips, devices) can create winners and re-rate whole sub-sectors. Competitive dynamics (pricing, moat) determine sustainable margins.  \n  - What to watch: Product roadmaps, adoption metrics, developer ecosystem growth, patent/tech leadership.\n\n- Supply chain & capital goods cycles (semiconductors, components)  \n  - Why: Chip availability, lead times, and pricing affect hardware makers and data\u2011center equipment vendors. Semiconductor cycles are especially impactful for chipmakers and OEMs.  \n  - What to watch: Inventory levels, fab utilization, chip lead times, supplier commentary.\n\n- Regulation, antitrust & data/security risks  \n  - Why: Privacy rules, antitrust actions, export controls (e.g., US\u2013China tech export restrictions) can limit addressable markets or increase compliance costs. Security breaches can materially hurt revenue and trust.  \n  - What to watch: Legislative developments, DOJ/FTC actions, trade policy news, major security incidents.\n\n- Geopolitics & trade relations  \n  - Why: China policy, sanctions, and cross-border restrictions affect supply chains and TAM (total addressable market) \u2014 especially for semiconductors, cloud providers, and social platforms.  \n  - What to watch: Export rules, tariffs, diplomatic developments.\n\n- Market liquidity, flows & sentiment  \n  - Why: ETF flows, retail vs institutional appetite, and momentum can amplify moves. Growth stocks often experience larger flows into/out of concentrated funds or thematic ETFs.  \n  - What to watch: ETF flows (e.g., technology ETFs), put/call skew, concentration in large-cap names.\n\n- Valuation starting point  \n  - Why: High initial multiples (many tech names trade at growth premiums) mean small disappointments can lead to outsized multiple compression. Conversely, cheaper relative valuation can provide cushion.  \n  - What to watch: P/E, EV/EBITDA, PEG, FCF yield \u2014 always benchmarked to the tech sub-sector (growth software vs semiconductor vs consumer internet).\n\n- Short-term technicals & market structure  \n  - Why: Price trends, moving average crossovers, volume spikes, and momentum signals govern entry/exit timing for many traders. Technicals can prolong rallies or accelerate declines.  \n  - What to watch: Trend (50/200-day MAs), RSI, MACD, volume. (Per technical confirmation best practice: confirm signals with volume, support/resistance, and multi\u2011timeframe alignment.)\n\nHow these interact \u2014 simple scenarios (not predictions)\n- If rates fall and growth stabilizes \u2192 long-duration growth tech often re-rates higher (bull/base scenario).  \n- If economic indicators weaken and rates rise \u2192 revenue guidance gets cut and high multiples compress (bear scenario).  \n- If an innovation (e.g., a widely adopted AI platform) accelerates monetization \u2192 revenues and margins can expand, altering relative valuations (positive sector-specific outcome).  \nThese are possible outcomes based on historical patterns, not forecasts.\n\nPractical application \u2014 what investors/researchers typically monitor\n- Macro calendar: Fed meetings, CPI/PCE, jobs reports.  \n- Earnings season: guidance changes and subscription metrics for SaaS.  \n- Supply-chain commentary from suppliers (chipmakers, ODMs).  \n- Regulatory headlines and trade policy updates.  \n- Fund flows into/out of tech ETFs and large-cap concentration moves.  \n- Technical confirmation: volume + MA alignment + multi\u2011timeframe checks before acting on signals.\n\nTapeScope tools that help analyze these factors\n- Macro and economic calendar alerts (Fed, CPI, jobs)  \n- Earnings calendar + company guidance highlights  \n- News feed filtered by ticker/issue (regulation, supply chain, product",
+      "metrics": {
+        "total_cost": 0.0,
+        "total_latency": 57439.168000000005,
+        "total_tokens": null
+      }
+    },
+    "timestamp": "2025-11-21T00:03:38.193626"
+  }
+]

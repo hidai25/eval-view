@@ -1,0 +1,128 @@
+[
+  {
+    "test_case": "TapeScope Stock Analysis Test",
+    "passed": false,
+    "score": 55.0,
+    "evaluations": {
+      "tool_accuracy": {
+        "accuracy": 1.0,
+        "missing": [],
+        "unexpected": [],
+        "correct": []
+      },
+      "sequence_correctness": {
+        "correct": true,
+        "expected_sequence": [],
+        "actual_sequence": [],
+        "violations": []
+      },
+      "output_quality": {
+        "score": 10.0,
+        "rationale": "The agent's response indicates a technical error rather than providing any analysis or insights on AAPL stock performance. While it is relevant to the query, it lacks accuracy, completeness, and clarity, as it does not address the request at all.",
+        "contains_checks": {
+          "passed": [],
+          "failed": [
+            "AAPL",
+            "stock",
+            "P/E"
+          ]
+        },
+        "not_contains_checks": {
+          "passed": [
+            "failed"
+          ],
+          "failed": [
+            "error"
+          ]
+        }
+      },
+      "cost": {
+        "total_cost": 0.0,
+        "threshold": 1.0,
+        "passed": true,
+        "breakdown": []
+      },
+      "latency": {
+        "total_latency": 90000.0,
+        "threshold": 120000.0,
+        "passed": true,
+        "breakdown": []
+      }
+    },
+    "trace": {
+      "session_id": "timeout-1763844086",
+      "start_time": "2025-11-22T22:41:26.176610",
+      "end_time": "2025-11-22T22:41:26.176611",
+      "steps": [],
+      "final_output": "Error: Request timed out after 90.0 seconds. Backend may be stuck in refinement loops or processing. Check backend logs and consider reducing complexity.",
+      "metrics": {
+        "total_cost": 0.0,
+        "total_latency": 90000.0,
+        "total_tokens": null
+      }
+    },
+    "timestamp": "2025-11-22T22:41:29.756967"
+  },
+  {
+    "test_case": "TapeScope Conversational Test",
+    "passed": true,
+    "score": 97.5,
+    "evaluations": {
+      "tool_accuracy": {
+        "accuracy": 1.0,
+        "missing": [],
+        "unexpected": [],
+        "correct": []
+      },
+      "sequence_correctness": {
+        "correct": true,
+        "expected_sequence": [],
+        "actual_sequence": [],
+        "violations": []
+      },
+      "output_quality": {
+        "score": 95.0,
+        "rationale": "The agent's response is highly accurate and comprehensive, addressing multiple factors that affect tech stocks today. It covers a wide range of relevant topics, including macroeconomic influences, earnings, demand cycles, supply chain issues, regulation, market flows, and investor sentiment. The explanation is well-structured, providing both a quick summary and a detailed breakdown of each factor. The clarity of the response is strong, with technical terms explained in context. The only minor issue is that the response could be slightly more concise, but the depth of information provided is valuable for understanding the complexities of tech stocks.",
+        "contains_checks": {
+          "passed": [
+            "tech",
+            "stocks"
+          ],
+          "failed": []
+        },
+        "not_contains_checks": {
+          "passed": [
+            "error",
+            "failed"
+          ],
+          "failed": []
+        }
+      },
+      "cost": {
+        "total_cost": 0.0,
+        "threshold": 0.5,
+        "passed": true,
+        "breakdown": []
+      },
+      "latency": {
+        "total_latency": 49765.317,
+        "threshold": 80000.0,
+        "passed": true,
+        "breakdown": []
+      }
+    },
+    "trace": {
+      "session_id": "tapescope-1763844089",
+      "start_time": "2025-11-22T22:41:29.758466",
+      "end_time": "2025-11-22T22:42:19.523783",
+      "steps": [],
+      "final_output": "Quick answer \u2014 TL;DR\nTech stocks are driven mainly by (1) macro/interest-rate expectations, (2) earnings growth and guidance, (3) technology demand cycles (cloud/AI/ads/devices), (4) supply-chain & semiconductor dynamics, (5) regulation & geopolitics, and (6) market flows & sentiment (ETF/index flows, options, momentum).\n\nCore explanation (what each factor does and why it matters)\n- Interest rates & discounting: Growth-tech valuations are sensitive to interest rates because higher yields raise the discount rate used to value future earnings. Historically, tech and software firms trade at higher P/E multiples (typical growth/software: ~25\u201340; high-growth tech: 40\u2013100+), so rate moves can compress/expand those multiples quickly.  \n- Earnings, margins & guidance: Revenue growth, margin expansion (or contraction), and management guidance drive re-rating events. Free cash flow matters for mature tech; negative FCF must be viewed in the context of CapEx and stage of growth.  \n- Demand cycles / product trends: Enterprise IT spending (cloud, SaaS, AI adoption), ad budgets (important for some big internet platforms), consumer device upgrade cycles, and new platform adoption all directly affect revenue outlooks. These cycles can amplify or mute fundamentals.  \n- Supply-chain & semiconductor cycle: Hardware and device vendors depend on chip availability and component costs; cyclical shortages or gluts materially affect revenue timing and margins for chipmakers and OEMs.  \n- Regulation & geopolitics: Antitrust/privacy rules, data regulation, export controls (e.g., semiconductor export restrictions), and U.S.\u2013China tensions can change addressable markets or raise compliance costs. These risks can cause valuation discounts or sudden volatility.  \n- Market structure, liquidity & flows: ETF rebalances (XLK/QQQ flows), passive vs active allocation shifts, options gamma, and hedge fund positioning can move prices independent of fundamentals\u2014especially in large-cap tech.  \n- Sentiment & technicals: Momentum, investor sentiment, and technical levels (support/resistance, moving-average breaks) can drive short-term moves. When using technicals, confirm signals with volume, multi-timeframe checks, MACD, and support/resistance (RSI/other indicators can stay extreme during strong trends).\n\nIndustry-specific context and ratios\n- Valuation context: Tech typically carries higher P/E than the broad market; compare P/E, EV/EBITDA, and growth rates to software/IT peers rather than the whole market. This avoids misleading conclusions.  \n- Leverage/liquidity: Tech/software firms generally have low debt-to-equity (typical <0.5) and higher current-ratio cushions; hardware and telecom are more capital-intensive and use different benchmarks.  \n- Free cash flow: Negative FCF can be acceptable for early-stage or capex-heavy growth initiatives, but for mature software companies negative FCF is a red flag \u2014 always check CapEx and stage.\n\nHow investors and traders typically use this understanding (practical application)\n- Long-term investors focus on durable revenue growth, margins, competitive moat, and regulatory risk.  \n- Traders watch rate headlines, CPI/Fed commentary, earnings beats/misses and guidance revisions, options/ETF flows, and technical confirmation for entries/exits.  \n- Risk-management: Because tech can be volatile, many use position sizing, stop rules, or hedges (e.g., options) and monitor macro indicators (rates, PMI, employment).\n\nQuestions to help you act (decide what to monitor next)\n- What is your timeframe (short-term trader vs long-term investor)?  \n- Which sub-sectors matter most to you (cloud, semiconductors, ad-tech, consumer devices, SaaS)?  \n- How sensitive is your exposure to interest rates or supply-chain risk?  \n- How concentrated is your portfolio in large-cap tech vs smaller, more cyclical names?\n\nTapeScope tools that can help right now\n- News feed and sentiment scans (track regulatory, earnings, and macro headlines)  \n- Fundamental screens (compare P/E, FCF yield, margins vs sector peers)  \n- Technical tools (multi-timeframe moving",
+      "metrics": {
+        "total_cost": 0.0,
+        "total_latency": 49765.317,
+        "total_tokens": null
+      }
+    },
+    "timestamp": "2025-11-22T22:42:24.275690"
+  }
+]

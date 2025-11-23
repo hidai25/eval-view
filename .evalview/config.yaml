@@ -1,7 +1,8 @@
 # EvalView Configuration
-# Updated for LangGraph - Standard REST API
-adapter: http
-endpoint: http://localhost:8000/api/chat
+# Updated for LangGraph Cloud API (port 2024)
+adapter: langgraph
+endpoint: http://127.0.0.1:2024
+assistant_id: agent  # Your assistant/graph ID (check langgraph.json or use "agent")
 
 # Maximum time (seconds) to wait for agent response
 # If your backend refines multiple times, this prevents infinite waits

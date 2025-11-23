@@ -1,0 +1,128 @@
+[
+  {
+    "test_case": "TapeScope Stock Analysis Test",
+    "passed": false,
+    "score": 55.0,
+    "evaluations": {
+      "tool_accuracy": {
+        "accuracy": 1.0,
+        "missing": [],
+        "unexpected": [],
+        "correct": []
+      },
+      "sequence_correctness": {
+        "correct": true,
+        "expected_sequence": [],
+        "actual_sequence": [],
+        "violations": []
+      },
+      "output_quality": {
+        "score": 10.0,
+        "rationale": "The agent's output does not provide any analysis or insights regarding AAPL stock performance. Instead, it reports a technical error, which is irrelevant to the query. There is no information about AAPL, stock performance, or key metrics like P/E ratio, making the response incomplete and unhelpful.",
+        "contains_checks": {
+          "passed": [],
+          "failed": [
+            "AAPL",
+            "stock",
+            "P/E"
+          ]
+        },
+        "not_contains_checks": {
+          "passed": [
+            "failed"
+          ],
+          "failed": [
+            "error"
+          ]
+        }
+      },
+      "cost": {
+        "total_cost": 0.0,
+        "threshold": 1.0,
+        "passed": true,
+        "breakdown": []
+      },
+      "latency": {
+        "total_latency": 90000.0,
+        "threshold": 120000.0,
+        "passed": true,
+        "breakdown": []
+      }
+    },
+    "trace": {
+      "session_id": "timeout-1763845013",
+      "start_time": "2025-11-22T22:56:53.266780",
+      "end_time": "2025-11-22T22:56:53.266781",
+      "steps": [],
+      "final_output": "Error: Request timed out after 90.0 seconds. Backend may be stuck in refinement loops or processing. Check backend logs and consider reducing complexity.",
+      "metrics": {
+        "total_cost": 0.0,
+        "total_latency": 90000.0,
+        "total_tokens": null
+      }
+    },
+    "timestamp": "2025-11-22T22:56:55.476148"
+  },
+  {
+    "test_case": "TapeScope Conversational Test",
+    "passed": true,
+    "score": 97.5,
+    "evaluations": {
+      "tool_accuracy": {
+        "accuracy": 1.0,
+        "missing": [],
+        "unexpected": [],
+        "correct": []
+      },
+      "sequence_correctness": {
+        "correct": true,
+        "expected_sequence": [],
+        "actual_sequence": [],
+        "violations": []
+      },
+      "output_quality": {
+        "score": 95.0,
+        "rationale": "The agent's response is highly accurate and comprehensive, covering a wide range of factors affecting tech stocks today. It addresses macroeconomic influences, company fundamentals, sector dynamics, and more, providing clear explanations for each factor. The structure is logical, with sections neatly categorized, enhancing clarity. The response is relevant and on-topic, directly answering the query. The only minor issue is that the response could be slightly more concise, as it is quite lengthy, but this does not significantly detract from its quality.",
+        "contains_checks": {
+          "passed": [
+            "tech",
+            "stocks"
+          ],
+          "failed": []
+        },
+        "not_contains_checks": {
+          "passed": [
+            "error",
+            "failed"
+          ],
+          "failed": []
+        }
+      },
+      "cost": {
+        "total_cost": 0.0,
+        "threshold": 0.5,
+        "passed": true,
+        "breakdown": []
+      },
+      "latency": {
+        "total_latency": 47564.656,
+        "threshold": 80000.0,
+        "passed": true,
+        "breakdown": []
+      }
+    },
+    "trace": {
+      "session_id": "tapescope-1763845015",
+      "start_time": "2025-11-22T22:56:55.477144",
+      "end_time": "2025-11-22T22:57:43.041800",
+      "steps": [],
+      "final_output": "Quick answer\nThe main factors are macro (interest rates, growth/inflation), company fundamentals (revenue/growth, margins, cash flow), sector dynamics (AI demand, semiconductors, cloud/SaaS economics), capital markets & investor flows, regulation/geopolitics, and technical/market-structure signals \u2014 each can move tech stocks differently depending on company size, business model and timeframe.\n\nCore explanation \u2014 what to watch and why\n- Interest rates & monetary policy\n  - Why it matters: Higher rates raise discount rates for future earnings, which tends to weigh more on high-growth tech names that have earnings far in the future.\n  - What to watch: Fed guidance, real yields, curve steepness. Data suggests rising rates compress growth-stock multiples; easing can support higher valuations.\n- Growth & revenue momentum (company fundamentals)\n  - Why it matters: Tech valuations rely heavily on expected growth. Revenue growth, guidance, and ARR/retention (for SaaS) drive investor re-ratings.\n  - What to watch: Quarterly revenue, forward guidance, churn, gross margins, and free cash flow. Negative FCF can be normal for early/high-capex firms \u2014 context matters.\n- Profitability & cash flow metrics\n  - Why it matters: Margins and free cash flow affect sustainability and ability to invest or return capital.\n  - Sector context: Software/SaaS typically have higher margins (20\u201335% SaaS), hardware/lifecycle businesses lower.\n- Valuation vs peers\n  - Why it matters: Multiples determine sensitivity to news. Tech/growth P/E ranges: mature/value 8\u201315; market avg 15\u201320; growth 25\u201340; high-growth tech 40\u2013100+.\n  - What to watch: P/E, EV/EBITDA, P/S and FCF yield compared to industry peers.\n- Sector-specific demand (AI, cloud, semiconductors)\n  - Why it matters: Structural trends (AI adoption, cloud spend, 5G) create winners and crowd flows. For example, AI accelerates demand for GPUs and cloud compute.\n  - What to watch: Customer spend trends, product cycles, backlog, and end-market adoption metrics.\n- Supply chain & input constraints\n  - Why it matters: Chip shortages, logistics, and component availability directly affect hardware makers and device timelines.\n  - What to watch: Capacity announcements, lead times, supplier comments (e.g., TSMC guidance).\n- Regulation, trade policy & geopolitics\n  - Why it matters: Antitrust, data-privacy rules, export controls (especially chip export rules to China), and cross-border tensions can alter addressable markets and costs.\n  - What to watch: Legislative developments, DOJ/FTC actions, and export-control news.\n- Capital markets & investor flows\n  - Why it matters: ETF/active fund flows, secondary offerings, and IPOs influence liquidity and sentiment in names and sub-sectors.\n  - What to watch: Fund flows into/away from tech ETFs, secondary issuance, insider buying/selling.\n- Sentiment & momentum (technical factors)\n  - Why it matters: Momentum, RSI, moving-average crossovers and volume can drive short-term price moves independent of fundamentals.\n  - Confirmation to use (always check): volume trends, support/resistance, 50/200-day moving averages, MACD, and multi-timeframe checks \u2014 RSI can stay overbought in strong trends.\n- Earnings, guidance, and surprises\n  - Why it matters: Beats/misses and forward guidance tend to cause outsized moves in tech due to high growth expectations.\n  - What to watch: EPS/revenue beats, margin trajectory, and management commentary on demand.\n- Competitive dynamics & product cycles\n  - Why it matters: Rapid disruption or a successful new product can change market share quickly (e.g., shifts in ad platforms, cloud offerings).\n  - What to watch: Market-share data, wins/losses with major customers, product roadmaps.\n\nPractical implications \u2014 different timeframes\n- Short-term traders: Focus more on earnings, guidance, technical signals, flows and news (product launches, regulatory headlines).\n- Medium/long-term investors: Emphasize fundamentals (growth sustainability, margins, FCF), secular trends (AI/cloud), valuations vs peers, and geopolitical/regulatory risk.\n\nHow TapeScope tools can help (next steps)\n- Use the screening tool to filter tech stocks by growth, margins, P/S or FCF yield.\n- Pull fundamentals for specific tickers (revenue growth, ARR metrics, FCF) and compare to industry peers.\n- Check news flow and SEC filings for regulatory/geopolitical updates.\n- Run backtests or scenario analyses to see how a strategy behaved in rate-rising vs rate-cutting regimes.\n- Add names to a watchlist to monitor flows and earnings dates (you currently have no watchlist; add names you\u2019re tracking).\n\nIf you want live data\n- To fetch current metrics for a specific ticker, ask with the symbol (for example: \"Get AAPL fundamentals\" or \"Show NVDA P/E and revenue growth\"). I can then surface the latest available fundamentals, technicals, and news.\n\nThis is",
+      "metrics": {
+        "total_cost": 0.0,
+        "total_latency": 47564.656,
+        "total_tokens": null
+      }
+    },
+    "timestamp": "2025-11-22T22:57:44.971154"
+  }
+]
