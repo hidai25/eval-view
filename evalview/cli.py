@@ -418,17 +418,29 @@ async def _connect_async(endpoint: Optional[str]):
 
     console.print("[blue]🔍 Testing agent connection...[/blue]\n")
 
-    # Common endpoints to try (framework_type, name, url, adapter_type)
-    common_endpoints = [
-        ("langgraph", "LangGraph", "http://localhost:8000/api/chat", "langgraph"),
-        ("langgraph", "LangGraph (invoke)", "http://localhost:8000/invoke", "langgraph"),
-        ("http", "LangServe", "http://localhost:8000/agent", "http"),
-        ("streaming", "LangServe (stream)", "http://localhost:8000/agent/stream", "streaming"),
-        ("streaming", "TapeScope", "http://localhost:3000/api/unifiedchat", "streaming"),
-        ("crewai", "CrewAI", "http://localhost:8000/crew", "crewai"),
-        ("http", "Custom FastAPI", "http://localhost:8000/api/agent", "http"),
-        ("http", "Custom Express", "http://localhost:3000/api/agent", "http"),
+    # Common ports to check
+    common_ports = [8000, 2024, 3000, 8080, 5000, 8888, 7860]
+
+    # Common endpoints to try (framework_type, name, path, adapter_type)
+    # Will be combined with common_ports
+    common_patterns = [
+        ("langgraph", "LangGraph", "/api/chat", "langgraph"),
+        ("langgraph", "LangGraph", "/invoke", "langgraph"),
+        ("langgraph", "LangGraph", "/threads/runs/stream", "langgraph"),  # LangGraph Cloud
+        ("http", "LangServe", "/agent", "http"),
+        ("streaming", "LangServe", "/agent/stream", "streaming"),
+        ("streaming", "TapeScope", "/api/unifiedchat", "streaming"),
+        ("crewai", "CrewAI", "/crew", "crewai"),
+        ("http", "FastAPI", "/api/agent", "http"),
+        ("http", "FastAPI", "/chat", "http"),
     ]
+
+    # Generate all port+path combinations
+    common_endpoints = []
+    for port in common_ports:
+        for framework, name, path, adapter in common_patterns:
+            url = f"http://127.0.0.1:{port}{path}"
+            common_endpoints.append((framework, f"{name} (:{port})", url, adapter))
 
     endpoints_to_test = []
     if endpoint:
@@ -528,21 +540,95 @@ async def _connect_async(endpoint: Optional[str]):
             console.print("  2. Run: evalview run --verbose")
     else:
         console.print("[red]❌ Could not connect to any agent endpoint.[/red]\n")
+
+        # Try to find open ports
+        console.print("[cyan]🔍 Scanning for open ports...[/cyan]")
+        open_ports = []
+        test_ports = [8000, 2024, 3000, 8080, 5000, 8888, 7860, 8501, 7000]
+
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            for port in test_ports:
+                try:
+                    response = await client.get(f"http://127.0.0.1:{port}")
+                    open_ports.append(port)
+                    console.print(f"  • Port {port}: [green]Open[/green] (HTTP {response.status_code})")
+                except:
+                    pass
+
+        if open_ports:
+            console.print()
+            console.print(f"[yellow]Found {len(open_ports)} open port(s)![/yellow]")
+            console.print("[blue]Try connecting to one of these manually:[/blue]")
+            for port in open_ports:
+                console.print(f"  evalview connect --endpoint http://127.0.0.1:{port}/api/chat")
+            console.print()
+
+            if click.confirm("Do you want to try a custom endpoint?", default=True):
+                custom_port = click.prompt("Enter port number", type=int, default=open_ports[0] if open_ports else 8000)
+                custom_path = click.prompt("Enter endpoint path", default="/api/chat")
+                custom_url = f"http://127.0.0.1:{custom_port}{custom_path}"
+
+                console.print(f"\n[cyan]Testing {custom_url}...[/cyan]")
+
+                try:
+                    async with httpx.AsyncClient(timeout=5.0) as client:
+                        response = await client.post(
+                            custom_url,
+                            json={"query": "test", "message": "test", "messages": [{"role": "user", "content": "test"}]},
+                            headers={"Content-Type": "application/json"},
+                        )
+
+                        if response.status_code in [200, 201, 422]:
+                            console.print("[green]✅ Connected![/green]\n")
+
+                            # Auto-detect adapter
+                            detected_adapter = "http"
+                            try:
+                                data = response.json()
+                                if "messages" in data or "thread_id" in data:
+                                    detected_adapter = "langgraph"
+                                elif "tasks" in data or "crew_id" in data:
+                                    detected_adapter = "crewai"
+                            except:
+                                pass
+
+                            # Update config
+                            config_path = Path(".evalview/config.yaml")
+                            if config_path.exists():
+                                with open(config_path) as f:
+                                    config = yaml.safe_load(f)
+
+                                config["adapter"] = detected_adapter
+                                config["endpoint"] = custom_url
+
+                                with open(config_path, "w") as f:
+                                    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+                                console.print(f"[green]✅ Config updated:[/green]")
+                                console.print(f"  • adapter: {detected_adapter}")
+                                console.print(f"  • endpoint: {custom_url}")
+                                return
+                        else:
+                            console.print(f"[red]❌ HTTP {response.status_code}[/red]")
+                except Exception as e:
+                    console.print(f"[red]❌ Failed: {e}[/red]")
+
+        console.print()
         console.print("[yellow]Common issues:[/yellow]")
         console.print("  1. Agent server not running")
-        console.print("  2. Wrong port number")
-        console.print("  3. Firewall blocking connection")
+        console.print("  2. Non-standard port (check your server logs)")
+        console.print("  3. Different endpoint path")
         console.print()
         console.print("[blue]To start LangGraph agent:[/blue]")
         console.print("  cd /path/to/langgraph-example")
-        console.print("  python main.py")
+        console.print("  langgraph dev  # Runs on port 2024")
         console.print("  # or")
-        console.print("  uvicorn main:app --reload --port 8000")
+        console.print("  python main.py")
         console.print()
         console.print("[blue]Then run:[/blue]")
         console.print("  evalview connect")
         console.print("  # or specify endpoint:")
-        console.print("  evalview connect --endpoint http://localhost:8000/api/chat")
+        console.print("  evalview connect --endpoint http://127.0.0.1:YOUR_PORT/api/chat")
 
 
 if __name__ == "__main__":
