@@ -319,15 +319,27 @@ async def _run_async(pattern: str, test: tuple, filter: str, output: str, verbos
         filtered_cases = []
 
         for test_case in test_cases:
-            # Check if test name is in the --test list
-            if test and test_case.name in test:
-                filtered_cases.append(test_case)
-                continue
+            # Check if test name is in the --test list (case-insensitive)
+            if test:
+                test_name_lower = test_case.name.lower()
+                if any(t.lower() == test_name_lower for t in test):
+                    filtered_cases.append(test_case)
+                    continue
 
-            # Check if test name matches --filter pattern
-            if filter and fnmatch.fnmatch(test_case.name, filter):
-                filtered_cases.append(test_case)
-                continue
+            # Check if test name matches --filter pattern (case-insensitive, fuzzy)
+            if filter:
+                filter_lower = filter.lower()
+                test_name_lower = test_case.name.lower()
+
+                # If filter has wildcards, use pattern matching
+                if '*' in filter or '?' in filter:
+                    if fnmatch.fnmatch(test_name_lower, filter_lower):
+                        filtered_cases.append(test_case)
+                        continue
+                # Otherwise, do substring match (more user-friendly)
+                elif filter_lower in test_name_lower:
+                    filtered_cases.append(test_case)
+                    continue
 
         test_cases = filtered_cases
 
