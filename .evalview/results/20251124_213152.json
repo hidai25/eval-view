@@ -1,0 +1,114 @@
+[
+  {
+    "test_case": "LangGraph Search Test",
+    "passed": true,
+    "score": 92.5,
+    "evaluations": {
+      "tool_accuracy": {
+        "accuracy": 1.0,
+        "missing": [],
+        "unexpected": [
+          "tavily_search_results_json"
+        ],
+        "correct": []
+      },
+      "sequence_correctness": {
+        "correct": true,
+        "expected_sequence": [],
+        "actual_sequence": [
+          "tavily_search_results_json"
+        ],
+        "violations": []
+      },
+      "output_quality": {
+        "score": 85.0,
+        "rationale": "The agent's response accurately states that it does not have access to real-time weather data, which is correct. It also provides relevant suggestions for where to find the current weather information, making it useful. However, it could be more complete by offering a brief overview of typical weather patterns in San Francisco or mentioning the importance of checking reliable sources. Overall, the response is clear and relevant to the query.",
+        "contains_checks": {
+          "passed": [
+            "San Francisco",
+            "weather"
+          ],
+          "failed": []
+        },
+        "not_contains_checks": {
+          "passed": [
+            "error",
+            "failed"
+          ],
+          "failed": []
+        }
+      },
+      "cost": {
+        "total_cost": 0.0007375000000000001,
+        "threshold": 0.75,
+        "passed": true,
+        "breakdown": [
+          {
+            "step_id": "call_q6E7oJXEU4FqezZ8g5mseSlh",
+            "cost": 0.0
+          }
+        ]
+      },
+      "latency": {
+        "total_latency": 2968.4080000000004,
+        "threshold": 15000.0,
+        "passed": true,
+        "breakdown": [
+          {
+            "step_id": "call_q6E7oJXEU4FqezZ8g5mseSlh",
+            "latency": 0.0
+          }
+        ]
+      },
+      "hallucination": {
+        "has_hallucination": false,
+        "confidence": 0.0,
+        "details": "Hallucination detection not requested",
+        "passed": true
+      },
+      "safety": {
+        "is_safe": true,
+        "categories_flagged": [],
+        "severity": "safe",
+        "details": "Safety check not requested",
+        "passed": true
+      }
+    },
+    "trace": {
+      "session_id": "c03bd64c-c0a4-4941-8dc8-1ef82b147b69",
+      "start_time": "2025-11-24T21:31:46.442141",
+      "end_time": "2025-11-24T21:31:49.410549",
+      "steps": [
+        {
+          "step_id": "call_q6E7oJXEU4FqezZ8g5mseSlh",
+          "step_name": "Call tavily_search_results_json",
+          "tool_name": "tavily_search_results_json",
+          "parameters": {
+            "query": "current weather in San Francisco"
+          },
+          "output": null,
+          "success": true,
+          "error": null,
+          "metrics": {
+            "latency": 0.0,
+            "cost": 0.0,
+            "tokens": null
+          }
+        }
+      ],
+      "final_output": "I currently don't have access to real-time weather data. You can check the current weather in San Francisco using a weather website or app like Weather.com, AccuWeather, or a similar service.",
+      "metrics": {
+        "total_cost": 0.0007375000000000001,
+        "total_latency": 2968.4080000000004,
+        "total_tokens": {
+          "input_tokens": 135,
+          "output_tokens": 40,
+          "cached_tokens": 0
+        }
+      }
+    },
+    "timestamp": "2025-11-24T21:31:52.022135",
+    "input_query": "What is the current weather in San Francisco?",
+    "actual_output": "I currently don't have access to real-time weather data. You can check the current weather in San Francisco using a weather website or app like Weather.com, AccuWeather, or a similar service."
+  }
+]

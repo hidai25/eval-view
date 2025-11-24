@@ -116,6 +116,9 @@ class LangGraphAdapter(AgentAdapter):
             steps: List[StepTrace] = []
             final_output = ""
             current_event = None  # Track SSE event type
+            total_tokens = 0
+            input_tokens = 0
+            output_tokens = 0
 
             async with client.stream(
                 "POST",
@@ -144,67 +147,118 @@ class LangGraphAdapter(AgentAdapter):
                             if self.verbose:
                                 logger.debug(f"📦 Data ({current_event}): {json.dumps(data)[:200]}")
 
-                            # Extract final output from "values" or "updates" events
+                            # Extract from "values" or "updates" events
                             if current_event in ("values", "updates"):
+                                messages_to_process = []
+
                                 # "values" event: data = {"messages": [...]}
                                 if isinstance(data, dict) and "messages" in data:
-                                    messages = data["messages"]
-                                    if messages and isinstance(messages, list):
-                                        last_msg = messages[-1]
-                                        if isinstance(last_msg, dict):
-                                            content = last_msg.get("content", "")
-                                            if content:  # Update if non-empty
-                                                final_output = content
+                                    messages_to_process = data["messages"]
 
                                 # "updates" event: data = {"agent": {"messages": [...]}}
-                                if isinstance(data, dict) and "agent" in data:
+                                elif isinstance(data, dict) and "agent" in data:
                                     agent_data = data["agent"]
                                     if isinstance(agent_data, dict) and "messages" in agent_data:
-                                        messages = agent_data["messages"]
-                                        if messages and isinstance(messages, list):
-                                            last_msg = messages[-1]
-                                            if isinstance(last_msg, dict):
-                                                content = last_msg.get("content", "")
-                                                if content:
-                                                    final_output = content
+                                        messages_to_process = agent_data["messages"]
 
-                            # Extract tool calls from updates
-                            if isinstance(data, dict):
-                                # Check for tool_calls in data
-                                if "tool_calls" in data:
-                                    for tool_call in data["tool_calls"]:
-                                        step = StepTrace(
-                                            step_id=tool_call.get("id", f"step-{len(steps)}"),
-                                            step_name=tool_call.get("name", "Tool Call"),
-                                            tool_name=tool_call.get("name"),
-                                            parameters=tool_call.get("args", {}),
-                                            output=None,
-                                            success=True,
-                                            metrics=StepMetrics(latency=0.0, cost=0.0),
-                                        )
-                                        steps.append(step)
+                                # Process all messages
+                                if messages_to_process and isinstance(messages_to_process, list):
+                                    for msg in messages_to_process:
+                                        if not isinstance(msg, dict):
+                                            continue
 
-                                # Check for tool_calls in nested agent data
-                                if "agent" in data and isinstance(data["agent"], dict):
-                                    agent_data = data["agent"]
-                                    if "tool_calls" in agent_data:
-                                        for tool_call in agent_data["tool_calls"]:
-                                            step = StepTrace(
-                                                step_id=tool_call.get("id", f"step-{len(steps)}"),
-                                                step_name=tool_call.get("name", "Tool Call"),
-                                                tool_name=tool_call.get("name"),
-                                                parameters=tool_call.get("args", {}),
-                                                output=None,
-                                                success=True,
-                                                metrics=StepMetrics(latency=0.0, cost=0.0),
-                                            )
-                                            steps.append(step)
+                                        # Extract final output from last AI message
+                                        content = msg.get("content", "")
+                                        if content and isinstance(content, str):
+                                            final_output = content
+
+                                        # Extract tool calls from message
+                                        tool_calls = msg.get("tool_calls", [])
+                                        if tool_calls and isinstance(tool_calls, list):
+                                            for tool_call in tool_calls:
+                                                if not isinstance(tool_call, dict):
+                                                    continue
+
+                                                tool_id = tool_call.get("id", f"tool-{len(steps)}")
+                                                tool_name = tool_call.get("name", "unknown")
+
+                                                # Skip if we already captured this tool call
+                                                if any(s.step_id == tool_id for s in steps):
+                                                    continue
+
+                                                step = StepTrace(
+                                                    step_id=tool_id,
+                                                    step_name=f"Call {tool_name}",
+                                                    tool_name=tool_name,
+                                                    parameters=tool_call.get("args", {}),
+                                                    output=None,  # Tool results come in separate messages
+                                                    success=True,
+                                                    metrics=StepMetrics(latency=0.0, cost=0.0),
+                                                )
+                                                steps.append(step)
+
+                                                if self.verbose:
+                                                    logger.debug(f"🔧 Tool call: {tool_name}({tool_call.get('args', {})})")
+
+                                        # Extract usage metadata
+                                        usage_meta = msg.get("usage_metadata")
+                                        if usage_meta and isinstance(usage_meta, dict):
+                                            total_tokens = usage_meta.get("total_tokens", 0)
+                                            input_tokens = usage_meta.get("input_tokens", 0)
+                                            output_tokens = usage_meta.get("output_tokens", 0)
+
+                                            if self.verbose:
+                                                logger.debug(f"💰 Tokens: {input_tokens} in + {output_tokens} out = {total_tokens}")
+
+                                        # Also check response_metadata for usage
+                                        response_meta = msg.get("response_metadata", {})
+                                        if isinstance(response_meta, dict):
+                                            token_usage = response_meta.get("token_usage", {})
+                                            if isinstance(token_usage, dict) and token_usage.get("total_tokens"):
+                                                total_tokens = token_usage.get("total_tokens", 0)
+                                                input_tokens = token_usage.get("prompt_tokens", 0)
+                                                output_tokens = token_usage.get("completion_tokens", 0)
 
                         except json.JSONDecodeError:
                             continue
 
         end_time = datetime.now()
-        metrics = self._calculate_metrics(steps, start_time, end_time)
+
+        # Calculate cost from tokens if available
+        from evalview.core.types import TokenUsage
+        token_usage_obj = None
+        total_cost = 0.0
+
+        if total_tokens > 0:
+            token_usage_obj = TokenUsage(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cached_tokens=0,
+            )
+
+            # Calculate cost using model pricing
+            model_name = "gpt-4o"  # Default
+            input_cost_per_1m = 2.50  # GPT-4o default
+            output_cost_per_1m = 10.00  # GPT-4o default
+
+            if self.model_config:
+                model_name = self.model_config.get("name", "gpt-4o")
+                pricing = self.model_config.get("pricing")
+
+                if pricing:
+                    # Custom pricing provided
+                    input_cost_per_1m = pricing.get("input_per_1m", 2.50)
+                    output_cost_per_1m = pricing.get("output_per_1m", 10.00)
+
+            total_cost = (
+                (input_tokens / 1_000_000) * input_cost_per_1m +
+                (output_tokens / 1_000_000) * output_cost_per_1m
+            )
+
+            if self.verbose:
+                logger.info(f"💰 Cost: ${total_cost:.4f} ({input_tokens} in + {output_tokens} out tokens)")
+
+        metrics = self._calculate_metrics(steps, start_time, end_time, total_cost, token_usage_obj)
 
         if self.verbose:
             logger.info(f"✅ Run completed: {final_output[:50]}...")
@@ -425,17 +479,26 @@ class LangGraphAdapter(AgentAdapter):
         return ""
 
     def _calculate_metrics(
-        self, steps: List[StepTrace], start_time: datetime, end_time: datetime
+        self,
+        steps: List[StepTrace],
+        start_time: datetime,
+        end_time: datetime,
+        total_cost: float = 0.0,
+        token_usage: Optional[Any] = None,
     ) -> ExecutionMetrics:
         """Calculate execution metrics."""
+        from evalview.core.types import TokenUsage
+
         total_latency = (end_time - start_time).total_seconds() * 1000
-        total_cost = sum(step.metrics.cost for step in steps)
-        total_tokens = sum(step.metrics.tokens or 0 for step in steps)
+
+        # Use provided cost, or sum from steps if not provided
+        if total_cost == 0.0:
+            total_cost = sum(step.metrics.cost for step in steps)
 
         return ExecutionMetrics(
             total_cost=total_cost,
             total_latency=total_latency,
-            total_tokens=total_tokens if total_tokens > 0 else None,
+            total_tokens=token_usage,
         )
 
     async def health_check(self) -> bool:

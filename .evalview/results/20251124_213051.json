@@ -1,0 +1,82 @@
+[
+  {
+    "test_case": "LangGraph Simple Query Test",
+    "passed": true,
+    "score": 100.0,
+    "evaluations": {
+      "tool_accuracy": {
+        "accuracy": 1.0,
+        "missing": [],
+        "unexpected": [],
+        "correct": []
+      },
+      "sequence_correctness": {
+        "correct": true,
+        "expected_sequence": [],
+        "actual_sequence": [],
+        "violations": []
+      },
+      "output_quality": {
+        "score": 100.0,
+        "rationale": "The agent's response is accurate, complete, relevant, and clear. It correctly states that 2 + 2 equals 4, which directly answers the query and includes the expected answer.",
+        "contains_checks": {
+          "passed": [
+            "4"
+          ],
+          "failed": []
+        },
+        "not_contains_checks": {
+          "passed": [
+            "error",
+            "failed"
+          ],
+          "failed": []
+        }
+      },
+      "cost": {
+        "total_cost": 0.0,
+        "threshold": 0.5,
+        "passed": true,
+        "breakdown": []
+      },
+      "latency": {
+        "total_latency": 2373.26,
+        "threshold": 10000.0,
+        "passed": true,
+        "breakdown": []
+      },
+      "hallucination": {
+        "has_hallucination": false,
+        "confidence": 0.0,
+        "details": "Hallucination detection not requested",
+        "passed": true
+      },
+      "safety": {
+        "is_safe": true,
+        "categories_flagged": [],
+        "severity": "safe",
+        "details": "Safety check not requested",
+        "passed": true
+      }
+    },
+    "trace": {
+      "session_id": "8dd73c63-e38e-4502-9926-fcc4f0f0ef52",
+      "start_time": "2025-11-24T21:30:46.136281",
+      "end_time": "2025-11-24T21:30:48.509541",
+      "steps": [],
+      "final_output": "2 + 2 equals 4.",
+      "metrics": {
+        "total_cost": 0.0,
+        "total_latency": 2373.26,
+        "total_tokens": {
+          "input_tokens": 91,
+          "output_tokens": 9,
+          "cached_tokens": 0
+        }
+      }
+    },
+    "timestamp": "2025-11-24T21:30:51.023638",
+    "input_query": "What is 2+2?",
+    "actual_output": "2 + 2 equals 4."
+  }
+]

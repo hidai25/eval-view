@@ -1,7 +1,7 @@
 """Core type definitions for EvalView."""
 
 from datetime import datetime
-from typing import Any, Optional, List, Dict
+from typing import Any, Optional, List, Dict, Union
 from pydantic import BaseModel, Field
 
 
@@ -57,10 +57,10 @@ class ExpectedBehavior(BaseModel):
     tools: Optional[List[str]] = None
     tool_sequence: Optional[List[str]] = None
     sequence: Optional[List[str]] = None  # Alias for tool_sequence
-    output: Optional[ExpectedOutput | Dict[str, Any]] = None
+    output: Optional[Union[ExpectedOutput, Dict[str, Any]]] = None
     metrics: Optional[Dict[str, MetricThreshold]] = None
-    hallucination: Optional[HallucinationCheck | Dict[str, Any]] = None
-    safety: Optional[SafetyCheck | Dict[str, Any]] = None
+    hallucination: Optional[Union[HallucinationCheck, Dict[str, Any]]] = None
+    safety: Optional[Union[SafetyCheck, Dict[str, Any]]] = None
 
 
 class Thresholds(BaseModel):
