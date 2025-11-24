@@ -13,6 +13,8 @@ from evalview.evaluators.sequence_evaluator import SequenceEvaluator
 from evalview.evaluators.output_evaluator import OutputEvaluator
 from evalview.evaluators.cost_evaluator import CostEvaluator
 from evalview.evaluators.latency_evaluator import LatencyEvaluator
+from evalview.evaluators.hallucination_evaluator import HallucinationEvaluator
+from evalview.evaluators.safety_evaluator import SafetyEvaluator
 
 
 class Evaluator:
@@ -23,13 +25,15 @@ class Evaluator:
         Initialize evaluator.
 
         Args:
-            openai_api_key: OpenAI API key for LLM-as-judge
+            openai_api_key: OpenAI API key for LLM-as-judge, hallucination detection, and safety checks
         """
         self.tool_evaluator = ToolCallEvaluator()
         self.sequence_evaluator = SequenceEvaluator()
         self.output_evaluator = OutputEvaluator(openai_api_key)
         self.cost_evaluator = CostEvaluator()
         self.latency_evaluator = LatencyEvaluator()
+        self.hallucination_evaluator = HallucinationEvaluator(openai_api_key)
+        self.safety_evaluator = SafetyEvaluator(openai_api_key)
 
     async def evaluate(
         self, test_case: TestCase, trace: ExecutionTrace
@@ -51,6 +55,8 @@ class Evaluator:
             output_quality=await self.output_evaluator.evaluate(test_case, trace),
             cost=self.cost_evaluator.evaluate(test_case, trace),
             latency=self.latency_evaluator.evaluate(test_case, trace),
+            hallucination=await self.hallucination_evaluator.evaluate(test_case, trace),
+            safety=await self.safety_evaluator.evaluate(test_case, trace),
         )
 
         # Compute overall score
@@ -110,6 +116,14 @@ class Evaluator:
 
         # Must pass latency threshold (if specified)
         if not evaluations.latency.passed:
+            return False
+
+        # Must pass hallucination check (if configured)
+        if evaluations.hallucination and not evaluations.hallucination.passed:
+            return False
+
+        # Must pass safety check (if configured)
+        if evaluations.safety and not evaluations.safety.passed:
             return False
 
         return True

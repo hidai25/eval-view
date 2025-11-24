@@ -806,5 +806,242 @@ async def _connect_async(endpoint: Optional[str]):
         console.print("  evalview connect --endpoint http://127.0.0.1:YOUR_PORT/api/chat")
 
 
+@main.command()
+@click.option(
+    "--query",
+    help="Query to record (non-interactive mode)",
+)
+@click.option(
+    "--output",
+    help="Output file path (default: auto-generate in tests/test-cases/)",
+)
+@click.option(
+    "--interactive/--no-interactive",
+    default=True,
+    help="Interactive mode - record multiple interactions (default: True)",
+)
+@click.option(
+    "--verbose",
+    is_flag=True,
+    help="Show detailed execution information",
+)
+def record(query: str, output: str, interactive: bool, verbose: bool):
+    """Record agent interactions and generate test cases."""
+    asyncio.run(_record_async(query, output, interactive, verbose))
+
+
+async def _record_async(query: Optional[str], output: Optional[str], interactive: bool, verbose: bool):
+    """Async implementation of record command."""
+    from evalview.recorder import TestCaseRecorder
+
+    console.print("[blue]🎬 Recording mode started[/blue]")
+    console.print("━" * 60)
+    console.print()
+
+    # Load config
+    config_path = Path(".evalview/config.yaml")
+    if not config_path.exists():
+        console.print(
+            "[red]❌ Config file not found. Run 'evalview init' first.[/red]"
+        )
+        return
+
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+
+    # Extract model config
+    model_config = config.get("model", {})
+
+    # Initialize adapter
+    adapter_type = config.get("adapter", "http")
+
+    if adapter_type == "langgraph":
+        adapter = LangGraphAdapter(
+            endpoint=config["endpoint"],
+            headers=config.get("headers", {}),
+            timeout=config.get("timeout", 30.0),
+            streaming=config.get("streaming", False),
+            verbose=verbose,
+            model_config=model_config,
+            assistant_id=config.get("assistant_id", "agent"),
+        )
+    elif adapter_type == "crewai":
+        adapter = CrewAIAdapter(
+            endpoint=config["endpoint"],
+            headers=config.get("headers", {}),
+            timeout=config.get("timeout", 30.0),
+            verbose=verbose,
+            model_config=model_config,
+        )
+    elif adapter_type in ["streaming", "tapescope", "jsonl"]:
+        adapter = TapeScopeAdapter(
+            endpoint=config["endpoint"],
+            headers=config.get("headers", {}),
+            timeout=config.get("timeout", 60.0),
+            verbose=verbose,
+            model_config=model_config,
+        )
+    else:
+        # HTTP adapter for standard REST APIs
+        adapter = HTTPAdapter(
+            endpoint=config["endpoint"],
+            headers=config.get("headers", {}),
+            timeout=config.get("timeout", 30.0),
+            model_config=model_config,
+        )
+
+    # Initialize recorder
+    recorder = TestCaseRecorder(adapter)
+
+    # Determine output directory
+    if output:
+        output_path = Path(output)
+    else:
+        test_dir = Path("tests/test-cases")
+        test_dir.mkdir(parents=True, exist_ok=True)
+        output_path = None  # Will auto-generate
+
+    recorded_cases = []
+
+    # Non-interactive mode with single query
+    if query and not interactive:
+        try:
+            console.print(f"[dim]📝 Query: {query}[/dim]\n")
+            console.print("[dim]🤖 Calling agent...[/dim]", end=" ")
+
+            interaction = await recorder.record_interaction(query)
+
+            console.print("[green]✓[/green]\n")
+
+            # Show detected info
+            console.print("[cyan]📊 Detected:[/cyan]")
+            if interaction.trace.tool_calls:
+                tools = [tc.name for tc in interaction.trace.tool_calls]
+                console.print(f"  • Tools: {', '.join(tools)}")
+            if interaction.trace.cost:
+                console.print(f"  • Cost: ${interaction.trace.cost:.4f}")
+            if interaction.trace.latency:
+                console.print(f"  • Latency: {interaction.trace.latency:.0f}ms")
+
+            if verbose:
+                console.print(f"\n[dim]Output: {interaction.trace.final_output}[/dim]")
+
+            console.print()
+
+            # Generate test case
+            test_case = recorder.generate_test_case(interaction)
+            recorded_cases.append((interaction, test_case))
+
+        except Exception as e:
+            console.print(f"[red]✗ Failed: {e}[/red]")
+            return
+
+    # Interactive mode
+    elif interactive:
+        console.print("[yellow]💡 Tip: Type 'done' when finished, 'skip' to cancel current recording[/yellow]\n")
+
+        query_num = 1
+        while True:
+            # Get query from user
+            if not query:
+                console.print(f"[bold]📝 Enter query #{query_num} (or 'done' to finish):[/bold] ", end="")
+                user_input = input().strip()
+
+                if user_input.lower() == 'done':
+                    break
+                elif user_input.lower() == 'skip':
+                    continue
+                elif not user_input:
+                    console.print("[yellow]⚠️  Empty query, skipping[/yellow]\n")
+                    continue
+
+                query = user_input
+
+            try:
+                console.print()
+                console.print("[dim]🤖 Calling agent...[/dim]", end=" ")
+
+                interaction = await recorder.record_interaction(query)
+
+                console.print("[green]✓ Agent response received[/green]\n")
+
+                # Show detected info
+                console.print("[cyan]📊 Detected:[/cyan]")
+                if interaction.trace.tool_calls:
+                    tools = [tc.name for tc in interaction.trace.tool_calls]
+                    console.print(f"  • Tools: {', '.join(tools)}")
+                else:
+                    console.print("  • Tools: None")
+
+                if interaction.trace.cost:
+                    console.print(f"  • Cost: ${interaction.trace.cost:.4f}")
+                if interaction.trace.latency:
+                    console.print(f"  • Latency: {interaction.trace.latency:.0f}ms")
+
+                if verbose:
+                    console.print(f"\n[dim]Output: {interaction.trace.final_output}[/dim]")
+
+                console.print()
+
+                # Generate test case
+                test_case = recorder.generate_test_case(interaction)
+
+                # Ask for custom name
+                console.print(f"[bold]✍️  Test case name [[dim]{test_case.name}[/dim]]:[/bold] ", end="")
+                custom_name = input().strip()
+                if custom_name:
+                    test_case.name = custom_name
+
+                recorded_cases.append((interaction, test_case))
+
+                console.print("[green]✅ Test case saved![/green]\n")
+
+                query_num += 1
+                query = None  # Reset for next iteration
+
+            except Exception as e:
+                console.print(f"[red]✗ Failed: {e}[/red]\n")
+                if verbose:
+                    import traceback
+                    console.print(f"[dim]{traceback.format_exc()}[/dim]\n")
+
+                query = None  # Reset
+                continue
+    else:
+        console.print("[red]❌ Must provide --query or use --interactive mode[/red]")
+        return
+
+    # Save recorded test cases
+    if not recorded_cases:
+        console.print("[yellow]⚠️  No test cases recorded[/yellow]")
+        return
+
+    console.print()
+    console.print("━" * 60)
+
+    saved_files = []
+    for interaction, test_case in recorded_cases:
+        if output_path and len(recorded_cases) == 1:
+            # Single file output
+            file_path = output_path
+        else:
+            # Auto-generate filenames
+            test_dir = Path("tests/test-cases")
+            test_dir.mkdir(parents=True, exist_ok=True)
+            file_path = recorder.generate_filename(test_dir)
+
+        recorder.save_to_yaml(test_case, file_path)
+        saved_files.append(file_path)
+
+    # Print summary
+    console.print(f"[green]✅ Recorded {len(recorded_cases)} test case(s)[/green]\n")
+
+    for file_path in saved_files:
+        console.print(f"  • {file_path}")
+
+    console.print()
+    console.print("[blue]Run with:[/blue] evalview run\n")
+
+
 if __name__ == "__main__":
     main()

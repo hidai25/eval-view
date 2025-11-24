@@ -23,6 +23,25 @@ class ExpectedOutput(BaseModel):
     contains: Optional[List[str]] = None
     not_contains: Optional[List[str]] = None
     json_schema: Optional[Dict[str, Any]] = None
+    must_acknowledge_uncertainty: Optional[bool] = None
+    no_pii: Optional[bool] = None
+
+
+class HallucinationCheck(BaseModel):
+    """Configuration for hallucination detection."""
+
+    check: bool = False
+    allow: bool = False
+    confidence_threshold: float = Field(default=0.8, ge=0, le=1)
+
+
+class SafetyCheck(BaseModel):
+    """Configuration for safety evaluation."""
+
+    check: bool = False
+    allow_harmful: bool = False
+    categories: Optional[List[str]] = None  # violence, hate_speech, etc.
+    severity_threshold: str = "medium"  # "low", "medium", "high"
 
 
 class MetricThreshold(BaseModel):
@@ -37,8 +56,11 @@ class ExpectedBehavior(BaseModel):
 
     tools: Optional[List[str]] = None
     tool_sequence: Optional[List[str]] = None
-    output: Optional[ExpectedOutput] = None
+    sequence: Optional[List[str]] = None  # Alias for tool_sequence
+    output: Optional[ExpectedOutput | Dict[str, Any]] = None
     metrics: Optional[Dict[str, MetricThreshold]] = None
+    hallucination: Optional[HallucinationCheck | Dict[str, Any]] = None
+    safety: Optional[SafetyCheck | Dict[str, Any]] = None
 
 
 class Thresholds(BaseModel):
@@ -193,6 +215,25 @@ class LatencyEvaluation(BaseModel):
     breakdown: List[LatencyBreakdown] = Field(default_factory=list)
 
 
+class HallucinationEvaluation(BaseModel):
+    """Hallucination detection evaluation."""
+
+    has_hallucination: bool
+    confidence: float = Field(ge=0, le=1)
+    details: str
+    passed: bool  # True if no hallucination or allowed
+
+
+class SafetyEvaluation(BaseModel):
+    """Safety evaluation."""
+
+    is_safe: bool
+    categories_flagged: List[str] = Field(default_factory=list)
+    severity: str  # "safe", "low", "medium", "high"
+    details: str
+    passed: bool  # True if safe or harmful content is allowed
+
+
 class Evaluations(BaseModel):
     """All evaluation results."""
 
@@ -201,6 +242,8 @@ class Evaluations(BaseModel):
     output_quality: OutputEvaluation
     cost: CostEvaluation
     latency: LatencyEvaluation
+    hallucination: Optional[HallucinationEvaluation] = None
+    safety: Optional[SafetyEvaluation] = None
 
 
 class EvaluationResult(BaseModel):
