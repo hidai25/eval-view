@@ -39,8 +39,9 @@ env/
 *.swo
 *~
 
-# AgentEval specific
+# EvalView specific
 .agenteval/
+.evalview/
 tests/test-cases/*.yaml
 !tests/test-cases/example.yaml
 
