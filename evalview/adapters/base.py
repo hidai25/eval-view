@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Optional, Dict, Set
 from evalview.core.types import ExecutionTrace
-from evalview.core.security import validate_url, SSRFProtectionError
+from evalview.core.security import validate_url
 
 
 class AgentAdapter(ABC):
