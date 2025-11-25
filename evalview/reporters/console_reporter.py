@@ -1,10 +1,13 @@
 """Console reporter for evaluation results."""
 
-from typing import List
+import json
+from typing import List, Any
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
-from evalview.core.types import EvaluationResult
+from rich.tree import Tree
+from rich.text import Text
+from evalview.core.types import EvaluationResult, StepTrace
 
 
 class ConsoleReporter:
@@ -12,6 +15,119 @@ class ConsoleReporter:
 
     def __init__(self):
         self.console = Console()
+
+    def _format_value(self, value: Any, max_length: int = 60) -> str:
+        """Format a value for display, truncating if needed."""
+        if value is None:
+            return "[dim]null[/dim]"
+        if isinstance(value, dict):
+            text = json.dumps(value, default=str)
+        elif isinstance(value, list):
+            text = json.dumps(value, default=str)
+        else:
+            text = str(value)
+
+        if len(text) > max_length:
+            return text[: max_length - 3] + "..."
+        return text
+
+    def print_step_timeline(self, steps: List[StepTrace], title: str = "Agent Flow") -> None:
+        """
+        Print a visual step-by-step timeline of agent execution.
+
+        Args:
+            steps: List of step traces from execution
+            title: Title for the timeline panel
+        """
+        if not steps:
+            self.console.print("[dim]No steps captured[/dim]")
+            return
+
+        tree = Tree(f"[bold cyan]{title}[/bold cyan]")
+
+        for i, step in enumerate(steps, 1):
+            # Status indicator
+            if step.success:
+                status = "[green]✓[/green]"
+                status_style = "green"
+            else:
+                status = "[red]✗[/red]"
+                status_style = "red"
+
+            # Step header with metrics
+            latency_ms = step.metrics.latency
+            cost = step.metrics.cost
+
+            step_header = Text()
+            step_header.append(f"Step {i}: ", style="bold")
+            step_header.append(f"{step.tool_name} ", style=f"bold {status_style}")
+            step_header.append(status)
+            step_header.append(f"  [{latency_ms:.0f}ms", style="dim")
+            step_header.append(f" | ${cost:.4f}]", style="dim")
+
+            step_branch = tree.add(step_header)
+
+            # Parameters
+            if step.parameters:
+                params_text = self._format_value(step.parameters, max_length=80)
+                step_branch.add(f"[dim]→ params:[/dim] {params_text}")
+
+            # Output
+            if step.output is not None:
+                output_text = self._format_value(step.output, max_length=80)
+                step_branch.add(f"[dim]← output:[/dim] {output_text}")
+
+            # Error if any
+            if step.error:
+                step_branch.add(f"[red]! error: {step.error}[/red]")
+
+            # Token usage if available
+            if step.metrics.tokens:
+                tokens = step.metrics.tokens
+                token_str = f"[dim]⚡ tokens: {tokens.total_tokens}"
+                if tokens.cached_tokens > 0:
+                    token_str += f" ({tokens.cached_tokens} cached)"
+                token_str += "[/dim]"
+                step_branch.add(token_str)
+
+        self.console.print(tree)
+        self.console.print()
+
+    def print_step_table(self, steps: List[StepTrace]) -> None:
+        """
+        Print a compact table view of step metrics.
+
+        Args:
+            steps: List of step traces from execution
+        """
+        if not steps:
+            return
+
+        table = Table(title="Step-by-Step Metrics", show_header=True, header_style="bold")
+        table.add_column("#", style="dim", width=3)
+        table.add_column("Tool", style="cyan")
+        table.add_column("Status", justify="center", width=6)
+        table.add_column("Latency", justify="right")
+        table.add_column("Cost", justify="right")
+        table.add_column("Tokens", justify="right")
+
+        for i, step in enumerate(steps, 1):
+            status = "[green]✓[/green]" if step.success else "[red]✗[/red]"
+            tokens_str = "—"
+            if step.metrics.tokens:
+                tokens_str = f"{step.metrics.tokens.total_tokens:,}"
+
+            table.add_row(
+                str(i),
+                step.tool_name,
+                status,
+                f"{step.metrics.latency:.0f}ms",
+                f"${step.metrics.cost:.4f}",
+                tokens_str,
+            )
+
+        self.console.print(table)
+        self.console.print()
 
     def print_summary(self, results: List[EvaluationResult]) -> None:
         """
@@ -87,6 +203,13 @@ class ConsoleReporter:
                 if tool_eval.unexpected:
                     issues.append(f"  • Unexpected tools: {', '.join(tool_eval.unexpected)}")
 
+                # Sequence violations
+                seq_eval = result.evaluations.sequence_correctness
+                if not seq_eval.correct and seq_eval.violations:
+                    issues.append("  • Sequence violations:")
+                    for violation in seq_eval.violations:
+                        issues.append(f"      - {violation}")
+
                 # Output quality issues
                 output_eval = result.evaluations.output_quality
                 if output_eval.score < 70:
@@ -110,10 +233,12 @@ class ConsoleReporter:
                 for issue in issues:
                     self.console.print(f"[yellow]{issue}[/yellow]")
 
-                # Show actual vs expected for debugging
-                self.console.print(f"\n[dim]  Steps captured: {len(result.trace.steps)}[/dim]")
+                # Show step-by-step flow for debugging
                 if result.trace.steps:
-                    self.console.print(f"[dim]  Tools called: {', '.join([s.tool_name for s in result.trace.steps])}[/dim]")
+                    self.console.print()
+                    self.print_step_timeline(
+                        result.trace.steps, title=f"Execution Flow ({len(result.trace.steps)} steps)"
+                    )
 
     def print_detailed(self, result: EvaluationResult) -> None:
         """
@@ -149,6 +274,17 @@ class ConsoleReporter:
         if tool_eval.unexpected:
             self.console.print(f"  ⚠️  Unexpected: {', '.join(tool_eval.unexpected)}")
 
+        # Sequence correctness
+        seq_eval = result.evaluations.sequence_correctness
+        seq_status = "[green]✓ Correct[/green]" if seq_eval.correct else "[red]✗ Incorrect[/red]"
+        self.console.print(f"\n[bold]Sequence:[/bold] {seq_status}")
+        if seq_eval.expected_sequence:
+            self.console.print(f"  Expected: {' → '.join(seq_eval.expected_sequence)}")
+            self.console.print(f"  Actual:   {' → '.join(seq_eval.actual_sequence)}")
+            if seq_eval.violations:
+                for violation in seq_eval.violations:
+                    self.console.print(f"  [yellow]⚠️  {violation}[/yellow]")
+
         # Output quality
         output_eval = result.evaluations.output_quality
         self.console.print(f"\n[bold]Output Quality:[/bold] {output_eval.score:.1f}/100")
@@ -168,3 +304,11 @@ class ConsoleReporter:
                 self.console.print(f"    • Cached: {tokens_usage.cached_tokens:,} (90% discount)")
 
         self.console.print(f"  Latency: {result.trace.metrics.total_latency:.0f}ms")
+
+        # Step-by-step execution flow
+        if result.trace.steps:
+            self.console.print()
+            self.print_step_timeline(
+                result.trace.steps, title=f"Execution Flow ({len(result.trace.steps)} steps)"
+            )
+            self.print_step_table(result.trace.steps)
