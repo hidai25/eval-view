@@ -42,6 +42,8 @@ $ evalview run
    Cost: $0.0234 | Latency: 3.4s
 ```
 
+> **Note:** Requires `OPENAI_API_KEY` for LLM-as-judge evaluation. [Get one here](https://platform.openai.com/api-keys)
+
 ---
 
 ## ⚡ Zero-Config Connection
@@ -90,6 +92,20 @@ Traditional testing doesn't catch this. EvalView lets you write repeatable tests
 - 📁 **JSON reports** - Structured results for CI/CD integration
 - 🐛 **Verbose debugging** - Detailed logging to troubleshoot issues
 - 🗄️ **Database-agnostic** - Works with PostgreSQL, MongoDB, MySQL, Firebase, and more
+
+---
+
+## ☁️ EvalView Cloud (Coming Soon)
+
+We're building a hosted version:
+
+- 📊 **Dashboard** - Visual test history, trends, and pass/fail rates
+- 👥 **Teams** - Share results and collaborate on fixes
+- 🔔 **Alerts** - Slack/Discord notifications on failures
+- 📈 **Regression detection** - Automatic alerts when performance degrades
+- ⚡ **Parallel runs** - Run hundreds of tests in seconds
+
+👉 **[Join the waitlist](https://tally.so/r/)** - be first to get access
 
 ---
 
@@ -665,13 +681,21 @@ EvalView is production-ready and used by teams building:
 
 ## Roadmap
 
+**Coming Soon:**
+- [ ] Multi-run flakiness detection - Run tests N times, track variance, detect non-determinism
+- [ ] Multi-turn conversation testing - Test full conversation flows with context persistence
+- [ ] Grounded hallucination checking - Fact-check agent outputs against tool results
+- [ ] Error compounding metrics - Track reliability decay over 20+ step workflows
+- [ ] Memory/context influence tracking - Measure how agent memory affects behavior
+
+**Want these?** [Vote in GitHub Discussions](https://github.com/hidai25/EvalView/discussions)
+
+**Also Planned:**
 - [ ] HTML report generator with charts
 - [ ] Parallel test execution for faster runs
 - [ ] Test case templates library
 - [ ] Native LangChain & CrewAI adapters
 - [ ] Custom metric plugins system
-- [ ] Test result diffing across runs
-- [ ] Performance regression detection
 - [ ] Cloud-hosted test runner
 - [ ] Slack/Discord notifications
 

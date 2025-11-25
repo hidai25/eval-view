@@ -1,0 +1,30 @@
+# EvalView Test Case: OpenAI Assistants
+# Tests an OpenAI Assistants API agent
+
+name: "OpenAI Assistant Analysis"
+description: "Test OpenAI Assistant's ability to analyze and respond"
+
+adapter: openai_assistants
+endpoint: https://api.openai.com/v1
+# Set OPENAI_API_KEY and OPENAI_ASSISTANT_ID in environment
+
+input:
+  query: "Analyze the pros and cons of microservices vs monolithic architecture"
+  context:
+    detail_level: "comprehensive"
+
+expected:
+  tools:
+    - code_interpreter
+  output:
+    contains:
+      - "microservices"
+      - "monolithic"
+      - "scalability"
+    not_contains:
+      - "error"
+
+thresholds:
+  min_score: 80
+  max_cost: 0.30
+  max_latency: 20000

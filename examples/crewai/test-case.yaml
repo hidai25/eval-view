@@ -1,0 +1,33 @@
+# EvalView Test Case: CrewAI Content Team
+# Tests a multi-agent crew for content creation
+
+name: "CrewAI Content Team"
+description: "Test multi-agent collaboration for content creation"
+
+# Configure adapter for CrewAI
+adapter: crewai
+endpoint: http://localhost:8000
+
+input:
+  query: "Write a blog post about the benefits of AI agents in business automation"
+  context:
+    topic: "AI agents"
+    format: "blog post"
+
+expected:
+  tools:
+    - research_tool
+    - write_tool
+    - edit_tool
+  output:
+    contains:
+      - "automation"
+      - "efficiency"
+      - "AI"
+    not_contains:
+      - "error"
+
+thresholds:
+  min_score: 75
+  max_cost: 1.00
+  max_latency: 60000

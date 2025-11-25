@@ -1,0 +1,33 @@
+# EvalView Test Case: Dev Assistant
+# Tests a code generation and analysis agent
+
+name: "Dev Assistant Code Review"
+description: "Test coding assistant's ability to analyze and generate code"
+
+adapter: http
+endpoint: http://localhost:8000/chat
+
+input:
+  query: "Write a Python function that validates email addresses using regex, with unit tests"
+  context:
+    language: "python"
+    include_tests: true
+
+expected:
+  tools:
+    - code_generation
+    - code_analysis
+  output:
+    contains:
+      - "def"
+      - "import re"
+      - "test"
+      - "@"
+    not_contains:
+      - "syntax error"
+      - "undefined"
+
+thresholds:
+  min_score: 80
+  max_cost: 0.25
+  max_latency: 15000

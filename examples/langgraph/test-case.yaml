@@ -1,0 +1,36 @@
+# EvalView Test Case: LangGraph Research Agent
+# Tests a multi-step research workflow
+
+name: "LangGraph Research Agent"
+description: "Test research agent's ability to search and synthesize information"
+
+# Configure adapter for LangGraph
+adapter: langgraph
+endpoint: http://localhost:8123
+
+input:
+  query: "Research the latest developments in AI agents and summarize the key trends"
+  context:
+    max_steps: 5
+
+expected:
+  tools:
+    - web_search
+    - retrieve_documents
+    - summarize
+  tool_sequence:
+    - web_search
+    - retrieve_documents
+    - summarize
+  output:
+    contains:
+      - "AI"
+      - "agents"
+    not_contains:
+      - "error"
+      - "failed"
+
+thresholds:
+  min_score: 80
+  max_cost: 0.50
+  max_latency: 30000
