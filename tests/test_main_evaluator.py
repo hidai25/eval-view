@@ -402,10 +402,11 @@ class TestEvaluator:
 
         result = await evaluator.evaluate(test_case, trace)
 
-        # Score should be exactly at threshold (with output score of 85 from mock)
-        # = 100 * 0.3 + 85 * 0.5 + 0 * 0.2 = 30 + 42.5 + 0 = 72.5
-        # Should pass since score >= min_score
-        assert result.score == 72.5
+        # Score calculation (with output score of 85 from mock):
+        # = 100 * 0.3 (tool) + 85 * 0.5 (output) + 100 * 0.2 (sequence, correct=True)
+        # = 30 + 42.5 + 20 = 92.5
+        # Should pass since score >= min_score (55.0)
+        assert result.score == 92.5
         assert result.passed is True
 
     @pytest.mark.asyncio
