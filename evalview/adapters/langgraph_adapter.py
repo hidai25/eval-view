@@ -6,7 +6,7 @@ Supports both LangGraph Cloud API and self-hosted LangGraph agents.
 import httpx
 import json
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 import logging
 
 from evalview.adapters.base import AgentAdapter
@@ -31,6 +31,11 @@ class LangGraphAdapter(AgentAdapter):
     Response formats:
     - {"messages": [...], "steps": [...]}
     - Streaming: data: {"type": "step", "content": "...", ...}
+
+    Security Note:
+        SSRF protection is enabled by default. URLs targeting private/internal
+        networks will be rejected. Set `allow_private_urls=True` only in trusted
+        development environments.
     """
 
     def __init__(
@@ -43,8 +48,16 @@ class LangGraphAdapter(AgentAdapter):
         model_config: Optional[Dict[str, Any]] = None,
         assistant_id: Optional[str] = None,
         use_cloud_api: Optional[bool] = None,  # Auto-detect if None
+        allow_private_urls: bool = False,
+        allowed_hosts: Optional[Set[str]] = None,
     ):
-        self.endpoint = endpoint
+        # Set SSRF protection settings before validation
+        self.allow_private_urls = allow_private_urls
+        self.allowed_hosts = allowed_hosts
+
+        # Validate endpoint URL for SSRF protection
+        self.endpoint = self.validate_endpoint(endpoint)
+
         self.headers = headers or {"Content-Type": "application/json"}
         self.timeout = timeout
         self.streaming = streaming

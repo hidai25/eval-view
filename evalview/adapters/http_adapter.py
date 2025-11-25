@@ -1,7 +1,7 @@
 """Generic HTTP adapter for REST API agents."""
 
 from datetime import datetime
-from typing import Any, Optional, Dict, List
+from typing import Any, Optional, Dict, List, Set
 import httpx
 import logging
 from evalview.adapters.base import AgentAdapter
@@ -18,7 +18,13 @@ logger = logging.getLogger(__name__)
 
 
 class HTTPAdapter(AgentAdapter):
-    """Generic HTTP adapter for REST API agents."""
+    """Generic HTTP adapter for REST API agents.
+
+    Security Note:
+        SSRF protection is enabled by default. URLs targeting private/internal
+        networks will be rejected. Set `allow_private_urls=True` only in trusted
+        development environments.
+    """
 
     def __init__(
         self,
@@ -26,6 +32,8 @@ class HTTPAdapter(AgentAdapter):
         headers: Optional[Dict[str, str]] = None,
         timeout: float = 30.0,
         model_config: Optional[Dict[str, Any]] = None,
+        allow_private_urls: bool = False,
+        allowed_hosts: Optional[Set[str]] = None,
     ):
         """
         Initialize HTTP adapter.
@@ -35,8 +43,17 @@ class HTTPAdapter(AgentAdapter):
             headers: Optional HTTP headers
             timeout: Request timeout in seconds
             model_config: Model configuration with name and optional custom pricing
+            allow_private_urls: If True, allow requests to private/internal networks
+                               (default: False for security)
+            allowed_hosts: Optional set of explicitly allowed hostnames
         """
-        self.endpoint = endpoint
+        # Set SSRF protection settings before validation
+        self.allow_private_urls = allow_private_urls
+        self.allowed_hosts = allowed_hosts
+
+        # Validate endpoint URL for SSRF protection
+        self.endpoint = self.validate_endpoint(endpoint)
+
         self.headers = headers or {}
         self.timeout = timeout
         self.model_config = model_config or {}

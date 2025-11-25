@@ -76,23 +76,88 @@ When using EvalView, please follow these security best practices:
 - **Review dependencies**: Use tools like `pip-audit` to check for known vulnerabilities
 - **Lock versions**: Use `requirements.txt` or `poetry.lock` to pin dependency versions
 
+## Built-in Security Features
+
+### SSRF (Server-Side Request Forgery) Protection
+
+EvalView includes built-in protection against SSRF attacks. By default in production mode, requests to the following destinations are blocked:
+
+- **Private IP ranges**: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+- **Loopback addresses**: localhost, 127.0.0.0/8
+- **Cloud metadata endpoints**: 169.254.169.254 (AWS, GCP, Azure)
+- **Link-local addresses**: 169.254.0.0/16
+- **Internal hostnames**: kubernetes.default, metadata.google.internal
+
+#### Configuration
+
+For local development, SSRF protection allows private URLs by default. To enable strict mode in production:
+
+```yaml
+# .evalview/config.yaml
+allow_private_urls: false  # Block private/internal networks (recommended for production)
+```
+
+#### Security Considerations
+
+- When running EvalView in production environments, set `allow_private_urls: false`
+- Be cautious when loading test cases from untrusted sources - they can specify arbitrary endpoints
+- Review test case YAML files before running them in sensitive environments
+
+### LLM Prompt Injection Mitigation
+
+The LLM-as-judge feature includes protections against prompt injection attacks:
+
+1. **Output Sanitization**: Agent outputs are sanitized before being sent to the LLM judge
+   - Long outputs are truncated (default: 10,000 chars) to prevent token exhaustion
+   - Control characters are removed
+   - Common prompt delimiters are escaped (```, ###, ---, XML tags, etc.)
+
+2. **Boundary Markers**: Untrusted content is wrapped in unique cryptographic boundary markers
+
+3. **Security Instructions**: The judge prompt explicitly instructs the LLM to:
+   - Ignore any instructions within the agent output
+   - Only evaluate content quality, not meta-instructions
+   - Not follow commands embedded in the evaluated content
+
+#### Limitations
+
+While these mitigations reduce risk, they cannot completely prevent sophisticated prompt injection attacks. Consider:
+
+- Agent outputs could still influence LLM evaluation through subtle manipulation
+- Very long outputs may be truncated, potentially hiding issues
+- New prompt injection techniques may bypass current protections
+
+For high-stakes evaluations, consider:
+- Manual review of agent outputs
+- Multiple evaluation models
+- Structured evaluation criteria that are harder to manipulate
+
 ## Known Security Considerations
 
 ### LLM-as-Judge Evaluation
 
 - EvalView uses OpenAI's API for output quality evaluation
 - Test outputs and expected outputs are sent to OpenAI for comparison
+- Agent outputs are sanitized to mitigate prompt injection, but no protection is 100% effective
 - **Recommendation**: Don't include sensitive/proprietary data in test cases if using LLM-as-judge
 
 ### HTTP Adapters
 
 - Custom HTTP adapters may expose your agent endpoints
+- SSRF protection is enabled by default but can be bypassed with `allow_private_urls: true`
 - **Recommendation**: Use authentication, HTTPS, and rate limiting on agent endpoints
 
 ### Trace Data
 
 - Execution traces may contain sensitive information from agent responses
 - **Recommendation**: Sanitize traces before sharing or storing long-term
+
+### Verbose Mode
+
+The `--verbose` flag may expose sensitive information in logs:
+- API request/response payloads
+- Query content and agent outputs
+- **Recommendation**: Avoid using verbose mode in production or when processing sensitive data
 
 ## Security Updates
 

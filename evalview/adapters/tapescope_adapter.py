@@ -1,7 +1,7 @@
 """Custom adapter for TapeScope streaming API and other streaming agents."""
 
 from datetime import datetime
-from typing import Any, Optional, Dict
+from typing import Any, Optional, Dict, Set
 import httpx
 import json
 import logging
@@ -46,6 +46,11 @@ class TapeScopeAdapter(AgentAdapter):
     - LangServe streaming endpoints
     - Custom streaming agents
     - Any JSONL-based API
+
+    Security Note:
+        SSRF protection is enabled by default. URLs targeting private/internal
+        networks will be rejected. Set `allow_private_urls=True` only in trusted
+        development environments.
     """
 
     def __init__(
@@ -55,6 +60,8 @@ class TapeScopeAdapter(AgentAdapter):
         timeout: float = 60.0,
         verbose: bool = False,
         model_config: Optional[Dict[str, Any]] = None,
+        allow_private_urls: bool = False,
+        allowed_hosts: Optional[Set[str]] = None,
     ):
         """
         Initialize streaming adapter.
@@ -65,8 +72,17 @@ class TapeScopeAdapter(AgentAdapter):
             timeout: Request timeout in seconds
             verbose: Enable verbose logging (overrides DEBUG env var)
             model_config: Model configuration with name and optional custom pricing
+            allow_private_urls: If True, allow requests to private/internal networks
+                               (default: False for security)
+            allowed_hosts: Optional set of explicitly allowed hostnames
         """
-        self.endpoint = endpoint
+        # Set SSRF protection settings before validation
+        self.allow_private_urls = allow_private_urls
+        self.allowed_hosts = allowed_hosts
+
+        # Validate endpoint URL for SSRF protection
+        self.endpoint = self.validate_endpoint(endpoint)
+
         self.headers = headers or {}
         self.timeout = timeout
         self.verbose = verbose or os.getenv("DEBUG") == "1"

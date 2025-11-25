@@ -287,6 +287,15 @@ async def _run_async(
                 f"[dim]💵 Custom pricing: ${model_config['pricing']['input_per_1m']:.2f} in, ${model_config['pricing']['output_per_1m']:.2f} out[/dim]"
             )
 
+    # SSRF protection config - defaults to True for local development
+    # Set to False in production when using untrusted test cases
+    allow_private_urls = config.get("allow_private_urls", True)
+    if verbose:
+        if allow_private_urls:
+            console.print("[dim]🔓 SSRF protection: allowing private URLs (local dev mode)[/dim]")
+        else:
+            console.print("[dim]🔒 SSRF protection: blocking private URLs[/dim]")
+
     # Initialize adapter based on type
     adapter_type = config.get("adapter", "http")
 
@@ -299,6 +308,7 @@ async def _run_async(
             verbose=verbose,
             model_config=model_config,
             assistant_id=config.get("assistant_id", "agent"),  # Cloud API support
+            allow_private_urls=allow_private_urls,
         )
     elif adapter_type == "crewai":
         adapter = CrewAIAdapter(
@@ -307,6 +317,7 @@ async def _run_async(
             timeout=config.get("timeout", 120.0),
             verbose=verbose,
             model_config=model_config,
+            allow_private_urls=allow_private_urls,
         )
     elif adapter_type == "openai-assistants":
         adapter = OpenAIAssistantsAdapter(
@@ -324,6 +335,7 @@ async def _run_async(
             timeout=config.get("timeout", 60.0),
             verbose=verbose,
             model_config=model_config,
+            allow_private_urls=allow_private_urls,
         )
     else:
         # HTTP adapter for standard REST APIs
@@ -332,6 +344,7 @@ async def _run_async(
             headers=config.get("headers", {}),
             timeout=config.get("timeout", 30.0),
             model_config=model_config,
+            allow_private_urls=allow_private_urls,
         )
 
     # Initialize evaluator
@@ -418,6 +431,7 @@ async def _run_async(
                     verbose=verbose,
                     model_config=model_config,
                     assistant_id=test_config.get("assistant_id", "agent"),
+                    allow_private_urls=allow_private_urls,
                 )
             elif test_adapter_type == "crewai":
                 return CrewAIAdapter(
@@ -426,6 +440,7 @@ async def _run_async(
                     timeout=test_config.get("timeout", 120.0),
                     verbose=verbose,
                     model_config=model_config,
+                    allow_private_urls=allow_private_urls,
                 )
             elif test_adapter_type == "openai-assistants":
                 return OpenAIAssistantsAdapter(
@@ -439,18 +454,17 @@ async def _run_async(
                     endpoint=test_endpoint,
                     headers=test_config.get("headers", {}),
                     timeout=test_config.get("timeout", 120.0),
-                    streaming=test_config.get("streaming", True),
                     verbose=verbose,
                     model_config=model_config,
+                    allow_private_urls=allow_private_urls,
                 )
             else:  # Default to HTTP adapter
                 return HTTPAdapter(
                     endpoint=test_endpoint,
                     headers=test_config.get("headers", {}),
                     timeout=test_config.get("timeout", 30.0),
-                    streaming=test_config.get("streaming", False),
-                    verbose=verbose,
                     model_config=model_config,
+                    allow_private_urls=allow_private_urls,
                 )
 
         # Use global adapter
@@ -1009,6 +1023,9 @@ async def _record_async(
     # Extract model config
     model_config = config.get("model", {})
 
+    # SSRF protection config - defaults to True for local development
+    allow_private_urls = config.get("allow_private_urls", True)
+
     # Initialize adapter
     adapter_type = config.get("adapter", "http")
 
@@ -1021,6 +1038,7 @@ async def _record_async(
             verbose=verbose,
             model_config=model_config,
             assistant_id=config.get("assistant_id", "agent"),
+            allow_private_urls=allow_private_urls,
         )
     elif adapter_type == "crewai":
         adapter = CrewAIAdapter(
@@ -1029,6 +1047,7 @@ async def _record_async(
             timeout=config.get("timeout", 30.0),
             verbose=verbose,
             model_config=model_config,
+            allow_private_urls=allow_private_urls,
         )
     elif adapter_type in ["streaming", "tapescope", "jsonl"]:
         adapter = TapeScopeAdapter(
@@ -1037,6 +1056,7 @@ async def _record_async(
             timeout=config.get("timeout", 60.0),
             verbose=verbose,
             model_config=model_config,
+            allow_private_urls=allow_private_urls,
         )
     else:
         # HTTP adapter for standard REST APIs
@@ -1045,6 +1065,7 @@ async def _record_async(
             headers=config.get("headers", {}),
             timeout=config.get("timeout", 30.0),
             model_config=model_config,
+            allow_private_urls=allow_private_urls,
         )
 
     # Initialize recorder
