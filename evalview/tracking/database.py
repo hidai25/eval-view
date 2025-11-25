@@ -2,7 +2,7 @@
 
 import sqlite3
 import json
-from datetime import datetime, date
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from contextlib import contextmanager

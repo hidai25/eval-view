@@ -1,7 +1,6 @@
 """Tests for YAML test case loader."""
 
 import pytest
-from pathlib import Path
 from pydantic import ValidationError
 import yaml
 

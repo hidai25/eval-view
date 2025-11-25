@@ -12,7 +12,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from dotenv import load_dotenv
 
 from evalview.core.loader import TestCaseLoader
-from evalview.core.pricing import MODEL_PRICING, get_model_pricing_info
+from evalview.core.pricing import get_model_pricing_info
 from evalview.adapters.http_adapter import HTTPAdapter
 from evalview.adapters.tapescope_adapter import TapeScopeAdapter
 from evalview.adapters.langgraph_adapter import LangGraphAdapter
@@ -386,7 +386,7 @@ async def _run_async(
         test_cases = filtered_cases
 
         if not test_cases:
-            console.print(f"[yellow]⚠️  No test cases matched the filter criteria[/yellow]")
+            console.print("[yellow]⚠️  No test cases matched the filter criteria[/yellow]")
             return
 
         if verbose:
@@ -798,19 +798,19 @@ async def _connect_async(endpoint: Optional[str]):
                             # CrewAI detection
                             elif "tasks" in data or "crew_id" in data:
                                 detected_adapter = "crewai"
-                    except:
+                    except Exception:
                         pass
 
-                    console.print(f"[green]✅ Connected![/green]")
+                    console.print("[green]✅ Connected![/green]")
                     successful = (name, url, response, detected_adapter)
                     break
                 else:
                     console.print(f"[yellow]❌ HTTP {response.status_code}[/yellow]")
 
             except httpx.ConnectError:
-                console.print(f"[red]❌ Connection refused[/red]")
+                console.print("[red]❌ Connection refused[/red]")
             except httpx.TimeoutException:
-                console.print(f"[yellow]❌ Timeout[/yellow]")
+                console.print("[yellow]❌ Timeout[/yellow]")
             except Exception as e:
                 console.print(f"[red]❌ {type(e).__name__}[/red]")
 
@@ -831,12 +831,12 @@ async def _connect_async(endpoint: Optional[str]):
             if response.headers.get("content-type", "").startswith("application/json"):
                 data = response.json()
                 console.print(f"  • Response keys: {list(data.keys())}")
-        except:
+        except Exception:
             pass
 
         # Ask if user wants to update config
         console.print()
-        if click.confirm(f"Update .evalview/config.yaml to use this endpoint?", default=True):
+        if click.confirm("Update .evalview/config.yaml to use this endpoint?", default=True):
             config_path = Path(".evalview/config.yaml")
 
             if not config_path.exists():
@@ -855,7 +855,7 @@ async def _connect_async(endpoint: Optional[str]):
             with open(config_path, "w") as f:
                 yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
-            console.print(f"[green]✅ Updated config:[/green]")
+            console.print("[green]✅ Updated config:[/green]")
             console.print(f"  • adapter: {detected_adapter}")
             console.print(f"  • endpoint: {url}")
             console.print()
@@ -878,7 +878,7 @@ async def _connect_async(endpoint: Optional[str]):
                     console.print(
                         f"  • Port {port}: [green]Open[/green] (HTTP {response.status_code})"
                     )
-                except:
+                except Exception:
                     pass
 
         if open_ports:
@@ -921,7 +921,7 @@ async def _connect_async(endpoint: Optional[str]):
                                     detected_adapter = "langgraph"
                                 elif "tasks" in data or "crew_id" in data:
                                     detected_adapter = "crewai"
-                            except:
+                            except Exception:
                                 pass
 
                             # Update config
@@ -936,7 +936,7 @@ async def _connect_async(endpoint: Optional[str]):
                                 with open(config_path, "w") as f:
                                     yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
-                                console.print(f"[green]✅ Config updated:[/green]")
+                                console.print("[green]✅ Config updated:[/green]")
                                 console.print(f"  • adapter: {detected_adapter}")
                                 console.print(f"  • endpoint: {custom_url}")
                                 return
@@ -1335,7 +1335,7 @@ def baseline_clear(test: str):
 
     if test:
         # Clear specific baseline (would need to add this to DB class)
-        console.print(f"[yellow]⚠️  Clear specific baseline not yet implemented[/yellow]")
+        console.print("[yellow]⚠️  Clear specific baseline not yet implemented[/yellow]")
     else:
         tracker.db.clear_baselines()
         console.print("[green]✅ All baselines cleared[/green]")
@@ -1369,25 +1369,25 @@ def trends(days: int, test: str):
         console.print(f"\n[bold]Performance Trends: {test}[/bold]")
         console.print(f"Period: Last {days} days\n")
 
-        console.print(f"[cyan]Test Runs:[/cyan]")
+        console.print("[cyan]Test Runs:[/cyan]")
         console.print(f"  Total: {stats['total_runs']}")
         console.print(f"  Passed: {stats['passed_runs']} ({stats['pass_rate']:.1f}%)")
         console.print(f"  Failed: {stats['failed_runs']}")
 
         if stats["score"]["current"]:
-            console.print(f"\n[cyan]Score:[/cyan]")
+            console.print("\n[cyan]Score:[/cyan]")
             console.print(f"  Current: {stats['score']['current']:.1f}")
             console.print(f"  Average: {stats['score']['avg']:.1f}")
             console.print(f"  Range: {stats['score']['min']:.1f} - {stats['score']['max']:.1f}")
 
         if stats["cost"]["current"]:
-            console.print(f"\n[cyan]Cost:[/cyan]")
+            console.print("\n[cyan]Cost:[/cyan]")
             console.print(f"  Current: ${stats['cost']['current']:.4f}")
             console.print(f"  Average: ${stats['cost']['avg']:.4f}")
             console.print(f"  Range: ${stats['cost']['min']:.4f} - ${stats['cost']['max']:.4f}")
 
         if stats["latency"]["current"]:
-            console.print(f"\n[cyan]Latency:[/cyan]")
+            console.print("\n[cyan]Latency:[/cyan]")
             console.print(f"  Current: {stats['latency']['current']:.0f}ms")
             console.print(f"  Average: {stats['latency']['avg']:.0f}ms")
             console.print(
@@ -1404,7 +1404,7 @@ def trends(days: int, test: str):
             console.print(f"[yellow]⚠️  No trend data available for last {days} days[/yellow]")
             return
 
-        console.print(f"\n[bold]Overall Performance Trends[/bold]")
+        console.print("\n[bold]Overall Performance Trends[/bold]")
         console.print(f"Period: Last {days} days\n")
 
         table = Table(show_header=True, header_style="bold cyan")

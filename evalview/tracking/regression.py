@@ -4,7 +4,6 @@ import subprocess
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
-from datetime import datetime
 
 from evalview.core.types import EvaluationResult
 from evalview.tracking.database import TrackingDatabase

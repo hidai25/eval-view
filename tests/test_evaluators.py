@@ -2,8 +2,7 @@
 
 import pytest
 from datetime import datetime
-from unittest.mock import AsyncMock, patch
-import json
+from unittest.mock import patch
 
 from evalview.evaluators.tool_call_evaluator import ToolCallEvaluator
 from evalview.evaluators.sequence_evaluator import SequenceEvaluator
@@ -20,7 +19,6 @@ from evalview.core.types import (
     StepTrace,
     StepMetrics,
     ExecutionMetrics,
-    TokenUsage,
 )
 
 

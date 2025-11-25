@@ -2,20 +2,18 @@
 
 import pytest
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 from evalview.evaluators.evaluator import Evaluator
 from evalview.core.types import (
     TestCase,
     TestInput,
     ExpectedBehavior,
-    ExpectedOutput,
     Thresholds,
     ExecutionTrace,
     StepTrace,
     StepMetrics,
     ExecutionMetrics,
-    TokenUsage,
     Evaluations,
     ToolEvaluation,
     SequenceEvaluation,

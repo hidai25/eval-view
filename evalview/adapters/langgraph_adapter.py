@@ -79,7 +79,6 @@ class LangGraphAdapter(AgentAdapter):
         self, query: str, context: Dict[str, Any], start_time: datetime
     ) -> ExecutionTrace:
         """Execute LangGraph Cloud API (threads + runs pattern)."""
-        import asyncio
 
         assistant_id = context.get("assistant_id", self.assistant_id)
 
@@ -244,9 +243,11 @@ class LangGraphAdapter(AgentAdapter):
             )
 
             # Calculate cost using model pricing
-            model_name = "gpt-4o"  # Default
-            input_cost_per_1m = 2.50  # GPT-4o default
-            output_cost_per_1m = 10.00  # GPT-4o default
+            # Default: GPT-4o ($2.50/1M input, $10.00/1M output)
+            # To use different model pricing, set model_config={"name": "model-name", "pricing": {...}}
+            model_name = "gpt-4o"
+            input_cost_per_1m = 2.50
+            output_cost_per_1m = 10.00
 
             if self.model_config:
                 model_name = self.model_config.get("name", "gpt-4o")
@@ -263,7 +264,8 @@ class LangGraphAdapter(AgentAdapter):
 
             if self.verbose:
                 logger.info(
-                    f"💰 Cost: ${total_cost:.4f} ({input_tokens} in + {output_tokens} out tokens)"
+                    f"💰 Cost: ${total_cost:.4f} using {model_name} pricing "
+                    f"({input_tokens} in + {output_tokens} out tokens)"
                 )
 
         metrics = self._calculate_metrics(steps, start_time, end_time, total_cost, token_usage_obj)
@@ -491,7 +493,6 @@ class LangGraphAdapter(AgentAdapter):
         token_usage: Optional[Any] = None,
     ) -> ExecutionMetrics:
         """Calculate execution metrics."""
-        from evalview.core.types import TokenUsage
 
         total_latency = (end_time - start_time).total_seconds() * 1000
 

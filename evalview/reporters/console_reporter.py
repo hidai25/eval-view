@@ -266,11 +266,11 @@ class ConsoleReporter:
 
         # Show query and response
         if result.input_query:
-            self.console.print(f"\n[bold]Query:[/bold]")
+            self.console.print("\n[bold]Query:[/bold]")
             self.console.print(f"  {result.input_query}")
 
         if result.actual_output:
-            self.console.print(f"\n[bold]Response:[/bold]")
+            self.console.print("\n[bold]Response:[/bold]")
             # Truncate long responses
             output = result.actual_output
             if len(output) > 300:
@@ -304,7 +304,7 @@ class ConsoleReporter:
         self.console.print(f"  Rationale: {output_eval.rationale}")
 
         # Costs and latency
-        self.console.print(f"\n[bold]Performance:[/bold]")
+        self.console.print("\n[bold]Performance:[/bold]")
         self.console.print(f"  Cost: ${result.trace.metrics.total_cost:.4f}")
 
         # Token usage breakdown

@@ -1,7 +1,7 @@
 """Custom adapter for TapeScope streaming API and other streaming agents."""
 
 from datetime import datetime
-from typing import Any, Optional, Dict, List
+from typing import Any, Optional, Dict
 import httpx
 import json
 import logging
@@ -317,7 +317,7 @@ class TapeScopeAdapter(AgentAdapter):
                                     elif isinstance(text, dict) and "text" in text:
                                         final_output += text["text"]
 
-                    except json.JSONDecodeError as e:
+                    except json.JSONDecodeError:
                         # Not JSON - might be plain text streaming
                         if self.verbose:
                             logger.debug(f"⚠️ Not JSON (plain text?): {line[:100]}...")
