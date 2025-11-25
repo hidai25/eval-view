@@ -1,0 +1,30 @@
+# EvalView Test Case: Microsoft AutoGen
+# Tests a multi-agent conversation workflow
+
+name: "AutoGen Multi-Agent Chat"
+description: "Test AutoGen's multi-agent collaboration for problem solving"
+
+adapter: http
+endpoint: http://localhost:8000/chat
+
+input:
+  query: "Write a Python script that fetches weather data from an API and displays it"
+  context:
+    max_turns: 3
+
+expected:
+  tools:
+    - code_execution
+  output:
+    contains:
+      - "import"
+      - "requests"
+      - "weather"
+    not_contains:
+      - "error"
+      - "failed"
+
+thresholds:
+  min_score: 75
+  max_cost: 0.50
+  max_latency: 45000

@@ -1,0 +1,38 @@
+# EvalView Test Case: Dify Agent
+# Tests a Dify workflow/agent application
+
+name: "Dify Agent Workflow"
+description: "Test Dify agent's tool usage and response quality"
+
+adapter: http
+endpoint: https://api.dify.ai/v1/chat-messages
+# Set DIFY_API_KEY in environment or in headers below
+
+headers:
+  Authorization: "Bearer ${DIFY_API_KEY}"
+  Content-Type: "application/json"
+
+input:
+  query: "Search for the latest news about artificial intelligence and summarize the top 3 stories"
+  context:
+    user: "test-user"
+    response_mode: "blocking"
+
+expected:
+  tools:
+    - web_search
+    - summarize
+  output:
+    contains:
+      - "AI"
+      - "1."
+      - "2."
+      - "3."
+    not_contains:
+      - "error"
+      - "failed"
+
+thresholds:
+  min_score: 80
+  max_cost: 0.25
+  max_latency: 30000

@@ -2,6 +2,6 @@
 # Add your screenshots after running tests:
 # - langgraph-output.png
 # - crewai-output.png
-# - rag-support-output.png
-# - dev-assistant-output.png
+# - autogen-output.png
+# - dify-output.png
 # - openai-assistants-output.png
