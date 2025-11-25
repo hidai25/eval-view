@@ -160,9 +160,7 @@ def validate_url(
         all_blocked.update(h.lower() for h in blocked_hosts)
 
     if hostname_lower in all_blocked:
-        raise SSRFProtectionError(
-            f"Hostname '{hostname}' is blocked for security reasons"
-        )
+        raise SSRFProtectionError(f"Hostname '{hostname}' is blocked for security reasons")
 
     # Check if hostname is a direct IP address
     if is_ip_blocked(hostname):
@@ -218,7 +216,9 @@ def sanitize_for_llm(
         # Escape triple backticks (common code block delimiter)
         sanitized = sanitized.replace("```", "` ` `")
         # Escape XML-like tags that might be interpreted as instructions
-        sanitized = re.sub(r"<(/?)(system|user|assistant|instruction)>", r"[\1\2]", sanitized, flags=re.IGNORECASE)
+        sanitized = re.sub(
+            r"<(/?)(system|user|assistant|instruction)>", r"[\1\2]", sanitized, flags=re.IGNORECASE
+        )
         # Escape common prompt boundary markers
         sanitized = sanitized.replace("###", "# # #")
         sanitized = sanitized.replace("---", "- - -")
