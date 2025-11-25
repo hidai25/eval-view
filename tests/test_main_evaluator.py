@@ -34,8 +34,13 @@ class TestEvaluator:
     @patch("evalview.evaluators.hallucination_evaluator.AsyncOpenAI")
     @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
     async def test_evaluate_all_pass(
-        self, mock_output_openai, mock_halluc_openai, mock_safety_openai,
-        sample_test_case, sample_execution_trace, mock_openai_client
+        self,
+        mock_output_openai,
+        mock_halluc_openai,
+        mock_safety_openai,
+        sample_test_case,
+        sample_execution_trace,
+        mock_openai_client,
     ):
         """Test complete evaluation when all criteria pass."""
         evaluator = Evaluator()
@@ -57,8 +62,13 @@ class TestEvaluator:
     @patch("evalview.evaluators.hallucination_evaluator.AsyncOpenAI")
     @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
     async def test_evaluate_creates_all_evaluations(
-        self, mock_output_openai, mock_halluc_openai, mock_safety_openai,
-        sample_test_case, sample_execution_trace, mock_openai_client
+        self,
+        mock_output_openai,
+        mock_halluc_openai,
+        mock_safety_openai,
+        sample_test_case,
+        sample_execution_trace,
+        mock_openai_client,
     ):
         """Test that all sub-evaluators are run."""
         evaluator = Evaluator()

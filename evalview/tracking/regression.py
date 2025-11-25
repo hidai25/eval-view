@@ -101,12 +101,8 @@ class RegressionTracker:
 
         # Extract current metrics
         current_score = result.score
-        current_cost = (
-            result.trace.metrics.total_cost if result.trace.metrics else None
-        )
-        current_latency = (
-            result.trace.metrics.total_latency if result.trace.metrics else None
-        )
+        current_cost = result.trace.metrics.total_cost if result.trace.metrics else None
+        current_latency = result.trace.metrics.total_latency if result.trace.metrics else None
 
         if not baseline:
             return RegressionReport(
@@ -131,18 +127,14 @@ class RegressionTracker:
         # Calculate deltas
         baseline_score = baseline["score"]
         score_delta = current_score - baseline_score
-        score_delta_percent = (
-            (score_delta / baseline_score * 100) if baseline_score > 0 else 0
-        )
+        score_delta_percent = (score_delta / baseline_score * 100) if baseline_score > 0 else 0
 
         baseline_cost = baseline.get("cost")
         cost_delta = None
         cost_delta_percent = None
         if current_cost is not None and baseline_cost is not None:
             cost_delta = current_cost - baseline_cost
-            cost_delta_percent = (
-                (cost_delta / baseline_cost * 100) if baseline_cost > 0 else 0
-            )
+            cost_delta_percent = (cost_delta / baseline_cost * 100) if baseline_cost > 0 else 0
 
         baseline_latency = baseline.get("latency")
         latency_delta = None
@@ -163,14 +155,10 @@ class RegressionTracker:
             is_regression = True
             if score_delta_percent < -20:
                 severity = "critical"
-                issues.append(
-                    f"Critical score regression: {score_delta_percent:.1f}% drop"
-                )
+                issues.append(f"Critical score regression: {score_delta_percent:.1f}% drop")
             else:
                 severity = "moderate"
-                issues.append(
-                    f"Moderate score regression: {score_delta_percent:.1f}% drop"
-                )
+                issues.append(f"Moderate score regression: {score_delta_percent:.1f}% drop")
         elif score_delta_percent < -5:
             severity = "minor" if severity == "none" else severity
             issues.append(f"Minor score regression: {score_delta_percent:.1f}% drop")

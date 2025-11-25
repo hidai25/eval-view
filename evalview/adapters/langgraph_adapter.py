@@ -63,9 +63,7 @@ class LangGraphAdapter(AgentAdapter):
     def name(self) -> str:
         return "langgraph"
 
-    async def execute(
-        self, query: str, context: Optional[Dict[str, Any]] = None
-    ) -> ExecutionTrace:
+    async def execute(self, query: str, context: Optional[Dict[str, Any]] = None) -> ExecutionTrace:
         """Execute LangGraph agent and capture trace."""
         context = context or {}
         start_time = datetime.now()
@@ -198,7 +196,9 @@ class LangGraphAdapter(AgentAdapter):
                                                 steps.append(step)
 
                                                 if self.verbose:
-                                                    logger.debug(f"🔧 Tool call: {tool_name}({tool_call.get('args', {})})")
+                                                    logger.debug(
+                                                        f"🔧 Tool call: {tool_name}({tool_call.get('args', {})})"
+                                                    )
 
                                         # Extract usage metadata
                                         usage_meta = msg.get("usage_metadata")
@@ -208,16 +208,22 @@ class LangGraphAdapter(AgentAdapter):
                                             output_tokens = usage_meta.get("output_tokens", 0)
 
                                             if self.verbose:
-                                                logger.debug(f"💰 Tokens: {input_tokens} in + {output_tokens} out = {total_tokens}")
+                                                logger.debug(
+                                                    f"💰 Tokens: {input_tokens} in + {output_tokens} out = {total_tokens}"
+                                                )
 
                                         # Also check response_metadata for usage
                                         response_meta = msg.get("response_metadata", {})
                                         if isinstance(response_meta, dict):
                                             token_usage = response_meta.get("token_usage", {})
-                                            if isinstance(token_usage, dict) and token_usage.get("total_tokens"):
+                                            if isinstance(token_usage, dict) and token_usage.get(
+                                                "total_tokens"
+                                            ):
                                                 total_tokens = token_usage.get("total_tokens", 0)
                                                 input_tokens = token_usage.get("prompt_tokens", 0)
-                                                output_tokens = token_usage.get("completion_tokens", 0)
+                                                output_tokens = token_usage.get(
+                                                    "completion_tokens", 0
+                                                )
 
                         except json.JSONDecodeError:
                             continue
@@ -226,6 +232,7 @@ class LangGraphAdapter(AgentAdapter):
 
         # Calculate cost from tokens if available
         from evalview.core.types import TokenUsage
+
         token_usage_obj = None
         total_cost = 0.0
 
@@ -250,13 +257,14 @@ class LangGraphAdapter(AgentAdapter):
                     input_cost_per_1m = pricing.get("input_per_1m", 2.50)
                     output_cost_per_1m = pricing.get("output_per_1m", 10.00)
 
-            total_cost = (
-                (input_tokens / 1_000_000) * input_cost_per_1m +
-                (output_tokens / 1_000_000) * output_cost_per_1m
-            )
+            total_cost = (input_tokens / 1_000_000) * input_cost_per_1m + (
+                output_tokens / 1_000_000
+            ) * output_cost_per_1m
 
             if self.verbose:
-                logger.info(f"💰 Cost: ${total_cost:.4f} ({input_tokens} in + {output_tokens} out tokens)")
+                logger.info(
+                    f"💰 Cost: ${total_cost:.4f} ({input_tokens} in + {output_tokens} out tokens)"
+                )
 
         metrics = self._calculate_metrics(steps, start_time, end_time, total_cost, token_usage_obj)
 
@@ -395,18 +403,16 @@ class LangGraphAdapter(AgentAdapter):
 
         return steps
 
-    def _create_step_from_intermediate(
-        self, step_data: Any, index: int
-    ) -> Optional[StepTrace]:
+    def _create_step_from_intermediate(self, step_data: Any, index: int) -> Optional[StepTrace]:
         """Create StepTrace from intermediate_steps format."""
         # intermediate_steps is usually [(AgentAction, output), ...]
         if isinstance(step_data, (list, tuple)) and len(step_data) >= 2:
             action, output = step_data[0], step_data[1]
 
             # Extract tool info
-            if hasattr(action, 'tool'):
+            if hasattr(action, "tool"):
                 tool_name = action.tool
-                parameters = getattr(action, 'tool_input', {})
+                parameters = getattr(action, "tool_input", {})
             else:
                 tool_name = str(action)
                 parameters = {}
@@ -422,9 +428,7 @@ class LangGraphAdapter(AgentAdapter):
             )
         return None
 
-    def _create_step_from_data(
-        self, step_data: Dict[str, Any], index: int
-    ) -> Optional[StepTrace]:
+    def _create_step_from_data(self, step_data: Dict[str, Any], index: int) -> Optional[StepTrace]:
         """Create StepTrace from steps format."""
         return StepTrace(
             step_id=step_data.get("id", f"step-{index}"),
@@ -467,7 +471,7 @@ class LangGraphAdapter(AgentAdapter):
                 last_msg = messages[-1]
                 if isinstance(last_msg, dict):
                     return last_msg.get("content", "")
-                elif hasattr(last_msg, 'content'):
+                elif hasattr(last_msg, "content"):
                     return last_msg.content
 
         if "output" in data:

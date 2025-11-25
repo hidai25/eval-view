@@ -22,8 +22,7 @@ logger = logging.getLogger(__name__)
 # Enable verbose logging with DEBUG=1 environment variable
 if os.getenv("DEBUG") == "1":
     logging.basicConfig(
-        level=logging.DEBUG,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
 else:
     logging.basicConfig(level=logging.WARNING)
@@ -80,15 +79,12 @@ class TapeScopeAdapter(AgentAdapter):
     def name(self) -> str:
         return "streaming"
 
-    async def execute(
-        self, query: str, context: Optional[Dict[str, Any]] = None
-    ) -> ExecutionTrace:
+    async def execute(self, query: str, context: Optional[Dict[str, Any]] = None) -> ExecutionTrace:
         """Execute agent via TapeScope API and capture trace."""
         try:
             # Wrap entire execution with timeout to prevent infinite waits
             return await asyncio.wait_for(
-                self._execute_internal(query, context),
-                timeout=self.timeout
+                self._execute_internal(query, context), timeout=self.timeout
             )
         except asyncio.TimeoutError:
             logger.error(f"❌ Request timed out after {self.timeout}s")
@@ -99,8 +95,8 @@ class TapeScopeAdapter(AgentAdapter):
                 end_time=datetime.now(),
                 steps=[],
                 final_output=f"Error: Request timed out after {self.timeout} seconds. "
-                             f"Backend may be stuck in refinement loops or processing. "
-                             f"Check backend logs and consider reducing complexity.",
+                f"Backend may be stuck in refinement loops or processing. "
+                f"Check backend logs and consider reducing complexity.",
                 metrics=ExecutionMetrics(
                     total_cost=0.0,
                     total_latency=self.timeout * 1000,
@@ -124,7 +120,7 @@ class TapeScopeAdapter(AgentAdapter):
             "prompt": query,
             "route": context.get("route", "conversational"),
             "userId": context.get("userId", "test-user"),
-            **context
+            **context,
         }
 
         events = []
@@ -218,7 +214,7 @@ class TapeScopeAdapter(AgentAdapter):
 
                         elif event_type == "error":
                             # Error occurred
-                            error_msg = event.get('error', event.get('message', 'Unknown error'))
+                            error_msg = event.get("error", event.get("message", "Unknown error"))
                             if self.verbose:
                                 logger.error(f"❌ Error event: {error_msg}")
                             final_output = f"Error: {error_msg}"
@@ -265,9 +261,12 @@ class TapeScopeAdapter(AgentAdapter):
                             if custom_pricing:
                                 # Use custom pricing
                                 cost = (
-                                    (input_tokens / 1_000_000) * custom_pricing.get("input_per_1m", 0.25) +
-                                    (output_tokens / 1_000_000) * custom_pricing.get("output_per_1m", 2.0) +
-                                    (cached_tokens / 1_000_000) * custom_pricing.get("cached_per_1m", 0.025)
+                                    (input_tokens / 1_000_000)
+                                    * custom_pricing.get("input_per_1m", 0.25)
+                                    + (output_tokens / 1_000_000)
+                                    * custom_pricing.get("output_per_1m", 2.0)
+                                    + (cached_tokens / 1_000_000)
+                                    * custom_pricing.get("cached_per_1m", 0.025)
                                 )
                             else:
                                 # Use standard pricing
@@ -293,7 +292,13 @@ class TapeScopeAdapter(AgentAdapter):
                                     f"{cached_tokens} cached → ${cost:.4f}"
                                 )
 
-                        elif event_type in ["start", "status", "thinking", "step_start", "step_complete"]:
+                        elif event_type in [
+                            "start",
+                            "status",
+                            "thinking",
+                            "step_start",
+                            "step_complete",
+                        ]:
                             # Informational events - just log
                             if self.verbose:
                                 logger.debug(f"ℹ️ Info event: {event_type}")
@@ -330,7 +335,9 @@ class TapeScopeAdapter(AgentAdapter):
 
         if self.verbose:
             logger.info(f"✅ Stream complete: {line_count} lines received")
-            logger.info(f"📊 Events: {len(events)}, Steps: {len(steps)}, Output length: {len(final_output)}")
+            logger.info(
+                f"📊 Events: {len(events)}, Steps: {len(steps)}, Output length: {len(final_output)}"
+            )
             logger.debug(f"📝 Final output preview: {final_output[:300]}...")
 
         # Calculate metrics
@@ -339,7 +346,9 @@ class TapeScopeAdapter(AgentAdapter):
 
         if self.verbose:
             logger.info(f"💰 Total cost: ${total_cost:.4f}")
-            logger.info(f"🎟️ Total tokens: {total_usage.total_tokens} (in: {total_usage.input_tokens}, out: {total_usage.output_tokens}, cached: {total_usage.cached_tokens})")
+            logger.info(
+                f"🎟️ Total tokens: {total_usage.total_tokens} (in: {total_usage.input_tokens}, out: {total_usage.output_tokens}, cached: {total_usage.cached_tokens})"
+            )
 
         return ExecutionTrace(
             session_id=f"tapescope-{int(start_time.timestamp())}",

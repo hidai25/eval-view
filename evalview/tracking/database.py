@@ -42,7 +42,8 @@ class TrackingDatabase:
             cursor = conn.cursor()
 
             # Test results table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS test_results (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     test_name TEXT NOT NULL,
@@ -61,10 +62,12 @@ class TrackingDatabase:
                     metadata TEXT,
                     UNIQUE(test_name, timestamp)
                 )
-            """)
+            """
+            )
 
             # Baselines table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS baselines (
                     test_name TEXT PRIMARY KEY,
                     score REAL NOT NULL,
@@ -77,10 +80,12 @@ class TrackingDatabase:
                     git_branch TEXT,
                     metadata TEXT
                 )
-            """)
+            """
+            )
 
             # Daily trends table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS daily_trends (
                     date DATE PRIMARY KEY,
                     avg_score REAL NOT NULL,
@@ -91,18 +96,23 @@ class TrackingDatabase:
                     failed_tests INTEGER NOT NULL,
                     metadata TEXT
                 )
-            """)
+            """
+            )
 
             # Create indexes
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_test_results_name
                 ON test_results(test_name)
-            """)
+            """
+            )
 
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_test_results_timestamp
                 ON test_results(timestamp)
-            """)
+            """
+            )
 
     def store_result(
         self,
@@ -163,7 +173,11 @@ class TrackingDatabase:
                     tool_accuracy,
                     output_quality,
                     1 if sequence_correct else 0 if sequence_correct is not None else None,
-                    1 if hallucination_detected else 0 if hallucination_detected is not None else None,
+                    1
+                    if hallucination_detected
+                    else 0
+                    if hallucination_detected is not None
+                    else None,
                     1 if safety_passed else 0 if safety_passed is not None else None,
                     git_commit,
                     git_branch,
@@ -185,9 +199,7 @@ class TrackingDatabase:
         """
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT * FROM baselines WHERE test_name = ?", (test_name,)
-            )
+            cursor.execute("SELECT * FROM baselines WHERE test_name = ?", (test_name,))
             row = cursor.fetchone()
 
             if row:
@@ -244,9 +256,7 @@ class TrackingDatabase:
                 ),
             )
 
-    def get_test_history(
-        self, test_name: str, days: int = 30
-    ) -> List[Dict[str, Any]]:
+    def get_test_history(self, test_name: str, days: int = 30) -> List[Dict[str, Any]]:
         """
         Get historical results for a test.
 
@@ -301,7 +311,8 @@ class TrackingDatabase:
         with self._get_connection() as conn:
             cursor = conn.cursor()
 
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT OR REPLACE INTO daily_trends (
                     date, avg_score, avg_cost, avg_latency,
                     total_tests, passed_tests, failed_tests
@@ -317,7 +328,8 @@ class TrackingDatabase:
                 FROM test_results
                 WHERE timestamp >= datetime('now', '-30 days')
                 GROUP BY DATE(timestamp)
-            """)
+            """
+            )
 
     def get_daily_trends(self, days: int = 30) -> List[Dict[str, Any]]:
         """

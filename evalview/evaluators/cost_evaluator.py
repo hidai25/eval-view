@@ -39,8 +39,7 @@ class CostEvaluator:
 
         # Build breakdown by step
         breakdown = [
-            CostBreakdown(step_id=step.step_id, cost=step.metrics.cost)
-            for step in trace.steps
+            CostBreakdown(step_id=step.step_id, cost=step.metrics.cost) for step in trace.steps
         ]
 
         passed = total_cost <= threshold

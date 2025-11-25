@@ -44,9 +44,7 @@ class SequenceEvaluator:
             for i, (expected, actual) in enumerate(zip(expected_sequence, actual_sequence)):
                 if expected != actual:
                     correct = False
-                    violations.append(
-                        f"Step {i + 1}: expected '{expected}', got '{actual}'"
-                    )
+                    violations.append(f"Step {i + 1}: expected '{expected}', got '{actual}'")
 
         return SequenceEvaluation(
             correct=correct,

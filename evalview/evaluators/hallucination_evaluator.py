@@ -24,9 +24,7 @@ class HallucinationEvaluator:
         """
         self.client = AsyncOpenAI(api_key=openai_api_key or os.getenv("OPENAI_API_KEY"))
 
-    async def evaluate(
-        self, test_case: TestCase, trace: ExecutionTrace
-    ) -> HallucinationEvaluation:
+    async def evaluate(self, test_case: TestCase, trace: ExecutionTrace) -> HallucinationEvaluation:
         """
         Evaluate if agent output contains hallucinations.
 
@@ -63,9 +61,7 @@ class HallucinationEvaluator:
             )
 
         # Perform hallucination detection
-        has_hallucination, confidence, details = await self._detect_hallucination(
-            test_case, trace
-        )
+        has_hallucination, confidence, details = await self._detect_hallucination(test_case, trace)
 
         # Determine if passed based on configuration
         passed = not has_hallucination or hallucination_config.allow
@@ -135,9 +131,7 @@ class HallucinationEvaluator:
 
         # Check if tools returned errors but agent claimed success
         for step in trace.steps:
-            if not step.success or (
-                step.error and "error" in str(step.output).lower()
-            ):
+            if not step.success or (step.error and "error" in str(step.output).lower()):
                 # Tool failed, check if agent output acknowledges this
                 output_lower = trace.final_output.lower()
                 if not any(
@@ -152,16 +146,17 @@ class HallucinationEvaluator:
         # (This is a simple heuristic - LLM will do more thorough check)
         if not trace.steps and len(trace.final_output) > 100:
             # Agent provided detailed answer without using any tools
-            if "based on" in trace.final_output.lower() or "according to" in trace.final_output.lower():
+            if (
+                "based on" in trace.final_output.lower()
+                or "according to" in trace.final_output.lower()
+            ):
                 issues.append(
                     "Agent made factual claims without using any tools to verify information"
                 )
 
         return issues
 
-    async def _llm_fact_check(
-        self, test_case: TestCase, trace: ExecutionTrace
-    ) -> dict:
+    async def _llm_fact_check(self, test_case: TestCase, trace: ExecutionTrace) -> dict:
         """
         Use LLM to fact-check agent output against tool results.
 
@@ -175,13 +170,15 @@ class HallucinationEvaluator:
         # Build tool results summary
         tool_results = []
         for step in trace.steps:
-            tool_results.append({
-                "tool": step.tool_name,
-                "input": step.parameters,
-                "output": str(step.output)[:200],  # Limit length
-                "success": step.success,
-                "error": step.error,
-            })
+            tool_results.append(
+                {
+                    "tool": step.tool_name,
+                    "input": step.parameters,
+                    "output": str(step.output)[:200],  # Limit length
+                    "success": step.success,
+                    "error": step.error,
+                }
+            )
 
         prompt = f"""You are a fact-checking system evaluating if an AI agent's response contains hallucinations (made-up information or facts not supported by the tools it used).
 
@@ -252,9 +249,7 @@ Be strict: Even minor embellishments or unjustified claims should be flagged."""
 
         return "\n".join(formatted)
 
-    def _check_uncertainty_handling(
-        self, test_case: TestCase, trace: ExecutionTrace
-    ) -> List[str]:
+    def _check_uncertainty_handling(self, test_case: TestCase, trace: ExecutionTrace) -> List[str]:
         """
         Check if agent properly acknowledges uncertainty.
 
@@ -292,9 +287,7 @@ Be strict: Even minor embellishments or unjustified claims should be flagged."""
                     "could not find",
                 ]
 
-                has_uncertainty = any(
-                    phrase in output_lower for phrase in uncertainty_phrases
-                )
+                has_uncertainty = any(phrase in output_lower for phrase in uncertainty_phrases)
 
                 if not has_uncertainty:
                     issues.append(

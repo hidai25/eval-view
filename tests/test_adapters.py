@@ -149,13 +149,9 @@ class TestHTTPAdapter:
         assert trace.final_output == ""
 
     @pytest.mark.asyncio
-    async def test_parse_response_with_tokens_calculates_cost(
-        self, http_response_with_tokens_only
-    ):
+    async def test_parse_response_with_tokens_calculates_cost(self, http_response_with_tokens_only):
         """Test that cost is calculated from tokens when not provided."""
-        adapter = HTTPAdapter(
-            endpoint="http://test.com/api", model_config={"name": "gpt-4"}
-        )
+        adapter = HTTPAdapter(endpoint="http://test.com/api", model_config={"name": "gpt-4"})
         start_time = datetime.now()
         end_time = datetime(start_time.year, start_time.month, start_time.day, 12, 0, 1)
 

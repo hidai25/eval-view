@@ -47,17 +47,13 @@ class CrewAIAdapter(AgentAdapter):
     def name(self) -> str:
         return "crewai"
 
-    async def execute(
-        self, query: str, context: Optional[Dict[str, Any]] = None
-    ) -> ExecutionTrace:
+    async def execute(self, query: str, context: Optional[Dict[str, Any]] = None) -> ExecutionTrace:
         """Execute CrewAI agent and capture trace."""
         context = context or {}
         start_time = datetime.now()
 
         # CrewAI typically expects inputs
-        payload = {
-            "inputs": {"query": query, **context}
-        }
+        payload = {"inputs": {"query": query, **context}}
 
         if self.verbose:
             logger.info(f"🚀 Executing CrewAI request: {query}...")

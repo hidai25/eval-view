@@ -155,7 +155,9 @@ class ConsoleReporter:
 
         for result in results:
             status = "[green]✅ PASSED[/green]" if result.passed else "[red]❌ FAILED[/red]"
-            score_color = "green" if result.score >= 80 else "yellow" if result.score >= 60 else "red"
+            score_color = (
+                "green" if result.score >= 80 else "yellow" if result.score >= 60 else "red"
+            )
 
             # Format token usage
             tokens_usage = result.trace.metrics.total_tokens
@@ -191,7 +193,9 @@ class ConsoleReporter:
         # Show failure details inline
         for result in results:
             if not result.passed:
-                self.console.print(f"\n[bold red]❌ {result.test_case} - Failure Details:[/bold red]")
+                self.console.print(
+                    f"\n[bold red]❌ {result.test_case} - Failure Details:[/bold red]"
+                )
 
                 # Show why it failed
                 issues = []
@@ -216,19 +220,27 @@ class ConsoleReporter:
                     issues.append(f"  • Low output quality: {output_eval.score:.0f}/100")
                     issues.append(f"    Reason: {output_eval.rationale[:100]}...")
                 if output_eval.contains_checks.failed:
-                    issues.append(f"  • Missing required text: {', '.join(output_eval.contains_checks.failed)}")
+                    issues.append(
+                        f"  • Missing required text: {', '.join(output_eval.contains_checks.failed)}"
+                    )
                 if output_eval.not_contains_checks.failed:
-                    issues.append(f"  • Contains forbidden text: {', '.join(output_eval.not_contains_checks.failed)}")
+                    issues.append(
+                        f"  • Contains forbidden text: {', '.join(output_eval.not_contains_checks.failed)}"
+                    )
 
                 # Cost issues
                 cost_eval = result.evaluations.cost
                 if not cost_eval.passed:
-                    issues.append(f"  • Cost exceeded: ${cost_eval.total_cost:.4f} > ${cost_eval.threshold:.4f}")
+                    issues.append(
+                        f"  • Cost exceeded: ${cost_eval.total_cost:.4f} > ${cost_eval.threshold:.4f}"
+                    )
 
                 # Latency issues
                 latency_eval = result.evaluations.latency
                 if not latency_eval.passed:
-                    issues.append(f"  • Latency exceeded: {latency_eval.total_latency:.0f}ms > {latency_eval.threshold:.0f}ms")
+                    issues.append(
+                        f"  • Latency exceeded: {latency_eval.total_latency:.0f}ms > {latency_eval.threshold:.0f}ms"
+                    )
 
                 for issue in issues:
                     self.console.print(f"[yellow]{issue}[/yellow]")
@@ -237,7 +249,8 @@ class ConsoleReporter:
                 if result.trace.steps:
                     self.console.print()
                     self.print_step_timeline(
-                        result.trace.steps, title=f"Execution Flow ({len(result.trace.steps)} steps)"
+                        result.trace.steps,
+                        title=f"Execution Flow ({len(result.trace.steps)} steps)",
                     )
 
     def print_detailed(self, result: EvaluationResult) -> None:

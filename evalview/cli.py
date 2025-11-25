@@ -111,9 +111,15 @@ def init(dir: str, interactive: bool):
             console.print("[green]✅ Using standard pricing[/green]")
         else:
             console.print("\n[yellow]Let's set custom pricing:[/yellow]")
-            input_price = click.prompt("Input tokens ($ per 1M)", type=float, default=pricing['input_price_per_1m'])
-            output_price = click.prompt("Output tokens ($ per 1M)", type=float, default=pricing['output_price_per_1m'])
-            cached_price = click.prompt("Cached tokens ($ per 1M)", type=float, default=pricing['cached_price_per_1m'])
+            input_price = click.prompt(
+                "Input tokens ($ per 1M)", type=float, default=pricing["input_price_per_1m"]
+            )
+            output_price = click.prompt(
+                "Output tokens ($ per 1M)", type=float, default=pricing["output_price_per_1m"]
+            )
+            cached_price = click.prompt(
+                "Cached tokens ($ per 1M)", type=float, default=pricing["cached_price_per_1m"]
+            )
 
             custom_pricing = {
                 "input": input_price,
@@ -229,12 +235,28 @@ thresholds:
     is_flag=True,
     help="Compare results against baseline and show regressions",
 )
-def run(pattern: str, test: tuple, filter: str, output: str, verbose: bool, track: bool, compare_baseline: bool):
+def run(
+    pattern: str,
+    test: tuple,
+    filter: str,
+    output: str,
+    verbose: bool,
+    track: bool,
+    compare_baseline: bool,
+):
     """Run test cases against the agent."""
     asyncio.run(_run_async(pattern, test, filter, output, verbose, track, compare_baseline))
 
 
-async def _run_async(pattern: str, test: tuple, filter: str, output: str, verbose: bool, track: bool, compare_baseline: bool):
+async def _run_async(
+    pattern: str,
+    test: tuple,
+    filter: str,
+    output: str,
+    verbose: bool,
+    track: bool,
+    compare_baseline: bool,
+):
     """Async implementation of run command."""
     import fnmatch
     from evalview.tracking import RegressionTracker
@@ -250,9 +272,7 @@ async def _run_async(pattern: str, test: tuple, filter: str, output: str, verbos
     # Load config
     config_path = Path(".evalview/config.yaml")
     if not config_path.exists():
-        console.print(
-            "[red]❌ Config file not found. Run 'evalview init' first.[/red]"
-        )
+        console.print("[red]❌ Config file not found. Run 'evalview init' first.[/red]")
         return
 
     with open(config_path) as f:
@@ -263,7 +283,9 @@ async def _run_async(pattern: str, test: tuple, filter: str, output: str, verbos
     if verbose and model_config:
         console.print(f"[dim]💰 Model: {model_config.get('name', 'gpt-5-mini')}[/dim]")
         if "pricing" in model_config:
-            console.print(f"[dim]💵 Custom pricing: ${model_config['pricing']['input_per_1m']:.2f} in, ${model_config['pricing']['output_per_1m']:.2f} out[/dim]")
+            console.print(
+                f"[dim]💵 Custom pricing: ${model_config['pricing']['input_per_1m']:.2f} in, ${model_config['pricing']['output_per_1m']:.2f} out[/dim]"
+            )
 
     # Initialize adapter based on type
     adapter_type = config.get("adapter", "http")
@@ -352,7 +374,7 @@ async def _run_async(pattern: str, test: tuple, filter: str, output: str, verbos
                 test_name_lower = test_case.name.lower()
 
                 # If filter has wildcards, use pattern matching
-                if '*' in filter or '?' in filter:
+                if "*" in filter or "?" in filter:
                     if fnmatch.fnmatch(test_name_lower, filter_lower):
                         filtered_cases.append(test_case)
                         continue
@@ -382,7 +404,9 @@ async def _run_async(pattern: str, test: tuple, filter: str, output: str, verbos
             test_config = test_case.adapter_config or {}
 
             if verbose:
-                console.print(f"[dim]  Using test-specific adapter: {test_adapter_type} @ {test_endpoint}[/dim]")
+                console.print(
+                    f"[dim]  Using test-specific adapter: {test_adapter_type} @ {test_endpoint}[/dim]"
+                )
 
             # Create adapter based on type
             if test_adapter_type == "langgraph":
@@ -480,18 +504,27 @@ async def _run_async(pattern: str, test: tuple, filter: str, output: str, verbos
 
             except Exception as e:
                 import httpx
+
                 failed += 1
 
                 # Provide helpful error messages
                 error_msg = str(e)
                 if isinstance(e, httpx.ConnectError):
                     error_msg = f"Cannot connect to {config['endpoint']}"
-                    console.print(f"\n[red]❌ Connection Error:[/red] Agent server not reachable at {config['endpoint']}")
-                    console.print("[yellow]💡 Tip:[/yellow] Run 'evalview connect' to test and configure your endpoint\n")
+                    console.print(
+                        f"\n[red]❌ Connection Error:[/red] Agent server not reachable at {config['endpoint']}"
+                    )
+                    console.print(
+                        "[yellow]💡 Tip:[/yellow] Run 'evalview connect' to test and configure your endpoint\n"
+                    )
                 elif isinstance(e, httpx.TimeoutException):
                     error_msg = "Request timeout"
-                    console.print(f"\n[yellow]⏱️  Timeout:[/yellow] Agent took too long to respond (>{config.get('timeout', 30)}s)")
-                    console.print("[yellow]💡 Tip:[/yellow] Increase timeout in .evalview/config.yaml or optimize your agent\n")
+                    console.print(
+                        f"\n[yellow]⏱️  Timeout:[/yellow] Agent took too long to respond (>{config.get('timeout', 30)}s)"
+                    )
+                    console.print(
+                        "[yellow]💡 Tip:[/yellow] Increase timeout in .evalview/config.yaml or optimize your agent\n"
+                    )
 
                 progress.update(
                     task,
@@ -536,16 +569,22 @@ async def _run_async(pattern: str, test: tuple, filter: str, output: str, verbos
                 delta_str = f"{report.score_delta:+.1f}"
                 percent_str = f"({report.score_delta_percent:+.1f}%)"
                 if report.score_delta < 0:
-                    console.print(f"  Score: {report.current_score:.1f} [red]↓ {delta_str}[/red] {percent_str} vs baseline {report.baseline_score:.1f}")
+                    console.print(
+                        f"  Score: {report.current_score:.1f} [red]↓ {delta_str}[/red] {percent_str} vs baseline {report.baseline_score:.1f}"
+                    )
                 else:
-                    console.print(f"  Score: {report.current_score:.1f} [green]↑ {delta_str}[/green] {percent_str} vs baseline {report.baseline_score:.1f}")
+                    console.print(
+                        f"  Score: {report.current_score:.1f} [green]↑ {delta_str}[/green] {percent_str} vs baseline {report.baseline_score:.1f}"
+                    )
 
             # Show cost comparison
             if report.cost_delta is not None and report.cost_delta_percent is not None:
                 delta_str = f"${report.cost_delta:+.4f}"
                 percent_str = f"({report.cost_delta_percent:+.1f}%)"
                 if report.cost_delta_percent > 20:
-                    console.print(f"  Cost: ${report.current_cost:.4f} [red]↑ {delta_str}[/red] {percent_str}")
+                    console.print(
+                        f"  Cost: ${report.current_cost:.4f} [red]↑ {delta_str}[/red] {percent_str}"
+                    )
                 else:
                     console.print(f"  Cost: ${report.current_cost:.4f} {delta_str} {percent_str}")
 
@@ -554,9 +593,13 @@ async def _run_async(pattern: str, test: tuple, filter: str, output: str, verbos
                 delta_str = f"{report.latency_delta:+.0f}ms"
                 percent_str = f"({report.latency_delta_percent:+.1f}%)"
                 if report.latency_delta_percent > 30:
-                    console.print(f"  Latency: {report.current_latency:.0f}ms [red]↑ {delta_str}[/red] {percent_str}")
+                    console.print(
+                        f"  Latency: {report.current_latency:.0f}ms [red]↑ {delta_str}[/red] {percent_str}"
+                    )
                 else:
-                    console.print(f"  Latency: {report.current_latency:.0f}ms {delta_str} {percent_str}")
+                    console.print(
+                        f"  Latency: {report.current_latency:.0f}ms {delta_str} {percent_str}"
+                    )
 
             # Show specific issues
             if report.is_regression and report.issues:
@@ -731,15 +774,23 @@ async def _connect_async(endpoint: Optional[str]):
                 # Try a simple POST request
                 response = await client.post(
                     url,
-                    json={"query": "test", "message": "test", "messages": [{"role": "user", "content": "test"}]},
+                    json={
+                        "query": "test",
+                        "message": "test",
+                        "messages": [{"role": "user", "content": "test"}],
+                    },
                     headers={"Content-Type": "application/json"},
                 )
 
-                if response.status_code in [200, 201, 422]:  # 422 might be validation error but server is running
+                if response.status_code in [
+                    200,
+                    201,
+                    422,
+                ]:  # 422 might be validation error but server is running
                     # Try to detect framework from response
                     detected_adapter = default_adapter
                     try:
-                        if response.headers.get('content-type', '').startswith('application/json'):
+                        if response.headers.get("content-type", "").startswith("application/json"):
                             data = response.json()
                             # LangGraph detection
                             if "messages" in data or "thread_id" in data:
@@ -777,7 +828,7 @@ async def _connect_async(endpoint: Optional[str]):
 
         # Try to show response preview
         try:
-            if response.headers.get('content-type', '').startswith('application/json'):
+            if response.headers.get("content-type", "").startswith("application/json"):
                 data = response.json()
                 console.print(f"  • Response keys: {list(data.keys())}")
         except:
@@ -789,7 +840,9 @@ async def _connect_async(endpoint: Optional[str]):
             config_path = Path(".evalview/config.yaml")
 
             if not config_path.exists():
-                console.print("[yellow]⚠️  Config file not found. Run 'evalview init' first.[/yellow]")
+                console.print(
+                    "[yellow]⚠️  Config file not found. Run 'evalview init' first.[/yellow]"
+                )
                 return
 
             with open(config_path) as f:
@@ -822,7 +875,9 @@ async def _connect_async(endpoint: Optional[str]):
                 try:
                     response = await client.get(f"http://127.0.0.1:{port}")
                     open_ports.append(port)
-                    console.print(f"  • Port {port}: [green]Open[/green] (HTTP {response.status_code})")
+                    console.print(
+                        f"  • Port {port}: [green]Open[/green] (HTTP {response.status_code})"
+                    )
                 except:
                     pass
 
@@ -835,7 +890,9 @@ async def _connect_async(endpoint: Optional[str]):
             console.print()
 
             if click.confirm("Do you want to try a custom endpoint?", default=True):
-                custom_port = click.prompt("Enter port number", type=int, default=open_ports[0] if open_ports else 8000)
+                custom_port = click.prompt(
+                    "Enter port number", type=int, default=open_ports[0] if open_ports else 8000
+                )
                 custom_path = click.prompt("Enter endpoint path", default="/api/chat")
                 custom_url = f"http://127.0.0.1:{custom_port}{custom_path}"
 
@@ -845,7 +902,11 @@ async def _connect_async(endpoint: Optional[str]):
                     async with httpx.AsyncClient(timeout=5.0) as client:
                         response = await client.post(
                             custom_url,
-                            json={"query": "test", "message": "test", "messages": [{"role": "user", "content": "test"}]},
+                            json={
+                                "query": "test",
+                                "message": "test",
+                                "messages": [{"role": "user", "content": "test"}],
+                            },
                             headers={"Content-Type": "application/json"},
                         )
 
@@ -926,7 +987,9 @@ def record(query: str, output: str, interactive: bool, verbose: bool):
     asyncio.run(_record_async(query, output, interactive, verbose))
 
 
-async def _record_async(query: Optional[str], output: Optional[str], interactive: bool, verbose: bool):
+async def _record_async(
+    query: Optional[str], output: Optional[str], interactive: bool, verbose: bool
+):
     """Async implementation of record command."""
     from evalview.recorder import TestCaseRecorder
 
@@ -937,9 +1000,7 @@ async def _record_async(query: Optional[str], output: Optional[str], interactive
     # Load config
     config_path = Path(".evalview/config.yaml")
     if not config_path.exists():
-        console.print(
-            "[red]❌ Config file not found. Run 'evalview init' first.[/red]"
-        )
+        console.print("[red]❌ Config file not found. Run 'evalview init' first.[/red]")
         return
 
     with open(config_path) as f:
@@ -1034,18 +1095,22 @@ async def _record_async(query: Optional[str], output: Optional[str], interactive
 
     # Interactive mode
     elif interactive:
-        console.print("[yellow]💡 Tip: Type 'done' when finished, 'skip' to cancel current recording[/yellow]\n")
+        console.print(
+            "[yellow]💡 Tip: Type 'done' when finished, 'skip' to cancel current recording[/yellow]\n"
+        )
 
         query_num = 1
         while True:
             # Get query from user
             if not query:
-                console.print(f"[bold]📝 Enter query #{query_num} (or 'done' to finish):[/bold] ", end="")
+                console.print(
+                    f"[bold]📝 Enter query #{query_num} (or 'done' to finish):[/bold] ", end=""
+                )
                 user_input = input().strip()
 
-                if user_input.lower() == 'done':
+                if user_input.lower() == "done":
                     break
-                elif user_input.lower() == 'skip':
+                elif user_input.lower() == "skip":
                     continue
                 elif not user_input:
                     console.print("[yellow]⚠️  Empty query, skipping[/yellow]\n")
@@ -1083,7 +1148,9 @@ async def _record_async(query: Optional[str], output: Optional[str], interactive
                 test_case = recorder.generate_test_case(interaction)
 
                 # Ask for custom name
-                console.print(f"[bold]✍️  Test case name [[dim]{test_case.name}[/dim]]:[/bold] ", end="")
+                console.print(
+                    f"[bold]✍️  Test case name [[dim]{test_case.name}[/dim]]:[/bold] ", end=""
+                )
                 custom_name = input().strip()
                 if custom_name:
                     test_case.name = custom_name
@@ -1099,6 +1166,7 @@ async def _record_async(query: Optional[str], output: Optional[str], interactive
                 console.print(f"[red]✗ Failed: {e}[/red]\n")
                 if verbose:
                     import traceback
+
                     console.print(f"[dim]{traceback.format_exc()}[/dim]\n")
 
                 query = None  # Reset
@@ -1170,18 +1238,14 @@ def baseline_set(test: str, from_latest: bool):
             except ValueError as e:
                 console.print(f"[red]❌ Error: {e}[/red]")
         else:
-            console.print(
-                "[yellow]⚠️  Must specify --from-latest or run tests first[/yellow]"
-            )
+            console.print("[yellow]⚠️  Must specify --from-latest or run tests first[/yellow]")
     else:
         # Set baselines for all recent tests
         results = tracker.db.get_recent_results(days=1)
         unique_tests = set(r["test_name"] for r in results)
 
         if not unique_tests:
-            console.print(
-                "[yellow]⚠️  No recent test results found. Run tests first.[/yellow]"
-            )
+            console.print("[yellow]⚠️  No recent test results found. Run tests first.[/yellow]")
             return
 
         for test_name in unique_tests:
@@ -1217,7 +1281,9 @@ def baseline_show(test: str):
             console.print(f"  Latency: {baseline['latency']:.0f}ms")
         console.print(f"  Created: {baseline['created_at']}")
         if baseline.get("git_commit"):
-            console.print(f"  Git: {baseline['git_commit']} ({baseline.get('git_branch', 'unknown')})")
+            console.print(
+                f"  Git: {baseline['git_commit']} ({baseline.get('git_branch', 'unknown')})"
+            )
         console.print()
     else:
         # Show all baselines
@@ -1242,11 +1308,13 @@ def baseline_show(test: str):
                     f"{baseline['score']:.1f}",
                     f"${baseline.get('cost', 0):.4f}" if baseline.get("cost") else "N/A",
                     f"{baseline.get('latency', 0):.0f}ms" if baseline.get("latency") else "N/A",
-                    baseline['created_at'][:10],
+                    baseline["created_at"][:10],
                 )
 
         if not has_baselines:
-            console.print("[yellow]⚠️  No baselines set. Run 'evalview baseline set' first.[/yellow]")
+            console.print(
+                "[yellow]⚠️  No baselines set. Run 'evalview baseline set' first.[/yellow]"
+            )
         else:
             console.print()
             console.print(table)
@@ -1310,17 +1378,13 @@ def trends(days: int, test: str):
             console.print(f"\n[cyan]Score:[/cyan]")
             console.print(f"  Current: {stats['score']['current']:.1f}")
             console.print(f"  Average: {stats['score']['avg']:.1f}")
-            console.print(
-                f"  Range: {stats['score']['min']:.1f} - {stats['score']['max']:.1f}"
-            )
+            console.print(f"  Range: {stats['score']['min']:.1f} - {stats['score']['max']:.1f}")
 
         if stats["cost"]["current"]:
             console.print(f"\n[cyan]Cost:[/cyan]")
             console.print(f"  Current: ${stats['cost']['current']:.4f}")
             console.print(f"  Average: ${stats['cost']['avg']:.4f}")
-            console.print(
-                f"  Range: ${stats['cost']['min']:.4f} - ${stats['cost']['max']:.4f}"
-            )
+            console.print(f"  Range: ${stats['cost']['min']:.4f} - ${stats['cost']['max']:.4f}")
 
         if stats["latency"]["current"]:
             console.print(f"\n[cyan]Latency:[/cyan]")

@@ -35,9 +35,7 @@ class Evaluator:
         self.hallucination_evaluator = HallucinationEvaluator(openai_api_key)
         self.safety_evaluator = SafetyEvaluator(openai_api_key)
 
-    async def evaluate(
-        self, test_case: TestCase, trace: ExecutionTrace
-    ) -> EvaluationResult:
+    async def evaluate(self, test_case: TestCase, trace: ExecutionTrace) -> EvaluationResult:
         """
         Run complete evaluation on a test case.
 
@@ -76,9 +74,7 @@ class Evaluator:
             actual_output=trace.final_output,
         )
 
-    def _compute_overall_score(
-        self, evaluations: Evaluations, test_case: TestCase
-    ) -> float:
+    def _compute_overall_score(self, evaluations: Evaluations, test_case: TestCase) -> float:
         """
         Compute weighted overall score.
 

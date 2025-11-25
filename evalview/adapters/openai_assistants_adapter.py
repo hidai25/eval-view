@@ -44,24 +44,18 @@ class OpenAIAssistantsAdapter(AgentAdapter):
     def name(self) -> str:
         return "openai-assistants"
 
-    async def execute(
-        self, query: str, context: Optional[Dict[str, Any]] = None
-    ) -> ExecutionTrace:
+    async def execute(self, query: str, context: Optional[Dict[str, Any]] = None) -> ExecutionTrace:
         """Execute OpenAI Assistant and capture trace."""
         try:
             from openai import AsyncOpenAI
         except ImportError:
-            raise ImportError(
-                "OpenAI package required. Install with: pip install openai"
-            )
+            raise ImportError("OpenAI package required. Install with: pip install openai")
 
         context = context or {}
         assistant_id = context.get("assistant_id", self.assistant_id)
 
         if not assistant_id:
-            raise ValueError(
-                "assistant_id required in context or adapter initialization"
-            )
+            raise ValueError("assistant_id required in context or adapter initialization")
 
         start_time = datetime.now()
 
@@ -141,9 +135,7 @@ class OpenAIAssistantsAdapter(AgentAdapter):
             metrics=metrics,
         )
 
-    async def _extract_steps(
-        self, client, thread_id: str, run_id: str
-    ) -> List[StepTrace]:
+    async def _extract_steps(self, client, thread_id: str, run_id: str) -> List[StepTrace]:
         """Extract steps from run."""
         steps = []
 
@@ -165,7 +157,9 @@ class OpenAIAssistantsAdapter(AgentAdapter):
                             parameters=json.loads(tool_call.function.arguments)
                             if tool_call.function.arguments
                             else {},
-                            output=tool_call.function.output if hasattr(tool_call.function, 'output') else None,
+                            output=tool_call.function.output
+                            if hasattr(tool_call.function, "output")
+                            else None,
                             success=True,
                             metrics=StepMetrics(latency=0.0, cost=0.0),
                         )
@@ -178,10 +172,7 @@ class OpenAIAssistantsAdapter(AgentAdapter):
                             tool_name="code_interpreter",
                             parameters={"input": tool_call.code_interpreter.input},
                             output="\n".join(
-                                [
-                                    log.get("text", "")
-                                    for log in tool_call.code_interpreter.outputs
-                                ]
+                                [log.get("text", "") for log in tool_call.code_interpreter.outputs]
                             ),
                             success=True,
                             metrics=StepMetrics(latency=0.0, cost=0.0),

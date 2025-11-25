@@ -45,9 +45,7 @@ class HTTPAdapter(AgentAdapter):
     def name(self) -> str:
         return "http"
 
-    async def execute(
-        self, query: str, context: Optional[Dict[str, Any]] = None
-    ) -> ExecutionTrace:
+    async def execute(self, query: str, context: Optional[Dict[str, Any]] = None) -> ExecutionTrace:
         """Execute agent via HTTP and capture trace."""
         start_time = datetime.now()
 
@@ -89,11 +87,11 @@ class HTTPAdapter(AgentAdapter):
 
         # Extract output from various common fields
         final_output = (
-            data.get("response") or
-            data.get("output") or
-            data.get("result") or
-            data.get("answer") or
-            ""
+            data.get("response")
+            or data.get("output")
+            or data.get("result")
+            or data.get("answer")
+            or ""
         )
 
         # Extract metadata from various locations
@@ -104,10 +102,10 @@ class HTTPAdapter(AgentAdapter):
 
         # Extract cost (check multiple locations)
         total_cost = (
-            data.get("cost") or
-            metadata.get("cost") or
-            sum(step.metrics.cost for step in steps) or
-            0.0
+            data.get("cost")
+            or metadata.get("cost")
+            or sum(step.metrics.cost for step in steps)
+            or 0.0
         )
 
         # Extract tokens (check multiple locations and formats)

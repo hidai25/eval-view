@@ -24,9 +24,7 @@ class OutputEvaluator:
         """
         self.client = AsyncOpenAI(api_key=api_key or os.getenv("OPENAI_API_KEY"))
 
-    async def evaluate(
-        self, test_case: TestCase, trace: ExecutionTrace
-    ) -> OutputEvaluation:
+    async def evaluate(self, test_case: TestCase, trace: ExecutionTrace) -> OutputEvaluation:
         """
         Evaluate output quality.
 
@@ -95,9 +93,7 @@ class OutputEvaluator:
 
         return ContainsChecks(passed=passed, failed=failed)
 
-    async def _llm_as_judge(
-        self, test_case: TestCase, trace: ExecutionTrace
-    ) -> Dict[str, Any]:
+    async def _llm_as_judge(self, test_case: TestCase, trace: ExecutionTrace) -> Dict[str, Any]:
         """Use LLM to judge output quality."""
         system_prompt = """You are an expert evaluator of AI agent outputs. Rate the quality and correctness of the agent's response on a scale of 0-100.
 

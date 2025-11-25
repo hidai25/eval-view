@@ -15,9 +15,7 @@ class AgentAdapter(ABC):
         pass
 
     @abstractmethod
-    async def execute(
-        self, query: str, context: Optional[Dict[str, Any]] = None
-    ) -> ExecutionTrace:
+    async def execute(self, query: str, context: Optional[Dict[str, Any]] = None) -> ExecutionTrace:
         """
         Execute agent with given input and capture trace.
 

@@ -25,9 +25,7 @@ class TestCaseLoader:
         return TestCase(**data)
 
     @staticmethod
-    def load_from_directory(
-        directory: Union[str, Path], pattern: str = "*.yaml"
-    ) -> List[TestCase]:
+    def load_from_directory(directory: Union[str, Path], pattern: str = "*.yaml") -> List[TestCase]:
         """
         Load all test cases from a directory.
 
