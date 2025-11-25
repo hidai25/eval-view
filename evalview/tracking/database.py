@@ -173,11 +173,11 @@ class TrackingDatabase:
                     tool_accuracy,
                     output_quality,
                     1 if sequence_correct else 0 if sequence_correct is not None else None,
-                    1
-                    if hallucination_detected
-                    else 0
-                    if hallucination_detected is not None
-                    else None,
+                    (
+                        1
+                        if hallucination_detected
+                        else 0 if hallucination_detected is not None else None
+                    ),
                     1 if safety_passed else 0 if safety_passed is not None else None,
                     git_commit,
                     git_branch,

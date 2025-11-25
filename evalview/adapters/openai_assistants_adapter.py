@@ -154,12 +154,16 @@ class OpenAIAssistantsAdapter(AgentAdapter):
                             step_id=tool_call.id,
                             step_name=tool_call.function.name,
                             tool_name=tool_call.function.name,
-                            parameters=json.loads(tool_call.function.arguments)
-                            if tool_call.function.arguments
-                            else {},
-                            output=tool_call.function.output
-                            if hasattr(tool_call.function, "output")
-                            else None,
+                            parameters=(
+                                json.loads(tool_call.function.arguments)
+                                if tool_call.function.arguments
+                                else {}
+                            ),
+                            output=(
+                                tool_call.function.output
+                                if hasattr(tool_call.function, "output")
+                                else None
+                            ),
                             success=True,
                             metrics=StepMetrics(latency=0.0, cost=0.0),
                         )
