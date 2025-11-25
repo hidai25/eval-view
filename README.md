@@ -625,6 +625,57 @@ See [docs/DATABASE_SETUP.md](docs/DATABASE_SETUP.md) for detailed guides.
 
 **See [docs/DEBUGGING.md](docs/DEBUGGING.md) for detailed troubleshooting guide.**
 
+## CI/CD Integration (Optional)
+
+**Do I have to use EvalView in CI?** No. EvalView is a CLI-first tool.
+
+You can:
+- Run `evalview run` locally before deploying
+- Add `make agent-tests` to your workflow
+- Add it to CI **only if you want**
+
+### Option 1: Local / Makefile (No CI)
+
+```bash
+# Run agent tests locally
+make agent-tests
+
+# Or directly
+evalview run --pattern "tests/test-cases/*.yaml" --verbose
+```
+
+### Option 2: GitHub Actions (Optional)
+
+If you want automated testing, create `.github/workflows/evalview.yml`:
+
+```yaml
+name: EvalView Agent Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  evalview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install EvalView
+        run: pip install evalview
+      - name: Run EvalView tests
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: evalview run --pattern "tests/test-cases/*.yaml" --verbose
+```
+
+> **Note:** Add `OPENAI_API_KEY` to your repository secrets (Settings → Secrets → Actions).
+
+See [.github/workflows/evalview-example.yml](.github/workflows/evalview-example.yml) for a manual-trigger example.
+
 ## Development
 
 We use a Makefile for common development tasks. Here's how to get started:

@@ -1,0 +1,38 @@
+# Example: EvalView Agent Tests
+# This workflow is manual-only by default (workflow_dispatch).
+# To run on every push/PR, change the triggers below.
+#
+# To enable automatic runs, replace the `on:` section with:
+#   on:
+#     push:
+#       branches: [ main ]
+#     pull_request:
+
+name: EvalView Agent Tests (example)
+
+on:
+  workflow_dispatch:  # Manual trigger only - click "Run workflow" in GitHub Actions
+
+jobs:
+  evalview:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install EvalView
+        run: |
+          pip install --upgrade pip
+          pip install evalview
+
+      - name: Run EvalView tests
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          evalview run --pattern "tests/test-cases/*.yaml" --verbose

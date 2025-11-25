@@ -1,4 +1,4 @@
-.PHONY: help install test format lint typecheck check clean dev-install run-example
+.PHONY: help install test format lint typecheck check clean dev-install run-example agent-tests
 
 # Default target
 help:
@@ -18,6 +18,7 @@ help:
 	@echo "Utilities:"
 	@echo "  make clean         Clean build artifacts and cache"
 	@echo "  make run-example   Run example test case"
+	@echo "  make agent-tests   Run EvalView agent tests (no CI required)"
 	@echo ""
 
 # Installation
@@ -75,6 +76,11 @@ run-example:
 	else \
 		echo "❌ No example.yaml found. Run 'evalview init' first."; \
 	fi
+
+# Agent tests - run EvalView against your agent (no CI required)
+agent-tests:
+	@echo "Running EvalView agent tests..."
+	evalview run --pattern "tests/test-cases/*.yaml" --verbose
 
 # Development helpers
 dev: dev-install
