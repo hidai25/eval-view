@@ -1180,6 +1180,8 @@ async def _run_async(
                     while tests_completed < len(test_cases):
                         live.update(get_status_display())
                         await asyncio.sleep(0.5)
+                    # Final update to show completion
+                    live.update(get_status_display())
 
                 # Run both tasks concurrently
                 parallel_task = execute_tests_parallel(
@@ -1312,6 +1314,12 @@ async def _run_async(
         console.print("[dim]📊 Results tracked for regression analysis[/dim]")
         console.print("[dim]   View trends: evalview trends[/dim]")
         console.print("[dim]   Set baseline: evalview baseline set[/dim]\n")
+
+    # GitHub star CTA (only show when not in watch mode)
+    if not watch:
+        console.print("[dim]━" * 50 + "[/dim]")
+        console.print("[dim]⭐ Enjoying EvalView? Star us on GitHub:[/dim]")
+        console.print("[dim]   [link=https://github.com/yourorg/evalview]https://github.com/yourorg/evalview[/link][/dim]\n")
 
     # Watch mode: re-run tests on file changes
     if watch:
