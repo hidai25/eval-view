@@ -4,14 +4,9 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import Callable, List, Optional, Set, Any, TYPE_CHECKING
+from typing import Callable, List, Optional, Set, Any
 
 logger = logging.getLogger(__name__)
-
-# Type checking imports
-if TYPE_CHECKING:
-    from watchdog.observers import Observer as ObserverType
-    from watchdog.events import FileSystemEventHandler as FileSystemEventHandlerType
 
 try:
     from watchdog.observers import Observer
