@@ -609,9 +609,9 @@ async def _run_async(
     import fnmatch
     import json as json_module
     from evalview.tracking import RegressionTracker
-    from evalview.core.parallel import execute_tests_parallel, ParallelResult
-    from evalview.core.retry import RetryConfig, with_retry, is_retryable_exception
-    from evalview.core.config import ScoringWeights, EvalViewConfig
+    from evalview.core.parallel import execute_tests_parallel
+    from evalview.core.retry import RetryConfig, with_retry
+    from evalview.core.config import ScoringWeights
 
     if debug:
         console.print("[dim]🐛 Debug mode enabled - will show raw responses[/dim]\n")
@@ -635,7 +635,7 @@ async def _run_async(
     # Handle watch mode - wrap test execution in a loop
     if watch:
         try:
-            from evalview.core.watcher import watch_and_run, WATCHDOG_AVAILABLE
+            from evalview.core.watcher import WATCHDOG_AVAILABLE
             if not WATCHDOG_AVAILABLE:
                 console.print("[yellow]⚠️  Watch mode requires watchdog. Install with: pip install watchdog[/yellow]")
                 console.print("[dim]Falling back to single run mode...[/dim]\n")
@@ -872,8 +872,6 @@ async def _run_async(
     # Helper function to execute a single test with retry support
     async def execute_single_test(test_case):
         """Execute a single test case with optional retry logic."""
-        import httpx
-
         test_adapter = get_adapter_for_test(test_case)
 
         async def _execute():
@@ -983,8 +981,6 @@ async def _run_async(
                 progress.remove_task(task)
     else:
         # Parallel execution (new default)
-        completed_tasks = {}
-
         def on_start(test_name):
             if verbose:
                 console.print(f"[dim]  ▶ Starting: {test_name}[/dim]")

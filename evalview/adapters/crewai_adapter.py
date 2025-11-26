@@ -87,7 +87,7 @@ class CrewAIAdapter(AgentAdapter):
                 print(f"Got response: {response.status_code}") if self.verbose else None
                 response.raise_for_status()
                 data = response.json()
-                print(f"Parsed JSON response") if self.verbose else None
+                print("Parsed JSON response") if self.verbose else None
         except Exception as e:
             print(f"HTTP ERROR: {e}") if self.verbose else None
             raise

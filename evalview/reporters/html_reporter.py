@@ -1,9 +1,8 @@
 """HTML report generator with interactive Plotly charts."""
 
-import json
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 try:
     from jinja2 import Environment, BaseLoader
@@ -13,7 +12,6 @@ except ImportError:
 
 try:
     import plotly.graph_objects as go
-    import plotly.express as px
     PLOTLY_AVAILABLE = True
 except ImportError:
     PLOTLY_AVAILABLE = False

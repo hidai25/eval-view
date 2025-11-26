@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from typing import List, Callable, Any, Optional, TypeVar, Dict
+from typing import List, Callable, Any, Optional, TypeVar
 from dataclasses import dataclass, field
 from datetime import datetime
 
