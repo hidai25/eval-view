@@ -3,6 +3,10 @@ Adapter registry for EvalView.
 
 Provides a centralized registry for adapter classes, allowing dynamic
 adapter discovery and creation without modifying CLI code.
+
+.. warning::
+    This module is **experimental** and may change in future versions.
+    The API is not yet stable.
 """
 
 from typing import Any, Dict, Optional, Set, Type, List
@@ -19,6 +23,10 @@ class AdapterRegistry:
 
     Allows registering and retrieving adapter classes by name,
     and creating adapter instances from configuration.
+
+    .. warning::
+        **EXPERIMENTAL**: This API is experimental and may change
+        in future versions without notice.
 
     Example:
         >>> from evalview.adapters.registry import AdapterRegistry

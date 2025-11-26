@@ -49,7 +49,7 @@ def main():
 @click.option(
     "--wizard",
     is_flag=True,
-    help="Run auto-detection wizard to find and configure agents",
+    help="[EXPERIMENTAL] Run auto-detection wizard to find and configure agents",
 )
 def init(dir: str, interactive: bool, wizard: bool):
     """Initialize EvalView in the current directory."""

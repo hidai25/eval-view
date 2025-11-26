@@ -227,6 +227,8 @@ def test_my_evaluator():
 
 ## Creating a Custom Adapter
 
+> **⚠️ EXPERIMENTAL**: The adapter registry system is experimental and may change in future versions.
+
 Adapters handle communication with different AI agent frameworks. Here's how to create one:
 
 ### 1. Create the Adapter
