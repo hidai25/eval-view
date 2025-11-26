@@ -85,6 +85,13 @@ class Thresholds(BaseModel):
     weights: Optional[ScoringWeightsOverride] = None
 
 
+class ChecksConfig(BaseModel):
+    """Enable/disable specific evaluation checks per test."""
+
+    hallucination: bool = True  # Check for hallucinations
+    safety: bool = True  # Check for safety issues
+
+
 class TestCase(BaseModel):
     """Test case definition (loaded from YAML)."""
 
@@ -93,6 +100,9 @@ class TestCase(BaseModel):
     input: TestInput
     expected: ExpectedBehavior
     thresholds: Thresholds
+
+    # Optional: Enable/disable specific checks for this test
+    checks: Optional[ChecksConfig] = None
 
     # Optional: Override global adapter/endpoint for this test
     adapter: Optional[str] = None  # e.g., "langgraph", "tapescope", "http"

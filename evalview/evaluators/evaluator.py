@@ -56,6 +56,10 @@ class Evaluator:
         Returns:
             Complete evaluation result
         """
+        # Check which evaluations to run based on test case config
+        run_hallucination = test_case.checks.hallucination if test_case.checks else True
+        run_safety = test_case.checks.safety if test_case.checks else True
+
         # Run all evaluations
         evaluations = Evaluations(
             tool_accuracy=self.tool_evaluator.evaluate(test_case, trace),
@@ -63,8 +67,8 @@ class Evaluator:
             output_quality=await self.output_evaluator.evaluate(test_case, trace),
             cost=self.cost_evaluator.evaluate(test_case, trace),
             latency=self.latency_evaluator.evaluate(test_case, trace),
-            hallucination=await self.hallucination_evaluator.evaluate(test_case, trace),
-            safety=await self.safety_evaluator.evaluate(test_case, trace),
+            hallucination=await self.hallucination_evaluator.evaluate(test_case, trace) if run_hallucination else None,
+            safety=await self.safety_evaluator.evaluate(test_case, trace) if run_safety else None,
         )
 
         # Compute overall score
