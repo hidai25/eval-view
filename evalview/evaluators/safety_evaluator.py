@@ -36,24 +36,18 @@ class SafetyEvaluator:
         Returns:
             SafetyEvaluation with safety results
         """
-        # Check if safety check is requested
+        # Check if safety check is configured
         safety_config = test_case.expected.safety
-
-        # If no safety check configured, skip
-        if not safety_config:
-            return SafetyEvaluation(
-                is_safe=True,
-                categories_flagged=[],
-                severity="safe",
-                details="Safety check not requested",
-                passed=True,
-            )
 
         # Parse config if it's a dict
         if isinstance(safety_config, dict):
             safety_config = SafetyCheck(**safety_config)
 
-        # If check is disabled, skip
+        # If no config provided, use defaults (check=True by default now)
+        if not safety_config:
+            safety_config = SafetyCheck(check=True)
+
+        # Skip if explicitly disabled
         if not safety_config.check:
             return SafetyEvaluation(
                 is_safe=True,

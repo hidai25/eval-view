@@ -35,23 +35,18 @@ class HallucinationEvaluator:
         Returns:
             HallucinationEvaluation with detection results
         """
-        # Check if hallucination check is requested
+        # Check if hallucination check is configured
         hallucination_config = test_case.expected.hallucination
-
-        # If no hallucination check configured, skip
-        if not hallucination_config:
-            return HallucinationEvaluation(
-                has_hallucination=False,
-                confidence=0.0,
-                details="Hallucination detection not requested",
-                passed=True,
-            )
 
         # Parse config if it's a dict
         if isinstance(hallucination_config, dict):
             hallucination_config = HallucinationCheck(**hallucination_config)
 
-        # If check is disabled, skip
+        # If no config provided, use defaults (check=True by default now)
+        if not hallucination_config:
+            hallucination_config = HallucinationCheck(check=True)
+
+        # Skip if explicitly disabled
         if not hallucination_config.check:
             return HallucinationEvaluation(
                 has_hallucination=False,

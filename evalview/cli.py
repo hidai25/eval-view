@@ -2,10 +2,13 @@
 
 import asyncio
 import os
+import re
+import sys
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
 import click
+import httpx
 import yaml
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -208,8 +211,11 @@ thresholds:
 
     console.print("\n[blue]Next steps:[/blue]")
     console.print("  1. Edit .evalview/config.yaml with your agent endpoint")
-    console.print("  2. Write test cases in tests/test-cases/")
-    console.print("  3. Run: evalview run\n")
+    console.print("  2. Create tests:")
+    console.print("     • [cyan]evalview record[/cyan]     ← Record agent interactions as tests")
+    console.print("     • [cyan]evalview expand[/cyan]     ← Generate variations from a seed test")
+    console.print("     • Or write YAML files manually in tests/test-cases/")
+    console.print("  3. Run: [cyan]evalview run[/cyan]\n")
 
 
 async def _init_wizard_async(dir: str):
@@ -485,8 +491,11 @@ thresholds:
     console.print()
     console.print("[blue]━━━ Setup Complete! ━━━[/blue]\n")
     console.print("[bold]Next steps:[/bold]")
-    console.print("  1. Edit tests/test-cases/example.yaml with your test cases")
-    console.print("  2. Run: evalview run --verbose")
+    console.print("  1. Create tests:")
+    console.print("     • [cyan]evalview record[/cyan]     ← Record agent interactions as tests")
+    console.print("     • [cyan]evalview expand[/cyan]     ← Generate variations from a seed test")
+    console.print("     • Or edit tests/test-cases/example.yaml")
+    console.print("  2. Run: [cyan]evalview run --verbose[/cyan]")
     console.print()
     console.print("[dim]Tip: Use 'evalview validate-adapter --endpoint URL' to debug adapter issues[/dim]\n")
 
@@ -764,8 +773,121 @@ async def _run_async(
     test_cases = TestCaseLoader.load_from_directory(test_cases_dir, pattern)
 
     if not test_cases:
-        console.print(f"[yellow]⚠️  No test cases found matching pattern: {pattern}[/yellow]")
+        console.print(f"[yellow]⚠️  No test cases found matching pattern: {pattern}[/yellow]\n")
+        console.print("[bold]💡 Create tests by:[/bold]")
+        console.print("   • [cyan]evalview record --interactive[/cyan]   (record agent interactions)")
+        console.print("   • [cyan]evalview expand <test.yaml>[/cyan]     (generate variations from seed)")
+        console.print("   • Or create YAML files manually in tests/test-cases/")
+        console.print()
+        console.print("[dim]Example: evalview record → evalview expand recorded-001.yaml --count 50[/dim]")
         return
+
+    # Interactive test selection menu - show when no explicit filter provided
+    # and pattern is the default "*.yaml"
+    if pattern == "*.yaml" and not test and not filter and sys.stdin.isatty():
+        # Group tests by adapter type
+        tests_by_adapter = {}
+        for tc in test_cases:
+            adapter_name = tc.adapter or config.get("adapter", "http")
+            if adapter_name not in tests_by_adapter:
+                tests_by_adapter[adapter_name] = []
+            tests_by_adapter[adapter_name].append(tc)
+
+        # Get unique endpoints for each adapter
+        adapter_endpoints = {}
+        for adapter_name, adapter_tests in tests_by_adapter.items():
+            # Find the endpoint for this adapter
+            for tc in adapter_tests:
+                if tc.endpoint:
+                    adapter_endpoints[adapter_name] = tc.endpoint
+                    break
+            if adapter_name not in adapter_endpoints:
+                adapter_endpoints[adapter_name] = config.get("endpoint", "")
+
+        # Check server health for each adapter using TCP socket (fast & reliable)
+        def check_health_sync(endpoint: str) -> bool:
+            """Quick health check - test if port is open."""
+            if not endpoint:
+                return False
+            try:
+                # Parse host and port from endpoint URL
+                from urllib.parse import urlparse
+                import socket
+                parsed = urlparse(endpoint)
+                host = parsed.hostname or "localhost"
+                port = parsed.port or 80
+
+                # TCP socket connection check - very fast
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(1.0)
+                result = sock.connect_ex((host, port))
+                sock.close()
+                return result == 0
+            except Exception:
+                return False
+
+        adapter_health = {}
+        for adapter_name, endpoint in adapter_endpoints.items():
+            adapter_health[adapter_name] = check_health_sync(endpoint)
+
+        # Show interactive menu if multiple adapters
+        if len(tests_by_adapter) > 1:
+            console.print("[bold]📋 Test cases found:[/bold]\n")
+
+            menu_options = []
+            for i, (adapter_name, adapter_tests) in enumerate(tests_by_adapter.items(), 1):
+                health_status = "[green]✅[/green]" if adapter_health.get(adapter_name) else "[red]❌[/red]"
+                endpoint = adapter_endpoints.get(adapter_name, "N/A")
+                console.print(f"  [{i}] [bold]{adapter_name.upper()}[/bold] ({len(adapter_tests)} tests) {health_status}")
+                console.print(f"      Endpoint: {endpoint}")
+                for tc in adapter_tests[:3]:  # Show first 3 test names
+                    console.print(f"        • {tc.name}")
+                if len(adapter_tests) > 3:
+                    console.print(f"        • ... and {len(adapter_tests) - 3} more")
+                console.print()
+                menu_options.append((adapter_name, adapter_tests))
+
+            # Add "All tests" option
+            console.print(f"  [{len(menu_options) + 1}] [bold]All tests[/bold] ({len(test_cases)} tests)")
+            console.print()
+
+            # Get user choice
+            choice = click.prompt(
+                "Which tests to run?",
+                type=int,
+                default=len(menu_options) + 1,  # Default to all
+            )
+
+            if 1 <= choice <= len(menu_options):
+                selected_adapter, test_cases = menu_options[choice - 1]
+                console.print(f"\n[cyan]Running {selected_adapter.upper()} tests...[/cyan]")
+            elif choice == len(menu_options) + 1:
+                console.print("\n[cyan]Running all tests...[/cyan]")
+            else:
+                console.print("[yellow]Invalid choice. Running all tests.[/yellow]")
+
+            # Ask about run mode (parallel vs sequential)
+            console.print("\n[bold]Run mode:[/bold]")
+            console.print("  [1] Parallel (faster, default)")
+            console.print("  [2] Sequential (easier to follow)")
+            run_mode = click.prompt("Select run mode", type=int, default=1)
+            if run_mode == 2:
+                parallel = False
+                console.print("[dim]Running tests sequentially...[/dim]\n")
+            else:
+                console.print("[dim]Running tests in parallel...[/dim]\n")
+
+            # Show cost calculation info
+            cost_model = config.get("model", "gpt-4o-mini")
+            console.print(f"[dim]💰 Cost calculated using: {cost_model} pricing[/dim]")
+            console.print("[dim]   (Configure in .evalview/config.yaml or test case)[/dim]\n")
+
+            # Ask about HTML report
+            if not html_report:
+                generate_html = click.confirm("Generate HTML report?", default=True)
+                if generate_html:
+                    html_report = f".evalview/results/report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+                    console.print(f"[dim]📊 HTML report will be saved to: {html_report}[/dim]\n")
 
     # Filter test cases by name if --test or --filter specified
     if test or filter:
@@ -833,12 +955,14 @@ async def _run_async(
                     allow_private_urls=allow_private_urls,
                 )
             elif test_adapter_type == "crewai":
+                # Merge global model_config with test-specific config
+                merged_model_config = {**model_config, **test_config}
                 return CrewAIAdapter(
                     endpoint=test_endpoint,
                     headers=test_config.get("headers", {}),
                     timeout=test_config.get("timeout", 120.0),
                     verbose=verbose,
-                    model_config=model_config,
+                    model_config=merged_model_config,
                     allow_private_urls=allow_private_urls,
                 )
             elif test_adapter_type == "openai-assistants":
@@ -1007,14 +1131,79 @@ async def _run_async(
 
         console.print(f"[dim]Executing {len(test_cases)} tests with up to {max_workers} parallel workers...[/dim]\n")
 
-        parallel_results = await execute_tests_parallel(
-            test_cases,
-            execute_single_test,
-            max_workers=max_workers,
-            on_start=on_start,
-            on_complete=on_complete,
-            on_error=on_error,
-        )
+        # Track elapsed time during execution
+        import time as time_module
+        from rich.live import Live
+        from rich.panel import Panel
+
+        start_time = time_module.time()
+        tests_running = set()
+        tests_completed = 0
+
+        def format_elapsed():
+            elapsed = time_module.time() - start_time
+            mins, secs = divmod(int(elapsed), 60)
+            return f"{mins:02d}:{secs:02d}"
+
+        def get_status_display():
+            elapsed_str = format_elapsed()
+            running_str = ", ".join(tests_running) if tests_running else "starting..."
+            return Panel(
+                f"[bold cyan]⏱️  Elapsed: {elapsed_str}[/bold cyan]\n"
+                f"[dim]Running: {running_str}[/dim]\n"
+                f"[green]✓ Completed: {tests_completed}/{len(test_cases)}[/green]",
+                title="[bold]Test Execution[/bold]",
+                border_style="blue",
+            )
+
+        def on_start_with_tracking(test_name):
+            nonlocal tests_running
+            tests_running.add(test_name[:30])
+            on_start(test_name)
+
+        def on_complete_with_tracking(test_name, passed, result):
+            nonlocal tests_running, tests_completed
+            tests_running.discard(test_name[:30])
+            tests_completed += 1
+            on_complete(test_name, passed, result)
+
+        def on_error_with_tracking(test_name, exc):
+            nonlocal tests_running, tests_completed
+            tests_running.discard(test_name[:30])
+            tests_completed += 1
+            on_error(test_name, exc)
+
+        # Use Live display for timer (only in interactive mode)
+        if sys.stdin.isatty():
+            with Live(get_status_display(), console=console, refresh_per_second=1) as live:
+                async def update_display():
+                    while tests_completed < len(test_cases):
+                        live.update(get_status_display())
+                        await asyncio.sleep(0.5)
+
+                # Run both tasks concurrently
+                parallel_task = execute_tests_parallel(
+                    test_cases,
+                    execute_single_test,
+                    max_workers=max_workers,
+                    on_start=on_start_with_tracking,
+                    on_complete=on_complete_with_tracking,
+                    on_error=on_error_with_tracking,
+                )
+                display_task = update_display()
+
+                parallel_results, _ = await asyncio.gather(parallel_task, display_task, return_exceptions=True)
+
+            console.print(f"\n[bold green]✓ All tests completed in {format_elapsed()}[/bold green]\n")
+        else:
+            parallel_results = await execute_tests_parallel(
+                test_cases,
+                execute_single_test,
+                max_workers=max_workers,
+                on_start=on_start,
+                on_complete=on_complete,
+                on_error=on_error,
+            )
 
         # Collect results (maintaining order)
         for pr in parallel_results:
@@ -1112,7 +1301,9 @@ async def _run_async(
             from evalview.reporters.html_reporter import HTMLReporter
             html_reporter = HTMLReporter()
             html_path = html_reporter.generate(results, html_report)
-            console.print(f"[dim]📊 HTML report saved to: {html_path}[/dim]\n")
+            console.print(f"\n[bold green]📊 HTML Report Generated![/bold green]")
+            console.print(f"   [link=file://{Path(html_path).absolute()}]{html_path}[/link]")
+            console.print(f"   [dim]Open in browser: open {html_path}[/dim]\n")
         except ImportError as e:
             console.print(f"[yellow]⚠️  Could not generate HTML report: {e}[/yellow]")
             console.print("[dim]Install with: pip install jinja2 plotly[/dim]\n")
@@ -2176,6 +2367,163 @@ def trends(days: int, test: str):
 
         console.print(table)
         console.print()
+
+
+@main.command()
+@click.argument("test_file", type=click.Path(exists=True))
+@click.option(
+    "--count",
+    "-n",
+    default=10,
+    type=int,
+    help="Number of variations to generate (default: 10)",
+)
+@click.option(
+    "--output-dir",
+    "-o",
+    type=click.Path(),
+    help="Output directory for generated tests (default: same as input)",
+)
+@click.option(
+    "--edge-cases/--no-edge-cases",
+    default=True,
+    help="Include edge case variations (default: True)",
+)
+@click.option(
+    "--focus",
+    "-f",
+    help="Focus variations on specific aspect (e.g., 'different stock tickers')",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Preview generated tests without saving",
+)
+def expand(test_file: str, count: int, output_dir: str, edge_cases: bool, focus: str, dry_run: bool):
+    """Expand a test case into variations using LLM.
+
+    Takes a base test case and generates variations with different inputs,
+    edge cases, and scenarios. Great for building comprehensive test suites
+    from a few seed tests.
+
+    Example:
+        evalview expand tests/test-cases/stock-basic.yaml --count 20
+    """
+    asyncio.run(_expand_async(test_file, count, output_dir, edge_cases, focus, dry_run))
+
+
+async def _expand_async(
+    test_file: str,
+    count: int,
+    output_dir: str,
+    edge_cases: bool,
+    focus: str,
+    dry_run: bool,
+):
+    """Async implementation of expand command."""
+    from evalview.expander import TestExpander
+    from evalview.core.loader import TestCaseLoader
+    from rich.table import Table
+
+    console.print("[blue]🔄 Expanding test case...[/blue]\n")
+
+    # Load base test
+    test_path = Path(test_file)
+    console.print(f"[dim]Loading: {test_path}[/dim]")
+
+    try:
+        base_test = TestCaseLoader.load_from_file(test_path)
+        if not base_test:
+            console.print(f"[red]❌ No test cases found in {test_file}[/red]")
+            return
+    except Exception as e:
+        console.print(f"[red]❌ Failed to load test: {e}[/red]")
+        return
+
+    console.print(f"[green]✓[/green] Base test: [bold]{base_test.name}[/bold]")
+    console.print(f"  Query: \"{base_test.input.query}\"")
+    console.print()
+
+    # Initialize expander
+    expander = TestExpander()
+
+    # Generate variations
+    console.print(f"[cyan]🤖 Generating {count} variations...[/cyan]")
+    if focus:
+        console.print(f"[dim]   Focus: {focus}[/dim]")
+    if edge_cases:
+        console.print(f"[dim]   Including edge cases[/dim]")
+    console.print()
+
+    try:
+        variations = await expander.expand(
+            base_test,
+            count=count,
+            include_edge_cases=edge_cases,
+            variation_focus=focus,
+        )
+    except Exception as e:
+        console.print(f"[red]❌ Failed to generate variations: {e}[/red]")
+        console.print("[dim]Make sure OPENAI_API_KEY is set[/dim]")
+        return
+
+    if not variations:
+        console.print("[yellow]⚠️  No variations generated[/yellow]")
+        return
+
+    console.print(f"[green]✓[/green] Generated {len(variations)} variations\n")
+
+    # Convert to TestCase objects
+    test_cases = [
+        expander.convert_to_test_case(v, base_test, i)
+        for i, v in enumerate(variations, 1)
+    ]
+
+    # Show preview table
+    table = Table(title="Generated Test Variations", show_header=True, header_style="bold cyan")
+    table.add_column("#", style="dim", width=3)
+    table.add_column("Name", style="white", no_wrap=False)
+    table.add_column("Query", style="dim", no_wrap=False)
+    table.add_column("Edge?", style="yellow", justify="center", width=5)
+
+    for i, (variation, tc) in enumerate(zip(variations, test_cases), 1):
+        is_edge = "⚠️" if variation.get("is_edge_case") else ""
+        query_preview = tc.input.query[:50] + "..." if len(tc.input.query) > 50 else tc.input.query
+        table.add_row(str(i), tc.name, query_preview, is_edge)
+
+    console.print(table)
+    console.print()
+
+    if dry_run:
+        console.print("[yellow]Dry run - no files saved[/yellow]")
+        return
+
+    # Ask for confirmation
+    if not click.confirm("Save these test variations?", default=True):
+        console.print("[yellow]Cancelled[/yellow]")
+        return
+
+    # Determine output directory
+    if output_dir:
+        out_path = Path(output_dir)
+    else:
+        out_path = test_path.parent
+
+    # Generate prefix from base test name
+    prefix = re.sub(r'[^a-z0-9]+', '-', base_test.name.lower()).strip('-')[:20]
+    prefix = f"{prefix}-var"
+
+    # Save variations
+    console.print(f"\n[cyan]💾 Saving to {out_path}/...[/cyan]")
+    saved_paths = expander.save_variations(test_cases, out_path, prefix=prefix)
+
+    console.print(f"\n[green]✅ Saved {len(saved_paths)} test variations:[/green]")
+    for path in saved_paths[:5]:  # Show first 5
+        console.print(f"   • {path.name}")
+    if len(saved_paths) > 5:
+        console.print(f"   • ... and {len(saved_paths) - 5} more")
+
+    console.print(f"\n[blue]Run with:[/blue] evalview run --filter '{prefix}*'")
 
 
 if __name__ == "__main__":

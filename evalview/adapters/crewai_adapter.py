@@ -17,6 +17,7 @@ from evalview.core.types import (
     ExecutionMetrics,
     TokenUsage,
 )
+from evalview.core.pricing import calculate_cost
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +106,9 @@ class CrewAIAdapter(AgentAdapter):
         final_output = self._extract_output(data)
         metrics = self._calculate_metrics(data, steps, start_time, end_time)
 
+        # Distribute total metrics across steps (CrewAI doesn't provide per-step timing)
+        self._distribute_metrics_to_steps(steps, metrics)
+
         return ExecutionTrace(
             session_id=data.get("crew_id", f"crewai-{start_time.timestamp()}"),
             start_time=start_time,
@@ -186,21 +190,20 @@ class CrewAIAdapter(AgentAdapter):
         total_tokens = usage.get("total_tokens")
         total_cost = usage.get("total_cost", 0.0)
 
-        # If not provided, sum from steps
-        if total_cost == 0.0:
-            total_cost = sum(step.metrics.cost for step in steps)
-
         # If total_tokens not provided, aggregate from steps
         # Note: step.metrics.tokens is Optional[TokenUsage], not int
         token_usage = None
+        input_sum = 0
+        output_sum = 0
+        cached_sum = 0
+
         if total_tokens:
-            # CrewAI provides total as int, convert to TokenUsage
-            token_usage = TokenUsage(output_tokens=total_tokens)
+            # CrewAI provides total as int - assume ~30% input, 70% output ratio
+            input_sum = int(total_tokens * 0.3)
+            output_sum = total_tokens - input_sum
+            token_usage = TokenUsage(input_tokens=input_sum, output_tokens=output_sum)
         else:
             # Sum tokens from steps - handle TokenUsage objects properly
-            input_sum = 0
-            output_sum = 0
-            cached_sum = 0
             for step in steps:
                 if step.metrics.tokens:
                     input_sum += step.metrics.tokens.input_tokens
@@ -215,11 +218,78 @@ class CrewAIAdapter(AgentAdapter):
                     cached_tokens=cached_sum,
                 )
 
+        # Calculate cost from tokens if not provided
+        if total_cost == 0.0 and (input_sum > 0 or output_sum > 0):
+            # Get model from config or response, default to gpt-4o-mini (common for CrewAI)
+            model_name = (
+                data.get("model")
+                or self.model_config.get("model")
+                or "gpt-4o-mini"
+            )
+            total_cost = calculate_cost(
+                model_name=model_name,
+                input_tokens=input_sum,
+                output_tokens=output_sum,
+                cached_tokens=cached_sum,
+            )
+
         return ExecutionMetrics(
             total_cost=total_cost,
             total_latency=total_latency,
             total_tokens=token_usage,
         )
+
+    def _distribute_metrics_to_steps(
+        self, steps: List[StepTrace], metrics: ExecutionMetrics
+    ) -> None:
+        """Distribute total metrics proportionally across steps.
+
+        CrewAI doesn't provide per-task timing, so we estimate by distributing
+        the totals. Uses output length as a proxy for relative complexity.
+        """
+        if not steps:
+            return
+
+        # Calculate weights based on output length (proxy for task complexity)
+        output_lengths = [len(step.output or "") for step in steps]
+        total_output_length = sum(output_lengths)
+
+        # If no output to weight by, distribute evenly
+        if total_output_length == 0:
+            weights = [1.0 / len(steps)] * len(steps)
+        else:
+            weights = [length / total_output_length for length in output_lengths]
+
+        # Distribute latency and cost
+        total_latency = metrics.total_latency or 0.0
+        total_cost = metrics.total_cost or 0.0
+
+        # Distribute tokens if available
+        total_tokens = metrics.total_tokens
+        total_input = total_tokens.input_tokens if total_tokens else 0
+        total_output = total_tokens.output_tokens if total_tokens else 0
+
+        for i, step in enumerate(steps):
+            weight = weights[i]
+
+            # Update step metrics with distributed values
+            step_latency = total_latency * weight
+            step_cost = total_cost * weight
+
+            # Create token usage for this step if we have totals
+            step_tokens = None
+            if total_input > 0 or total_output > 0:
+                step_tokens = TokenUsage(
+                    input_tokens=int(total_input * weight),
+                    output_tokens=int(total_output * weight),
+                )
+
+            # Replace step metrics with distributed values
+            step.metrics = StepMetrics(
+                latency=step_latency,
+                cost=step_cost,
+                tokens=step_tokens,
+            )
 
     async def health_check(self) -> bool:
         """Check if CrewAI endpoint is reachable."""
