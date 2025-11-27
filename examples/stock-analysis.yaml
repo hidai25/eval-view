@@ -28,4 +28,4 @@ expected:
 thresholds:
   min_score: 85
   max_cost: 1.00
-  max_latency: 10000
+  max_latency: 120000  # 120 seconds - stock analysis involves multiple API calls

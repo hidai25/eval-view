@@ -8,8 +8,8 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 
 from evalview.core.types import (
-    TestCase,
-    TestInput,
+    TestCase as TestCaseModel,
+    TestInput as TestInputModel,
     ExpectedBehavior,
     ExpectedOutput,
     Thresholds,
@@ -27,12 +27,12 @@ from evalview.core.types import (
 
 
 @pytest.fixture
-def sample_test_case() -> TestCase:
+def sample_test_case() -> TestCaseModel:
     """Create a sample test case for testing."""
-    return TestCase(
+    return TestCaseModel(
         name="test_search",
         description="Test search functionality",
-        input=TestInput(
+        input=TestInputModel(
             query="What is the capital of France?",
             context={"language": "en"},
         ),
@@ -102,11 +102,11 @@ def sample_execution_trace() -> ExecutionTrace:
 
 
 @pytest.fixture
-def minimal_test_case() -> TestCase:
+def minimal_test_case() -> TestCaseModel:
     """Create a minimal test case with no optional fields."""
-    return TestCase(
+    return TestCaseModel(
         name="minimal_test",
-        input=TestInput(query="test query"),
+        input=TestInputModel(query="test query"),
         expected=ExpectedBehavior(),
         thresholds=Thresholds(min_score=0.0),
     )

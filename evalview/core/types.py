@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 class TestInput(BaseModel):
     """Input for a test case."""
 
+    __test__ = False  # Tell pytest this is not a test class
+
     query: str
     context: Optional[Dict[str, Any]] = None
 
@@ -94,6 +96,8 @@ class ChecksConfig(BaseModel):
 
 class TestCase(BaseModel):
     """Test case definition (loaded from YAML)."""
+
+    __test__ = False  # Tell pytest this is not a test class
 
     name: str
     description: Optional[str] = None

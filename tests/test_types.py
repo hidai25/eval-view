@@ -5,8 +5,8 @@ from datetime import datetime
 from pydantic import ValidationError
 
 from evalview.core.types import (
-    TestCase,
-    TestInput,
+    TestCase as TestCaseModel,
+    TestInput as TestInputModel,
     ExpectedBehavior,
     ExpectedOutput,
     Thresholds,
@@ -39,20 +39,20 @@ class TestTestInput:
 
     def test_valid_input(self):
         """Test creating a valid TestInput."""
-        test_input = TestInput(query="test query", context={"key": "value"})
+        test_input = TestInputModel(query="test query", context={"key": "value"})
         assert test_input.query == "test query"
         assert test_input.context == {"key": "value"}
 
     def test_input_without_context(self):
         """Test TestInput with no context (optional field)."""
-        test_input = TestInput(query="test query")
+        test_input = TestInputModel(query="test query")
         assert test_input.query == "test query"
         assert test_input.context is None
 
     def test_input_missing_query(self):
         """Test that query is required."""
         with pytest.raises(ValidationError) as exc_info:
-            TestInput()
+            TestInputModel()
         assert "query" in str(exc_info.value)
 
 
@@ -178,9 +178,9 @@ class TestTestCase:
 
     def test_test_case_with_adapter_override(self):
         """Test TestCase with adapter override."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(),
             thresholds=Thresholds(min_score=50.0),
             adapter="langgraph",
@@ -194,7 +194,7 @@ class TestTestCase:
     def test_test_case_missing_required_fields(self):
         """Test that required fields are enforced."""
         with pytest.raises(ValidationError) as exc_info:
-            TestCase(name="test")
+            TestCaseModel(name="test")
         errors_str = str(exc_info.value)
         assert "input" in errors_str or "expected" in errors_str or "thresholds" in errors_str
 

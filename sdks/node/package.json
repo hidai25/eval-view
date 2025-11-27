@@ -3,22 +3,59 @@
   "version": "0.1.0",
   "description": "Drop-in Node.js middleware for EvalView testing framework",
   "main": "dist/index.js",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    },
+    "./middleware": {
+      "types": "./dist/middleware.d.ts",
+      "import": "./dist/middleware.js",
+      "require": "./dist/middleware.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "prepublish": "npm run build"
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build"
   },
   "keywords": [
     "evalview",
     "testing",
     "ai-agents",
-    "middleware"
+    "middleware",
+    "llm",
+    "evaluation"
   ],
   "author": "EvalView",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hidai25/EvalView.git",
+    "directory": "sdks/node"
+  },
+  "bugs": {
+    "url": "https://github.com/hidai25/EvalView/issues"
+  },
+  "homepage": "https://github.com/hidai25/EvalView/tree/main/sdks/node#readme",
+  "engines": {
+    "node": ">=16.0.0"
+  },
   "peerDependencies": {
     "next": ">=13.0.0"
+  },
+  "peerDependenciesMeta": {
+    "next": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

@@ -25,8 +25,9 @@ from evalview.evaluators.evaluator import Evaluator
 from evalview.reporters.json_reporter import JSONReporter
 from evalview.reporters.console_reporter import ConsoleReporter
 
-# Load environment variables from .env.local
-load_dotenv(dotenv_path=".env.local")
+# Load environment variables (.env is the OSS standard, .env.local for overrides)
+load_dotenv()  # Loads .env by default
+load_dotenv(dotenv_path=".env.local", override=True)  # Override with .env.local if exists
 
 console = Console()
 

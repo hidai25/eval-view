@@ -1,7 +1,7 @@
 """Custom adapter for TapeScope streaming API and other streaming agents."""
 
 from datetime import datetime
-from typing import Any, Optional, Dict, Set
+from typing import Any, Optional, Dict, Set, List
 import httpx
 import json
 import logging
@@ -26,6 +26,55 @@ if os.getenv("DEBUG") == "1":
     )
 else:
     logging.basicConfig(level=logging.WARNING)
+
+# Tool name mappings: map agent-specific tool names to standardized names
+# This allows test cases to use generic tool names while agents use their own
+TOOL_NAME_MAPPINGS: Dict[str, List[str]] = {
+    # TapeScope-specific mappings
+    "analyzeStock": ["fetch_stock_data", "analyze_fundamentals", "get_stock_info"],
+    "screenStocks": ["screen_stocks", "stock_screener", "filter_stocks"],
+    "synthesizeOrchestratorResults": ["summarize_results", "aggregate_results", "synthesize"],
+    "getMarketData": ["fetch_market_data", "market_data", "get_market_info"],
+    "getNews": ["fetch_news", "get_news", "news_search"],
+    # Add more mappings as needed for different agents
+}
+
+# Reverse mapping for lookup: standardized name -> agent tool name
+_REVERSE_TOOL_MAPPINGS: Dict[str, str] = {}
+for agent_tool, standard_names in TOOL_NAME_MAPPINGS.items():
+    for standard_name in standard_names:
+        _REVERSE_TOOL_MAPPINGS[standard_name.lower()] = agent_tool
+
+
+def normalize_tool_name(tool_name: str, reverse: bool = False) -> str:
+    """
+    Normalize a tool name for comparison.
+
+    Args:
+        tool_name: The tool name to normalize
+        reverse: If True, map from standardized name to agent-specific name.
+                 If False, return the tool name as-is (for display).
+
+    Returns:
+        Normalized tool name
+    """
+    if reverse:
+        # Map standardized name to agent tool name
+        return _REVERSE_TOOL_MAPPINGS.get(tool_name.lower(), tool_name)
+    return tool_name
+
+
+def get_standardized_tool_names(agent_tool_name: str) -> List[str]:
+    """
+    Get all standardized names that map to an agent-specific tool name.
+
+    Args:
+        agent_tool_name: The agent's tool name (e.g., "analyzeStock")
+
+    Returns:
+        List of standardized names, or [agent_tool_name] if no mapping exists
+    """
+    return TOOL_NAME_MAPPINGS.get(agent_tool_name, [agent_tool_name])
 
 
 class TapeScopeAdapter(AgentAdapter):

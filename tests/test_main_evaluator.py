@@ -6,8 +6,8 @@ from unittest.mock import patch
 
 from evalview.evaluators.evaluator import Evaluator
 from evalview.core.types import (
-    TestCase,
-    TestInput,
+    TestCase as TestCaseModel,
+    TestInput as TestInputModel,
     ExpectedBehavior,
     Thresholds,
     ExecutionTrace,
@@ -105,9 +105,9 @@ class TestEvaluator:
             latency=LatencyEvaluation(total_latency=0.0, threshold=1000.0, passed=True),
         )
 
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(),
             thresholds=Thresholds(min_score=50.0),
         )
@@ -139,9 +139,9 @@ class TestEvaluator:
             latency=LatencyEvaluation(total_latency=0.0, threshold=1000.0, passed=True),
         )
 
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(),
             thresholds=Thresholds(min_score=50.0),
         )
@@ -174,9 +174,9 @@ class TestEvaluator:
             latency=LatencyEvaluation(total_latency=0.0, threshold=1000.0, passed=True),
         )
 
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(),
             thresholds=Thresholds(min_score=0.0),
         )
@@ -208,9 +208,9 @@ class TestEvaluator:
         )
 
         # Test case with min_score = 70
-        test_case_high_threshold = TestCase(
+        test_case_high_threshold = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(),
             thresholds=Thresholds(min_score=70.0),
         )
@@ -221,9 +221,9 @@ class TestEvaluator:
         assert passed is False
 
         # Test case with min_score = 50
-        test_case_low_threshold = TestCase(
+        test_case_low_threshold = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(),
             thresholds=Thresholds(min_score=50.0),
         )
@@ -254,9 +254,9 @@ class TestEvaluator:
             latency=LatencyEvaluation(total_latency=1000.0, threshold=5000.0, passed=True),
         )
 
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(),
             thresholds=Thresholds(min_score=50.0),
         )
@@ -289,9 +289,9 @@ class TestEvaluator:
             latency=LatencyEvaluation(total_latency=10000.0, threshold=5000.0, passed=False),
         )
 
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(),
             thresholds=Thresholds(min_score=50.0),
         )
@@ -323,9 +323,9 @@ class TestEvaluator:
             latency=LatencyEvaluation(total_latency=1000.0, threshold=5000.0, passed=True),
         )
 
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(),
             thresholds=Thresholds(min_score=50.0),
         )
@@ -357,9 +357,9 @@ class TestEvaluator:
             latency=LatencyEvaluation(total_latency=10000.0, threshold=5000.0, passed=False),
         )
 
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(),
             thresholds=Thresholds(min_score=50.0),
         )
@@ -382,9 +382,9 @@ class TestEvaluator:
         evaluator.hallucination_evaluator.client = mock_openai_client
         evaluator.safety_evaluator.client = mock_openai_client
 
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(tools=["tool1"]),
             thresholds=Thresholds(min_score=55.0),  # Exact threshold
         )
@@ -430,9 +430,9 @@ class TestEvaluator:
         evaluator.hallucination_evaluator.client = mock_openai_client
         evaluator.safety_evaluator.client = mock_openai_client
 
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(tools=["tool1", "tool2", "tool3"]),
             thresholds=Thresholds(min_score=0.0),
         )
@@ -475,9 +475,9 @@ class TestEvaluator:
         evaluator.hallucination_evaluator.client = mock_openai_client
         evaluator.safety_evaluator.client = mock_openai_client
 
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(),
             thresholds=Thresholds(min_score=0.0, max_cost=None, max_latency=None),
         )
@@ -544,9 +544,9 @@ class TestEvaluator:
             latency=LatencyEvaluation(total_latency=0.0, threshold=1000.0, passed=True),
         )
 
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(),
             thresholds=Thresholds(min_score=50.0),
         )
@@ -579,9 +579,9 @@ class TestEvaluator:
             latency=LatencyEvaluation(total_latency=0.0, threshold=1000.0, passed=True),
         )
 
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(),
             thresholds=Thresholds(min_score=50.0),
         )

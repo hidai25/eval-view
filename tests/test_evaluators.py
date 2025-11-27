@@ -10,8 +10,8 @@ from evalview.evaluators.output_evaluator import OutputEvaluator
 from evalview.evaluators.cost_evaluator import CostEvaluator
 from evalview.evaluators.latency_evaluator import LatencyEvaluator
 from evalview.core.types import (
-    TestCase,
-    TestInput,
+    TestCase as TestCaseModel,
+    TestInput as TestInputModel,
     ExpectedBehavior,
     ExpectedOutput,
     Thresholds,
@@ -42,9 +42,9 @@ class TestToolCallEvaluator:
 
     def test_missing_tools(self):
         """Test accuracy when some expected tools are missing."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(tools=["search", "summarize", "validate"]),
             thresholds=Thresholds(min_score=50.0),
         )
@@ -87,9 +87,9 @@ class TestToolCallEvaluator:
 
     def test_unexpected_tools(self):
         """Test that unexpected tools are detected."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(tools=["search"]),
             thresholds=Thresholds(min_score=50.0),
         )
@@ -132,9 +132,9 @@ class TestToolCallEvaluator:
 
     def test_no_expected_tools(self):
         """Test accuracy when no tools are expected."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(tools=[]),
             thresholds=Thresholds(min_score=50.0),
         )
@@ -158,9 +158,9 @@ class TestToolCallEvaluator:
 
     def test_no_expected_tools_but_tools_called(self):
         """Test when no tools expected but agent calls tools anyway."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(tools=[]),
             thresholds=Thresholds(min_score=50.0),
         )
@@ -194,9 +194,9 @@ class TestToolCallEvaluator:
 
     def test_duplicate_tool_calls(self):
         """Test handling of duplicate tool calls."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(tools=["search"]),
             thresholds=Thresholds(min_score=50.0),
         )
@@ -241,9 +241,9 @@ class TestToolCallEvaluator:
 
     def test_none_expected_tools(self):
         """Test when expected.tools is None (not specified)."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(tools=None),
             thresholds=Thresholds(min_score=50.0),
         )
@@ -297,9 +297,9 @@ class TestSequenceEvaluator:
 
     def test_incorrect_sequence_order(self):
         """Test evaluation with incorrect tool order."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(tool_sequence=["search", "summarize"]),
             thresholds=Thresholds(min_score=50.0),
         )
@@ -344,9 +344,9 @@ class TestSequenceEvaluator:
 
     def test_length_mismatch(self):
         """Test evaluation when sequence lengths don't match."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(tool_sequence=["search", "summarize", "validate"]),
             thresholds=Thresholds(min_score=50.0),
         )
@@ -380,9 +380,9 @@ class TestSequenceEvaluator:
 
     def test_no_expected_sequence(self):
         """Test when no sequence is expected (None)."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(tool_sequence=None),
             thresholds=Thresholds(min_score=50.0),
         )
@@ -416,9 +416,9 @@ class TestSequenceEvaluator:
 
     def test_empty_expected_sequence(self):
         """Test when expected sequence is empty list."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(tool_sequence=[]),
             thresholds=Thresholds(min_score=50.0),
         )
@@ -452,9 +452,9 @@ class TestOutputEvaluator:
     @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
     async def test_contains_checks_all_pass(self, mock_openai_class, mock_openai_client):
         """Test contains checks when all strings are present."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="What is the capital of France?"),
+            input=TestInputModel(query="What is the capital of France?"),
             expected=ExpectedBehavior(
                 output=ExpectedOutput(contains=["Paris", "France", "capital"])
             ),
@@ -483,9 +483,9 @@ class TestOutputEvaluator:
     @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
     async def test_contains_checks_case_insensitive(self, mock_openai_class, mock_openai_client):
         """Test that contains checks are case-insensitive."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(output=ExpectedOutput(contains=["PARIS", "france"])),
             thresholds=Thresholds(min_score=50.0),
         )
@@ -512,9 +512,9 @@ class TestOutputEvaluator:
     @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
     async def test_contains_checks_some_fail(self, mock_openai_class, mock_openai_client):
         """Test contains checks when some strings are missing."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(
                 output=ExpectedOutput(contains=["Paris", "London", "Berlin"])
             ),
@@ -542,9 +542,9 @@ class TestOutputEvaluator:
     @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
     async def test_not_contains_checks_all_pass(self, mock_openai_class, mock_openai_client):
         """Test not_contains checks when prohibited strings are absent."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(
                 output=ExpectedOutput(not_contains=["error", "failed", "unknown"])
             ),
@@ -572,9 +572,9 @@ class TestOutputEvaluator:
     @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
     async def test_not_contains_checks_some_fail(self, mock_openai_class, mock_openai_client):
         """Test not_contains checks when some prohibited strings are present."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(output=ExpectedOutput(not_contains=["error", "Paris"])),
             thresholds=Thresholds(min_score=50.0),
         )
@@ -600,9 +600,9 @@ class TestOutputEvaluator:
     @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
     async def test_no_string_checks(self, mock_openai_class, mock_openai_client):
         """Test when no contains/not_contains are specified."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(output=ExpectedOutput()),
             thresholds=Thresholds(min_score=50.0),
         )
@@ -630,9 +630,9 @@ class TestOutputEvaluator:
     @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
     async def test_llm_as_judge_integration(self, mock_openai_class, mock_openai_client):
         """Test LLM-as-judge integration."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="What is 2+2?"),
+            input=TestInputModel(query="What is 2+2?"),
             expected=ExpectedBehavior(),
             thresholds=Thresholds(min_score=50.0),
         )
@@ -659,9 +659,9 @@ class TestOutputEvaluator:
     @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
     async def test_empty_output(self, mock_openai_class, mock_openai_client):
         """Test evaluation with empty output."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(output=ExpectedOutput(contains=["something"])),
             thresholds=Thresholds(min_score=50.0),
         )
@@ -703,9 +703,9 @@ class TestCostEvaluator:
 
     def test_cost_exceeds_threshold(self):
         """Test evaluation when cost exceeds threshold."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(),
             thresholds=Thresholds(min_score=50.0, max_cost=0.05),
         )
@@ -738,9 +738,9 @@ class TestCostEvaluator:
 
     def test_no_cost_threshold(self):
         """Test when no cost threshold is specified (should always pass)."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(),
             thresholds=Thresholds(min_score=50.0, max_cost=None),
         )
@@ -772,9 +772,9 @@ class TestCostEvaluator:
 
     def test_cost_breakdown(self, sample_execution_trace):
         """Test that cost breakdown includes all steps."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(),
             thresholds=Thresholds(min_score=50.0, max_cost=1.0),
         )
@@ -790,9 +790,9 @@ class TestCostEvaluator:
 
     def test_zero_cost(self):
         """Test evaluation with zero cost."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(),
             thresholds=Thresholds(min_score=50.0, max_cost=0.10),
         )
@@ -838,9 +838,9 @@ class TestLatencyEvaluator:
 
     def test_latency_exceeds_threshold(self):
         """Test evaluation when latency exceeds threshold."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(),
             thresholds=Thresholds(min_score=50.0, max_latency=1000.0),
         )
@@ -873,9 +873,9 @@ class TestLatencyEvaluator:
 
     def test_no_latency_threshold(self):
         """Test when no latency threshold is specified (should always pass)."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(),
             thresholds=Thresholds(min_score=50.0, max_latency=None),
         )
@@ -907,9 +907,9 @@ class TestLatencyEvaluator:
 
     def test_latency_breakdown(self, sample_execution_trace):
         """Test that latency breakdown includes all steps."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(),
             thresholds=Thresholds(min_score=50.0, max_latency=10000.0),
         )
@@ -925,9 +925,9 @@ class TestLatencyEvaluator:
 
     def test_exact_threshold_match(self):
         """Test when latency exactly matches threshold (should pass)."""
-        test_case = TestCase(
+        test_case = TestCaseModel(
             name="test",
-            input=TestInput(query="test"),
+            input=TestInputModel(query="test"),
             expected=ExpectedBehavior(),
             thresholds=Thresholds(min_score=50.0, max_latency=1000.0),
         )

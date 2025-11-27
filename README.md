@@ -157,12 +157,19 @@ endpoint: http://localhost:3000/api/agent  # Your agent URL
 timeout: 30.0
 ```
 
-### Step 4: Run
+### Step 4: Configure Environment
 
 ```bash
-# Set OpenAI API key for LLM-as-judge
-export OPENAI_API_KEY=your-key
+# Copy the example environment file
+cp .env.example .env
 
+# Edit .env and add your OpenAI API key
+# Get yours at: https://platform.openai.com/api-keys
+```
+
+### Step 5: Run
+
+```bash
 # Run tests
 evalview run
 ```

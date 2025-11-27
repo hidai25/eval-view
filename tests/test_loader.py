@@ -5,7 +5,7 @@ from pydantic import ValidationError
 import yaml
 
 from evalview.core.loader import TestCaseLoader
-from evalview.core.types import TestCase
+from evalview.core.types import TestCase as TestCaseModel
 
 
 class TestTestCaseLoaderFromFile:
@@ -15,7 +15,7 @@ class TestTestCaseLoaderFromFile:
         """Test loading a valid YAML test case file."""
         test_case = TestCaseLoader.load_from_file(temp_yaml_file)
 
-        assert isinstance(test_case, TestCase)
+        assert isinstance(test_case, TestCaseModel)
         assert test_case.name == "test_search"
         assert test_case.description == "Test search functionality"
         assert test_case.input.query == "What is the capital of France?"
@@ -31,13 +31,13 @@ class TestTestCaseLoaderFromFile:
     def test_load_with_string_path(self, temp_yaml_file):
         """Test loading with string path instead of Path object."""
         test_case = TestCaseLoader.load_from_file(str(temp_yaml_file))
-        assert isinstance(test_case, TestCase)
+        assert isinstance(test_case, TestCaseModel)
         assert test_case.name == "test_search"
 
     def test_load_with_path_object(self, temp_yaml_file):
         """Test loading with Path object."""
         test_case = TestCaseLoader.load_from_file(temp_yaml_file)
-        assert isinstance(test_case, TestCase)
+        assert isinstance(test_case, TestCaseModel)
         assert test_case.name == "test_search"
 
     def test_load_invalid_yaml_syntax(self, temp_invalid_yaml_file):
