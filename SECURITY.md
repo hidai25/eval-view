@@ -19,7 +19,7 @@ We take the security of EvalView seriously. If you believe you have found a secu
 Instead, please report them via one of the following methods:
 
 1. **GitHub Security Advisories** (Recommended): Use the [Security Advisory](https://github.com/hidai25/EvalView/security/advisories/new) feature
-2. **Email**: Send an email to hidai@evalview.com
+2. **Email**: Send an email to security@evalview.com
 
 ### What to Include
 
