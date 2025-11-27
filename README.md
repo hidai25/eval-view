@@ -14,7 +14,18 @@
 [![PyPI downloads](https://img.shields.io/pypi/dm/evalview.svg)](https://pypi.org/project/evalview/)
 -->
 
-**Playwright-style testing for AI agents.** Catch hallucinations, regressions, and cost spikes before they reach production.
+**pytest for AI agents.** Catch hallucinations, regressions, and cost spikes before they reach production.
+
+> 🔓 **100% Open Source** · Runs locally · Works with any agent framework · No SaaS required
+
+---
+
+## Why EvalView?
+
+- **🔓 Fully Open Source** – No SaaS, no vendor lock-in, runs entirely on your machine
+- **🔌 Framework Agnostic** – Works with LangGraph, CrewAI, OpenAI, or any HTTP API
+- **🚀 Production Ready** – Parallel execution, CI/CD integration, security built-in
+- **🧩 Extensible** – Plug in custom adapters and evaluators
 
 ---
 
