@@ -766,12 +766,31 @@ async def _run_async(
         tracker = RegressionTracker()
 
     # Load test cases
-    test_cases_dir = Path("tests/test-cases")
-    if not test_cases_dir.exists():
-        console.print("[red]❌ Test cases directory not found: tests/test-cases[/red]")
-        return
-
-    test_cases = TestCaseLoader.load_from_directory(test_cases_dir, pattern)
+    # Check if pattern is a direct file path
+    pattern_path = Path(pattern)
+    if pattern_path.exists() and pattern_path.is_file():
+        # Load single file directly
+        try:
+            test_cases = [TestCaseLoader.load_from_file(pattern_path)]
+            if verbose:
+                console.print(f"[dim]📄 Loading test case from: {pattern}[/dim]\n")
+        except Exception as e:
+            console.print(f"[red]❌ Failed to load test case: {e}[/red]")
+            return
+    elif pattern_path.exists() and pattern_path.is_dir():
+        # Load from specified directory
+        test_cases = TestCaseLoader.load_from_directory(pattern_path, "*.yaml")
+        if verbose:
+            console.print(f"[dim]📁 Loading test cases from: {pattern}[/dim]\n")
+    else:
+        # Default: look in tests/test-cases/
+        test_cases_dir = Path("tests/test-cases")
+        if not test_cases_dir.exists():
+            console.print("[red]❌ Test cases directory not found: tests/test-cases[/red]")
+            console.print("[dim]Tip: You can also specify a file path directly:[/dim]")
+            console.print("[dim]  evalview run --pattern path/to/test-case.yaml[/dim]")
+            return
+        test_cases = TestCaseLoader.load_from_directory(test_cases_dir, pattern)
 
     if not test_cases:
         console.print(f"[yellow]⚠️  No test cases found matching pattern: {pattern}[/yellow]\n")
@@ -933,7 +952,8 @@ async def _run_async(
     def get_adapter_for_test(test_case):
         """Get adapter for test case - use test-specific if specified, otherwise global."""
         # If test specifies its own adapter, create it
-        if test_case.adapter and test_case.endpoint:
+        # Note: openai-assistants doesn't need an endpoint (uses SDK directly)
+        if test_case.adapter and (test_case.endpoint or test_case.adapter == "openai-assistants"):
             test_adapter_type = test_case.adapter
             test_endpoint = test_case.endpoint
             test_config = test_case.adapter_config or {}
@@ -969,7 +989,7 @@ async def _run_async(
             elif test_adapter_type == "openai-assistants":
                 return OpenAIAssistantsAdapter(
                     assistant_id=test_config.get("assistant_id"),
-                    api_key=test_config.get("api_key"),
+                    timeout=test_config.get("timeout", 120.0),
                     verbose=verbose,
                     model_config=model_config,
                 )
@@ -1316,11 +1336,16 @@ async def _run_async(
         console.print("[dim]   View trends: evalview trends[/dim]")
         console.print("[dim]   Set baseline: evalview baseline set[/dim]\n")
 
+    # Tip about HTML report (only if not already generated)
+    if not watch and not html_report:
+        console.print("[dim]💡 Tip: Generate an interactive HTML report:[/dim]")
+        console.print("[dim]   evalview run --html-report report.html[/dim]\n")
+
     # GitHub star CTA (only show when not in watch mode)
     if not watch:
         console.print("[dim]━" * 50 + "[/dim]")
         console.print("[dim]⭐ Enjoying EvalView? Star us on GitHub:[/dim]")
-        console.print("[dim]   [link=https://github.com/yourorg/evalview]https://github.com/yourorg/evalview[/link][/dim]\n")
+        console.print("[dim]   [link=https://github.com/hidai25/EvalView]https://github.com/hidai25/EvalView[/link][/dim]\n")
 
     # Watch mode: re-run tests on file changes
     if watch:

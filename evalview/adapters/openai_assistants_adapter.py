@@ -5,6 +5,7 @@ Supports testing OpenAI Assistants with proper step tracking.
 
 import asyncio
 import json
+import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 import logging
@@ -53,10 +54,14 @@ class OpenAIAssistantsAdapter(AgentAdapter):
             raise ImportError("OpenAI package required. Install with: pip install openai")
 
         context = context or {}
-        assistant_id = context.get("assistant_id", self.assistant_id)
+        # Check context, then adapter config, then environment variable
+        assistant_id = context.get("assistant_id") or self.assistant_id or os.getenv("OPENAI_ASSISTANT_ID")
 
         if not assistant_id:
-            raise ValueError("assistant_id required in context or adapter initialization")
+            raise ValueError(
+                "assistant_id required. Set OPENAI_ASSISTANT_ID env var, "
+                "add to config, or include in test case context"
+            )
 
         start_time = datetime.now()
 

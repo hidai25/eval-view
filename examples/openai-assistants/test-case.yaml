@@ -1,30 +1,32 @@
 # EvalView Test Case: OpenAI Assistants
 # Tests an OpenAI Assistants API agent
+#
+# Required environment variables:
+#   OPENAI_API_KEY - Your OpenAI API key
+#   OPENAI_ASSISTANT_ID - Your assistant ID (run: python examples/openai-assistants/create_assistant.py)
 
 name: "OpenAI Assistant Analysis"
 description: "Test OpenAI Assistant's ability to analyze and respond"
 
-adapter: openai_assistants
-endpoint: https://api.openai.com/v1
-# Set OPENAI_API_KEY and OPENAI_ASSISTANT_ID in environment
+adapter: openai-assistants
+# No endpoint needed - uses OpenAI SDK directly
 
 input:
-  query: "Analyze the pros and cons of microservices vs monolithic architecture"
+  query: "Calculate the monthly payment for a $500,000 mortgage at 6.5% interest rate over 30 years. Show your work."
   context:
-    detail_level: "comprehensive"
+    require_calculation: true
 
 expected:
   tools:
-    - code_interpreter
+    - code_interpreter  # Agent SHOULD use code to calculate this
   output:
     contains:
-      - "microservices"
-      - "monolithic"
-      - "scalability"
+      - "monthly"
+      - "payment"
     not_contains:
       - "error"
 
 thresholds:
   min_score: 80
-  max_cost: 0.30
-  max_latency: 20000
+  max_cost: 0.50
+  max_latency: 60000  # 60s - OpenAI Assistants can be slow
