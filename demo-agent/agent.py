@@ -41,11 +41,25 @@ class ExecuteResponse(BaseModel):
     tool_calls: List[ToolCall]
     cost: float
     latency: float
+    tokens: Optional[Dict[str, int]] = None  # Token usage for EvalView
 
 
 def calculator(operation: str, a: float, b: float) -> float:
+    """Perform basic math operations."""
     ops = {"add": a + b, "subtract": a - b, "multiply": a * b, "divide": a / b if b != 0 else 0}
     return ops.get(operation, 0)
+
+
+def get_weather(city: str) -> Dict[str, Any]:
+    """Get weather for a city (mock data)."""
+    weather_db = {
+        "tokyo": {"temp": 22, "condition": "cloudy", "humidity": 70},
+        "london": {"temp": 12, "condition": "rainy", "humidity": 85},
+        "new york": {"temp": 18, "condition": "sunny", "humidity": 60},
+        "paris": {"temp": 15, "condition": "partly cloudy", "humidity": 72},
+        "sydney": {"temp": 25, "condition": "sunny", "humidity": 55},
+    }
+    return weather_db.get(city.lower(), {"temp": 20, "condition": "partly cloudy", "humidity": 65})
 
 
 def simple_agent(query: str) -> tuple:
@@ -92,6 +106,82 @@ def simple_agent(query: str) -> tuple:
             total_cost += step_cost
             return f"The result of {a} * {b} = {result}", tool_calls, total_cost
 
+    # Weather + Fahrenheit conversion (multi-tool)
+    elif "weather" in query_lower and "fahrenheit" in query_lower:
+        # Extract city name
+        city = "tokyo"  # default
+        for c in ["tokyo", "london", "new york", "paris", "sydney"]:
+            if c in query_lower:
+                city = c
+                break
+
+        # Step 1: Get weather
+        start = time.time()
+        weather = get_weather(city)
+        temp_c = weather["temp"]
+        latency = (time.time() - start) * 1000
+        step_cost = 0.001
+        tool_calls.append(ToolCall(
+            name="get_weather",
+            arguments={"city": city},
+            result=weather,
+            latency=latency,
+            cost=step_cost
+        ))
+        total_cost += step_cost
+
+        # Step 2: Convert C to F using calculator (F = C * 1.8 + 32)
+        start = time.time()
+        temp_f = calculator("multiply", temp_c, 1.8)
+        latency = (time.time() - start) * 1000
+        step_cost = 0.001
+        tool_calls.append(ToolCall(
+            name="calculator",
+            arguments={"operation": "multiply", "a": temp_c, "b": 1.8},
+            result=temp_f,
+            latency=latency,
+            cost=step_cost
+        ))
+        total_cost += step_cost
+
+        start = time.time()
+        temp_f = calculator("add", temp_f, 32)
+        latency = (time.time() - start) * 1000
+        step_cost = 0.001
+        tool_calls.append(ToolCall(
+            name="calculator",
+            arguments={"operation": "add", "a": temp_f - 32, "b": 32},
+            result=temp_f,
+            latency=latency,
+            cost=step_cost
+        ))
+        total_cost += step_cost
+
+        return f"The weather in {city.title()} is {temp_c}°C ({temp_f:.1f}°F), {weather['condition']}", tool_calls, total_cost
+
+    # Simple weather query
+    elif "weather" in query_lower:
+        # Extract city name
+        city = "tokyo"  # default
+        for c in ["tokyo", "london", "new york", "paris", "sydney"]:
+            if c in query_lower:
+                city = c
+                break
+
+        start = time.time()
+        weather = get_weather(city)
+        latency = (time.time() - start) * 1000
+        step_cost = 0.001
+        tool_calls.append(ToolCall(
+            name="get_weather",
+            arguments={"city": city},
+            result=weather,
+            latency=latency,
+            cost=step_cost
+        ))
+        total_cost += step_cost
+        return f"The weather in {city.title()} is {weather['temp']}°C, {weather['condition']} with {weather['humidity']}% humidity", tool_calls, total_cost
+
     return f"I received your query: {query}", tool_calls, total_cost
 
 
@@ -127,7 +217,10 @@ async def execute(request: ExecuteRequest):
             for t in tools
         ]
 
-    return ExecuteResponse(output=output, tool_calls=tools, cost=cost, latency=total_latency)
+    # Mock token usage (realistic for a simple agent)
+    tokens = {"input": 50 + len(query), "output": 80 + len(output), "cached": 0}
+
+    return ExecuteResponse(output=output, tool_calls=tools, cost=cost, latency=total_latency, tokens=tokens)
 
 
 @app.get("/health")

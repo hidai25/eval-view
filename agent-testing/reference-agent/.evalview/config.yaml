@@ -1,4 +1,0 @@
-adapter: http
-endpoint: "http://localhost:8000/execute"
-headers:
-  Content-Type: "application/json"

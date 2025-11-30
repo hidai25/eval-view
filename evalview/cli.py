@@ -392,14 +392,13 @@ def quickstart():
     else:
         console.print("[bold]Step 1/4:[/bold] Demo agent already exists\n")
 
-    # Step 2: Create test case if it doesn't exist
+    # Step 2: Create test cases if they don't exist
     test_dir = base_path / "tests" / "test-cases"
     test_dir.mkdir(parents=True, exist_ok=True)
-    test_file = test_dir / "quickstart.yaml"
-    if not test_file.exists():
-        console.print("[bold]Step 2/4:[/bold] Creating test case...")
-        test_content = """name: "Quickstart Test"
-description: "Simple calculator test for quickstart demo"
+
+    test_files = [
+        ("01-calculator.yaml", """name: "Calculator Test"
+description: "Simple calculator test - tests basic tool calling"
 
 input:
   query: "What is 5 plus 7?"
@@ -415,11 +414,64 @@ thresholds:
   min_score: 70
   max_cost: 0.10
   max_latency: 5000
-"""
-        test_file.write_text(test_content)
-        console.print("[green]✅ Test case created[/green]\n")
+"""),
+        ("02-weather.yaml", """name: "Weather Test"
+description: "Weather query test - tests single tool with structured output"
+
+input:
+  query: "What's the weather in Tokyo?"
+
+expected:
+  tools:
+    - get_weather
+  output:
+    contains:
+      - "Tokyo"
+      - "22"
+
+thresholds:
+  min_score: 70
+  max_cost: 0.10
+  max_latency: 5000
+"""),
+        ("03-multi-tool.yaml", """name: "Multi-Tool Test"
+description: "Multi-tool sequence test - tests weather lookup + temperature conversion"
+
+input:
+  query: "What's the weather in London in Fahrenheit?"
+
+expected:
+  tools:
+    - get_weather
+    - calculator
+  tool_sequence:
+    - get_weather
+    - calculator
+  output:
+    contains:
+      - "London"
+      - "F"
+
+thresholds:
+  min_score: 70
+  max_cost: 0.10
+  max_latency: 5000
+"""),
+    ]
+
+    created_tests = False
+    for filename, content in test_files:
+        test_file = test_dir / filename
+        if not test_file.exists():
+            if not created_tests:
+                console.print("[bold]Step 2/4:[/bold] Creating test cases...")
+                created_tests = True
+            test_file.write_text(content)
+
+    if created_tests:
+        console.print(f"[green]✅ {len(test_files)} test cases created[/green]\n")
     else:
-        console.print("[bold]Step 2/4:[/bold] Test case already exists\n")
+        console.print("[bold]Step 2/4:[/bold] Test cases already exist\n")
 
     # Step 3: Create config for demo agent
     config_dir = base_path / ".evalview"
@@ -499,16 +551,16 @@ model:
 
     console.print("[green]✅ Demo agent running[/green]\n")
 
-    # Run the test
-    console.print("[bold]Running test...[/bold]\n")
+    # Run all tests
+    console.print("[bold]Running tests...[/bold]\n")
     try:
-        # Import and run the test programmatically
+        # Import and run the tests programmatically
         from evalview.core.loader import TestCaseLoader
         from evalview.adapters.http_adapter import HTTPAdapter
         from evalview.evaluators.evaluator import Evaluator
-        from evalview.reporters.console_reporter import ConsoleReporter
 
-        test_cases = [TestCaseLoader.load_from_file(test_file)]
+        # Load all test cases
+        test_cases = TestCaseLoader.load_from_directory(test_dir)
         adapter = HTTPAdapter(
             endpoint="http://localhost:8000/execute",
             headers={},
@@ -516,25 +568,41 @@ model:
             allow_private_urls=True,  # Allow localhost for demo
         )
         evaluator = Evaluator(openai_api_key=os.getenv("OPENAI_API_KEY"))
+
+        async def run_all_tests():
+            results = []
+            for test_case in sorted(test_cases, key=lambda t: t.name):
+                trace = await adapter.execute(test_case.input.query, test_case.input.context)
+                result = await evaluator.evaluate(test_case, trace)
+                result.adapter_name = adapter.name  # Set adapter name for display
+                results.append(result)
+            return results
+
+        results = asyncio.run(run_all_tests())
+
+        # Use ConsoleReporter for proper table display
+        from evalview.reporters.console_reporter import ConsoleReporter
         reporter = ConsoleReporter()
+        reporter.print_summary(results)
 
-        async def run_test():
-            test_case = test_cases[0]
-            trace = await adapter.execute(test_case.input.query, test_case.input.context)
-            result = await evaluator.evaluate(test_case, trace)
-            return result
+        passed = sum(1 for r in results if r.passed)
+        if passed == len(results):
+            console.print("\n[green bold]🎉 All tests passed! Quickstart complete![/green bold]")
+        else:
+            console.print("\n[yellow]Some tests failed. Check the output above for details.[/yellow]")
 
-        result = asyncio.run(run_test())
-        reporter.print_detailed(result)
+        console.print("\n[dim]Note: Cost/tokens shown are mock data from the demo agent.[/dim]")
+        console.print("[dim]Your real agent will report actual LLM usage.[/dim]")
 
-        console.print("\n[green bold]🎉 Quickstart complete![/green bold]")
         console.print("\n[bold]Next steps:[/bold]")
-        console.print("  • Edit tests/test-cases/quickstart.yaml to add more tests")
-        console.print("  • Run [cyan]evalview run[/cyan] to run all tests")
+        console.print("  • Explore test cases in tests/test-cases/")
+        console.print("  • Run [cyan]evalview run[/cyan] for detailed results")
         console.print("  • Replace the demo agent with your own agent\n")
 
     except Exception as e:
-        console.print(f"[red]❌ Test failed: {e}[/red]")
+        console.print(f"[red]❌ Tests failed: {e}[/red]")
+        import traceback
+        traceback.print_exc()
     finally:
         cleanup()
 
@@ -546,6 +614,7 @@ def _create_demo_agent(base_path: Path):
 
     demo_agent_content = '''"""
 EvalView Demo Agent - A simple FastAPI agent for testing.
+Supports calculator and weather tools with multi-tool sequences.
 """
 
 from fastapi import FastAPI, HTTPException
@@ -564,9 +633,6 @@ class Message(BaseModel):
 
 
 class ExecuteRequest(BaseModel):
-    # Support both formats:
-    # 1. EvalView HTTPAdapter format: {"query": "...", "context": {...}}
-    # 2. OpenAI-style format: {"messages": [...]}
     query: Optional[str] = None
     context: Optional[Dict[str, Any]] = None
     messages: Optional[List[Message]] = None
@@ -577,6 +643,8 @@ class ToolCall(BaseModel):
     name: str
     arguments: Dict[str, Any]
     result: Any
+    latency: float = 0.0
+    cost: float = 0.0
 
 
 class ExecuteResponse(BaseModel):
@@ -584,6 +652,7 @@ class ExecuteResponse(BaseModel):
     tool_calls: List[ToolCall]
     cost: float
     latency: float
+    tokens: Optional[Dict[str, int]] = None
 
 
 def calculator(operation: str, a: float, b: float) -> float:
@@ -591,43 +660,81 @@ def calculator(operation: str, a: float, b: float) -> float:
     return ops.get(operation, 0)
 
 
+def get_weather(city: str) -> Dict[str, Any]:
+    weather_db = {
+        "tokyo": {"temp": 22, "condition": "cloudy", "humidity": 70},
+        "london": {"temp": 12, "condition": "rainy", "humidity": 85},
+        "new york": {"temp": 18, "condition": "sunny", "humidity": 60},
+        "paris": {"temp": 15, "condition": "partly cloudy", "humidity": 72},
+        "sydney": {"temp": 25, "condition": "sunny", "humidity": 55},
+    }
+    return weather_db.get(city.lower(), {"temp": 20, "condition": "partly cloudy", "humidity": 65})
+
+
 def simple_agent(query: str) -> tuple:
     query_lower = query.lower()
     tool_calls = []
-    cost = 0.001
+    total_cost = 0.0
+    time.sleep(0.015)  # Simulate LLM processing
 
+    # Math operations
     if any(op in query_lower for op in ["plus", "add", "+", "sum"]):
         numbers = re.findall(r"\\d+", query)
         if len(numbers) >= 2:
             a, b = float(numbers[0]), float(numbers[1])
             result = calculator("add", a, b)
-            tool_calls.append(ToolCall(name="calculator", arguments={"operation": "add", "a": a, "b": b}, result=result))
-            return f"The result of {a} + {b} = {result}", tool_calls, cost
+            tool_calls.append(ToolCall(name="calculator", arguments={"operation": "add", "a": a, "b": b}, result=result, cost=0.001))
+            return f"The result of {a} + {b} = {result}", tool_calls, 0.001
 
     elif any(op in query_lower for op in ["minus", "subtract", "-"]):
         numbers = re.findall(r"\\d+", query)
         if len(numbers) >= 2:
             a, b = float(numbers[0]), float(numbers[1])
             result = calculator("subtract", a, b)
-            tool_calls.append(ToolCall(name="calculator", arguments={"operation": "subtract", "a": a, "b": b}, result=result))
-            return f"The result of {a} - {b} = {result}", tool_calls, cost
+            tool_calls.append(ToolCall(name="calculator", arguments={"operation": "subtract", "a": a, "b": b}, result=result, cost=0.001))
+            return f"The result of {a} - {b} = {result}", tool_calls, 0.001
 
     elif any(op in query_lower for op in ["times", "multiply", "*"]):
         numbers = re.findall(r"\\d+", query)
         if len(numbers) >= 2:
             a, b = float(numbers[0]), float(numbers[1])
             result = calculator("multiply", a, b)
-            tool_calls.append(ToolCall(name="calculator", arguments={"operation": "multiply", "a": a, "b": b}, result=result))
-            return f"The result of {a} * {b} = {result}", tool_calls, cost
+            tool_calls.append(ToolCall(name="calculator", arguments={"operation": "multiply", "a": a, "b": b}, result=result, cost=0.001))
+            return f"The result of {a} * {b} = {result}", tool_calls, 0.001
 
-    return f"I received your query: {query}", tool_calls, cost
+    # Weather + Fahrenheit conversion (multi-tool)
+    elif "weather" in query_lower and "fahrenheit" in query_lower:
+        city = "tokyo"
+        for c in ["tokyo", "london", "new york", "paris", "sydney"]:
+            if c in query_lower:
+                city = c
+                break
+        weather = get_weather(city)
+        temp_c = weather["temp"]
+        tool_calls.append(ToolCall(name="get_weather", arguments={"city": city}, result=weather, cost=0.001))
+        temp_f = calculator("multiply", temp_c, 1.8)
+        tool_calls.append(ToolCall(name="calculator", arguments={"operation": "multiply", "a": temp_c, "b": 1.8}, result=temp_f, cost=0.001))
+        temp_f = calculator("add", temp_f, 32)
+        tool_calls.append(ToolCall(name="calculator", arguments={"operation": "add", "a": temp_f - 32, "b": 32}, result=temp_f, cost=0.001))
+        return f"The weather in {city.title()} is {temp_c}C ({temp_f:.1f}F), {weather['condition']}", tool_calls, 0.003
+
+    # Simple weather query
+    elif "weather" in query_lower:
+        city = "tokyo"
+        for c in ["tokyo", "london", "new york", "paris", "sydney"]:
+            if c in query_lower:
+                city = c
+                break
+        weather = get_weather(city)
+        tool_calls.append(ToolCall(name="get_weather", arguments={"city": city}, result=weather, cost=0.001))
+        return f"The weather in {city.title()} is {weather['temp']}C, {weather['condition']} with {weather['humidity']}% humidity", tool_calls, 0.001
+
+    return f"I received your query: {query}", tool_calls, 0.0
 
 
 @app.post("/execute", response_model=ExecuteResponse)
 async def execute(request: ExecuteRequest):
     start = time.time()
-
-    # Support both request formats
     if request.query:
         query = request.query
     elif request.messages:
@@ -639,7 +746,12 @@ async def execute(request: ExecuteRequest):
         raise HTTPException(status_code=400, detail="Either query or messages must be provided")
 
     output, tools, cost = simple_agent(query)
-    return ExecuteResponse(output=output, tool_calls=tools, cost=cost, latency=(time.time() - start) * 1000)
+    total_latency = (time.time() - start) * 1000
+    if tools:
+        per_step = total_latency / len(tools)
+        tools = [ToolCall(name=t.name, arguments=t.arguments, result=t.result, latency=per_step, cost=t.cost) for t in tools]
+    tokens = {"input": 50 + len(query), "output": 80 + len(output), "cached": 0}
+    return ExecuteResponse(output=output, tool_calls=tools, cost=cost, latency=total_latency, tokens=tokens)
 
 
 @app.get("/health")
