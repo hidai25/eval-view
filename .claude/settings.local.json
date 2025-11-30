@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(source venv/bin/activate)",
-      "Bash(python -m pytest:*)"
+      "Bash(python -m pytest:*)",
+      "Bash(unset OPENAI_API_KEY)",
+      "Bash(evalview run:*)"
     ],
     "deny": [],
     "ask": []

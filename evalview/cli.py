@@ -1061,6 +1061,18 @@ async def _run_async(
     from evalview.core.retry import RetryConfig, with_retry
     from evalview.core.config import ScoringWeights
 
+    # Validate OPENAI_API_KEY upfront (required for LLM-as-judge evaluation)
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    if not openai_api_key:
+        console.print("\n[red bold]❌ Error: OPENAI_API_KEY is required[/red bold]\n")
+        console.print("EvalView uses LLM-as-judge to evaluate output quality.")
+        console.print("Please set your OpenAI API key:\n")
+        console.print("  [cyan]export OPENAI_API_KEY='your-key-here'[/cyan]")
+        console.print("\nOr add it to your .env file:")
+        console.print("  [cyan]echo 'OPENAI_API_KEY=your-key-here' >> .env[/cyan]\n")
+        console.print("[dim]Get your API key at: https://platform.openai.com/api-keys[/dim]")
+        return
+
     if debug:
         console.print("[dim]🐛 Debug mode enabled - will show raw responses[/dim]\n")
         verbose = True  # Debug implies verbose

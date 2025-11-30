@@ -20,6 +20,60 @@
 
 ---
 
+## 🚀 Try it in 2 minutes
+
+```bash
+# Install
+pip install evalview
+
+# Set your OpenAI API key (for LLM-as-judge evaluation)
+export OPENAI_API_KEY='your-key-here'
+
+# Run the quickstart - creates demo agent, test case, runs everything!
+evalview quickstart
+```
+
+**That's it!** You'll see a working test pass with tool accuracy, output quality, cost, and latency metrics.
+
+<details>
+<summary>📺 See example output</summary>
+
+```
+━━━ EvalView Quickstart ━━━
+
+Step 1/4: Creating demo agent...
+✅ Demo agent created
+
+Step 2/4: Creating test case...
+✅ Test case created
+
+Step 3/4: Creating config...
+✅ Config created
+
+Step 4/4: Starting demo agent and running test...
+✅ Demo agent running
+
+Running test...
+
+Test Case: Quickstart Test
+Score: 95.0/100
+Status: ✅ PASSED
+
+Tool Accuracy: 100.0%
+  ✅ Correct: calculator
+
+Output Quality: 90.0/100
+
+Performance:
+  Cost: $0.0010
+  Latency: 27ms
+
+🎉 Quickstart complete!
+```
+</details>
+
+---
+
 ## Why EvalView?
 
 - **🔓 Fully Open Source** – No SaaS, no vendor lock-in, runs entirely on your machine
@@ -35,7 +89,7 @@
 - **Automated evaluation** – Tool accuracy, output quality (LLM-as-judge), cost, and latency
 - **CI/CD ready** – JSON reports and exit codes for automated testing
 
-## Quick taste
+## Example test case
 
 ```yaml
 # tests/test-cases/stock-analysis.yaml
@@ -61,14 +115,11 @@ $ evalview run
    Cost: $0.0234 | Latency: 3.4s
 ```
 
-> **Note:** Requires `OPENAI_API_KEY` for LLM-as-judge evaluation. [Get one here](https://platform.openai.com/api-keys)
-
 ---
 
-## ⚡ Zero-Config Connection
+## Connect to your agent
 
-**Before:** Manual port configuration, endpoint guessing, adapter selection...
-**After:** Just run `evalview connect` - it figures everything out!
+Already have an agent running? Use `evalview connect` to auto-detect it:
 
 ```bash
 # Start your agent (LangGraph, CrewAI, whatever)
@@ -134,58 +185,21 @@ We're building a hosted version:
 
 ## Quickstart
 
-### Step 1: Install
-
+**Fastest way (recommended):**
 ```bash
 pip install evalview
+export OPENAI_API_KEY='your-key-here'
+evalview quickstart
 ```
 
-Or install from source:
+This creates a demo agent, test case, starts everything, and runs your first test in under 2 minutes.
+
+**For existing agents:**
 ```bash
-git clone https://github.com/hidai25/EvalView.git
-cd EvalView
-pip install -e .
-```
-
-### Step 2: Initialize
-
-```bash
-# Set up your project
-evalview init --interactive
-```
-
-This creates:
-- `.evalview/config.yaml` - Agent endpoint configuration
-- `tests/test-cases/example.yaml` - Example test case
-
-### Step 3: Configure (Optional)
-
-Edit `.evalview/config.yaml` if needed:
-
-```yaml
-adapter: http
-endpoint: http://localhost:3000/api/agent  # Your agent URL
-timeout: 30.0
-```
-
-### Step 4: Configure Environment
-
-```bash
-# Copy the example environment file
-cp .env.example .env
-
-# Edit .env and add your OpenAI API key
-# Get yours at: https://platform.openai.com/api-keys
-```
-
-### Step 5: Run
-
-```bash
-# Run tests
+pip install evalview
+evalview init --interactive  # Configure for your agent
 evalview run
 ```
-
-Done! 🎉
 
 ---
 
