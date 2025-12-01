@@ -83,6 +83,44 @@ Performance:
 
 ---
 
+## 🚀 Generate 1000 Tests from 1
+
+**Problem:** Writing tests manually is slow. You need volume to catch regressions.
+
+**Solution:** Auto-generate test variations.
+
+### Option 1: Expand from existing tests
+
+```bash
+# Take 1 test, generate 100 variations
+evalview expand tests/stock-test.yaml --count 100
+
+# Focus on specific scenarios
+evalview expand tests/stock-test.yaml --count 50 \
+  --focus "different tickers, edge cases, error scenarios"
+```
+
+Generates variations like:
+- Different inputs (AAPL → MSFT, GOOGL, TSLA...)
+- Edge cases (invalid tickers, empty input, malformed requests)
+- Boundary conditions (very long queries, special characters)
+
+### Option 2: Record from live interactions
+
+```bash
+# Use your agent normally, auto-generate tests
+evalview record --interactive
+```
+
+EvalView captures:
+- ✅ Query → Tools called → Output
+- ✅ Auto-generates test YAML
+- ✅ Adds reasonable thresholds
+
+**Result:** Go from 5 manual tests → 500 comprehensive tests in minutes.
+
+---
+
 ## What it does
 
 - **Write test cases in YAML** – Define expected tools, outputs, and thresholds
@@ -153,6 +191,8 @@ Traditional testing doesn't catch this. EvalView lets you write repeatable tests
 
 ## Features
 
+- 🚀 **Test Expansion** - Generate 100+ test variations from a single seed test
+- 🎥 **Test Recording** - Auto-generate tests from live agent interactions
 - ✅ **YAML-based test cases** - Write readable, maintainable test definitions
 - ⚡ **Parallel execution** - Run tests concurrently (8x faster by default)
 - 📊 **Multiple evaluation metrics** - Tool accuracy, sequence correctness, output quality, cost, and latency
@@ -575,6 +615,52 @@ evalview report .evalview/results/20241118_004830.json --detailed
 
 # Interactive HTML report
 evalview report .evalview/results/20241118_004830.json --html report.html
+```
+
+### `evalview expand`
+
+Generate test variations from a seed test case.
+
+```bash
+evalview expand TEST_FILE [OPTIONS]
+
+Options:
+  --count N       Number of variations to generate (default: 10)
+  --focus TEXT    Focus area for variations (e.g., "edge cases, error scenarios")
+  --output PATH   Output directory for generated tests
+```
+
+**Example:**
+
+```bash
+# Generate 100 variations from one test
+evalview expand tests/stock-test.yaml --count 100
+
+# Focus on specific scenarios
+evalview expand tests/stock-test.yaml --count 50 \
+  --focus "different tickers, edge cases, invalid inputs"
+```
+
+### `evalview record`
+
+Record agent interactions and auto-generate test cases.
+
+```bash
+evalview record [OPTIONS]
+
+Options:
+  --interactive    Interactive recording mode
+  --output PATH    Output directory for recorded tests
+```
+
+**Example:**
+
+```bash
+# Start interactive recording
+evalview record --interactive
+
+# Records queries, tool calls, and outputs
+# Auto-generates YAML test cases with thresholds
 ```
 
 ## Cost Tracking

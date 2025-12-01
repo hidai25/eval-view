@@ -206,7 +206,14 @@ class AnthropicAdapter(AgentAdapter):
                         tool_error = str(e)
                         tool_result = f"Error: {e}"
                 else:
-                    tool_result = f"Tool '{tool_name}' executed (no executor provided)"
+                    # Check for mock_response in tool definition
+                    mock_response = self._get_mock_response(tool_name, tools)
+                    if mock_response is not None:
+                        tool_result = mock_response
+                        if self.verbose:
+                            logger.debug(f"📦 Using mock response for {tool_name}")
+                    else:
+                        tool_result = f"Tool '{tool_name}' executed (no executor provided)"
 
                 tool_end = datetime.now()
                 tool_latency = (tool_end - tool_start).total_seconds() * 1000

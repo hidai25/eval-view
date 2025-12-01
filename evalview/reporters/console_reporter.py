@@ -195,71 +195,129 @@ class ConsoleReporter:
         )
         self.console.print(stats_panel)
 
-        # Show failure details inline
+        # Show detailed results for all tests (verbose mode is default)
         for result in results:
+            status_icon = "✅" if result.passed else "❌"
+            status_color = "green" if result.passed else "red"
+
+            self.console.print(
+                f"\n[bold {status_color}]{status_icon} {result.test_case}[/bold {status_color}]"
+            )
+
+            # Show query
+            if result.input_query:
+                self.console.print(f"\n[bold]Query:[/bold]")
+                # Wrap long queries
+                query = result.input_query[:500] + "..." if len(result.input_query) > 500 else result.input_query
+                self.console.print(f"  {query}")
+
+            # Show agent response
+            if result.actual_output:
+                self.console.print(f"\n[bold]Response:[/bold]")
+                # Truncate long responses
+                output = result.actual_output[:800] + "..." if len(result.actual_output) > 800 else result.actual_output
+                for line in output.split('\n'):
+                    self.console.print(f"  {line}")
+
+            # Show evaluation scores
+            self.console.print(f"\n[bold]Evaluation Scores:[/bold]")
+
+            tool_eval = result.evaluations.tool_accuracy
+            output_eval = result.evaluations.output_quality
+            seq_eval = result.evaluations.sequence_correctness
+
+            # Tool accuracy
+            tool_status = "✓" if tool_eval.accuracy == 1.0 else "✗"
+            self.console.print(f"  Tool Accuracy:    {tool_eval.accuracy*100:.0f}% {tool_status}")
+
+            # Output quality
+            output_status = "✓" if output_eval.score >= 70 else "✗"
+            self.console.print(f"  Output Quality:   {output_eval.score:.0f}/100 {output_status}")
+
+            # Sequence correctness
+            seq_status = "✓" if seq_eval.correct else "✗"
+            self.console.print(f"  Sequence:         {'Correct' if seq_eval.correct else 'Incorrect'} {seq_status}")
+
+            # Hallucination check
+            if result.evaluations.hallucination:
+                hall = result.evaluations.hallucination
+                hall_status = "✓" if hall.passed else "✗"
+                hall_result = "None detected" if not hall.has_hallucination else f"Detected ({hall.confidence:.0%} confidence)"
+                self.console.print(f"  Hallucination:    {hall_result} {hall_status}")
+
+            # Safety check
+            if result.evaluations.safety:
+                safety = result.evaluations.safety
+                safety_status = "✓" if safety.passed else "✗"
+                self.console.print(f"  Safety:           {safety.severity.capitalize()} {safety_status}")
+
+            # Show threshold comparison
+            min_score = result.min_score if result.min_score is not None else 75
+            score_status = "✓" if result.score >= min_score else "✗"
+            self.console.print(f"\n  [bold]Overall Score:    {result.score:.1f}/100 (min: {min_score}) {score_status}[/bold]")
+
+            # Show failure reasons if failed
             if not result.passed:
-                self.console.print(
-                    f"\n[bold red]❌ {result.test_case} - Failure Details:[/bold red]"
-                )
+                self.console.print(f"\n[bold red]Failure Reasons:[/bold red]")
 
-                # Show why it failed
-                issues = []
+                # Score below threshold
+                if result.score < min_score:
+                    self.console.print(f"[yellow]  • Score {result.score:.1f} < {min_score} (min_score)[/yellow]")
 
-                # Tool accuracy issues
-                tool_eval = result.evaluations.tool_accuracy
+                # Tool issues
                 if tool_eval.missing:
-                    issues.append(f"  • Missing tools: {', '.join(tool_eval.missing)}")
+                    self.console.print(f"[yellow]  • Missing tools: {', '.join(tool_eval.missing)}[/yellow]")
                 if tool_eval.unexpected:
-                    issues.append(f"  • Unexpected tools: {', '.join(tool_eval.unexpected)}")
-                # Show helpful hints for tool mismatches
+                    self.console.print(f"[yellow]  • Unexpected tools: {', '.join(tool_eval.unexpected)}[/yellow]")
                 for hint in tool_eval.hints:
-                    issues.append(f"  💡 {hint}")
+                    self.console.print(f"[yellow]  💡 {hint}[/yellow]")
 
                 # Sequence violations
-                seq_eval = result.evaluations.sequence_correctness
                 if not seq_eval.correct and seq_eval.violations:
-                    issues.append("  • Sequence violations:")
                     for violation in seq_eval.violations:
-                        issues.append(f"      - {violation}")
+                        self.console.print(f"[yellow]  • Sequence: {violation}[/yellow]")
 
-                # Output quality issues
-                output_eval = result.evaluations.output_quality
-                if output_eval.score < 70:
-                    issues.append(f"  • Low output quality: {output_eval.score:.0f}/100")
-                    issues.append(f"    Reason: {output_eval.rationale[:100]}...")
+                # Contains check failures
                 if output_eval.contains_checks.failed:
-                    issues.append(
-                        f"  • Missing required text: {', '.join(output_eval.contains_checks.failed)}"
-                    )
+                    self.console.print(f"[yellow]  • Missing required text: {', '.join(output_eval.contains_checks.failed)}[/yellow]")
                 if output_eval.not_contains_checks.failed:
-                    issues.append(
-                        f"  • Contains forbidden text: {', '.join(output_eval.not_contains_checks.failed)}"
-                    )
+                    self.console.print(f"[yellow]  • Contains forbidden text: {', '.join(output_eval.not_contains_checks.failed)}[/yellow]")
 
-                # Cost issues
-                cost_eval = result.evaluations.cost
-                if not cost_eval.passed:
-                    issues.append(
-                        f"  • Cost exceeded: ${cost_eval.total_cost:.4f} > ${cost_eval.threshold:.4f}"
-                    )
+                # Cost/latency issues
+                if not result.evaluations.cost.passed:
+                    cost = result.evaluations.cost
+                    self.console.print(f"[yellow]  • Cost exceeded: ${cost.total_cost:.4f} > ${cost.threshold:.4f}[/yellow]")
+                if not result.evaluations.latency.passed:
+                    lat = result.evaluations.latency
+                    self.console.print(f"[yellow]  • Latency exceeded: {lat.total_latency:.0f}ms > {lat.threshold:.0f}ms[/yellow]")
 
-                # Latency issues
-                latency_eval = result.evaluations.latency
-                if not latency_eval.passed:
-                    issues.append(
-                        f"  • Latency exceeded: {latency_eval.total_latency:.0f}ms > {latency_eval.threshold:.0f}ms"
-                    )
+                # Hallucination issues
+                if result.evaluations.hallucination and not result.evaluations.hallucination.passed:
+                    hall = result.evaluations.hallucination
+                    self.console.print(f"[yellow]  • Hallucination ({hall.confidence:.0%} confidence):[/yellow]")
+                    details = hall.details[:300] + "..." if len(hall.details) > 300 else hall.details
+                    self.console.print(f"[yellow]    {details}[/yellow]")
 
-                for issue in issues:
-                    self.console.print(f"[yellow]{issue}[/yellow]")
+                # Safety issues
+                if result.evaluations.safety and not result.evaluations.safety.passed:
+                    safety = result.evaluations.safety
+                    self.console.print(f"[yellow]  • Safety issue ({safety.severity}):[/yellow]")
+                    if safety.categories_flagged:
+                        self.console.print(f"[yellow]    Categories: {', '.join(safety.categories_flagged)}[/yellow]")
 
-                # Show step-by-step flow for debugging
-                if result.trace.steps:
-                    self.console.print()
-                    self.print_step_timeline(
-                        result.trace.steps,
-                        title=f"Execution Flow ({len(result.trace.steps)} steps)",
-                    )
+                # Output quality rationale
+                if output_eval.rationale:
+                    self.console.print(f"\n[dim]Output Quality Rationale:[/dim]")
+                    rationale = output_eval.rationale[:400] + "..." if len(output_eval.rationale) > 400 else output_eval.rationale
+                    self.console.print(f"[dim]  {rationale}[/dim]")
+
+            # Show step-by-step flow
+            if result.trace.steps:
+                self.console.print()
+                self.print_step_timeline(
+                    result.trace.steps,
+                    title=f"Execution Flow ({len(result.trace.steps)} steps)",
+                )
 
     def print_detailed(self, result: EvaluationResult) -> None:
         """

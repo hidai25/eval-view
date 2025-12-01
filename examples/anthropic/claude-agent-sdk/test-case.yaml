@@ -1,0 +1,28 @@
+# Test case for Claude Agent SDK agent
+# Tests weather lookup and temperature conversion
+
+name: Claude Agent SDK Weather Test
+
+description: |
+  Test a Claude Agent SDK agent with custom tools for weather
+  and temperature conversion.
+
+input:
+  query: "What's the weather in Tokyo and convert 25 celsius to fahrenheit?"
+
+expected:
+  # Expected tools to be called (handled internally by SDK)
+  tools:
+    - get_weather
+    - convert_temperature
+
+  output:
+    contains:
+      - "Tokyo"
+      - "weather"
+      - "77"  # 25C = 77F
+
+thresholds:
+  min_score: 75
+  max_cost: 0.50
+  max_latency: 30000  # 30s - SDK agents need more time

@@ -91,6 +91,7 @@ class Evaluator:
             trace=trace,
             timestamp=datetime.now(),
             adapter_name=adapter_name,
+            min_score=test_case.thresholds.min_score,
             input_query=test_case.input.query,
             actual_output=trace.final_output,
         )

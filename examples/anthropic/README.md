@@ -1,113 +1,117 @@
-# Anthropic Claude Example
+# Anthropic Examples
 
-Test Anthropic Claude models with tool use in EvalView.
+Test Anthropic Claude models and agents with EvalView.
 
-## Quick Start
+## Two Ways to Test
 
-### First Time Setup
+| Example | Command | Use Case |
+|---------|---------|----------|
+| **Direct API** | `evalview run examples/anthropic` | Test Claude API with tool use |
+| **Claude Agent SDK** | `evalview run examples/anthropic/claude-agent-sdk` | Test agents built with Claude Agent SDK |
+
+---
+
+## Option 1: Direct Anthropic API
+
+Test Claude models directly using the Anthropic API with tool definitions.
+
+### Quick Start
 
 ```bash
-# 1. Go to EvalView root directory
+# 1. Setup (first time only)
 cd /path/to/EvalView
-
-# 2. Create virtual environment
 python3 -m venv venv
-
-# 3. Activate it
 source venv/bin/activate
-
-# 4. Install EvalView + Anthropic SDK
 pip install -e .
 pip install anthropic
 
-# 5. Set your API key (in .env.local or environment)
+# 2. Set your API key
 export ANTHROPIC_API_KEY=your-api-key
-# Or add to examples/anthropic/.env.local
 
-# 6. Run the test (from root directory)
+# 3. Run the test
 evalview run examples/anthropic
 ```
 
-### Already Set Up?
+### What It Tests
+
+- Claude's ability to use tools (get_weather, convert_temperature)
+- Response quality and accuracy
+- Hallucination detection
+- Cost and latency tracking
+
+---
+
+## Option 2: Claude Agent SDK
+
+Test agents built with the [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-python) - the same infrastructure that powers Claude Code.
+
+### Quick Start
 
 ```bash
+# 1. Setup
 cd /path/to/EvalView
 source venv/bin/activate
-evalview run examples/anthropic
+pip install claude-agent-sdk flask
+
+# 2. Start the agent server (Terminal 1)
+cd examples/anthropic/claude-agent-sdk
+python server.py
+
+# 3. Run tests (Terminal 2)
+cd /path/to/EvalView
+evalview run examples/anthropic/claude-agent-sdk
 ```
 
-That's it! EvalView will:
-- Auto-detect your Anthropic API key
-- Run the test case against Claude
-- Evaluate tool usage and output quality
+### Files
 
-## Setup Details
-
-### Environment Variables
-
-```bash
-# Required: Anthropic API key
-export ANTHROPIC_API_KEY=your-api-key
-
-# Optional: Choose evaluation provider (if you have multiple API keys)
-export EVAL_PROVIDER=anthropic  # or openai, gemini, grok
-
-# Optional: Override evaluation model
-export EVAL_MODEL=claude-haiku-4-5-20251001  # faster/cheaper for eval
+```
+claude-agent-sdk/
+├── agent.py          # Your agent with custom tools
+├── server.py         # HTTP wrapper for EvalView
+├── test-case.yaml    # Test definitions
+└── .evalview/
+    └── config.yaml   # EvalView config
 ```
 
-### Custom Tool Executor (Optional)
-
-For real tool execution, create a tool executor:
+### Custom Tools Example
 
 ```python
-# tools.py
-def execute_tool(name: str, input: dict) -> str:
-    """Execute a tool and return result."""
-    if name == "get_weather":
-        city = input.get("city", "unknown")
-        return f"Weather in {city}: 72F, sunny"
-    elif name == "convert_temperature":
-        value = input.get("value", 0)
-        from_unit = input.get("from_unit", "celsius")
-        if from_unit == "celsius":
-            return str(value * 9/5 + 32) + "F"
-        return str((value - 32) * 5/9) + "C"
-    return f"Unknown tool: {name}"
+from claude_agent_sdk import custom_tool
+
+@custom_tool
+def get_weather(city: str) -> str:
+    """Get weather for a city."""
+    return f"Weather in {city}: 72°F, Sunny"
+
+@custom_tool
+def calculate(expression: str) -> str:
+    """Evaluate a math expression."""
+    return f"{expression} = {eval(expression)}"
 ```
 
-## Supported Models (November 2025)
+---
+
+## Environment Variables
+
+```bash
+# Required
+export ANTHROPIC_API_KEY=your-api-key
+
+# Optional: Choose LLM-as-judge provider
+export EVAL_PROVIDER=anthropic  # or openai, gemini, grok
+```
+
+## Supported Models
 
 | Model | API ID | Input/MTok | Output/MTok |
 |-------|--------|------------|-------------|
-| **Opus 4.5** | `claude-opus-4-5-20251101` | $5 | $25 |
 | **Sonnet 4.5** | `claude-sonnet-4-5-20250929` | $3 | $15 |
 | **Haiku 4.5** | `claude-haiku-4-5-20251001` | $1 | $5 |
-| Opus 4.1 | `claude-opus-4-1-20250805` | $15 | $75 |
-
-## Tool Use
-
-The adapter supports Anthropic's native tool use format:
-
-```yaml
-adapter: anthropic
-model: claude-sonnet-4-5-20250929
-
-tools:
-  - name: get_weather
-    description: Get current weather for a city
-    input_schema:
-      type: object
-      properties:
-        city:
-          type: string
-          description: City name
-      required:
-        - city
-```
+| **Opus 4.5** | `claude-opus-4-5-20251101` | $5 | $25 |
 
 ## Links
 
-- **Anthropic Docs**: https://docs.anthropic.com/
-- **Tool Use Guide**: https://docs.anthropic.com/en/docs/build-with-claude/tool-use
-- **API Reference**: https://docs.anthropic.com/en/api/messages
+- [Anthropic Docs](https://docs.anthropic.com/)
+- [Tool Use Guide](https://docs.anthropic.com/en/docs/build-with-claude/tool-use)
+- [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-python)
+- [Claude Agent SDK Demos](https://github.com/anthropics/claude-agent-sdk-demos)

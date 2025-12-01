@@ -117,6 +117,9 @@ class TestCase(BaseModel):
     # Each tool should have: name, description, input_schema
     tools: Optional[List[Dict[str, Any]]] = None
 
+    # Optional: Model override for this specific test
+    model: Optional[str] = None  # e.g., "claude-sonnet-4-5-20250929", "gpt-4o"
+
 
 # ============================================================================
 # Execution Trace Types
@@ -363,6 +366,9 @@ class EvaluationResult(BaseModel):
 
     # Adapter info for dynamic display
     adapter_name: Optional[str] = None  # e.g., "langgraph", "crewai", "tapescope"
+
+    # Threshold info for failure reporting
+    min_score: Optional[float] = None  # The minimum score threshold from test case
 
     # User-facing fields for reports
     input_query: Optional[str] = None

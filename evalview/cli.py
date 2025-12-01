@@ -607,9 +607,14 @@ model:
         console.print("[dim]Your real agent will report actual LLM usage.[/dim]")
 
         console.print("\n[bold]Next steps:[/bold]")
-        console.print("  • Explore test cases in tests/test-cases/")
+        console.print("  • Replace the demo agent with your own agent")
+        console.print("  • Write test cases for your agent's capabilities")
         console.print("  • Run [cyan]evalview run[/cyan] for detailed results")
-        console.print("  • Replace the demo agent with your own agent\n")
+
+        console.print("\n[bold cyan]💡 Pro tip: Scale your tests automatically[/bold cyan]")
+        console.print("  Once you have your own agent connected:")
+        console.print("  [cyan]evalview expand your-test.yaml --count 100[/cyan]  # Generate variations")
+        console.print("  [cyan]evalview record --interactive[/cyan]              # Record live sessions\n")
 
     except Exception as e:
         console.print(f"[red]❌ Tests failed: {e}[/red]")
@@ -1058,7 +1063,7 @@ thresholds:
     console.print("     • [cyan]evalview record[/cyan]     ← Record agent interactions as tests")
     console.print("     • [cyan]evalview expand[/cyan]     ← Generate variations from a seed test")
     console.print("     • Or edit tests/test-cases/example.yaml")
-    console.print("  2. Run: [cyan]evalview run --verbose[/cyan]")
+    console.print("  2. Run: [cyan]evalview run[/cyan]")
     console.print()
     console.print("[dim]Tip: Use 'evalview validate-adapter --endpoint URL' to debug adapter issues[/dim]\n")
 
@@ -1087,9 +1092,9 @@ thresholds:
     help="Output directory for results",
 )
 @click.option(
-    "--verbose",
-    is_flag=True,
-    help="Enable verbose logging (shows API requests/responses)",
+    "--verbose/--no-verbose",
+    default=True,
+    help="Verbose output with full test details (default: enabled)",
 )
 @click.option(
     "--track",
@@ -1988,6 +1993,16 @@ async def _run_async(
         console.print("[dim]💡 Tip: Generate an interactive HTML report:[/dim]")
         console.print("[dim]   evalview run --html-report report.html[/dim]\n")
 
+    # Tip about test expansion (show after any test run)
+    if not watch and results and test_cases:
+        # Find a test file to use as example
+        if path:
+            test_file = f"{path}/test-case.yaml" if not path.endswith('.yaml') else path
+        else:
+            test_file = "tests/test-cases/your-test.yaml"
+        console.print("[dim]🚀 Generate more tests automatically:[/dim]")
+        console.print(f"[dim]   evalview expand {test_file} --count 20[/dim]\n")
+
     # GitHub star CTA (only show when not in watch mode)
     if not watch:
         console.print("[dim]━" * 50 + "[/dim]")
@@ -2320,7 +2335,7 @@ async def _connect_async(endpoint: Optional[str]):
             console.print()
             console.print("[blue]Next steps:[/blue]")
             console.print("  1. Create test cases in tests/test-cases/")
-            console.print("  2. Run: evalview run --verbose")
+            console.print("  2. Run: evalview run")
         return  # Exit after successful connection
     else:
         console.print("[red]❌ Could not connect to any agent endpoint.[/red]\n")
@@ -3126,7 +3141,17 @@ async def _expand_async(
     console.print()
 
     # Initialize expander
-    expander = TestExpander()
+    try:
+        expander = TestExpander()
+    except ValueError as e:
+        console.print(f"[red]❌ {e}[/red]")
+        return
+
+    # Show provider info
+    if expander.message:
+        console.print(f"[yellow]ℹ️  {expander.message}[/yellow]")
+    console.print(f"[dim]Using {expander.provider.capitalize()} for test generation[/dim]")
+    console.print()
 
     # Generate variations
     console.print(f"[cyan]🤖 Generating {count} variations...[/cyan]")
@@ -3145,7 +3170,7 @@ async def _expand_async(
         )
     except Exception as e:
         console.print(f"[red]❌ Failed to generate variations: {e}[/red]")
-        console.print("[dim]Make sure OPENAI_API_KEY is set[/dim]")
+        console.print("[dim]Make sure OPENAI_API_KEY or ANTHROPIC_API_KEY is set[/dim]")
         return
 
     if not variations:
@@ -3204,7 +3229,8 @@ async def _expand_async(
     if len(saved_paths) > 5:
         console.print(f"   • ... and {len(saved_paths) - 5} more")
 
-    console.print(f"\n[blue]Run with:[/blue] evalview run --filter '{prefix}*'")
+    # Suggest run command with correct path (use --pattern for file matching)
+    console.print(f"\n[blue]Run with:[/blue] evalview run {out_path} --pattern '{prefix}*.yaml'")
 
 
 if __name__ == "__main__":
