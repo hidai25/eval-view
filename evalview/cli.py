@@ -1147,12 +1147,12 @@ thresholds:
 @click.option(
     "--summary",
     is_flag=True,
-    help="Compact, screenshot-friendly output (great for sharing)",
+    help="Compact output with deltas vs last run and regression detection. Great for CI/CD and sharing.",
 )
 @click.option(
     "--coverage",
     is_flag=True,
-    help="Show behavior coverage report (tasks, tools, paths, eval dimensions)",
+    help="Show behavior coverage report: tasks tested, tools exercised, paths covered, eval dimensions.",
 )
 def run(
     path: Optional[str],
@@ -2041,6 +2041,12 @@ async def _run_async(
     if not watch and not html_report:
         console.print("[dim]💡 Tip: Generate an interactive HTML report:[/dim]")
         console.print("[dim]   evalview run --html-report report.html[/dim]\n")
+
+    # Tip about quick view modes (only if not in summary/coverage mode)
+    if not watch and not summary and not coverage:
+        console.print("[dim]💡 Quick views:[/dim]")
+        console.print("[dim]   evalview run --summary   (deltas + regressions)[/dim]")
+        console.print("[dim]   evalview run --coverage  (behavior coverage)[/dim]\n")
 
     # Tip about test expansion (show after any test run)
     if not watch and results and test_cases:

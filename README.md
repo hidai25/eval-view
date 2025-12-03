@@ -144,7 +144,7 @@ Line coverage doesn't work for LLMs. Instead, EvalView focuses on **behavior cov
 **The loop:** weird prod session → turn it into a regression test → it shows up in your coverage.
 
 ```bash
-# Compact summary for screenshots / sharing
+# Compact summary with deltas vs last run + regression detection
 evalview run --summary
 ```
 
@@ -349,8 +349,8 @@ Options:
   --max-retries N      Retry flaky tests N times (default: 0)
   --watch              Re-run tests on file changes
   --html-report PATH   Generate interactive HTML report
-  --summary            Compact, screenshot-friendly output
-  --coverage           Show behavior coverage report
+  --summary            Compact output with deltas vs last run + regression detection
+  --coverage           Show behavior coverage: tasks, tools, paths, eval dimensions
 ```
 
 ### `evalview expand`
