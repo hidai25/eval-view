@@ -13,6 +13,8 @@
  *   }))
  */
 
+const DEBUG = process.env.EVALVIEW_DEBUG === 'true';
+
 export interface EvalViewRequest {
   query: string;
   context?: {
@@ -94,7 +96,6 @@ function defaultParseResponse(ndjsonText: string, startTime: number): EvalViewRe
         const jsonLine = line.startsWith('data: ') ? line.slice(6) : line;
         return JSON.parse(jsonLine);
       } catch (e) {
-        console.warn('[EvalView] Failed to parse NDJSON line:', line);
         return null;
       }
     })
@@ -194,14 +195,14 @@ export function createEvalViewMiddleware(config: MiddlewareConfig) {
           : defaultUserId;
       }
 
-      console.log('[EvalView] Received request:', {
+      if (DEBUG) console.log('[EvalView] Received request:', {
         query: evalViewReq.query,
         route: evalViewReq.context?.route,
       });
 
       // Transform to target API format
       const targetReq = transformRequest(evalViewReq);
-      console.log('[EvalView] Calling target endpoint:', targetEndpoint);
+      if (DEBUG) console.log('[EvalView] Calling target endpoint:', targetEndpoint);
 
       // Determine base URL
       const host = req.headers?.get?.('host') || req.headers?.host || 'localhost:3000';
@@ -222,11 +223,11 @@ export function createEvalViewMiddleware(config: MiddlewareConfig) {
 
       // Get response text
       const responseText = await response.text();
-      console.log('[EvalView] Received response, parsing...');
+      if (DEBUG) console.log('[EvalView] Received response, parsing...');
 
       // Parse and translate response
       const evalViewRes = parseResponse(responseText, startTime);
-      console.log('[EvalView] Translated response:', {
+      if (DEBUG) console.log('[EvalView] Translated response:', {
         steps: evalViewRes.steps.length,
         outputLength: evalViewRes.output.length,
         cost: evalViewRes.cost,
