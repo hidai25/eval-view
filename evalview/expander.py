@@ -3,7 +3,7 @@
 import os
 import json
 from pathlib import Path
-from typing import List, Optional, Dict, Any, Tuple, Union
+from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime
 
 import yaml  # type: ignore[import-untyped]
