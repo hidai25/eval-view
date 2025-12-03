@@ -2,11 +2,11 @@
 
 > Pytest-style testing for AI agents. Catch regressions, hallucinations, and cost spikes **before** they hit users.
 
-[![CI](https://github.com/hidai25/EvalView/actions/workflows/ci.yml/badge.svg)](https://github.com/hidai25/EvalView/actions/workflows/ci.yml)
+[![CI](https://github.com/hidai25/eval-view/actions/workflows/ci.yml/badge.svg)](https://github.com/hidai25/eval-view/actions/workflows/ci.yml)
 [![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![GitHub stars](https://img.shields.io/github/stars/hidai25/EvalView?style=social)](https://github.com/hidai25/EvalView/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/hidai25/EvalView?style=social)](https://github.com/hidai25/EvalView/network/members)
+[![GitHub stars](https://img.shields.io/github/stars/hidai25/eval-view?style=social)](https://github.com/hidai25/eval-view/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/hidai25/eval-view?style=social)](https://github.com/hidai25/eval-view/network/members)
 
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Checked with mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
@@ -454,7 +454,7 @@ evalview/
 - [ ] Error compounding metrics
 - [ ] Memory/context influence tracking
 
-**Want these?** [Vote in GitHub Discussions](https://github.com/hidai25/EvalView/discussions)
+**Want these?** [Vote in GitHub Discussions](https://github.com/hidai25/eval-view/discussions)
 
 ---
 
@@ -470,8 +470,8 @@ MIT License - see LICENSE file for details.
 
 ## Support
 
-- Issues: https://github.com/hidai25/EvalView/issues
-- Discussions: https://github.com/hidai25/EvalView/discussions
+- Issues: https://github.com/hidai25/eval-view/issues
+- Discussions: https://github.com/hidai25/eval-view/discussions
 
 ---
 

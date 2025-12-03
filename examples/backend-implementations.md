@@ -359,4 +359,4 @@ res.write(JSON.stringify(event) + '\n');  // Correct JSONL
 
 - See `docs/BACKEND_REQUIREMENTS.md` for detailed specs
 - See `tests/test-cases/` for example test cases
-- File issues: https://github.com/hidai25/EvalView/issues
+- File issues: https://github.com/hidai25/eval-view/issues

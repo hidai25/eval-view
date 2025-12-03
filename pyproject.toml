@@ -68,11 +68,11 @@ dev = [
 evalview = "evalview.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/hidai25/EvalView"
-Documentation = "https://github.com/hidai25/EvalView#readme"
-Repository = "https://github.com/hidai25/EvalView.git"
-"Issue Tracker" = "https://github.com/hidai25/EvalView/issues"
-Changelog = "https://github.com/hidai25/EvalView/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/hidai25/eval-view"
+Documentation = "https://github.com/hidai25/eval-view#readme"
+Repository = "https://github.com/hidai25/eval-view.git"
+"Issue Tracker" = "https://github.com/hidai25/eval-view/issues"
+Changelog = "https://github.com/hidai25/eval-view/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["."]

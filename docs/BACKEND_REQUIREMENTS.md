@@ -363,4 +363,4 @@ If you're using TapeScope backend:
 
 - See `examples/` directory for reference implementations
 - Check `evalview/adapters/` for adapter code
-- File issues at: https://github.com/hidai25/EvalView/issues
+- File issues at: https://github.com/hidai25/eval-view/issues

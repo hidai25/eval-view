@@ -113,5 +113,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fixed**: Bug fixes
 - **Security**: Security fixes and improvements
 
-[Unreleased]: https://github.com/hidai25/EvalView/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/hidai25/EvalView/releases/tag/v0.1.0
+[Unreleased]: https://github.com/hidai25/eval-view/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/hidai25/eval-view/releases/tag/v0.1.0

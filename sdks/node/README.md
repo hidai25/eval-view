@@ -1,6 +1,6 @@
 # @evalview/node
 
-Drop-in Node.js/Next.js middleware for [EvalView](https://github.com/hidai25/EvalView) testing framework.
+Drop-in Node.js/Next.js middleware for [EvalView](https://github.com/hidai25/eval-view) testing framework.
 
 ## Installation
 

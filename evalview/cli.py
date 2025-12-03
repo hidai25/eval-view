@@ -2057,7 +2057,7 @@ async def _run_async(
     if not watch:
         console.print("[dim]━" * 50 + "[/dim]")
         console.print("[dim]⭐ Enjoying EvalView? Star us on GitHub:[/dim]")
-        console.print("[dim]   [link=https://github.com/hidai25/EvalView]https://github.com/hidai25/EvalView[/link][/dim]\n")
+        console.print("[dim]   [link=https://github.com/hidai25/eval-view]https://github.com/hidai25/eval-view[/link][/dim]\n")
 
     # Watch mode: re-run tests on file changes
     if watch:

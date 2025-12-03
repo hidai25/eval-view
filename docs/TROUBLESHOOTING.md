@@ -282,7 +282,7 @@ For LangGraph, Python 3.11+ may be required.
 
 1. **Check the examples:** See `examples/` directory for working configurations
 2. **Enable maximum verbosity:** `DEBUG=1 evalview run --verbose`
-3. **Open an issue:** https://github.com/hidai25/EvalView/issues
+3. **Open an issue:** https://github.com/hidai25/eval-view/issues
 
 When reporting issues, include:
 - EvalView version

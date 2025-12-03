@@ -230,5 +230,5 @@ See `.github/workflows/evalview.yml` for a complete example.
 
 ## Need Help?
 
-- [GitHub Issues](https://github.com/hidai25/EvalView/issues)
-- [Discussions](https://github.com/hidai25/EvalView/discussions)
+- [GitHub Issues](https://github.com/hidai25/eval-view/issues)
+- [Discussions](https://github.com/hidai25/eval-view/discussions)

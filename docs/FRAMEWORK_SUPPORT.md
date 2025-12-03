@@ -404,7 +404,7 @@ timeout: 120.0  # 2 minutes
 - Check [QUICKSTART_LANGGRAPH.md](QUICKSTART_LANGGRAPH.md) for LangGraph
 - Check [SETUP_LANGGRAPH_EXAMPLE.md](SETUP_LANGGRAPH_EXAMPLE.md) for detailed setup
 - Check [ADAPTERS.md](docs/ADAPTERS.md) for custom adapters
-- Open an issue: https://github.com/hidai25/EvalView/issues
+- Open an issue: https://github.com/hidai25/eval-view/issues
 
 ---
 

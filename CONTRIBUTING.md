@@ -6,8 +6,8 @@ Thanks for your interest in contributing! This guide will help you get started.
 
 ```bash
 # Clone the repository
-git clone https://github.com/hidai25/EvalView.git
-cd EvalView
+git clone https://github.com/hidai25/eval-view.git
+cd eval-view
 
 # Create and activate virtual environment
 python3 -m venv venv
@@ -645,8 +645,8 @@ def my_function(arg1: str, arg2: int) -> Dict[str, Any]:
 
 ## Questions?
 
-- Open an [issue](https://github.com/hidai25/EvalView/issues)
-- Start a [discussion](https://github.com/hidai25/EvalView/discussions)
+- Open an [issue](https://github.com/hidai25/eval-view/issues)
+- Start a [discussion](https://github.com/hidai25/eval-view/discussions)
 
 ---
 
