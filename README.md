@@ -1,6 +1,8 @@
-# EvalView
+# EvalView — Pytest-style Testing for AI Agents
 
-> Pytest-style testing for AI agents. Catch regressions, hallucinations, and cost spikes **before** they hit users.
+> The open-source testing framework for LangGraph, CrewAI, OpenAI Assistants, and Anthropic Claude agents. Write tests in YAML, catch regressions in CI, and ship with confidence.
+
+**EvalView** is pytest for AI agents—write readable test cases, run them in CI/CD, and block deploys when behavior, cost, or latency regresses.
 
 [![CI](https://github.com/hidai25/eval-view/actions/workflows/ci.yml/badge.svg)](https://github.com/hidai25/eval-view/actions/workflows/ci.yml)
 [![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
@@ -429,6 +431,15 @@ evalview/
 ├── core/               # Types, config, parallel execution
 └── cli.py              # Click CLI
 ```
+
+---
+
+## Guides
+
+| Guide | Description |
+|-------|-------------|
+| [Testing LangGraph Agents in CI](guides/pytest-for-ai-agents-langgraph-ci.md) | Set up automated testing for LangGraph agents with GitHub Actions |
+| [Detecting LLM Hallucinations](guides/detecting-llm-hallucinations-in-ci.md) | Catch hallucinations and made-up facts before they reach users |
 
 ---
 
