@@ -7,12 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2025-12-05
+
 ### Added
-- Open source project governance files (LICENSE, CODE_OF_CONDUCT, SECURITY)
-- GitHub Actions CI/CD workflows for automated testing and publishing
-- Issue templates for bug reports and feature requests
-- Pull request template with comprehensive checklist
-- Enhanced package metadata in pyproject.toml
+
+#### HuggingFace Integration
+- **HuggingFace as LLM-as-Judge**: Use open-source models (Llama, Mixtral) for evaluation instead of OpenAI—zero cost, full privacy
+- **HuggingFace Spaces Adapter**: Test Gradio-based agents hosted on HuggingFace Spaces
+- New environment variables: `EVAL_PROVIDER=huggingface`, `HF_TOKEN`, `EVAL_MODEL`
+- Quick start guide for HuggingFace users (`docs/QUICKSTART_HUGGINGFACE.md`)
+
+#### Developer Experience Improvements
+- **OpenAI Assistant Auto-Creation**: Automatically create an assistant with user confirmation when `OPENAI_ASSISTANT_ID` is not set
+- Adapter aliases for convenience: `hf` and `gradio` map to HuggingFace adapter
+- Example configurations for Anthropic and HuggingFace adapters
+
+### Changed
+- **Improved Hallucination Detector**: Reduced false positives by distinguishing between actual hallucinations (false facts, invented data) and helpful general advice (recommendations, best practices)
+- Updated LLM provider to use HuggingFace's unified router endpoint (`router.huggingface.co`)
+
+### Fixed
+- OpenAI Assistants adapter no longer tracks `message_creation` as a tool step (was causing unexpected tool failures)
+- Assistant ID persistence to `.env.local` for session continuity
+
+### Documentation
+- Added comprehensive HuggingFace quick start guide explaining Agent vs Judge concept
+- Updated `ADAPTERS.md` with HuggingFace adapter documentation
+- New example projects under `examples/huggingface/` and `examples/anthropic/`
 
 ## [0.1.0] - 2025-01-24
 
@@ -113,5 +134,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fixed**: Bug fixes
 - **Security**: Security fixes and improvements
 
-[Unreleased]: https://github.com/hidai25/eval-view/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/hidai25/eval-view/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/hidai25/eval-view/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/hidai25/eval-view/releases/tag/v0.1.0
