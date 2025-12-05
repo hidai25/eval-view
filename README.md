@@ -496,4 +496,8 @@ EvalView is open source software licensed under the [Apache License 2.0](LICENSE
 
 ---
 
-**Ship AI agents with confidence** 🚀
+EvalView just stopped your agent from:
+- hallucinating tools that don't exist
+- tool-calling itself into bankruptcy
+
+→ Smash ⭐ if it saved your sanity (and your wallet) today
