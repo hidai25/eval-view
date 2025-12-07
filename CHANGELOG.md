@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2025-12-08
+
+### Added
+- **CLI guide for creating test cases**: After each run, shows inline YAML example with instructions
+- **GPT-5 and Gemini 3.0 support**: Updated model aliases for latest models
+
+### Fixed
+- `Evaluator()` constructor in quickstart command (removed deprecated `openai_api_key` parameter)
+
+### Documentation
+- Updated TROUBLESHOOTING.md with Common Pitfalls section
+- Added CLI flags documentation to README, GETTING_STARTED, and QUICKSTART_HUGGINGFACE
+- Improved guidance on LLM-as-judge model selection
+
 ## [0.1.1] - 2025-12-05
 
 ### Added
@@ -18,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Quick start guide for HuggingFace users (`docs/QUICKSTART_HUGGINGFACE.md`)
 
 #### Developer Experience Improvements
+- **CLI flags for LLM-as-Judge**: `--judge-model` and `--judge-provider` flags for easy model switching
+- **Model shortcuts**: Use simple names like `gpt-5`, `sonnet`, `llama-70b` that auto-resolve to full model names
 - **OpenAI Assistant Auto-Creation**: Automatically create an assistant with user confirmation when `OPENAI_ASSISTANT_ID` is not set
 - Adapter aliases for convenience: `hf` and `gradio` map to HuggingFace adapter
 - Example configurations for Anthropic and HuggingFace adapters

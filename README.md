@@ -342,16 +342,34 @@ Run test cases.
 evalview run [OPTIONS]
 
 Options:
-  --pattern TEXT       Test case file pattern (default: *.yaml)
-  -t, --test TEXT      Run specific test(s) by name
-  --verbose            Enable verbose logging
-  --sequential         Run tests one at a time (default: parallel)
-  --max-workers N      Max parallel executions (default: 8)
-  --max-retries N      Retry flaky tests N times (default: 0)
-  --watch              Re-run tests on file changes
-  --html-report PATH   Generate interactive HTML report
-  --summary            Compact output with deltas vs last run + regression detection
-  --coverage           Show behavior coverage: tasks, tools, paths, eval dimensions
+  --pattern TEXT         Test case file pattern (default: *.yaml)
+  -t, --test TEXT        Run specific test(s) by name
+  --verbose              Enable verbose logging
+  --sequential           Run tests one at a time (default: parallel)
+  --max-workers N        Max parallel executions (default: 8)
+  --max-retries N        Retry flaky tests N times (default: 0)
+  --watch                Re-run tests on file changes
+  --html-report PATH     Generate interactive HTML report
+  --summary              Compact output with deltas vs last run + regression detection
+  --coverage             Show behavior coverage: tasks, tools, paths, eval dimensions
+  --judge-model TEXT     Model for LLM-as-judge (e.g., gpt-5, sonnet, llama-70b)
+  --judge-provider TEXT  Provider for LLM-as-judge (openai, anthropic, huggingface, gemini, grok)
+```
+
+**Model shortcuts** - Use simple names, they auto-resolve:
+| Shortcut | Full Model |
+|----------|------------|
+| `gpt-5` | `gpt-5` |
+| `sonnet` | `claude-sonnet-4-5-20250929` |
+| `opus` | `claude-opus-4-5-20251101` |
+| `llama-70b` | `meta-llama/Llama-3.1-70B-Instruct` |
+| `gemini` | `gemini-3.0` |
+
+```bash
+# Examples
+evalview run --judge-model gpt-5 --judge-provider openai
+evalview run --judge-model sonnet --judge-provider anthropic
+evalview run --judge-model llama-70b --judge-provider huggingface  # Free!
 ```
 
 ### `evalview expand`

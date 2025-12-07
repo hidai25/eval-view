@@ -38,23 +38,27 @@ export HF_TOKEN="hf_your_token_here"
 
 Skip OpenAI entirely - use Llama to evaluate your agent's outputs.
 
-### Step 1: Set Environment Variables
+### Step 1: Set HuggingFace Token
 
 ```bash
-# Your HuggingFace token
 export HF_TOKEN="hf_your_token_here"
-
-# Tell EvalView to use HuggingFace for evaluation
-export EVAL_PROVIDER=huggingface
-
-# Optional: Use a different model (default: meta-llama/Llama-3.1-8B-Instruct)
-export EVAL_MODEL=meta-llama/Llama-3.1-70B-Instruct
 ```
 
 ### Step 2: Run Your Tests
 
+**Option A: CLI flags (recommended)**
 ```bash
-# That's it! EvalView now uses Llama for scoring
+# Use Llama as judge with simple shortcut
+evalview run --judge-model llama-70b --judge-provider huggingface
+
+# Or use 8B for faster iteration
+evalview run --judge-model llama --judge-provider huggingface
+```
+
+**Option B: Environment variables**
+```bash
+export EVAL_PROVIDER=huggingface
+export EVAL_MODEL=meta-llama/Llama-3.1-70B-Instruct
 evalview run
 ```
 

@@ -71,6 +71,47 @@ PROVIDER_CONFIGS: Dict[LLMProvider, ProviderConfig] = {
     ),
 }
 
+# Model aliases for better DX - shortcuts map to full model names
+MODEL_ALIASES: Dict[str, str] = {
+    # OpenAI GPT-5 family (use simple names - they track latest)
+    "gpt-5": "gpt-5",
+    "gpt-5-mini": "gpt-5-mini",
+    "gpt-5-nano": "gpt-5-nano",
+    "gpt-5.1": "gpt-5.1",
+    # OpenAI GPT-4 family
+    "gpt-4o": "gpt-4o",
+    "gpt-4o-mini": "gpt-4o-mini",
+    "gpt-4": "gpt-4-turbo",
+    # Anthropic Claude
+    "sonnet": "claude-sonnet-4-5-20250929",
+    "claude-sonnet": "claude-sonnet-4-5-20250929",
+    "opus": "claude-opus-4-5-20251101",
+    "claude-opus": "claude-opus-4-5-20251101",
+    "haiku": "claude-3-5-haiku-latest",
+    "claude-haiku": "claude-3-5-haiku-latest",
+    # HuggingFace Llama
+    "llama": "meta-llama/Llama-3.1-8B-Instruct",
+    "llama-8b": "meta-llama/Llama-3.1-8B-Instruct",
+    "llama-70b": "meta-llama/Llama-3.1-70B-Instruct",
+    # Google Gemini
+    "gemini": "gemini-3.0",
+    "gemini-3": "gemini-3.0",
+    "gemini-flash": "gemini-2.0-flash",
+    "gemini-pro": "gemini-1.5-pro",
+}
+
+
+def resolve_model_alias(model: str) -> str:
+    """Resolve model alias to full model name.
+
+    Args:
+        model: Model name or alias (e.g., 'gpt-5', 'sonnet', 'llama-70b')
+
+    Returns:
+        Full model name (e.g., 'gpt-5-2025-08-07', 'claude-sonnet-4-5-20250929')
+    """
+    return MODEL_ALIASES.get(model.lower(), model)
+
 
 def detect_available_providers() -> List[Tuple[LLMProvider, str]]:
     """Detect which LLM providers have API keys configured.

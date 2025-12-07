@@ -1149,6 +1149,16 @@ thresholds:
     is_flag=True,
     help="Show behavior coverage report: tasks tested, tools exercised, paths covered, eval dimensions.",
 )
+@click.option(
+    "--judge-model",
+    type=str,
+    help="Model for LLM-as-judge (e.g., gpt-5, sonnet, llama-70b, gpt-4o). Aliases auto-resolve to full names.",
+)
+@click.option(
+    "--judge-provider",
+    type=click.Choice(["openai", "anthropic", "huggingface", "gemini", "grok"]),
+    help="Provider for LLM-as-judge evaluation",
+)
 def run(
     path: Optional[str],
     pattern: str,
@@ -1167,12 +1177,22 @@ def run(
     html_report: str,
     summary: bool,
     coverage: bool,
+    judge_model: Optional[str],
+    judge_provider: Optional[str],
 ):
     """Run test cases against the agent.
 
     PATH can be a directory containing test cases (e.g., examples/anthropic)
     or a specific test file (e.g., examples/anthropic/test-case.yaml).
     """
+    # Set judge model/provider via env vars if specified (CLI overrides env)
+    if judge_provider:
+        os.environ["EVAL_PROVIDER"] = judge_provider
+    if judge_model:
+        # Resolve model aliases (e.g., 'gpt-5' -> 'gpt-5-2025-08-07')
+        from evalview.core.llm_provider import resolve_model_alias
+        os.environ["EVAL_MODEL"] = resolve_model_alias(judge_model)
+
     asyncio.run(_run_async(
         path, pattern, test, filter, output, verbose, track, compare_baseline, debug,
         sequential, max_workers, max_retries, retry_delay, watch, html_report, summary, coverage
@@ -2042,6 +2062,21 @@ async def _run_async(
         console.print("[dim]💡 Quick views:[/dim]")
         console.print("[dim]   evalview run --summary   (deltas + regressions)[/dim]")
         console.print("[dim]   evalview run --coverage  (behavior coverage)[/dim]\n")
+
+    # Tip about creating test cases
+    if not watch and results:
+        console.print("[dim]📝 Create your own test case:[/dim]")
+        console.print("[dim]   1. Create a YAML file (e.g., my-test.yaml):[/dim]")
+        console.print("[dim]   ┌────────────────────────────────────────┐[/dim]")
+        console.print("[dim]   │ name: My Test                         │[/dim]")
+        console.print("[dim]   │ input:                                │[/dim]")
+        console.print("[dim]   │   query: \"Your question here\"        │[/dim]")
+        console.print("[dim]   │ expected:                             │[/dim]")
+        console.print("[dim]   │   output:                             │[/dim]")
+        console.print("[dim]   │     contains: [\"expected\", \"words\"]   │[/dim]")
+        console.print("[dim]   └────────────────────────────────────────┘[/dim]")
+        console.print("[dim]   2. Run it: evalview run my-test.yaml[/dim]")
+        console.print("[dim]   Docs: [link=https://github.com/hidai25/eval-view/blob/main/docs/YAML_SCHEMA.md]docs/YAML_SCHEMA.md[/link][/dim]\n")
 
     # Tip about test expansion (show after any test run)
     if not watch and results and test_cases:

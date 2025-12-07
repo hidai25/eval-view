@@ -217,10 +217,31 @@ See `.github/workflows/evalview.yml` for a complete example.
 - `openai-assistants` - OpenAI Assistants API
 - `streaming` / `tapescope` - JSONL streaming APIs
 
+## Configuring LLM-as-Judge
+
+**CLI flags (recommended):**
+```bash
+evalview run --judge-model gpt-5 --judge-provider openai
+evalview run --judge-model sonnet --judge-provider anthropic
+evalview run --judge-model llama-70b --judge-provider huggingface  # Free!
+```
+
+**Model shortcuts:**
+| Shortcut | Full Model |
+|----------|------------|
+| `gpt-5` | `gpt-5` |
+| `sonnet` | `claude-sonnet-4-5-20250929` |
+| `llama-70b` | `meta-llama/Llama-3.1-70B-Instruct` |
+
 ## Environment Variables
 
-- `OPENAI_API_KEY` - Required for LLM-as-judge evaluation
-- `EVAL_MODEL` - Model for evaluation (default: `gpt-4o-mini`)
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_API_KEY` | OpenAI API key (for GPT judge) |
+| `ANTHROPIC_API_KEY` | Anthropic API key (for Claude judge) |
+| `HF_TOKEN` | HuggingFace token (for Llama judge - free!) |
+| `EVAL_PROVIDER` | Force judge provider: `openai`, `anthropic`, `huggingface` |
+| `EVAL_MODEL` | Override judge model (default: auto-detected)
 
 ## Next Steps
 

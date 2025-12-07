@@ -295,11 +295,16 @@ Hallucination (100% confidence):
 
 **Solution:** Use a larger model for evaluation:
 ```bash
-# Use 70B instead of 8B (recommended for production)
-export EVAL_MODEL=meta-llama/Llama-3.1-70B-Instruct
+# Option 1: CLI flags (recommended)
+evalview run --judge-model gpt-5 --judge-provider openai
+evalview run --judge-model llama-70b --judge-provider huggingface
 
-# Or switch to OpenAI for more reliable judging
-unset EVAL_PROVIDER  # Falls back to OpenAI
+# Option 2: Environment variables
+export EVAL_MODEL=meta-llama/Llama-3.1-70B-Instruct
+export EVAL_PROVIDER=huggingface
+
+# Option 3: Unset to fall back to OpenAI
+unset EVAL_PROVIDER
 ```
 
 **Model quality comparison:**
