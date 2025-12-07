@@ -278,6 +278,125 @@ For LangGraph, Python 3.11+ may be required.
 
 ---
 
+## Common Pitfalls
+
+### Smaller LLM Judges Can Make Basic Errors
+
+**Symptom:** Hallucination detector flags correct answers as wrong, or gives nonsensical feedback.
+
+**Example:**
+```
+Hallucination (100% confidence):
+"5 plus 7 equals 12" contradicts... the correct answer is 17.
+```
+*(5 + 7 = 12 is correct! The judge made a math error.)*
+
+**Cause:** Smaller models (8B parameters) can make basic reasoning/math errors when acting as judge.
+
+**Solution:** Use a larger model for evaluation:
+```bash
+# Use 70B instead of 8B (recommended for production)
+export EVAL_MODEL=meta-llama/Llama-3.1-70B-Instruct
+
+# Or switch to OpenAI for more reliable judging
+unset EVAL_PROVIDER  # Falls back to OpenAI
+```
+
+**Model quality comparison:**
+
+| Model | Math/Logic | Speed | Cost | Best For |
+|-------|------------|-------|------|----------|
+| `meta-llama/Llama-3.1-8B-Instruct` | ⚠️ Can make errors | Fast | Free | Quick dev iteration |
+| `meta-llama/Llama-3.1-70B-Instruct` | ✅ Reliable | Medium | Free | Production evals |
+| `gpt-4o-mini` (OpenAI) | ✅ Reliable | Fast | ~$0.001/eval | Production evals |
+| `gpt-4o` (OpenAI) | ✅ Best | Slow | ~$0.01/eval | Critical evals |
+
+---
+
+### Tool-Based Tests Require Tool-Enabled Agents
+
+**Symptom:** Tests fail with "Missing tools: get_weather, calculator" even though the agent gave a correct answer.
+
+**Example:**
+```
+Query: What's the weather in Tokyo?
+
+Response: I don't have access to real-time weather information...
+
+❌ Missing tools: get_weather
+```
+
+**Cause:** Your test expects the agent to call specific tools, but the agent doesn't have those tools configured.
+
+**The key insight:** EvalView tests *how* an agent works, not just *what* it outputs. If you expect tool calls, the agent must have tools.
+
+**Solutions:**
+
+1. **Use an agent with tools:**
+   ```yaml
+   # OpenAI Assistants with code_interpreter
+   adapter: openai-assistants
+
+   # LangGraph with custom tools
+   adapter: langgraph
+   endpoint: http://localhost:2024
+   ```
+
+2. **Or remove tool expectations from test:**
+   ```yaml
+   expected:
+     # Remove this if agent doesn't have tools:
+     # tools: ["get_weather"]
+     output:
+       contains: ["weather", "Tokyo"]
+   ```
+
+3. **Or test output quality only:**
+   ```yaml
+   expected:
+     output:
+       min_score: 80
+   # No tool expectations
+   ```
+
+---
+
+### Adapter Capabilities
+
+Not all adapters support the same features. Know what each can do:
+
+| Adapter | Has Tools | Streaming | Use Case |
+|---------|-----------|-----------|----------|
+| `openai-assistants` | ✅ code_interpreter, file_search, custom | ❌ | OpenAI Assistants API |
+| `anthropic` | ❌ Plain Claude | ❌ | Simple Claude API calls |
+| `langgraph` | ✅ Custom tools | ✅ | LangGraph agents |
+| `crewai` | ✅ Agent tools | ❌ | CrewAI multi-agent |
+| `http` | ⚠️ Depends on backend | ⚠️ | Any REST API |
+| `huggingface` | ❌ Gradio only | ❌ | HF Spaces chatbots |
+
+**Matching tests to adapters:**
+
+```yaml
+# ✅ Good: Testing OpenAI Assistant with tool expectations
+adapter: openai-assistants
+expected:
+  tools: ["code_interpreter"]
+
+# ❌ Bad: Testing plain Anthropic with tool expectations
+adapter: anthropic
+expected:
+  tools: ["calculator"]  # Will always fail - no tools!
+
+# ✅ Good: Testing Anthropic with output-only expectations
+adapter: anthropic
+expected:
+  output:
+    contains: ["12"]
+    min_score: 80
+```
+
+---
+
 ## Still Stuck?
 
 1. **Check the examples:** See `examples/` directory for working configurations
