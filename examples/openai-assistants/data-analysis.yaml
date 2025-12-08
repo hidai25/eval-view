@@ -1,0 +1,14 @@
+name: "Science Question"
+description: "Test knowledge capabilities"
+
+input:
+  query: "What planet is known as the Red Planet?"
+
+expected:
+  output:
+    contains:
+      - "Mars"
+
+thresholds:
+  min_score: 80
+  max_latency: 15000

@@ -1,0 +1,14 @@
+name: "Math Knowledge"
+description: "Test math knowledge"
+
+input:
+  query: "What is 7 times 8?"
+
+expected:
+  output:
+    contains:
+      - "56"
+
+thresholds:
+  min_score: 80
+  max_latency: 15000

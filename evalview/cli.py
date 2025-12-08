@@ -559,10 +559,26 @@ model:
 
     console.print("[green]✅ Demo agent running[/green]\n")
 
+    # Welcome banner
+    console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗██╗   ██╗ █████╗ ██╗    ██╗   ██╗██╗███████╗██╗    ██╗[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔════╝██║   ██║██╔══██╗██║    ██║   ██║██║██╔════╝██║    ██║[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]█████╗  ██║   ██║███████║██║    ██║   ██║██║█████╗  ██║ █╗ ██║[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔══╝  ╚██╗ ██╔╝██╔══██║██║    ╚██╗ ██╔╝██║██╔══╝  ██║███╗██║[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗ ╚████╔╝ ██║  ██║███████╗╚████╔╝ ██║███████╗╚███╔███╔╝[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]╚══════╝  ╚═══╝  ╚═╝  ╚═╝╚══════╝ ╚═══╝  ╚═╝╚══════╝ ╚══╝╚══╝ [/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]           [dim]Testing framework for multi-step AI agents[/dim]            [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
+    console.print()
+
     # Run all tests
     console.print("[bold]Running tests...[/bold]\n")
     try:
         # Import and run the tests programmatically
+        import time as time_module
+        from rich.live import Live
+        from rich.panel import Panel
         from evalview.core.loader import TestCaseLoader
         from evalview.adapters.http_adapter import HTTPAdapter
         from evalview.evaluators.evaluator import Evaluator
@@ -577,16 +593,83 @@ model:
         )
         evaluator = Evaluator()
 
+        # Timer and tracking
+        start_time = time_module.time()
+        passed = 0
+        failed = 0
+        tests_completed = 0
+        current_test = ""
+        spinner_frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+        spinner_idx = 0
+
+        def format_elapsed():
+            elapsed = time_module.time() - start_time
+            mins, secs = divmod(elapsed, 60)
+            secs_int = int(secs)
+            ms = int((secs - secs_int) * 1000)
+            return f"{int(mins):02d}:{secs_int:02d}.{ms:03d}"
+
+        def get_status_display():
+            nonlocal spinner_idx
+            spinner = spinner_frames[spinner_idx % len(spinner_frames)]
+            spinner_idx += 1
+            test_display = f"  [yellow]{spinner}[/yellow] [dim]{current_test}...[/dim]" if current_test else f"  [yellow]{spinner}[/yellow] [dim]Starting...[/dim]"
+            content = (
+                f"  [bold white]⏱️  Elapsed:[/bold white] [yellow]{format_elapsed()}[/yellow]\n"
+                f"\n"
+                f"{test_display}\n"
+                f"\n"
+                f"  [green]✓ Passed:[/green] {passed}    [red]✗ Failed:[/red] {failed}    [dim]Total: {tests_completed}/{len(test_cases)}[/dim]"
+            )
+            return Panel(content, title="[bold]Test Execution[/bold]", border_style="cyan", padding=(0, 1))
+
         async def run_all_tests():
+            nonlocal passed, failed, tests_completed, current_test
             results = []
             for test_case in sorted(test_cases, key=lambda t: t.name):
+                current_test = test_case.name[:30]
                 trace = await adapter.execute(test_case.input.query, test_case.input.context)
                 result = await evaluator.evaluate(test_case, trace)
-                result.adapter_name = adapter.name  # Set adapter name for display
+                result.adapter_name = adapter.name
                 results.append(result)
+                if result.passed:
+                    passed += 1
+                    console.print(f"[green]✅ {test_case.name} - PASSED (score: {result.score})[/green]")
+                else:
+                    failed += 1
+                    console.print(f"[red]❌ {test_case.name} - FAILED (score: {result.score})[/red]")
+                tests_completed += 1
+            current_test = ""
             return results
 
-        results = asyncio.run(run_all_tests())
+        # Run with live display
+        if sys.stdin.isatty():
+            with Live(get_status_display(), console=console, refresh_per_second=10) as live:
+                async def run_with_display():
+                    task = asyncio.create_task(run_all_tests())
+                    while not task.done():
+                        live.update(get_status_display())
+                        await asyncio.sleep(0.1)
+                    return await task
+
+                results = asyncio.run(run_with_display())
+
+            # Final box
+            final_elapsed = format_elapsed()
+            console.print()
+            console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
+            console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
+            if failed == 0:
+                console.print(f"[bold cyan]║[/bold cyan]  [bold green]✓ ALL TESTS PASSED[/bold green]                                            [bold cyan]║[/bold cyan]")
+            else:
+                console.print(f"[bold cyan]║[/bold cyan]  [bold yellow]⚠ TESTS COMPLETED WITH FAILURES[/bold yellow]                              [bold cyan]║[/bold cyan]")
+            console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
+            console.print(f"[bold cyan]║[/bold cyan]  [green]✓ Passed:[/green] {passed:<4}  [red]✗ Failed:[/red] {failed:<4}  [dim]Time:[/dim] {final_elapsed}               [bold cyan]║[/bold cyan]")
+            console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
+            console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
+            console.print()
+        else:
+            results = asyncio.run(run_all_tests())
 
         # Use ConsoleReporter for proper table display
         from evalview.reporters.console_reporter import ConsoleReporter
@@ -1248,6 +1331,20 @@ async def _run_async(
     os.environ["EVAL_PROVIDER"] = selected_provider.value
     os.environ[config_for_provider.env_var] = selected_api_key
 
+    # Welcome banner
+    console.print()
+    console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗██╗   ██╗ █████╗ ██╗    ██╗   ██╗██╗███████╗██╗    ██╗[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔════╝██║   ██║██╔══██╗██║    ██║   ██║██║██╔════╝██║    ██║[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]█████╗  ██║   ██║███████║██║    ██║   ██║██║█████╗  ██║ █╗ ██║[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔══╝  ╚██╗ ██╔╝██╔══██║██║    ╚██╗ ██╔╝██║██╔══╝  ██║███╗██║[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗ ╚████╔╝ ██║  ██║███████╗╚████╔╝ ██║███████╗╚███╔███╔╝[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]╚══════╝  ╚═══╝  ╚═╝  ╚═╝╚══════╝ ╚═══╝  ╚═╝╚══════╝ ╚══╝╚══╝ [/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]           [dim]Testing framework for multi-step AI agents[/dim]            [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
+    console.print()
+
     if debug:
         console.print("[dim]🐛 Debug mode enabled - will show raw responses[/dim]\n")
         verbose = True  # Debug implies verbose
@@ -1857,18 +1954,41 @@ async def _run_async(
 
         def format_elapsed():
             elapsed = time_module.time() - start_time
-            mins, secs = divmod(int(elapsed), 60)
-            return f"{mins:02d}:{secs:02d}"
+            mins, secs = divmod(elapsed, 60)
+            secs_int = int(secs)
+            ms = int((secs - secs_int) * 1000)
+            return f"{int(mins):02d}:{secs_int:02d}.{ms:03d}"
+
+        # Spinner frames for animation
+        spinner_frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+        spinner_idx = 0
 
         def get_status_display():
+            nonlocal spinner_idx
             elapsed_str = format_elapsed()
-            running_str = ", ".join(tests_running) if tests_running else "starting..."
+            spinner = spinner_frames[spinner_idx % len(spinner_frames)]
+            spinner_idx += 1
+
+            # Build content for panel
+            running_tests = [*tests_running][:3]  # Use unpacking instead of list() to avoid shadowing
+            if running_tests:
+                running_lines = "\n".join([f"  [yellow]{spinner}[/yellow] [dim]{t}...[/dim]" for t in running_tests])
+            else:
+                running_lines = f"  [yellow]{spinner}[/yellow] [dim]Starting tests...[/dim]"
+
+            content = (
+                f"  [bold white]⏱️  Elapsed:[/bold white] [yellow]{elapsed_str}[/yellow]\n"
+                f"\n"
+                f"{running_lines}\n"
+                f"\n"
+                f"  [green]✓ Passed:[/green] {passed}    [red]✗ Failed:[/red] {failed}    [dim]Total: {tests_completed}/{len(test_cases)}[/dim]"
+            )
+
             return Panel(
-                f"[bold cyan]⏱️  Elapsed: {elapsed_str}[/bold cyan]\n"
-                f"[dim]Running: {running_str}[/dim]\n"
-                f"[green]✓ Completed: {tests_completed}/{len(test_cases)}[/green]",
+                content,
                 title="[bold]Test Execution[/bold]",
-                border_style="blue",
+                border_style="cyan",
+                padding=(0, 1),
             )
 
         def on_start_with_tracking(test_name):
@@ -1876,11 +1996,11 @@ async def _run_async(
             tests_running.add(test_name[:30])
             on_start(test_name)
 
-        def on_complete_with_tracking(test_name, passed, result):
+        def on_complete_with_tracking(test_name, test_passed, result):
             nonlocal tests_running, tests_completed
             tests_running.discard(test_name[:30])
             tests_completed += 1
-            on_complete(test_name, passed, result)
+            on_complete(test_name, test_passed, result)
 
         def on_error_with_tracking(test_name, exc):
             nonlocal tests_running, tests_completed
@@ -1890,11 +2010,11 @@ async def _run_async(
 
         # Use Live display for timer (only in interactive mode)
         if sys.stdin.isatty():
-            with Live(get_status_display(), console=console, refresh_per_second=1) as live:
+            with Live(get_status_display(), console=console, refresh_per_second=10) as live:
                 async def update_display():
                     while tests_completed < len(test_cases):
                         live.update(get_status_display())
-                        await asyncio.sleep(0.5)
+                        await asyncio.sleep(0.1)  # Faster updates for smooth spinner
                     # Final update to show completion
                     live.update(get_status_display())
 
@@ -1911,7 +2031,20 @@ async def _run_async(
 
                 parallel_results, _ = await asyncio.gather(parallel_task, display_task, return_exceptions=True)
 
-            console.print(f"\n[bold green]✓ All tests completed in {format_elapsed()}[/bold green]\n")
+            # Final completion box
+            final_elapsed = format_elapsed()
+            console.print()
+            console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
+            console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
+            if failed == 0:
+                console.print(f"[bold cyan]║[/bold cyan]  [bold green]✓ ALL TESTS PASSED[/bold green]                                            [bold cyan]║[/bold cyan]")
+            else:
+                console.print(f"[bold cyan]║[/bold cyan]  [bold yellow]⚠ TESTS COMPLETED WITH FAILURES[/bold yellow]                              [bold cyan]║[/bold cyan]")
+            console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
+            console.print(f"[bold cyan]║[/bold cyan]  [green]✓ Passed:[/green] {passed:<4}  [red]✗ Failed:[/red] {failed:<4}  [dim]Time:[/dim] {final_elapsed}               [bold cyan]║[/bold cyan]")
+            console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
+            console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
+            console.print()
         else:
             parallel_results = await execute_tests_parallel(
                 test_cases,

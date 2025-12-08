@@ -1,0 +1,14 @@
+name: "General Knowledge"
+description: "Test without tools - just knowledge"
+
+input:
+  query: "What is the capital of France?"
+
+expected:
+  output:
+    contains:
+      - "Paris"
+
+thresholds:
+  min_score: 80
+  max_latency: 15000

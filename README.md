@@ -1,6 +1,6 @@
 # EvalView — Pytest-style Testing for AI Agents
 
-> The open-source testing framework for LangGraph, CrewAI, OpenAI Assistants, and Anthropic Claude agents. Write tests in YAML, catch regressions in CI, and ship with confidence.
+> An open-source testing framework for AI agents, with adapters for LangGraph, CrewAI, OpenAI Assistants, and Anthropic Claude.
 
 **EvalView** is pytest for AI agents—write readable test cases, run them in CI/CD, and block deploys when behavior, cost, or latency regresses.
 
@@ -16,6 +16,9 @@
 [![PyPI version](https://img.shields.io/pypi/v/evalview.svg)](https://pypi.org/project/evalview/)
 [![PyPI downloads](https://img.shields.io/pypi/dm/evalview.svg)](https://pypi.org/project/evalview/)
 
+<p align="center">
+  <img src="assets/demo.gif" alt="EvalView Demo" width="700">
+</p>
 
 ---
 
@@ -511,6 +514,11 @@ EvalView is open source software licensed under the [Apache License 2.0](LICENSE
 
 - Issues: https://github.com/hidai25/eval-view/issues
 - Discussions: https://github.com/hidai25/eval-view/discussions
+
+## Affiliations
+
+EvalView is an independent open-source project and is **not affiliated with, endorsed by, or sponsored by** LangGraph, CrewAI, OpenAI, Anthropic, or any other third party mentioned.
+All product names, logos, and brands are property of their respective owners.
 
 ---
 
