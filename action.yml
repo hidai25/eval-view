@@ -1,5 +1,5 @@
 name: 'EvalView - AI Agent Testing'
-description: 'Test AI agents in CI/CD. Pytest-style framework for LangGraph, CrewAI, OpenAI, Anthropic, LLM evaluation, tool calling, hallucination detection, and regression testing.'
+description: 'Test AI agents in CI/CD. Pytest-style framework for LangGraph, CrewAI, OpenAI, Anthropic, tool calling, hallucination detection, and regression testing.'
 author: 'EvalView Team'
 
 branding:
