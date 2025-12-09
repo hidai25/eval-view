@@ -20,6 +20,7 @@ class LLMProvider(Enum):
     GEMINI = "gemini"
     GROK = "grok"
     HUGGINGFACE = "huggingface"
+    OLLAMA = "ollama"
 
 
 @dataclass
@@ -69,6 +70,13 @@ PROVIDER_CONFIGS: Dict[LLMProvider, ProviderConfig] = {
         display_name="Hugging Face",
         api_key_url="https://huggingface.co/settings/tokens",
     ),
+    LLMProvider.OLLAMA: ProviderConfig(
+        name="ollama",
+        env_var="OLLAMA_HOST",  # Optional - defaults to localhost:11434
+        default_model="llama3.2",
+        display_name="Ollama (Local)",
+        api_key_url="https://ollama.ai/download",  # Download page, no API key needed
+    ),
 }
 
 # Model aliases for better DX - shortcuts map to full model names
@@ -98,6 +106,13 @@ MODEL_ALIASES: Dict[str, str] = {
     "gemini-3": "gemini-3.0",
     "gemini-flash": "gemini-2.0-flash",
     "gemini-pro": "gemini-1.5-pro",
+    # Ollama (local models)
+    "ollama-llama": "llama3.2",
+    "llama3.2": "llama3.2",
+    "llama3.1": "llama3.1",
+    "mistral": "mistral",
+    "codellama": "codellama",
+    "phi": "phi",
 }
 
 
@@ -113,17 +128,51 @@ def resolve_model_alias(model: str) -> str:
     return MODEL_ALIASES.get(model.lower(), model)
 
 
+def is_ollama_running() -> bool:
+    """Check if Ollama is running locally.
+
+    Returns:
+        True if Ollama is accessible at localhost:11434
+    """
+    import socket
+
+    ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    # Parse host and port from URL
+    host = ollama_host.replace("http://", "").replace("https://", "")
+    if ":" in host:
+        host, port_str = host.split(":", 1)
+        port = int(port_str)
+    else:
+        port = 11434
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(1)
+            s.connect((host, port))
+            return True
+    except (socket.timeout, socket.error, OSError):
+        return False
+
+
 def detect_available_providers() -> List[Tuple[LLMProvider, str]]:
     """Detect which LLM providers have API keys configured.
+
+    For most providers, checks if the environment variable is set.
+    For Ollama, checks if the server is running locally (no API key needed).
 
     Returns:
         List of (provider, api_key) tuples for available providers.
     """
     available = []
     for provider, config in PROVIDER_CONFIGS.items():
-        api_key = os.getenv(config.env_var)
-        if api_key:
-            available.append((provider, api_key))
+        if provider == LLMProvider.OLLAMA:
+            # Ollama doesn't need an API key - check if it's running
+            if is_ollama_running():
+                available.append((provider, "ollama"))  # Placeholder "key"
+        else:
+            api_key = os.getenv(config.env_var)
+            if api_key:
+                available.append((provider, api_key))
     return available
 
 
@@ -238,6 +287,10 @@ class LLMClient:
             )
         elif self.provider == LLMProvider.HUGGINGFACE:
             return await self._huggingface_completion(
+                system_prompt, user_prompt, temperature, max_tokens
+            )
+        elif self.provider == LLMProvider.OLLAMA:
+            return await self._ollama_completion(
                 system_prompt, user_prompt, temperature, max_tokens
             )
         else:
@@ -418,6 +471,94 @@ class LLMClient:
 
         return json.loads(text.strip())
 
+    def _extract_json_from_text(self, text: str) -> Dict[str, Any]:
+        """Extract JSON from text that may contain extra content.
+
+        Local LLMs sometimes add explanations before/after JSON.
+        This tries multiple strategies to find valid JSON.
+        """
+        import re
+
+        text = text.strip()
+
+        # Strategy 1: Try direct parse
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+
+        # Strategy 2: Remove markdown code blocks
+        if "```" in text:
+            # Extract content between code blocks
+            match = re.search(r'```(?:json)?\s*([\s\S]*?)```', text)
+            if match:
+                try:
+                    return json.loads(match.group(1).strip())
+                except json.JSONDecodeError:
+                    pass
+
+        # Strategy 3: Find JSON object pattern { ... }
+        match = re.search(r'\{[\s\S]*\}', text)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except json.JSONDecodeError:
+                pass
+
+        # Strategy 4: Return a default evaluation if we can't parse
+        # Look for keywords to make a best-effort score
+        logger.warning(f"Could not parse JSON from Ollama response: {text[:200]}...")
+
+        # Try to extract a score from the text if mentioned
+        score_match = re.search(r'(\d{1,3})(?:/100|%| out of 100| points)', text.lower())
+        score = int(score_match.group(1)) if score_match else 70
+
+        return {
+            "score": min(score, 100),
+            "reasoning": f"Auto-extracted from non-JSON response: {text[:500]}",
+            "strengths": ["Response generated"],
+            "weaknesses": ["Model did not return valid JSON format"]
+        }
+
+    async def _ollama_completion(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> Dict[str, Any]:
+        """Ollama local LLM chat completion (OpenAI-compatible)."""
+        from openai import AsyncOpenAI
+
+        # Ollama runs locally with OpenAI-compatible API
+        ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+
+        client = AsyncOpenAI(
+            api_key="ollama",  # Ollama doesn't need an API key
+            base_url=f"{ollama_host}/v1",
+        )
+
+        # Add explicit JSON instruction with example format
+        json_instruction = """
+
+IMPORTANT: You must respond with ONLY a valid JSON object in this exact format:
+{"score": <number 0-100>, "reasoning": "<string>", "strengths": ["<string>"], "weaknesses": ["<string>"]}
+
+Do not include any text before or after the JSON. Do not use markdown code blocks."""
+
+        response = await client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": system_prompt + json_instruction},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+        text = response.choices[0].message.content or "{}"
+        return self._extract_json_from_text(text)
+
 
 def get_missing_provider_message() -> str:
     """Generate a helpful error message when no provider is available."""
@@ -434,8 +575,9 @@ def get_missing_provider_message() -> str:
     lines.append("  [cyan]export ANTHROPIC_API_KEY='your-key-here'[/cyan]")
     lines.append("\nOr add to your .env file:")
     lines.append("  [cyan]echo 'ANTHROPIC_API_KEY=your-key-here' >> .env[/cyan]")
-    lines.append("\n[dim]Tip: Set EVAL_PROVIDER to choose a specific provider (openai, anthropic, gemini, grok, huggingface)[/dim]")
-    lines.append("[dim]Tip: Set EVAL_MODEL to use a specific model[/dim]\n")
+    lines.append("\n[dim]Tip: Set EVAL_PROVIDER to choose a specific provider (openai, anthropic, gemini, grok, huggingface, ollama)[/dim]")
+    lines.append("[dim]Tip: Set EVAL_MODEL to use a specific model[/dim]")
+    lines.append("[dim]Tip: Use Ollama for free local evaluation - just run 'ollama serve' (no API key needed)[/dim]\n")
     lines.append("Get API keys at:")
 
     for provider, config in PROVIDER_CONFIGS.items():

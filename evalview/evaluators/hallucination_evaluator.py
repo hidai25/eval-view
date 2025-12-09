@@ -71,7 +71,17 @@ class HallucinationEvaluator:
         has_hallucination, confidence, details = await self._detect_hallucination(test_case, trace)
 
         # Determine if passed based on configuration
-        passed = not has_hallucination or hallucination_config.allow
+        # For local models (Ollama), use higher confidence threshold to reduce false positives
+        is_local_model = self.llm_client.provider.value == "ollama"
+        confidence_threshold = 0.9 if is_local_model else 0.7
+
+        # Only fail if hallucination detected with high confidence AND not allowed
+        if has_hallucination and confidence < confidence_threshold:
+            # Low confidence detection - treat as warning, not failure
+            passed = True
+            details = f"[Warning] {details}\n(Confidence {confidence:.0%} below threshold {confidence_threshold:.0%} - not blocking)"
+        else:
+            passed = not has_hallucination or hallucination_config.allow
 
         return HallucinationEvaluation(
             has_hallucination=has_hallucination,
@@ -210,6 +220,10 @@ WHAT IS NOT A HALLUCINATION (do NOT flag these):
 - Practical tips or best practices
 - Caveats or disclaimers (e.g., "rates may vary")
 - Explaining what the data means or implications
+- Adding units to numbers (e.g., "22" becomes "22°C" for temperature)
+- Correct mathematical calculations or unit conversions
+- Formatting tool data in a user-friendly way
+- Reasonable inferences from the data (e.g., "rainy" implies "might need umbrella")
 
 Respond in JSON format:
 {{

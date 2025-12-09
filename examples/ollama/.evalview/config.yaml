@@ -1,0 +1,11 @@
+# EvalView Configuration for LangGraph + Ollama
+# Use local Llama model as the LLM-as-judge (free!)
+
+adapter: langgraph
+endpoint: http://localhost:2024
+timeout: 90
+
+# Use Ollama for LLM-as-judge evaluation (free, local)
+judge:
+  provider: ollama
+  model: llama3.2

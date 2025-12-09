@@ -23,6 +23,16 @@
 
 ---
 
+**Who is EvalView for?**
+- Solo devs & small teams shipping agents to production
+- Teams already using LangGraph / CrewAI / custom tools
+- People who want *failing tests* in CI, not just dashboards
+
+Already using LangSmith, Langfuse, or other tracing?
+Use them to *see* what happened. Use EvalView to **block bad behavior in CI before it hits prod.**
+
+---
+
 ## What is EvalView?
 
 EvalView is a **testing framework for AI agents**.
@@ -59,6 +69,21 @@ You'll see a full run with:
 - ✅ A test case created for you
 - ✅ A config file wired up
 - 📊 A scored test: tools used, output quality, cost, latency
+
+### Free local evaluation with Ollama
+
+Don't want to pay for API calls? Use Ollama for free local LLM-as-judge:
+
+```bash
+# Install Ollama and pull a model
+curl -fsSL https://ollama.ai/install.sh | sh
+ollama pull llama3.2
+
+# Run tests with free local evaluation
+evalview run --judge-provider ollama --judge-model llama3.2
+```
+
+No API key needed. Runs entirely on your machine.
 
 <details>
 <summary>📺 Example quickstart output</summary>
@@ -357,7 +382,7 @@ Options:
   --summary              Compact output with deltas vs last run + regression detection
   --coverage             Show behavior coverage: tasks, tools, paths, eval dimensions
   --judge-model TEXT     Model for LLM-as-judge (e.g., gpt-5, sonnet, llama-70b)
-  --judge-provider TEXT  Provider for LLM-as-judge (openai, anthropic, huggingface, gemini, grok)
+  --judge-provider TEXT  Provider for LLM-as-judge (openai, anthropic, huggingface, gemini, grok, ollama)
 ```
 
 **Model shortcuts** - Use simple names, they auto-resolve:
@@ -368,12 +393,14 @@ Options:
 | `opus` | `claude-opus-4-5-20251101` |
 | `llama-70b` | `meta-llama/Llama-3.1-70B-Instruct` |
 | `gemini` | `gemini-3.0` |
+| `llama3.2` | `llama3.2` (Ollama) |
 
 ```bash
 # Examples
 evalview run --judge-model gpt-5 --judge-provider openai
 evalview run --judge-model sonnet --judge-provider anthropic
 evalview run --judge-model llama-70b --judge-provider huggingface  # Free!
+evalview run --judge-model llama3.2 --judge-provider ollama  # Free & Local!
 ```
 
 ### `evalview expand`
@@ -574,6 +601,7 @@ evalview/
 - [CrewAI Integration](examples/crewai/) - Test CrewAI agents
 - [Anthropic Claude](examples/anthropic/) - Test Claude API and Claude Agent SDK
 - [Dify Workflows](examples/dify/) - Test Dify AI workflows
+- [Ollama (Local LLMs)](examples/ollama/) - Test with local Llama models + free local evaluation
 
 **Using Node.js / Next.js?** See [@evalview/node](sdks/node/) for drop-in middleware.
 

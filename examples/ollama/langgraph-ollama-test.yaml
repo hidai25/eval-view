@@ -1,0 +1,30 @@
+# EvalView Test Case: LangGraph Agent with Ollama
+# Tests a local Llama-powered agent with tools
+
+name: "LangGraph + Ollama Agent"
+description: "Test local Llama agent's tool-calling capabilities"
+
+# LangGraph adapter for agent testing
+adapter: langgraph
+endpoint: http://localhost:2024
+
+input:
+  query: "Search for the latest AI news and summarize the top 3 stories"
+  context:
+    max_steps: 3
+
+expected:
+  tools:
+    - web_search
+    - summarize
+  output:
+    contains:
+      - "AI"
+    not_contains:
+      - "error"
+      - "failed"
+
+thresholds:
+  min_score: 70
+  max_cost: 0.00  # Free with Ollama!
+  max_latency: 60000  # Local models need more time

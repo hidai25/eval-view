@@ -39,7 +39,7 @@ console = Console()
 
 
 @click.group()
-@click.version_option(version="0.1.0")
+@click.version_option(version="0.1.4")
 def main():
     """EvalView - Testing framework for multi-step AI agents."""
     pass
@@ -614,14 +614,26 @@ model:
             spinner = spinner_frames[spinner_idx % len(spinner_frames)]
             spinner_idx += 1
             test_display = f"  [yellow]{spinner}[/yellow] [dim]{current_test}...[/dim]" if current_test else f"  [yellow]{spinner}[/yellow] [dim]Starting...[/dim]"
+
+            # Status indicator
+            if failed > 0:
+                status = "[bold red]● Running[/bold red]"
+            else:
+                status = "[green]● Running[/green]"
+
             content = (
-                f"  [bold white]⏱️  Elapsed:[/bold white] [yellow]{format_elapsed()}[/yellow]\n"
+                f"  {status}\n"
+                f"\n"
+                f"  [bold]⏱️  Elapsed:[/bold]    [yellow]{format_elapsed()}[/yellow]\n"
+                f"  [bold]📋 Progress:[/bold]   {tests_completed}/{len(test_cases)} tests\n"
                 f"\n"
                 f"{test_display}\n"
                 f"\n"
-                f"  [green]✓ Passed:[/green] {passed}    [red]✗ Failed:[/red] {failed}    [dim]Total: {tests_completed}/{len(test_cases)}[/dim]"
+                f"  [green]✓ Passed:[/green] {passed}    [red]✗ Failed:[/red] {failed}"
             )
-            return Panel(content, title="[bold]Test Execution[/bold]", border_style="cyan", padding=(0, 1))
+
+            border = "red" if failed > 0 else "cyan"
+            return Panel(content, title="[bold]Test Execution[/bold]", border_style=border, padding=(0, 1))
 
         async def run_all_tests():
             nonlocal passed, failed, tests_completed, current_test
@@ -1239,8 +1251,8 @@ thresholds:
 )
 @click.option(
     "--judge-provider",
-    type=click.Choice(["openai", "anthropic", "huggingface", "gemini", "grok"]),
-    help="Provider for LLM-as-judge evaluation",
+    type=click.Choice(["openai", "anthropic", "huggingface", "gemini", "grok", "ollama"]),
+    help="Provider for LLM-as-judge evaluation (ollama = free local)",
 )
 def run(
     path: Optional[str],
@@ -1503,6 +1515,21 @@ async def _run_async(
             verbose=verbose,
             model_config=model_config,
             allow_private_urls=allow_private_urls,
+        )
+    elif adapter_type == "ollama":
+        # Ollama adapter for local LLMs
+        from evalview.adapters.ollama_adapter import OllamaAdapter
+
+        ollama_model = config.get("model", "llama3.2")
+        if isinstance(ollama_model, dict):
+            ollama_model = ollama_model.get("name", "llama3.2")
+
+        adapter = OllamaAdapter(
+            model=ollama_model,
+            endpoint=config.get("endpoint", "http://localhost:11434"),
+            timeout=config.get("timeout", 60.0),
+            verbose=verbose,
+            model_config=model_config,
         )
     else:
         # HTTP adapter for standard REST APIs
@@ -1990,18 +2017,28 @@ async def _run_async(
             else:
                 running_lines = f"  [yellow]{spinner}[/yellow] [dim]Starting tests...[/dim]"
 
+            # Status indicator
+            if failed > 0:
+                status = "[bold red]● Running[/bold red]"
+            else:
+                status = "[green]● Running[/green]"
+
             content = (
-                f"  [bold white]⏱️  Elapsed:[/bold white] [yellow]{elapsed_str}[/yellow]\n"
+                f"  {status}\n"
+                f"\n"
+                f"  [bold]⏱️  Elapsed:[/bold]    [yellow]{elapsed_str}[/yellow]\n"
+                f"  [bold]📋 Progress:[/bold]   {tests_completed}/{len(test_cases)} tests\n"
                 f"\n"
                 f"{running_lines}\n"
                 f"\n"
-                f"  [green]✓ Passed:[/green] {passed}    [red]✗ Failed:[/red] {failed}    [dim]Total: {tests_completed}/{len(test_cases)}[/dim]"
+                f"  [green]✓ Passed:[/green] {passed}    [red]✗ Failed:[/red] {failed}"
             )
 
+            border = "red" if failed > 0 else "cyan"
             return Panel(
                 content,
                 title="[bold]Test Execution[/bold]",
-                border_style="cyan",
+                border_style=border,
                 padding=(0, 1),
             )
 
@@ -3462,6 +3499,217 @@ async def _expand_async(
 
     # Suggest run command with correct path (use --pattern for file matching)
     console.print(f"\n[blue]Run with:[/blue] evalview run {out_path} --pattern '{prefix}*.yaml'")
+
+
+@main.command()
+def demo():
+    """🎬 See what happens when an AI agent goes rogue (simulated)."""
+    import time as time_module
+    from rich.live import Live
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.text import Text
+
+    console.print()
+    # EvalView banner (same as quickstart)
+    console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗██╗   ██╗ █████╗ ██╗    ██╗   ██╗██╗███████╗██╗    ██╗[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔════╝██║   ██║██╔══██╗██║    ██║   ██║██║██╔════╝██║    ██║[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]█████╗  ██║   ██║███████║██║    ██║   ██║██║█████╗  ██║ █╗ ██║[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔══╝  ╚██╗ ██╔╝██╔══██║██║    ╚██╗ ██╔╝██║██╔══╝  ██║███╗██║[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗ ╚████╔╝ ██║  ██║███████╗╚████╔╝ ██║███████╗╚███╔███╔╝[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]╚══════╝  ╚═══╝  ╚═╝  ╚═╝╚══════╝ ╚═══╝  ╚═╝╚══════╝ ╚══╝╚══╝ [/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]           [bold red]🎬 Runaway Agent Simulation[/bold red]                          [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
+    console.print()
+    console.print("[dim]This demo simulates a buggy AI agent stuck in a loop.[/dim]")
+    console.print("[dim]In production, this would drain your API budget.[/dim]")
+    console.print()
+    time_module.sleep(2)
+
+    console.print("[yellow]▶ Starting agent: 'Research Assistant'[/yellow]")
+    console.print("[dim]  Task: 'Find information about climate change'[/dim]")
+    console.print()
+    time_module.sleep(1)
+
+    # Simulation parameters
+    cost = 0.0
+    tokens = 0
+    tool_calls = 0
+    iterations = 0
+    max_cost = 1.00  # Threshold
+    target_cost = 52.34  # Where we stop the "runaway"
+    start_time = time_module.time()
+
+    # Tool call history for display
+    tool_history = []
+    tools_sequence = [
+        ("web_search", "climate change research", 0.02, 1500),
+        ("web_search", "global warming statistics", 0.02, 1800),
+        ("read_document", "IPCC report 2023", 0.05, 4200),
+        ("web_search", "carbon emissions data", 0.02, 1600),
+        ("summarize", "research findings", 0.08, 6500),
+        ("web_search", "climate change solutions", 0.02, 1700),
+        ("read_document", "UN climate report", 0.05, 4000),
+        ("web_search", "renewable energy stats", 0.02, 1500),  # Loop starts
+        ("analyze_data", "emissions trends", 0.12, 9000),
+        ("web_search", "more climate data", 0.02, 1600),
+        ("summarize", "partial findings", 0.08, 6200),
+        ("web_search", "additional research", 0.02, 1500),
+    ]
+
+    def get_display():
+        # Cost color based on threshold
+        if cost < max_cost * 0.5:
+            cost_color = "green"
+        elif cost < max_cost:
+            cost_color = "yellow"
+        else:
+            cost_color = "bold red"
+
+        # Status
+        if cost < max_cost:
+            status = "[green]● Running[/green]"
+        else:
+            status = "[bold red blink]● THRESHOLD EXCEEDED[/bold red blink]"
+
+        # Build cost display with dramatic effect
+        cost_display = f"[{cost_color}]${cost:.2f}[/{cost_color}]"
+        if cost >= max_cost:
+            cost_display = f"[bold red]${cost:.2f}[/bold red] [red]⚠ OVER BUDGET[/red]"
+
+        # Recent tools table
+        tool_table = Table(show_header=False, box=None, padding=(0, 1))
+        tool_table.add_column("", width=3)
+        tool_table.add_column("Tool", width=20)
+        tool_table.add_column("Cost", width=10)
+
+        recent_tools = tool_history[-6:] if tool_history else []
+        for i, (tool_name, tool_cost) in enumerate(recent_tools):
+            if i == len(recent_tools) - 1:
+                tool_table.add_row("[yellow]→[/yellow]", f"[yellow]{tool_name}[/yellow]", f"[yellow]+${tool_cost:.3f}[/yellow]")
+            else:
+                tool_table.add_row("[dim]•[/dim]", f"[dim]{tool_name}[/dim]", f"[dim]+${tool_cost:.3f}[/dim]")
+
+        # Warning messages
+        warnings = ""
+        if cost > max_cost:
+            over_by = cost - max_cost
+            warnings = f"\n\n  [bold red]⚠ OVER THRESHOLD BY ${over_by:.2f}[/bold red]"
+            if cost > 10:
+                warnings += "\n  [red]⚠ Agent appears to be in a loop![/red]"
+            if cost > 30:
+                warnings += "\n  [red blink]⚠ CRITICAL: Runaway cost detected![/red blink]"
+
+        elapsed = time_module.time() - start_time
+        content = f"""
+  {status}
+
+  [bold]💰 Cost:[/bold]      {cost_display}  [dim](threshold: ${max_cost:.2f})[/dim]
+  [bold]🔢 Tokens:[/bold]    {tokens:,}
+  [bold]🔧 Tool Calls:[/bold] {tool_calls}
+  [bold]🔄 Iterations:[/bold] {iterations}
+  [bold]⏱️  Elapsed:[/bold]   {elapsed:.1f}s
+{warnings}
+
+  [dim]Recent tool calls:[/dim]
+"""
+        panel = Panel(
+            Text.from_markup(content),
+            title="[bold]Agent Execution Monitor[/bold]",
+            border_style="red" if cost >= max_cost else "cyan",
+            padding=(0, 1),
+        )
+        return panel
+
+    # Run the simulation with live display
+    with Live(get_display(), console=console, refresh_per_second=12, transient=False) as live:
+        while cost < target_cost:
+            # Pick a tool (cycle through, simulating a loop)
+            tool_idx = iterations % len(tools_sequence)
+            tool_name, _, base_cost, base_tokens = tools_sequence[tool_idx]
+
+            # Add some variance and escalation
+            multiplier = 1 + (iterations * 0.1)  # Costs increase as agent "tries harder"
+            tool_cost = base_cost * multiplier
+            tool_tokens = int(base_tokens * multiplier)
+
+            # Update metrics
+            cost += tool_cost
+            tokens += tool_tokens
+            tool_calls += 1
+            iterations += 1
+            tool_history.append((tool_name, tool_cost))
+
+            live.update(get_display())
+
+            # Speed up as we go (agent spiraling)
+            if cost < 5:
+                time_module.sleep(0.3)
+            elif cost < 20:
+                time_module.sleep(0.15)
+            else:
+                time_module.sleep(0.08)
+
+    # Final dramatic pause
+    time_module.sleep(0.5)
+
+    # Show what would have happened
+    console.print()
+    console.print("[bold red]╔══════════════════════════════════════════════════════════════════╗[/bold red]")
+    console.print("[bold red]║[/bold red]                                                                  [bold red]║[/bold red]")
+    console.print("[bold red]║[/bold red]  [bold white]❌ SIMULATION STOPPED[/bold white]                                        [bold red]║[/bold red]")
+    console.print("[bold red]║[/bold red]                                                                  [bold red]║[/bold red]")
+    console.print(f"[bold red]║[/bold red]  [white]Final cost:[/white]  [bold red]${cost:.2f}[/bold red]                                        [bold red]║[/bold red]")
+    console.print(f"[bold red]║[/bold red]  [white]Tokens used:[/white] [bold red]{tokens:,}[/bold red]                                       [bold red]║[/bold red]")
+    console.print(f"[bold red]║[/bold red]  [white]Tool calls:[/white]  [bold red]{tool_calls}[/bold red]                                           [bold red]║[/bold red]")
+    console.print("[bold red]║[/bold red]                                                                  [bold red]║[/bold red]")
+    console.print("[bold red]║[/bold red]  [yellow]In production, this agent would have kept running...[/yellow]       [bold red]║[/bold red]")
+    console.print("[bold red]╚══════════════════════════════════════════════════════════════════╝[/bold red]")
+    console.print()
+
+    time_module.sleep(1)
+
+    # Show how EvalView would catch this
+    console.print("[bold green]━━━ How EvalView Would Catch This ━━━[/bold green]")
+    console.print()
+    console.print("[cyan]With a simple test case:[/cyan]")
+    console.print()
+    console.print("[dim]┌─────────────────────────────────────────────┐[/dim]")
+    console.print("[dim]│[/dim] [yellow]# test-cases/research-agent.yaml[/yellow]          [dim]│[/dim]")
+    console.print("[dim]│[/dim] name: Research Agent Test                  [dim]│[/dim]")
+    console.print("[dim]│[/dim] input:                                     [dim]│[/dim]")
+    console.print("[dim]│[/dim]   query: \"Find info about climate change\" [dim]│[/dim]")
+    console.print("[dim]│[/dim]                                            [dim]│[/dim]")
+    console.print("[dim]│[/dim] thresholds:                                [dim]│[/dim]")
+    console.print("[dim]│[/dim]   [bold green]max_cost: 1.00[/bold green]  [dim]# ← Would fail at $1[/dim]    [dim]│[/dim]")
+    console.print("[dim]│[/dim]   max_latency: 30000                       [dim]│[/dim]")
+    console.print("[dim]└─────────────────────────────────────────────┘[/dim]")
+    console.print()
+
+    time_module.sleep(0.5)
+
+    console.print("[green]✅ EvalView result:[/green]")
+    console.print()
+    console.print("   [red]❌ FAILED[/red] - Cost threshold exceeded")
+    console.print(f"      Expected: ≤ $1.00")
+    console.print(f"      Actual:   ${cost:.2f}")
+    console.print()
+    console.print("   [green]→ CI/CD pipeline blocked[/green]")
+    console.print("   [green]→ Deploy prevented[/green]")
+    console.print(f"   [green]→ ${cost - max_cost:.2f} saved[/green]")
+    console.print()
+
+    console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold white]Don't let your agents drain your budget in production.[/bold white]       [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [green]Get started:[/green]                                                 [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]    $ evalview quickstart                                        [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
+    console.print()
 
 
 if __name__ == "__main__":

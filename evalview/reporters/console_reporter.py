@@ -185,13 +185,23 @@ class ConsoleReporter:
         self.console.print(table)
         self.console.print()
 
-        # Overall stats
+        # Overall stats with status indicator
+        if failed == 0:
+            status = "[green]● All Tests Passed[/green]"
+            border = "green"
+        else:
+            status = "[bold red]● Some Tests Failed[/bold red]"
+            border = "red"
+
         stats_panel = Panel(
-            f"[green]✅ Passed: {passed}[/green]\n"
-            f"[red]❌ Failed: {failed}[/red]\n"
-            f"[blue]📈 Success Rate: {success_rate:.1f}%[/blue]",
-            title="Overall Statistics",
-            border_style="blue",
+            f"  {status}\n"
+            f"\n"
+            f"  [bold]✅ Passed:[/bold]      [green]{passed}[/green]\n"
+            f"  [bold]❌ Failed:[/bold]      [red]{failed}[/red]\n"
+            f"  [bold]📈 Success Rate:[/bold] [{'green' if success_rate >= 80 else 'yellow' if success_rate >= 50 else 'red'}]{success_rate:.1f}%[/{'green' if success_rate >= 80 else 'yellow' if success_rate >= 50 else 'red'}]",
+            title="[bold]Overall Statistics[/bold]",
+            border_style=border,
+            padding=(0, 1),
         )
         self.console.print(stats_panel)
 
