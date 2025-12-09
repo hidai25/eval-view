@@ -1,5 +1,5 @@
 name: 'EvalView - AI Agent Testing'
-description: 'Test AI agents in CI/CD. Pytest-style framework for LangGraph, CrewAI, OpenAI, Anthropic, tool calling, hallucination detection, and regression testing.'
+description: 'Testing framework for AI agents. Works with LangGraph, CrewAI, OpenAI Assistants, Anthropic.'
 author: 'EvalView Team'
 
 branding:
@@ -11,20 +11,17 @@ inputs:
     description: 'OpenAI API key for LLM-as-judge evaluation'
     required: false
   anthropic-api-key:
-    description: 'Anthropic API key (if using Claude for evaluation)'
+    description: 'Anthropic API key (optional alternative to OpenAI)'
     required: false
   config-path:
-    description: 'Path to evalview config file'
+    description: 'Path to EvalView config file'
     required: false
     default: '.evalview/config.yaml'
-  test-cases-path:
-    description: 'Path to test cases directory'
-    required: false
   filter:
     description: 'Filter tests by name pattern'
     required: false
   max-workers:
-    description: 'Number of parallel workers'
+    description: 'Maximum parallel workers'
     required: false
     default: '4'
   max-retries:
@@ -43,30 +40,26 @@ inputs:
     description: 'Python version to use'
     required: false
     default: '3.11'
-  evalview-version:
-    description: 'EvalView version to install (default: latest)'
-    required: false
-    default: ''
 
 outputs:
   results-file:
-    description: 'Path to the JSON results file'
-    value: ${{ steps.run-tests.outputs.results_file }}
+    description: 'Path to JSON results file'
+    value: ${{ steps.run-tests.outputs.results-file }}
   report-file:
-    description: 'Path to the HTML report file'
-    value: ${{ steps.generate-report.outputs.report_file }}
+    description: 'Path to HTML report file'
+    value: ${{ steps.run-tests.outputs.report-file }}
   total-tests:
     description: 'Total number of tests run'
-    value: ${{ steps.parse-results.outputs.total }}
+    value: ${{ steps.run-tests.outputs.total-tests }}
   passed-tests:
     description: 'Number of passed tests'
-    value: ${{ steps.parse-results.outputs.passed }}
+    value: ${{ steps.run-tests.outputs.passed-tests }}
   failed-tests:
     description: 'Number of failed tests'
-    value: ${{ steps.parse-results.outputs.failed }}
+    value: ${{ steps.run-tests.outputs.failed-tests }}
   pass-rate:
     description: 'Pass rate percentage'
-    value: ${{ steps.parse-results.outputs.pass_rate }}
+    value: ${{ steps.run-tests.outputs.pass-rate }}
 
 runs:
   using: 'composite'
@@ -75,22 +68,14 @@ runs:
       uses: actions/setup-python@v5
       with:
         python-version: ${{ inputs.python-version }}
-        cache: 'pip'
 
     - name: Install EvalView
       shell: bash
       run: |
-        if [ -n "${{ inputs.evalview-version }}" ]; then
-          pip install "evalview[all]==${{ inputs.evalview-version }}"
-        else
-          pip install "evalview[all]"
-        fi
+        python -m pip install --upgrade pip
+        pip install evalview
 
-    - name: Verify installation
-      shell: bash
-      run: evalview --help
-
-    - name: Run EvalView tests
+    - name: Run EvalView Tests
       id: run-tests
       shell: bash
       env:
@@ -100,102 +85,51 @@ runs:
         # Build command
         CMD="evalview run"
 
-        if [ -n "${{ inputs.config-path }}" ]; then
-          CMD="$CMD --config ${{ inputs.config-path }}"
-        fi
-
-        if [ -n "${{ inputs.test-cases-path }}" ]; then
-          CMD="$CMD --test-cases ${{ inputs.test-cases-path }}"
-        fi
-
         if [ -n "${{ inputs.filter }}" ]; then
-          CMD="$CMD --filter \"${{ inputs.filter }}\""
+          CMD="$CMD --filter '${{ inputs.filter }}'"
         fi
 
-        if [ -n "${{ inputs.max-workers }}" ]; then
-          CMD="$CMD --max-workers ${{ inputs.max-workers }}"
+        CMD="$CMD --max-workers ${{ inputs.max-workers }}"
+        CMD="$CMD --max-retries ${{ inputs.max-retries }}"
+
+        if [ "${{ inputs.generate-report }}" = "true" ]; then
+          CMD="$CMD --html-report evalview-report.html"
         fi
 
-        if [ -n "${{ inputs.max-retries }}" ]; then
-          CMD="$CMD --max-retries ${{ inputs.max-retries }}"
-        fi
+        # Run tests and capture output
+        set +e
+        eval $CMD
+        EXIT_CODE=$?
+        set -e
 
-        echo "Running: $CMD"
-        eval $CMD || true
-
-        # Find the latest results file
+        # Find results file
         RESULTS_FILE=$(ls -t .evalview/results/*.json 2>/dev/null | head -1)
-        echo "results_file=$RESULTS_FILE" >> $GITHUB_OUTPUT
 
-    - name: Parse results
-      id: parse-results
-      shell: bash
-      run: |
-        RESULTS_FILE="${{ steps.run-tests.outputs.results_file }}"
-        if [ -n "$RESULTS_FILE" ] && [ -f "$RESULTS_FILE" ]; then
-          python3 << 'EOF'
-        import json
-        import os
+        if [ -n "$RESULTS_FILE" ]; then
+          echo "results-file=$RESULTS_FILE" >> $GITHUB_OUTPUT
 
-        with open("${{ steps.run-tests.outputs.results_file }}") as f:
-            results = json.load(f)
+          # Parse results
+          TOTAL=$(jq '.summary.total // 0' "$RESULTS_FILE")
+          PASSED=$(jq '.summary.passed // 0' "$RESULTS_FILE")
+          FAILED=$(jq '.summary.failed // 0' "$RESULTS_FILE")
 
-        # Handle both list and dict formats
-        if isinstance(results, list):
-            test_results = results
-        else:
-            test_results = results.get('results', [])
+          if [ "$TOTAL" -gt 0 ]; then
+            PASS_RATE=$(echo "scale=1; $PASSED * 100 / $TOTAL" | bc)
+          else
+            PASS_RATE="0"
+          fi
 
-        total = len(test_results)
-        passed = sum(1 for r in test_results if r.get('passed', False))
-        failed = total - passed
-        pass_rate = round((passed / total * 100), 1) if total > 0 else 0
-
-        with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-            f.write(f"total={total}\n")
-            f.write(f"passed={passed}\n")
-            f.write(f"failed={failed}\n")
-            f.write(f"pass_rate={pass_rate}\n")
-
-        # Print summary
-        print(f"Results: {passed}/{total} tests passed ({pass_rate}%)")
-        EOF
-        else
-          echo "total=0" >> $GITHUB_OUTPUT
-          echo "passed=0" >> $GITHUB_OUTPUT
-          echo "failed=0" >> $GITHUB_OUTPUT
-          echo "pass_rate=0" >> $GITHUB_OUTPUT
+          echo "total-tests=$TOTAL" >> $GITHUB_OUTPUT
+          echo "passed-tests=$PASSED" >> $GITHUB_OUTPUT
+          echo "failed-tests=$FAILED" >> $GITHUB_OUTPUT
+          echo "pass-rate=$PASS_RATE" >> $GITHUB_OUTPUT
         fi
 
-    - name: Generate HTML report
-      id: generate-report
-      if: inputs.generate-report == 'true'
-      shell: bash
-      run: |
-        RESULTS_FILE="${{ steps.run-tests.outputs.results_file }}"
-        if [ -n "$RESULTS_FILE" ] && [ -f "$RESULTS_FILE" ]; then
-          evalview report "$RESULTS_FILE" --html evalview-report.html
-          echo "report_file=evalview-report.html" >> $GITHUB_OUTPUT
+        if [ -f "evalview-report.html" ]; then
+          echo "report-file=evalview-report.html" >> $GITHUB_OUTPUT
         fi
 
-    - name: Create job summary
-      shell: bash
-      run: |
-        echo "## EvalView Test Results" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
-        echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-        echo "| Total Tests | ${{ steps.parse-results.outputs.total }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Passed | ${{ steps.parse-results.outputs.passed }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Failed | ${{ steps.parse-results.outputs.failed }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Pass Rate | ${{ steps.parse-results.outputs.pass_rate }}% |" >> $GITHUB_STEP_SUMMARY
-
-    - name: Check for failures
-      if: inputs.fail-on-error == 'true'
-      shell: bash
-      run: |
-        FAILED="${{ steps.parse-results.outputs.failed }}"
-        if [ "$FAILED" -gt 0 ]; then
-          echo "::error::$FAILED test(s) failed"
-          exit 1
+        # Handle exit code based on fail-on-error setting
+        if [ "${{ inputs.fail-on-error }}" = "true" ] && [ $EXIT_CODE -ne 0 ]; then
+          exit $EXIT_CODE
         fi
