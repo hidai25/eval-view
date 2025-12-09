@@ -1,0 +1,201 @@
+name: 'EvalView - AI Agent Testing'
+description: 'Pytest-style testing framework for AI agents. Test LangGraph, CrewAI, OpenAI, Anthropic agents in CI/CD.'
+author: 'EvalView Team'
+
+branding:
+  icon: 'check-circle'
+  color: 'purple'
+
+inputs:
+  openai-api-key:
+    description: 'OpenAI API key for LLM-as-judge evaluation'
+    required: false
+  anthropic-api-key:
+    description: 'Anthropic API key (if using Claude for evaluation)'
+    required: false
+  config-path:
+    description: 'Path to evalview config file'
+    required: false
+    default: '.evalview/config.yaml'
+  test-cases-path:
+    description: 'Path to test cases directory'
+    required: false
+  filter:
+    description: 'Filter tests by name pattern'
+    required: false
+  max-workers:
+    description: 'Number of parallel workers'
+    required: false
+    default: '4'
+  max-retries:
+    description: 'Maximum retries for failed tests'
+    required: false
+    default: '2'
+  fail-on-error:
+    description: 'Fail the workflow if any test fails'
+    required: false
+    default: 'true'
+  generate-report:
+    description: 'Generate HTML report'
+    required: false
+    default: 'true'
+  python-version:
+    description: 'Python version to use'
+    required: false
+    default: '3.11'
+  evalview-version:
+    description: 'EvalView version to install (default: latest)'
+    required: false
+    default: ''
+
+outputs:
+  results-file:
+    description: 'Path to the JSON results file'
+    value: ${{ steps.run-tests.outputs.results_file }}
+  report-file:
+    description: 'Path to the HTML report file'
+    value: ${{ steps.generate-report.outputs.report_file }}
+  total-tests:
+    description: 'Total number of tests run'
+    value: ${{ steps.parse-results.outputs.total }}
+  passed-tests:
+    description: 'Number of passed tests'
+    value: ${{ steps.parse-results.outputs.passed }}
+  failed-tests:
+    description: 'Number of failed tests'
+    value: ${{ steps.parse-results.outputs.failed }}
+  pass-rate:
+    description: 'Pass rate percentage'
+    value: ${{ steps.parse-results.outputs.pass_rate }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: 'pip'
+
+    - name: Install EvalView
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.evalview-version }}" ]; then
+          pip install "evalview[all]==${{ inputs.evalview-version }}"
+        else
+          pip install "evalview[all]"
+        fi
+
+    - name: Verify installation
+      shell: bash
+      run: evalview --help
+
+    - name: Run EvalView tests
+      id: run-tests
+      shell: bash
+      env:
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+      run: |
+        # Build command
+        CMD="evalview run"
+
+        if [ -n "${{ inputs.config-path }}" ]; then
+          CMD="$CMD --config ${{ inputs.config-path }}"
+        fi
+
+        if [ -n "${{ inputs.test-cases-path }}" ]; then
+          CMD="$CMD --test-cases ${{ inputs.test-cases-path }}"
+        fi
+
+        if [ -n "${{ inputs.filter }}" ]; then
+          CMD="$CMD --filter \"${{ inputs.filter }}\""
+        fi
+
+        if [ -n "${{ inputs.max-workers }}" ]; then
+          CMD="$CMD --max-workers ${{ inputs.max-workers }}"
+        fi
+
+        if [ -n "${{ inputs.max-retries }}" ]; then
+          CMD="$CMD --max-retries ${{ inputs.max-retries }}"
+        fi
+
+        echo "Running: $CMD"
+        eval $CMD || true
+
+        # Find the latest results file
+        RESULTS_FILE=$(ls -t .evalview/results/*.json 2>/dev/null | head -1)
+        echo "results_file=$RESULTS_FILE" >> $GITHUB_OUTPUT
+
+    - name: Parse results
+      id: parse-results
+      shell: bash
+      run: |
+        RESULTS_FILE="${{ steps.run-tests.outputs.results_file }}"
+        if [ -n "$RESULTS_FILE" ] && [ -f "$RESULTS_FILE" ]; then
+          python3 << 'EOF'
+        import json
+        import os
+
+        with open("${{ steps.run-tests.outputs.results_file }}") as f:
+            results = json.load(f)
+
+        # Handle both list and dict formats
+        if isinstance(results, list):
+            test_results = results
+        else:
+            test_results = results.get('results', [])
+
+        total = len(test_results)
+        passed = sum(1 for r in test_results if r.get('passed', False))
+        failed = total - passed
+        pass_rate = round((passed / total * 100), 1) if total > 0 else 0
+
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+            f.write(f"total={total}\n")
+            f.write(f"passed={passed}\n")
+            f.write(f"failed={failed}\n")
+            f.write(f"pass_rate={pass_rate}\n")
+
+        # Print summary
+        print(f"Results: {passed}/{total} tests passed ({pass_rate}%)")
+        EOF
+        else
+          echo "total=0" >> $GITHUB_OUTPUT
+          echo "passed=0" >> $GITHUB_OUTPUT
+          echo "failed=0" >> $GITHUB_OUTPUT
+          echo "pass_rate=0" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Generate HTML report
+      id: generate-report
+      if: inputs.generate-report == 'true'
+      shell: bash
+      run: |
+        RESULTS_FILE="${{ steps.run-tests.outputs.results_file }}"
+        if [ -n "$RESULTS_FILE" ] && [ -f "$RESULTS_FILE" ]; then
+          evalview report "$RESULTS_FILE" --html evalview-report.html
+          echo "report_file=evalview-report.html" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Create job summary
+      shell: bash
+      run: |
+        echo "## EvalView Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+        echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Total Tests | ${{ steps.parse-results.outputs.total }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Passed | ${{ steps.parse-results.outputs.passed }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Failed | ${{ steps.parse-results.outputs.failed }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Pass Rate | ${{ steps.parse-results.outputs.pass_rate }}% |" >> $GITHUB_STEP_SUMMARY
+
+    - name: Check for failures
+      if: inputs.fail-on-error == 'true'
+      shell: bash
+      run: |
+        FAILED="${{ steps.parse-results.outputs.failed }}"
+        if [ "$FAILED" -gt 0 ]; then
+          echo "::error::$FAILED test(s) failed"
+          exit 1
+        fi

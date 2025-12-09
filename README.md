@@ -419,7 +419,98 @@ Weights are configurable globally or per-test.
 
 EvalView is CLI-first. You can run it locally or add to CI.
 
-### GitHub Actions
+### GitHub Action (Recommended)
+
+Use the official EvalView GitHub Action for the simplest setup:
+
+```yaml
+name: EvalView Agent Tests
+
+on: [push, pull_request]
+
+jobs:
+  test-agents:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run EvalView
+        uses: hidai25/eval-view@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          max-workers: '4'
+          fail-on-error: 'true'
+```
+
+#### Action Inputs
+
+| Input | Description | Default |
+|-------|-------------|---------|
+| `openai-api-key` | OpenAI API key for LLM-as-judge | - |
+| `anthropic-api-key` | Anthropic API key (optional) | - |
+| `config-path` | Path to config file | `.evalview/config.yaml` |
+| `filter` | Filter tests by name pattern | - |
+| `max-workers` | Parallel workers | `4` |
+| `max-retries` | Retry failed tests | `2` |
+| `fail-on-error` | Fail workflow on test failure | `true` |
+| `generate-report` | Generate HTML report | `true` |
+| `python-version` | Python version | `3.11` |
+
+#### Action Outputs
+
+| Output | Description |
+|--------|-------------|
+| `results-file` | Path to JSON results |
+| `report-file` | Path to HTML report |
+| `total-tests` | Total tests run |
+| `passed-tests` | Passed count |
+| `failed-tests` | Failed count |
+| `pass-rate` | Pass rate percentage |
+
+#### Full Example with PR Comments
+
+```yaml
+name: EvalView Agent Tests
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-agents:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run EvalView
+        id: evalview
+        uses: hidai25/eval-view@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: evalview-results
+          path: |
+            .evalview/results/*.json
+            evalview-report.html
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## EvalView Results\n\n✅ ${`${{ steps.evalview.outputs.passed-tests }}`}/${`${{ steps.evalview.outputs.total-tests }}`} tests passed (${`${{ steps.evalview.outputs.pass-rate }}`}%)`
+            });
+```
+
+### Manual Setup (Alternative)
+
+If you prefer manual setup:
 
 ```yaml
 name: EvalView Agent Tests

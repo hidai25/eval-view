@@ -1,38 +1,77 @@
-# Example: EvalView Agent Tests
-# This workflow is manual-only by default (workflow_dispatch).
-# To run on every push/PR, change the triggers below.
+# Example: Using the EvalView GitHub Action
+# Copy this workflow to your repository at .github/workflows/evalview.yml
 #
-# To enable automatic runs, replace the `on:` section with:
-#   on:
-#     push:
-#       branches: [ main ]
-#     pull_request:
+# Prerequisites:
+# 1. Add OPENAI_API_KEY to your repository secrets
+# 2. Create test cases in .evalview/test-cases/
 
-name: EvalView Agent Tests (example)
+name: EvalView Agent Tests
 
 on:
-  workflow_dispatch:  # Manual trigger only - click "Run workflow" in GitHub Actions
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      filter:
+        description: 'Filter tests by name pattern'
+        required: false
 
 jobs:
-  evalview:
+  test-agents:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Run EvalView
+        id: evalview
+        uses: hidai25/eval-view@main  # Or use a specific version tag
         with:
-          python-version: "3.11"
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          filter: ${{ github.event.inputs.filter }}
+          max-workers: '4'
+          fail-on-error: 'true'
+          generate-report: 'true'
 
-      - name: Install EvalView
-        run: |
-          pip install --upgrade pip
-          pip install evalview
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evalview-results
+          path: |
+            .evalview/results/*.json
+            evalview-report.html
+          retention-days: 30
 
-      - name: Run EvalView tests
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: |
-          evalview run --pattern "tests/test-cases/*.yaml" --verbose
+      - name: Comment on PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const total = '${{ steps.evalview.outputs.total-tests }}';
+            const passed = '${{ steps.evalview.outputs.passed-tests }}';
+            const failed = '${{ steps.evalview.outputs.failed-tests }}';
+            const passRate = '${{ steps.evalview.outputs.pass-rate }}';
+
+            const status = failed > 0 ? ':x:' : ':white_check_mark:';
+
+            const body = `## ${status} EvalView Test Results
+
+            | Metric | Value |
+            |--------|-------|
+            | Total Tests | ${total} |
+            | Passed | ${passed} |
+            | Failed | ${failed} |
+            | Pass Rate | ${passRate}% |
+
+            [View full report](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID})`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
