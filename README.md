@@ -33,6 +33,19 @@ Use them to *see* what happened. Use EvalView to **block bad behavior in CI befo
 
 ---
 
+## Looking for Design Partners
+
+**Using EvalView on a real agent?** I'm looking for 3-5 early adopters.
+
+I'll personally help you set up YAML tests + CI integration in exchange for feedback on what's missing.
+
+- Email: hidai@evalview.com
+- [Open a GitHub Discussion](https://github.com/hidai25/eval-view/discussions)
+
+No pitch, just want to learn what's broken and make it work for real use cases.
+
+---
+
 ## What is EvalView?
 
 EvalView is a **testing framework for AI agents**.
