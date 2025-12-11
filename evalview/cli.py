@@ -1320,6 +1320,11 @@ async def _run_async(
     from evalview.core.parallel import execute_tests_parallel
     from evalview.core.retry import RetryConfig, with_retry
     from evalview.core.config import ScoringWeights
+    from evalview.evaluators.statistical_evaluator import (
+        StatisticalEvaluator,
+        is_statistical_mode,
+    )
+    from evalview.reporters.console_reporter import ConsoleReporter
 
     # Load environment variables from path directory if provided
     if path:
@@ -1841,6 +1846,10 @@ async def _run_async(
         # Use global adapter
         return adapter
 
+    # Initialize statistical evaluator and console reporter for variance mode
+    statistical_evaluator = StatisticalEvaluator()
+    stats_reporter = ConsoleReporter()
+
     # Helper function to execute a single test with retry support
     async def execute_single_test(test_case):
         """Execute a single test case with optional retry logic."""
@@ -1854,6 +1863,61 @@ async def _run_async(
         async def _execute():
             return await test_adapter.execute(test_case.input.query, context)
 
+        # Check if this test uses statistical mode
+        if is_statistical_mode(test_case):
+            variance_config = test_case.thresholds.variance
+            num_runs = variance_config.runs
+            console.print(f"\n[cyan]📊 Statistical mode: Running {test_case.name} {num_runs} times...[/cyan]")
+
+            # Collect results from multiple runs
+            individual_results = []
+            for run_idx in range(num_runs):
+                try:
+                    # Execute with retry if configured
+                    if retry_config.max_retries > 0:
+                        retry_result = await with_retry(
+                            _execute,
+                            retry_config,
+                            on_retry=lambda attempt, delay, exc: None,
+                        )
+                        if not retry_result.success:
+                            console.print(f"  [red]Run {run_idx + 1}/{num_runs}: ERROR[/red]")
+                            continue
+                        trace = retry_result.result
+                    else:
+                        trace = await _execute()
+
+                    # Evaluate this run
+                    adapter_name = getattr(test_adapter, 'name', None)
+                    result = await evaluator.evaluate(test_case, trace, adapter_name=adapter_name)
+                    individual_results.append(result)
+
+                    status = "[green]✓[/green]" if result.passed else "[red]✗[/red]"
+                    console.print(f"  Run {run_idx + 1}/{num_runs}: {status} score={result.score:.1f}")
+
+                except Exception as e:
+                    console.print(f"  [red]Run {run_idx + 1}/{num_runs}: ERROR - {str(e)[:50]}[/red]")
+
+            if not individual_results:
+                raise ValueError(f"All {num_runs} runs failed for {test_case.name}")
+
+            # Compute statistical result
+            stat_result = statistical_evaluator.evaluate_from_results(
+                test_case, individual_results, variance_config
+            )
+
+            # Print statistical summary
+            stats_reporter.print_statistical_summary(stat_result, show_individual_runs=verbose)
+
+            # Return the statistical pass/fail and use the mean score for display
+            # Create a synthetic result for compatibility with the rest of the CLI
+            best_result = individual_results[0]
+            best_result.passed = stat_result.passed
+            best_result.score = stat_result.score_stats.mean
+
+            return (stat_result.passed, best_result)
+
+        # Standard single-run execution
         # Execute with retry if configured
         if retry_config.max_retries > 0:
             retry_result = await with_retry(
