@@ -83,6 +83,19 @@ You'll see a full run with:
 - ✅ A config file wired up
 - 📊 A scored test: tools used, output quality, cost, latency
 
+### Run examples directly (no config needed)
+
+Test cases with `adapter` and `endpoint` defined work without any setup:
+
+```bash
+# Run any example directly
+evalview run examples/langgraph/test-case.yaml
+evalview run examples/ollama/langgraph-ollama-test.yaml
+
+# Your own test case with adapter/endpoint works the same way
+evalview run my-test.yaml
+```
+
 ### Free local evaluation with Ollama
 
 Don't want to pay for API calls? Use Ollama for free local LLM-as-judge:
