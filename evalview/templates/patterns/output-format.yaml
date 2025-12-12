@@ -1,0 +1,23 @@
+# Pattern: Output Format
+# Tests that the agent returns properly formatted output.
+# Common failure: Agent returns prose when JSON was expected.
+#
+# Customize: Change query and expected format markers.
+
+name: "Output format check"
+description: "Verify the agent returns correctly formatted output"
+
+input:
+  query: "List the top 3 items as JSON"  # <-- Your query here
+
+expected:
+  output:
+    contains:
+      - "{"  # <-- Format markers
+      - "}"
+    not_contains:
+      - "here is"
+      - "sure, "
+
+thresholds:
+  min_score: 80

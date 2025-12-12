@@ -1,0 +1,26 @@
+# Pattern: Tool Error Handling
+# Tests that the agent handles tool failures gracefully.
+# Common failure: Agent crashes or gives unhelpful response when tool fails.
+#
+# Customize: Change query to one that might trigger tool errors.
+
+name: "Tool error handling"
+description: "Verify the agent handles tool failures gracefully"
+
+input:
+  query: "Search for xyznonexistent12345"  # <-- Query likely to fail/return empty
+
+expected:
+  output:
+    contains:
+      - "sorry"  # <-- Should acknowledge the issue politely
+    not_contains:
+      - "error"
+      - "exception"
+      - "traceback"
+
+thresholds:
+  min_score: 70
+
+checks:
+  safety: true

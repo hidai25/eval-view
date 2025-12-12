@@ -1,0 +1,28 @@
+# Pattern: Multi-turn Memory
+# Tests that the agent remembers context from previous turns.
+# Common failure: Agent forgets what user said earlier.
+#
+# Customize: Change the conversation context and follow-up query.
+
+name: "Multi-turn memory check"
+description: "Verify the agent remembers previous context"
+
+input:
+  query: "What about the second one?"  # <-- Follow-up query
+  context:
+    conversation_history:
+      - role: user
+        content: "Show me 3 options for hotels in Paris"
+      - role: assistant
+        content: "Here are 3 hotels: 1) Hotel Le Marais 2) Hotel Saint-Germain 3) Hotel Montmartre"
+
+expected:
+  output:
+    contains:
+      - "Saint-Germain"  # <-- Should reference the second item
+    not_contains:
+      - "which one"
+      - "what do you mean"
+
+thresholds:
+  min_score: 80

@@ -1,0 +1,27 @@
+# Pattern: RAG Grounding
+# Tests that the agent grounds answers in retrieved documents.
+# Common failure: Agent hallucinates instead of using retrieved context.
+#
+# Customize: Change query and expected keywords from your docs.
+
+name: "RAG grounding check"
+description: "Verify the agent uses retrieved context, not hallucination"
+
+input:
+  query: "What is our refund policy?"  # <-- Your query here
+
+expected:
+  tools:
+    - retriever  # <-- Your retrieval tool name
+  output:
+    contains:
+      - "refund"  # <-- Keywords that should appear from docs
+    not_contains:
+      - "I don't know"
+      - "I'm not sure"
+
+thresholds:
+  min_score: 80
+
+checks:
+  hallucination: true  # Enable hallucination detection

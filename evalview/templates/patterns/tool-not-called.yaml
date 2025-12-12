@@ -1,0 +1,22 @@
+# Pattern: Tool Not Called
+# Tests that the agent calls a specific tool when it should.
+# Common failure: Agent answers from memory instead of using tools.
+#
+# Customize: Change query and tool_name to match your agent.
+
+name: "Tool must be called"
+description: "Verify the agent uses the expected tool"
+
+input:
+  query: "What is 25 * 4?"  # <-- Your query here
+
+expected:
+  tools:
+    - calculator  # <-- Your tool name here
+  output:
+    not_contains:
+      - "I don't have access"
+      - "I cannot"
+
+thresholds:
+  min_score: 80

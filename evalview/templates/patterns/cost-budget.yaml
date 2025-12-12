@@ -1,0 +1,20 @@
+# Pattern: Cost Budget
+# Tests that the agent stays within cost limits.
+# Common failure: Agent makes too many LLM calls or uses expensive models.
+#
+# Customize: Adjust max_cost threshold for your budget.
+
+name: "Cost budget check"
+description: "Verify the agent stays within cost limits"
+
+input:
+  query: "Summarize the main points"  # <-- Your query here
+
+expected:
+  output:
+    not_contains:
+      - "error"
+
+thresholds:
+  min_score: 70
+  max_cost: 0.05  # <-- Your budget in USD

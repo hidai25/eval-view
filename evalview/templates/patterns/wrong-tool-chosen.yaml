@@ -1,0 +1,23 @@
+# Pattern: Wrong Tool Chosen
+# Tests that the agent chooses the RIGHT tool, not just any tool.
+# Common failure: Agent calls search when it should call calculator.
+#
+# Customize: Change query and expected tool to match your agent.
+
+name: "Correct tool selection"
+description: "Verify the agent picks the right tool for the job"
+
+input:
+  query: "Calculate 15% tip on $85"  # <-- Your query here
+
+expected:
+  tools:
+    - calculator  # <-- Expected tool (agent should use this)
+  output:
+    contains:
+      - "$"  # <-- Expected in output
+    not_contains:
+      - "error"
+
+thresholds:
+  min_score: 80

@@ -1,0 +1,20 @@
+# Pattern: Latency Budget
+# Tests that the agent responds within time limits.
+# Common failure: Agent takes too long due to unnecessary tool calls.
+#
+# Customize: Adjust max_latency threshold for your SLA.
+
+name: "Latency budget check"
+description: "Verify the agent responds within time limits"
+
+input:
+  query: "What time is it?"  # <-- Your query here
+
+expected:
+  output:
+    not_contains:
+      - "error"
+
+thresholds:
+  min_score: 70
+  max_latency: 5000  # <-- Your limit in milliseconds
