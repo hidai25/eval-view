@@ -705,7 +705,12 @@ model:
         console.print("\n[bold cyan]💡 Pro tip: Scale your tests automatically[/bold cyan]")
         console.print("  Once you have your own agent connected:")
         console.print("  [cyan]evalview expand your-test.yaml --count 100[/cyan]  # Generate variations")
-        console.print("  [cyan]evalview record --interactive[/cyan]              # Record live sessions\n")
+        console.print("  [cyan]evalview record --interactive[/cyan]              # Record live sessions")
+
+        # GitHub star CTA
+        if passed == len(results):
+            console.print("\n[green]✨ Liked what you saw?[/green] A GitHub star helps others discover EvalView:")
+            console.print("   [link=https://github.com/hidai25/eval-view]github.com/hidai25/eval-view[/link]\n")
 
     except Exception as e:
         console.print(f"[red]❌ Tests failed: {e}[/red]")
@@ -1412,14 +1417,15 @@ async def _run_async(
     if config_path is None:
         config_path = Path(".evalview/config.yaml")
 
-    if not config_path.exists():
-        console.print("[red]❌ Config file not found. Run 'evalview init' first.[/red]")
-        if path:
-            console.print(f"[dim]Looked in: {Path(path) / '.evalview/config.yaml'} and .evalview/config.yaml[/dim]")
-        return
-
-    with open(config_path) as f:
-        config = yaml.safe_load(f)
+    config_exists = config_path.exists()
+    if config_exists:
+        with open(config_path) as f:
+            config = yaml.safe_load(f) or {}
+    else:
+        # No config file - use empty config, will try to use test case adapter/endpoint
+        config = {}
+        if verbose:
+            console.print("[dim]No config file found - will use test case adapter/endpoint if available[/dim]")
 
     # Extract model config (can be string or dict)
     model_config = config.get("model", {})
@@ -1442,109 +1448,115 @@ async def _run_async(
         else:
             console.print("[dim]🔒 SSRF protection: blocking private URLs[/dim]")
 
-    # Initialize adapter based on type
+    # Initialize adapter based on type (if config has endpoint or is a special adapter type)
     adapter_type = config.get("adapter", "http")
+    adapter = None  # Will be None if no config - test cases must provide their own adapter/endpoint
 
-    if adapter_type == "langgraph":
-        adapter = LangGraphAdapter(
-            endpoint=config["endpoint"],
-            headers=config.get("headers", {}),
-            timeout=config.get("timeout", 30.0),
-            streaming=config.get("streaming", False),
-            verbose=verbose,
-            model_config=model_config,
-            assistant_id=config.get("assistant_id", "agent"),  # Cloud API support
-            allow_private_urls=allow_private_urls,
-        )
-    elif adapter_type == "crewai":
-        adapter = CrewAIAdapter(
-            endpoint=config["endpoint"],
-            headers=config.get("headers", {}),
-            timeout=config.get("timeout", 120.0),
-            verbose=verbose,
-            model_config=model_config,
-            allow_private_urls=allow_private_urls,
-        )
-    elif adapter_type == "openai-assistants":
-        adapter = OpenAIAssistantsAdapter(
-            assistant_id=config.get("assistant_id"),
-            timeout=config.get("timeout", 120.0),
-            verbose=verbose,
-            model_config=model_config,
-        )
-    elif adapter_type in ["streaming", "tapescope", "jsonl"]:
-        # Streaming adapter supports JSONL streaming APIs
-        # (tapescope/jsonl are aliases for backward compatibility)
-        adapter = TapeScopeAdapter(
-            endpoint=config["endpoint"],
-            headers=config.get("headers", {}),
-            timeout=config.get("timeout", 60.0),
-            verbose=verbose,
-            model_config=model_config,
-            allow_private_urls=allow_private_urls,
-        )
-    elif adapter_type == "anthropic":
-        # Anthropic Claude adapter for direct API testing
-        # Check for API key first
-        if not os.getenv("ANTHROPIC_API_KEY"):
-            console.print("[red]❌ ANTHROPIC_API_KEY not found in environment.[/red]")
-            console.print("[dim]Set it in your .env.local file or export it:[/dim]")
-            console.print("[dim]  export ANTHROPIC_API_KEY=sk-ant-...[/dim]")
-            return
+    # Only initialize global adapter if config has necessary info
+    has_endpoint = "endpoint" in config
+    is_api_adapter = adapter_type in ["openai-assistants", "anthropic", "ollama"]
 
-        from evalview.adapters.anthropic_adapter import AnthropicAdapter
+    if has_endpoint or is_api_adapter:
+        if adapter_type == "langgraph":
+            adapter = LangGraphAdapter(
+                endpoint=config["endpoint"],
+                headers=config.get("headers", {}),
+                timeout=config.get("timeout", 30.0),
+                streaming=config.get("streaming", False),
+                verbose=verbose,
+                model_config=model_config,
+                assistant_id=config.get("assistant_id", "agent"),  # Cloud API support
+                allow_private_urls=allow_private_urls,
+            )
+        elif adapter_type == "crewai":
+            adapter = CrewAIAdapter(
+                endpoint=config["endpoint"],
+                headers=config.get("headers", {}),
+                timeout=config.get("timeout", 120.0),
+                verbose=verbose,
+                model_config=model_config,
+                allow_private_urls=allow_private_urls,
+            )
+        elif adapter_type == "openai-assistants":
+            adapter = OpenAIAssistantsAdapter(
+                assistant_id=config.get("assistant_id"),
+                timeout=config.get("timeout", 120.0),
+                verbose=verbose,
+                model_config=model_config,
+            )
+        elif adapter_type in ["streaming", "tapescope", "jsonl"]:
+            # Streaming adapter supports JSONL streaming APIs
+            # (tapescope/jsonl are aliases for backward compatibility)
+            adapter = TapeScopeAdapter(
+                endpoint=config["endpoint"],
+                headers=config.get("headers", {}),
+                timeout=config.get("timeout", 60.0),
+                verbose=verbose,
+                model_config=model_config,
+                allow_private_urls=allow_private_urls,
+            )
+        elif adapter_type == "anthropic":
+            # Anthropic Claude adapter for direct API testing
+            # Check for API key first
+            if not os.getenv("ANTHROPIC_API_KEY"):
+                console.print("[red]❌ ANTHROPIC_API_KEY not found in environment.[/red]")
+                console.print("[dim]Set it in your .env.local file or export it:[/dim]")
+                console.print("[dim]  export ANTHROPIC_API_KEY=sk-ant-...[/dim]")
+                return
 
-        # Handle model config - can be string or dict with 'name' key
-        anthropic_model = config.get("model", "claude-sonnet-4-5-20250929")
-        if isinstance(anthropic_model, dict):
-            anthropic_model = anthropic_model.get("name", "claude-sonnet-4-5-20250929")
+            from evalview.adapters.anthropic_adapter import AnthropicAdapter
 
-        adapter = AnthropicAdapter(
-            model=anthropic_model,
-            tools=config.get("tools", []),
-            system_prompt=config.get("system_prompt"),
-            max_tokens=config.get("max_tokens", 4096),
-            timeout=config.get("timeout", 120.0),
-            verbose=verbose,
-        )
-    elif adapter_type in ["huggingface", "hf", "gradio"]:
-        # HuggingFace Spaces adapter for Gradio-based agents
-        from evalview.adapters.huggingface_adapter import HuggingFaceAdapter
+            # Handle model config - can be string or dict with 'name' key
+            anthropic_model = config.get("model", "claude-sonnet-4-5-20250929")
+            if isinstance(anthropic_model, dict):
+                anthropic_model = anthropic_model.get("name", "claude-sonnet-4-5-20250929")
 
-        adapter = HuggingFaceAdapter(
-            endpoint=config["endpoint"],
-            headers=config.get("headers", {}),
-            timeout=config.get("timeout", 120.0),
-            hf_token=os.getenv("HF_TOKEN"),
-            function_name=config.get("function_name"),
-            verbose=verbose,
-            model_config=model_config,
-            allow_private_urls=allow_private_urls,
-        )
-    elif adapter_type == "ollama":
-        # Ollama adapter for local LLMs
-        from evalview.adapters.ollama_adapter import OllamaAdapter
+            adapter = AnthropicAdapter(
+                model=anthropic_model,
+                tools=config.get("tools", []),
+                system_prompt=config.get("system_prompt"),
+                max_tokens=config.get("max_tokens", 4096),
+                timeout=config.get("timeout", 120.0),
+                verbose=verbose,
+            )
+        elif adapter_type in ["huggingface", "hf", "gradio"]:
+            # HuggingFace Spaces adapter for Gradio-based agents
+            from evalview.adapters.huggingface_adapter import HuggingFaceAdapter
 
-        ollama_model = config.get("model", "llama3.2")
-        if isinstance(ollama_model, dict):
-            ollama_model = ollama_model.get("name", "llama3.2")
+            adapter = HuggingFaceAdapter(
+                endpoint=config["endpoint"],
+                headers=config.get("headers", {}),
+                timeout=config.get("timeout", 120.0),
+                hf_token=os.getenv("HF_TOKEN"),
+                function_name=config.get("function_name"),
+                verbose=verbose,
+                model_config=model_config,
+                allow_private_urls=allow_private_urls,
+            )
+        elif adapter_type == "ollama":
+            # Ollama adapter for local LLMs
+            from evalview.adapters.ollama_adapter import OllamaAdapter
 
-        adapter = OllamaAdapter(
-            model=ollama_model,
-            endpoint=config.get("endpoint", "http://localhost:11434"),
-            timeout=config.get("timeout", 60.0),
-            verbose=verbose,
-            model_config=model_config,
-        )
-    else:
-        # HTTP adapter for standard REST APIs
-        adapter = HTTPAdapter(
-            endpoint=config["endpoint"],
-            headers=config.get("headers", {}),
-            timeout=config.get("timeout", 30.0),
-            model_config=model_config,
-            allow_private_urls=allow_private_urls,
-        )
+            ollama_model = config.get("model", "llama3.2")
+            if isinstance(ollama_model, dict):
+                ollama_model = ollama_model.get("name", "llama3.2")
+
+            adapter = OllamaAdapter(
+                model=ollama_model,
+                endpoint=config.get("endpoint", "http://localhost:11434"),
+                timeout=config.get("timeout", 60.0),
+                verbose=verbose,
+                model_config=model_config,
+            )
+        else:
+            # HTTP adapter for standard REST APIs
+            adapter = HTTPAdapter(
+                endpoint=config["endpoint"],
+                headers=config.get("headers", {}),
+                timeout=config.get("timeout", 30.0),
+                model_config=model_config,
+                allow_private_urls=allow_private_urls,
+            )
 
     # Initialize evaluator with configurable weights
     # (LLM provider is auto-detected by the OutputEvaluator)
@@ -1844,6 +1856,13 @@ async def _run_async(
                 )
 
         # Use global adapter
+        if adapter is None:
+            console.print(f"[red]❌ No adapter configured for test: {test_case.name}[/red]")
+            console.print("[dim]Either add adapter/endpoint to the test case YAML, or create .evalview/config.yaml[/dim]")
+            console.print("[dim]Example in test case:[/dim]")
+            console.print("[dim]  adapter: http[/dim]")
+            console.print("[dim]  endpoint: http://localhost:8000[/dim]")
+            raise ValueError(f"No adapter for test: {test_case.name}")
         return adapter
 
     # Initialize statistical evaluator and console reporter for variance mode
@@ -2339,8 +2358,13 @@ async def _run_async(
     # GitHub star CTA (only show when not in watch mode)
     if not watch:
         console.print("[dim]━" * 50 + "[/dim]")
-        console.print("[dim]⭐ Enjoying EvalView? Star us on GitHub:[/dim]")
-        console.print("[dim]   [link=https://github.com/hidai25/eval-view]https://github.com/hidai25/eval-view[/link][/dim]\n")
+        if failed == 0 and passed > 0:
+            # All tests passed - stronger CTA
+            console.print("[green]✨ All tests passed![/green] If EvalView saved you time, a star helps others find it:")
+            console.print("   [link=https://github.com/hidai25/eval-view]github.com/hidai25/eval-view[/link]\n")
+        else:
+            console.print("[dim]⭐ Enjoying EvalView? Star us on GitHub:[/dim]")
+            console.print("[dim]   [link=https://github.com/hidai25/eval-view]https://github.com/hidai25/eval-view[/link][/dim]\n")
 
     # Watch mode: re-run tests on file changes
     if watch:
