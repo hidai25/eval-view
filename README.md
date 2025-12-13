@@ -61,6 +61,20 @@ Think: _"pytest / Playwright mindset, but for multi-step agents and tool-calling
 
 ---
 
+## EvalView vs Manual Testing
+
+| | Manual Testing | EvalView |
+|---|---|---|
+| Catches hallucinations | ❌ No | ✅ Yes |
+| Tracks token cost | ❌ No | ✅ Automatic |
+| Runs in CI/CD | ❌ Hard | ✅ Built-in |
+| Detects regressions | ❌ No | ✅ Automatic |
+| Tests tool calls | ❌ Manual inspection | ✅ Automated |
+| Latency tracking | ❌ No | ✅ Per-test thresholds |
+| Handles flaky LLMs | ❌ No | ✅ Statistical mode |
+
+---
+
 ## Try it in 2 minutes (no DB required)
 
 You don't need a database, Docker, or any extra infra to start.
@@ -719,6 +733,40 @@ If EvalView caught a regression, saved you debugging time, or kept your agent co
 - [ ] Memory/context influence tracking
 
 **Want these?** [Vote in GitHub Discussions](https://github.com/hidai25/eval-view/discussions)
+
+---
+
+## FAQ
+
+**Does EvalView work with LangChain / LangGraph?**
+Yes. Use the `langgraph` adapter. See [examples/langgraph/](examples/langgraph/).
+
+**Does EvalView work with CrewAI?**
+Yes. Use the `crewai` adapter. See [examples/crewai/](examples/crewai/).
+
+**Does EvalView work with OpenAI Assistants?**
+Yes. Use the `openai-assistants` adapter.
+
+**Does EvalView work with Anthropic Claude?**
+Yes. Use the `anthropic` adapter. See [examples/anthropic/](examples/anthropic/).
+
+**How much does it cost?**
+EvalView is free and open source. You pay only for LLM API calls (for LLM-as-judge evaluation). Use Ollama for free local evaluation.
+
+**Can I use it without an API key?**
+Yes. Use Ollama for free local LLM-as-judge: `evalview run --judge-provider ollama --judge-model llama3.2`
+
+**Can I run EvalView in CI/CD?**
+Yes. EvalView has a GitHub Action and proper exit codes. See [CI/CD Integration](#cicd-integration).
+
+**Does EvalView require a database?**
+No. EvalView runs without any database by default. Results print to console and save as JSON.
+
+**How is EvalView different from LangSmith?**
+LangSmith is for tracing/observability. EvalView is for testing. Use both: LangSmith to see what happened, EvalView to block bad behavior before prod.
+
+**Can I test for hallucinations?**
+Yes. EvalView has built-in hallucination detection that compares agent output against tool results.
 
 ---
 
