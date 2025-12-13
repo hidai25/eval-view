@@ -21,6 +21,8 @@
   <img src="assets/demo.gif" alt="EvalView Demo" width="700">
 </p>
 
+> **Like what you see?** [⭐ Star the repo](https://github.com/hidai25/eval-view) — helps others discover it.
+
 ---
 
 **Who is EvalView for?**
@@ -30,19 +32,6 @@
 
 Already using LangSmith, Langfuse, or other tracing?
 Use them to *see* what happened. Use EvalView to **block bad behavior in CI before it hits prod.**
-
----
-
-## Looking for Design Partners
-
-**Using EvalView on a real agent?** I'm looking for 3-5 early adopters.
-
-I'll personally help you set up YAML tests + CI integration in exchange for feedback on what's missing.
-
-- Email: hidai@evalview.com
-- [Open a GitHub Discussion](https://github.com/hidai25/eval-view/discussions)
-
-No pitch, just want to learn what's broken and make it work for real use cases.
 
 ---
 
@@ -72,6 +61,46 @@ Think: _"pytest / Playwright mindset, but for multi-step agents and tool-calling
 | Tests tool calls | ❌ Manual inspection | ✅ Automated |
 | Latency tracking | ❌ No | ✅ Per-test thresholds |
 | Handles flaky LLMs | ❌ No | ✅ Statistical mode |
+
+---
+
+## 3 Copy-Paste Recipes
+
+**Budget regression test** — fail if cost exceeds threshold:
+```yaml
+name: "Cost check"
+input:
+  query: "Summarize this document"
+thresholds:
+  min_score: 70
+  max_cost: 0.05
+```
+
+**Tool-call required test** — fail if agent doesn't use the tool:
+```yaml
+name: "Must use search"
+input:
+  query: "What's the weather in NYC?"
+expected:
+  tools:
+    - web_search
+thresholds:
+  min_score: 80
+```
+
+**Hallucination check** — fail if agent makes things up:
+```yaml
+name: "No hallucinations"
+input:
+  query: "What's our refund policy?"
+expected:
+  tools:
+    - retriever
+thresholds:
+  min_score: 80
+checks:
+  hallucination: true
+```
 
 ---
 
@@ -164,6 +193,40 @@ Performance:
 </details>
 
 > **Useful?** [⭐ Star the repo](https://github.com/hidai25/eval-view) — takes 1 second, helps us a lot.
+
+---
+
+## Add to CI in 60 seconds
+
+```yaml
+# .github/workflows/evalview.yml
+name: Agent Tests
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hidai25/eval-view@v0.1.3
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+```
+
+That's it. Tests run on every PR, block merges on failure.
+
+---
+
+## Looking for Design Partners
+
+**Using EvalView on a real agent?** I'm looking for 3-5 early adopters.
+
+I'll personally help you set up YAML tests + CI integration in exchange for feedback on what's missing.
+
+- Email: hidai@evalview.com
+- [Open a GitHub Discussion](https://github.com/hidai25/eval-view/discussions)
+
+No pitch, just want to learn what's broken and make it work for real use cases.
 
 ---
 
