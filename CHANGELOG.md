@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2025-12-19
+
+### Added
+- **Statistical Pass/Fail System**: Variance-aware testing with configurable confidence levels for more reliable evaluations
+- **Statistical Mode in CLI**: New `--runs` flag to run tests multiple times and get statistical results
+- **Templates**: Added test case templates for common scenarios
+
+### Fixed
+- **LangGraph Adapter**: Fixed adapter compatibility issues
+- **Config-free runs**: Allow `evalview run` without requiring a config file
+- **Node SDK License**: Fixed license mismatch - now correctly uses Apache 2.0
+
+### Documentation
+- Added FAQ section and comparison table to README
+- Added "Run examples directly" section
+- Added design partners section
+- Improved README structure for better clarity
+
+## [0.1.4] - 2025-12-15
+
+### Added
+- **Ollama Support**: Use Ollama as LLM-as-judge provider for free local evaluation
+- **Ollama Adapter**: New adapter for testing LangGraph+Ollama agents
+- Auto-detect Ollama when running locally
+
+### Documentation
+- Added Ollama example project with setup guide
+
 ## [0.1.3] - 2025-12-08
 
 ### Added
@@ -150,6 +178,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fixed**: Bug fixes
 - **Security**: Security fixes and improvements
 
-[Unreleased]: https://github.com/hidai25/eval-view/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/hidai25/eval-view/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/hidai25/eval-view/compare/v0.1.4...v0.1.5
+[0.1.4]: https://github.com/hidai25/eval-view/compare/v0.1.3...v0.1.4
+[0.1.3]: https://github.com/hidai25/eval-view/compare/v0.1.1...v0.1.3
 [0.1.1]: https://github.com/hidai25/eval-view/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/hidai25/eval-view/releases/tag/v0.1.0
