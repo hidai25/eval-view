@@ -3918,5 +3918,315 @@ def add(pattern: Optional[str], tool: Optional[str], query: Optional[str], list_
     console.print(f"  2. Run: [green]evalview run {output_path}[/green]\n")
 
 
+# ============================================================================
+# Skills Commands
+# ============================================================================
+
+
+@main.group()
+def skill():
+    """Commands for testing Claude Code skills."""
+    pass
+
+
+@skill.command("validate")
+@click.argument("path", type=click.Path(exists=True))
+@click.option("--recursive", "-r", is_flag=True, help="Search subdirectories for SKILL.md files")
+@click.option("--strict", is_flag=True, help="Treat warnings as errors")
+@click.option("--verbose", "-v", is_flag=True, help="Show INFO suggestions")
+@click.option("--json", "output_json", is_flag=True, help="Output as JSON")
+def skill_validate(path: str, recursive: bool, strict: bool, verbose: bool, output_json: bool):
+    """Validate Claude Code skill(s).
+
+    Validates SKILL.md files for:
+    - Correct structure and frontmatter
+    - Valid naming conventions
+    - Policy compliance
+    - Best practices
+
+    Examples:
+        evalview skill validate ./my-skill/SKILL.md
+        evalview skill validate ./skills/ --recursive
+        evalview skill validate ./SKILL.md --strict
+        evalview skill validate ./skills/ -rv  # verbose with suggestions
+    """
+    import json
+    from pathlib import Path as PathLib
+    from evalview.skills import SkillValidator, SkillParser
+
+    path_obj = PathLib(path)
+
+    # Collect files to validate
+    if path_obj.is_file():
+        files = [str(path_obj)]
+    else:
+        files = SkillParser.find_skills(str(path_obj), recursive=recursive)
+        if not files:
+            if output_json:
+                console.print(json.dumps({"error": "No SKILL.md files found", "files": []}))
+            else:
+                console.print(f"[yellow]No SKILL.md files found in {path}[/yellow]")
+                if not recursive:
+                    console.print("[dim]Tip: Use --recursive to search subdirectories[/dim]")
+            return
+
+    # Validate each file
+    results = {}
+    total_errors = 0
+    total_warnings = 0
+    total_valid = 0
+
+    for file_path in files:
+        result = SkillValidator.validate_file(file_path)
+        results[file_path] = result
+
+        total_errors += len(result.errors)
+        total_warnings += len(result.warnings)
+        if result.valid:
+            total_valid += 1
+
+    # Output results
+    if output_json:
+        json_output = {
+            "summary": {
+                "total_files": len(files),
+                "valid": total_valid,
+                "invalid": len(files) - total_valid,
+                "total_errors": total_errors,
+                "total_warnings": total_warnings,
+            },
+            "results": {
+                path: {
+                    "valid": r.valid,
+                    "errors": [e.model_dump() for e in r.errors],
+                    "warnings": [w.model_dump() for w in r.warnings],
+                    "info": [i.model_dump() for i in r.info],
+                }
+                for path, r in results.items()
+            },
+        }
+        console.print(json.dumps(json_output, indent=2))
+        return
+
+    # Rich console output
+    console.print("\n[bold cyan]━━━ Skill Validation Results ━━━[/bold cyan]\n")
+
+    for file_path, result in results.items():
+        # File header
+        status_icon = "[green]✓[/green]" if result.valid else "[red]✗[/red]"
+        console.print(f"{status_icon} [bold]{file_path}[/bold]")
+
+        # Skill info if valid
+        if result.skill:
+            console.print(f"   [dim]Name: {result.skill.metadata.name}[/dim]")
+            console.print(f"   [dim]Tokens: ~{result.skill.token_estimate}[/dim]")
+
+        # Errors
+        for error in result.errors:
+            console.print(f"   [red]ERROR[/red] [{error.code}] {error.message}")
+            if error.suggestion:
+                console.print(f"         [dim]→ {error.suggestion}[/dim]")
+
+        # Warnings
+        for warning in result.warnings:
+            console.print(f"   [yellow]WARN[/yellow]  [{warning.code}] {warning.message}")
+            if warning.suggestion:
+                console.print(f"         [dim]→ {warning.suggestion}[/dim]")
+
+        # Info (only show if verbose flag is set)
+        if verbose:
+            for info in result.info:
+                console.print(f"   [blue]INFO[/blue]  [{info.code}] {info.message}")
+                if info.suggestion:
+                    console.print(f"         [dim]→ {info.suggestion}[/dim]")
+
+        console.print()
+
+    # Summary
+    console.print("[bold]Summary:[/bold]")
+    console.print(f"  Files:    {len(files)}")
+    console.print(f"  Valid:    [green]{total_valid}[/green]")
+    console.print(f"  Invalid:  [red]{len(files) - total_valid}[/red]")
+    console.print(f"  Errors:   [red]{total_errors}[/red]")
+    console.print(f"  Warnings: [yellow]{total_warnings}[/yellow]")
+    console.print()
+
+    # Exit with error code if validation failed
+    if total_errors > 0 or (strict and total_warnings > 0):
+        raise SystemExit(1)
+
+
+@skill.command("list")
+@click.argument("path", type=click.Path(exists=True), default=".")
+@click.option("--recursive", "-r", is_flag=True, default=True, help="Search subdirectories")
+def skill_list(path: str, recursive: bool):
+    """List all skills in a directory.
+
+    Examples:
+        evalview skill list
+        evalview skill list ./my-skills/
+        evalview skill list ~/.claude/skills/
+    """
+    from pathlib import Path as PathLib
+    from evalview.skills import SkillParser, SkillValidator
+
+    files = SkillParser.find_skills(path, recursive=recursive)
+
+    if not files:
+        console.print(f"[yellow]No SKILL.md files found in {path}[/yellow]")
+        return
+
+    console.print(f"\n[bold cyan]━━━ Skills in {path} ━━━[/bold cyan]\n")
+
+    for file_path in files:
+        result = SkillValidator.validate_file(file_path)
+        status = "[green]✓[/green]" if result.valid else "[red]✗[/red]"
+
+        if result.skill:
+            console.print(f"  {status} [bold]{result.skill.metadata.name}[/bold]")
+            console.print(f"      [dim]{result.skill.metadata.description[:60]}...[/dim]" if len(result.skill.metadata.description) > 60 else f"      [dim]{result.skill.metadata.description}[/dim]")
+            console.print(f"      [dim]{file_path}[/dim]")
+        else:
+            console.print(f"  {status} [red]{file_path}[/red]")
+            if result.errors:
+                console.print(f"      [red]{result.errors[0].message}[/red]")
+
+        console.print()
+
+    console.print(f"[dim]Total: {len(files)} skill(s)[/dim]\n")
+
+
+@skill.command("test")
+@click.argument("test_file", type=click.Path(exists=True))
+@click.option("--model", "-m", default="claude-sonnet-4-20250514", help="Model to use")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed output")
+@click.option("--json", "output_json", is_flag=True, help="Output as JSON")
+def skill_test(test_file: str, model: str, verbose: bool, output_json: bool):
+    """Run behavior tests against a skill.
+
+    TEST_FILE is a YAML file defining test cases for a skill.
+
+    Example test file:
+        name: test-code-reviewer
+        skill: ./skills/code-reviewer/SKILL.md
+        tests:
+          - name: detects-sql-injection
+            input: "Review: query = f'SELECT * FROM users WHERE id = {id}'"
+            expected:
+              output_contains: ["SQL injection", "parameterized"]
+
+    Examples:
+        evalview skill test tests/code-reviewer.yaml
+        evalview skill test tests/my-skill.yaml --model claude-sonnet-4-20250514
+        evalview skill test tests/my-skill.yaml --json
+    """
+    import json
+    import os
+    from evalview.skills import SkillRunner
+
+    # Check for API key
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        console.print("[red]Error: ANTHROPIC_API_KEY environment variable required[/red]")
+        console.print("[dim]Set it with: export ANTHROPIC_API_KEY=your-key[/dim]")
+        raise SystemExit(1)
+
+    try:
+        runner = SkillRunner(model=model)
+        suite = runner.load_test_suite(test_file)
+    except Exception as e:
+        console.print(f"[red]Error loading test suite: {e}[/red]")
+        raise SystemExit(1)
+
+    console.print(f"\n[bold cyan]━━━ Running Skill Tests ━━━[/bold cyan]\n")
+    console.print(f"Suite:  [bold]{suite.name}[/bold]")
+    console.print(f"Skill:  {suite.skill}")
+    console.print(f"Model:  {model}")
+    console.print(f"Tests:  {len(suite.tests)}")
+    console.print()
+
+    # Run the suite
+    try:
+        from rich.progress import Progress, SpinnerColumn, TextColumn
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Running tests...", total=len(suite.tests))
+
+            # Run suite (updates progress internally would be nice but this works)
+            result = runner.run_suite(suite)
+            progress.update(task, completed=len(suite.tests))
+
+    except Exception as e:
+        console.print(f"[red]Error running tests: {e}[/red]")
+        raise SystemExit(1)
+
+    # Output results
+    if output_json:
+        json_output = {
+            "suite_name": result.suite_name,
+            "skill_name": result.skill_name,
+            "passed": result.passed,
+            "total_tests": result.total_tests,
+            "passed_tests": result.passed_tests,
+            "failed_tests": result.failed_tests,
+            "pass_rate": result.pass_rate,
+            "total_latency_ms": result.total_latency_ms,
+            "avg_latency_ms": result.avg_latency_ms,
+            "total_tokens": result.total_tokens,
+            "results": [
+                {
+                    "test_name": r.test_name,
+                    "passed": r.passed,
+                    "score": r.score,
+                    "input": r.input_query,
+                    "output": r.output[:500] + "..." if len(r.output) > 500 else r.output,
+                    "contains_failed": r.contains_failed,
+                    "not_contains_failed": r.not_contains_failed,
+                    "latency_ms": r.latency_ms,
+                    "error": r.error,
+                }
+                for r in result.results
+            ],
+        }
+        console.print(json.dumps(json_output, indent=2))
+        return
+
+    # Rich console output
+    console.print("[bold]Results:[/bold]\n")
+
+    for r in result.results:
+        status = "[green]PASS[/green]" if r.passed else "[red]FAIL[/red]"
+        console.print(f"  {status} {r.test_name}")
+
+        if verbose or not r.passed:
+            console.print(f"       [dim]Input: {r.input_query[:60]}...[/dim]" if len(r.input_query) > 60 else f"       [dim]Input: {r.input_query}[/dim]")
+
+            if r.contains_failed:
+                console.print(f"       [red]Missing: {', '.join(r.contains_failed)}[/red]")
+            if r.not_contains_failed:
+                console.print(f"       [red]Unexpected: {', '.join(r.not_contains_failed)}[/red]")
+            if r.error:
+                console.print(f"       [red]Error: {r.error}[/red]")
+
+            if verbose:
+                console.print(f"       [dim]Latency: {r.latency_ms:.0f}ms | Tokens: {r.input_tokens + r.output_tokens}[/dim]")
+
+        console.print()
+
+    # Summary
+    status_icon = "[green]✓[/green]" if result.passed else "[red]✗[/red]"
+    console.print(f"[bold]Summary:[/bold] {status_icon}")
+    console.print(f"  Pass rate: {result.pass_rate:.0%} ({result.passed_tests}/{result.total_tests})")
+    console.print(f"  Avg latency: {result.avg_latency_ms:.0f}ms")
+    console.print(f"  Total tokens: {result.total_tokens}")
+    console.print()
+
+    if not result.passed:
+        raise SystemExit(1)
+
+
 if __name__ == "__main__":
     main()
