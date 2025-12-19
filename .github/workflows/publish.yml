@@ -8,6 +8,9 @@ jobs:
   publish:
     name: Build and Publish to PyPI
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
     - uses: actions/checkout@v4
@@ -35,3 +38,4 @@ jobs:
       with:
         password: ${{ secrets.PYPI_API_TOKEN }}
         skip-existing: true
+        attestations: false
