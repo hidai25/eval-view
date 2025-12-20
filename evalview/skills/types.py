@@ -34,9 +34,13 @@ class SkillMetadata(BaseModel):
     # Optional fields (based on extended spec)
     version: Optional[str] = Field(default=None, description="Skill version")
     author: Optional[str] = Field(default=None, description="Skill author")
-    triggers: Optional[List[str]] = Field(default=None, description="Keywords that activate the skill")
+    triggers: Optional[List[str]] = Field(
+        default=None, description="Keywords that activate the skill"
+    )
     tools: Optional[List[str]] = Field(default=None, description="Tools this skill uses")
-    model_requirements: Optional[List[str]] = Field(default=None, description="Required model capabilities")
+    model_requirements: Optional[List[str]] = Field(
+        default=None, description="Required model capabilities"
+    )
 
     @field_validator("name", mode="before")
     @classmethod
@@ -133,10 +137,18 @@ class SkillExpectedBehavior(BaseModel):
     """Expected behavior when skill is invoked."""
 
     should_activate: bool = Field(default=True, description="Should this query activate the skill?")
-    output_contains: Optional[List[str]] = Field(default=None, description="Strings that should appear in output")
-    output_not_contains: Optional[List[str]] = Field(default=None, description="Strings that should NOT appear")
-    tone: Optional[str] = Field(default=None, description="Expected tone: professional, casual, technical, etc.")
-    max_length: Optional[int] = Field(default=None, description="Maximum response length in characters")
+    output_contains: Optional[List[str]] = Field(
+        default=None, description="Strings that should appear in output"
+    )
+    output_not_contains: Optional[List[str]] = Field(
+        default=None, description="Strings that should NOT appear"
+    )
+    tone: Optional[str] = Field(
+        default=None, description="Expected tone: professional, casual, technical, etc."
+    )
+    max_length: Optional[int] = Field(
+        default=None, description="Maximum response length in characters"
+    )
 
 
 class SkillTest(BaseModel):

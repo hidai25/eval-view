@@ -786,11 +786,11 @@ evalview/
 
 ## Skills Testing (Claude Code & OpenAI Codex)
 
-**The first testing framework for AI agent skills.**
+**The first CI/CD testing framework for AI agent skills.**
 
-Skills are the new plugins. Claude Code, OpenAI Codex CLI, and other AI coding assistants now support custom skills—markdown files that teach the AI new capabilities. But how do you know your skill actually works?
+Skills are the new plugins. With 25k+ skills on marketplaces and enterprises deploying to thousands of employees, skills need the same testing rigor as any other code.
 
-EvalView lets you validate skill structure and test skill behavior before you ship.
+EvalView lets you validate skill structure and test skill behavior **automatically on every commit**—before your skill reaches users.
 
 ### The Problem
 
@@ -873,7 +873,13 @@ tests:
 Run it:
 
 ```bash
+# Option 1: Environment variable
 export ANTHROPIC_API_KEY=your-key
+
+# Option 2: Create .env.local file (auto-loaded)
+echo "ANTHROPIC_API_KEY=your-key" > .env.local
+
+# Run the tests
 evalview skill test tests/code-reviewer.yaml
 ```
 
@@ -923,14 +929,26 @@ jobs:
 
 ### Why Test Skills?
 
-Skills are code. Code needs tests.
+**You can test skills manually in Claude Code. So why use EvalView?**
 
-- **Regressions happen** — A small edit breaks existing behavior
-- **Edge cases exist** — Does your skill handle empty input? Long input? Malformed input?
-- **Users expect reliability** — Published skills should work consistently
-- **AI is non-deterministic** — The same skill can behave differently across runs
+Manual testing works for development. EvalView is for **automation**:
 
-EvalView brings the rigor of software testing to the AI skills ecosystem.
+| Manual Testing | EvalView |
+|----------------|----------|
+| Test while you write | **Test on every commit** |
+| You remember to test | **CI blocks bad merges** |
+| Test a few cases | **Test 50+ scenarios** |
+| "It works for me" | **Reproducible results** |
+| Catch bugs after publish | **Catch bugs before publish** |
+
+**Who needs automated skill testing?**
+
+- **Skill authors** publishing to marketplaces (25k+ skills on SkillsMP)
+- **Enterprise teams** rolling out skills to thousands of employees
+- **Open source maintainers** accepting contributions from the community
+- **Anyone** who wants CI/CD for their skills
+
+Skills are code. Code needs tests. EvalView brings the rigor of software testing to the AI skills ecosystem.
 
 ### Compatible With
 

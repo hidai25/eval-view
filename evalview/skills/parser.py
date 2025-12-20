@@ -132,9 +132,7 @@ class SkillParser:
         )
 
     @classmethod
-    def _extract_frontmatter(
-        cls, content: str
-    ) -> Tuple[Dict[str, Any], str, list]:
+    def _extract_frontmatter(cls, content: str) -> Tuple[Dict[str, Any], str, list]:
         """
         Extract YAML frontmatter and markdown body from content.
 
@@ -171,7 +169,7 @@ class SkillParser:
             return {}, content, errors
 
         frontmatter_yaml = match.group(1)
-        markdown_body = content[match.end():].strip()
+        markdown_body = content[match.end() :].strip()
 
         # Parse YAML
         try:

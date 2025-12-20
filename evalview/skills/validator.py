@@ -39,7 +39,10 @@ class SkillValidator:
         (r"\bact\s+as\s+(if\s+you\s+are\s+)?a?\s*(different|new)\b", "Role hijacking attempt"),
         (r"\bexecute\s+(arbitrary|any)\s+code\b", "Unsafe code execution"),
         (r"\b(rm\s+-rf|format\s+c:|del\s+/[sq])\b", "Destructive commands"),
-        (r"\b(api[_-]?key|secret[_-]?key|password)\s*[=:]\s*['\"][^'\"]+['\"]", "Hardcoded secrets"),
+        (
+            r"\b(api[_-]?key|secret[_-]?key|password)\s*[=:]\s*['\"][^'\"]+['\"]",
+            "Hardcoded secrets",
+        ),
     ]
 
     # Warning patterns (not prohibited but concerning)
@@ -391,9 +394,7 @@ class SkillValidator:
         return info
 
     @classmethod
-    def validate_directory(
-        cls, directory: str, recursive: bool = True
-    ) -> dict:
+    def validate_directory(cls, directory: str, recursive: bool = True) -> dict:
         """
         Validate all skills in a directory.
 

@@ -50,11 +50,10 @@ class SkillRunner:
         if self._client is None:
             try:
                 import anthropic
+
                 self._client = anthropic.Anthropic(api_key=self.api_key)
             except ImportError:
-                raise ImportError(
-                    "anthropic package required. Install with: pip install anthropic"
-                )
+                raise ImportError("anthropic package required. Install with: pip install anthropic")
         return self._client
 
     def load_test_suite(self, yaml_path: str) -> SkillTestSuite:
@@ -65,6 +64,11 @@ class SkillRunner:
 
         with open(path) as f:
             data = yaml.safe_load(f)
+
+        # Resolve skill path relative to the YAML file's directory
+        if "skill" in data and not Path(data["skill"]).is_absolute():
+            yaml_dir = path.parent
+            data["skill"] = str((yaml_dir / data["skill"]).resolve())
 
         return SkillTestSuite(**data)
 

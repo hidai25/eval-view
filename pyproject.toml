@@ -48,11 +48,16 @@ reports = [
 watch = [
     "watchdog>=3.0",
 ]
+# Claude Code skills testing
+skills = [
+    "anthropic>=0.39.0",
+]
 # All optional features
 all = [
     "jinja2>=3.0",
     "plotly>=5.0",
     "watchdog>=3.0",
+    "anthropic>=0.39.0",
 ]
 # Development dependencies
 dev = [
@@ -65,6 +70,7 @@ dev = [
     "jinja2>=3.0",
     "plotly>=5.0",
     "watchdog>=3.0",
+    "anthropic>=0.39.0",
 ]
 
 [project.scripts]

@@ -39,7 +39,7 @@ console = Console()
 
 
 @click.group()
-@click.version_option(version="0.1.4")
+@click.version_option(version="0.1.5")
 def main():
     """EvalView - Testing framework for multi-step AI agents."""
     pass
@@ -4008,8 +4008,19 @@ def skill_validate(path: str, recursive: bool, strict: bool, verbose: bool, outp
         console.print(json.dumps(json_output, indent=2))
         return
 
-    # Rich console output
-    console.print("\n[bold cyan]━━━ Skill Validation Results ━━━[/bold cyan]\n")
+    # Rich console output with EvalView banner
+    console.print()
+    console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗██╗   ██╗ █████╗ ██╗    ██╗   ██╗██╗███████╗██╗    ██╗[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔════╝██║   ██║██╔══██╗██║    ██║   ██║██║██╔════╝██║    ██║[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]█████╗  ██║   ██║███████║██║    ██║   ██║██║█████╗  ██║ █╗ ██║[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔══╝  ╚██╗ ██╔╝██╔══██║██║    ╚██╗ ██╔╝██║██╔══╝  ██║███╗██║[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗ ╚████╔╝ ██║  ██║███████╗╚████╔╝ ██║███████╗╚███╔███╔╝[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]╚══════╝  ╚═══╝  ╚═╝  ╚═╝╚══════╝ ╚═══╝  ╚═╝╚══════╝ ╚══╝╚══╝ [/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]           [dim]Testing framework for multi-step AI agents[/dim]            [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
+    console.print()
 
     for file_path, result in results.items():
         # File header
@@ -4137,11 +4148,26 @@ def skill_test(test_file: str, model: str, verbose: bool, output_json: bool):
         console.print(f"[red]Error loading test suite: {e}[/red]")
         raise SystemExit(1)
 
-    console.print(f"\n[bold cyan]━━━ Running Skill Tests ━━━[/bold cyan]\n")
-    console.print(f"Suite:  [bold]{suite.name}[/bold]")
-    console.print(f"Skill:  {suite.skill}")
-    console.print(f"Model:  {model}")
-    console.print(f"Tests:  {len(suite.tests)}")
+    from rich.table import Table
+    from rich.panel import Panel
+
+    # EvalView banner
+    console.print()
+    console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗██╗   ██╗ █████╗ ██╗    ██╗   ██╗██╗███████╗██╗    ██╗[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔════╝██║   ██║██╔══██╗██║    ██║   ██║██║██╔════╝██║    ██║[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]█████╗  ██║   ██║███████║██║    ██║   ██║██║█████╗  ██║ █╗ ██║[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔══╝  ╚██╗ ██╔╝██╔══██║██║    ╚██╗ ██╔╝██║██╔══╝  ██║███╗██║[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗ ╚████╔╝ ██║  ██║███████╗╚████╔╝ ██║███████╗╚███╔███╔╝[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]╚══════╝  ╚═══╝  ╚═╝  ╚═╝╚══════╝ ╚═══╝  ╚═╝╚══════╝ ╚══╝╚══╝ [/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]           [dim]Testing framework for multi-step AI agents[/dim]            [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
+    console.print()
+    console.print(f"  [bold]Suite:[/bold]  {suite.name}")
+    console.print(f"  [bold]Skill:[/bold]  [cyan]{suite.skill}[/cyan]")
+    console.print(f"  [bold]Model:[/bold]  {model}")
+    console.print(f"  [bold]Tests:[/bold]  {len(suite.tests)}")
     console.print()
 
     # Run the suite
@@ -4154,8 +4180,6 @@ def skill_test(test_file: str, model: str, verbose: bool, output_json: bool):
             console=console,
         ) as progress:
             task = progress.add_task("Running tests...", total=len(suite.tests))
-
-            # Run suite (updates progress internally would be nice but this works)
             result = runner.run_suite(suite)
             progress.update(task, completed=len(suite.tests))
 
@@ -4194,38 +4218,130 @@ def skill_test(test_file: str, model: str, verbose: bool, output_json: bool):
         console.print(json.dumps(json_output, indent=2))
         return
 
-    # Rich console output
-    console.print("[bold]Results:[/bold]\n")
+    # Results table
+    table = Table(title="Test Results", show_header=True, header_style="bold cyan")
+    table.add_column("Status", justify="center", width=8)
+    table.add_column("Test", style="cyan")
+    table.add_column("Score", justify="right", width=8)
+    table.add_column("Latency", justify="right", width=10)
+    table.add_column("Tokens", justify="right", width=8)
 
     for r in result.results:
-        status = "[green]PASS[/green]" if r.passed else "[red]FAIL[/red]"
-        console.print(f"  {status} {r.test_name}")
+        status = "[green]✅ PASS[/green]" if r.passed else "[red]❌ FAIL[/red]"
+        score_color = "green" if r.score >= 80 else "yellow" if r.score >= 60 else "red"
+        table.add_row(
+            status,
+            r.test_name,
+            f"[{score_color}]{r.score:.0f}%[/{score_color}]",
+            f"{r.latency_ms:.0f}ms",
+            f"{r.input_tokens + r.output_tokens:,}",
+        )
 
-        if verbose or not r.passed:
-            console.print(f"       [dim]Input: {r.input_query[:60]}...[/dim]" if len(r.input_query) > 60 else f"       [dim]Input: {r.input_query}[/dim]")
-
-            if r.contains_failed:
-                console.print(f"       [red]Missing: {', '.join(r.contains_failed)}[/red]")
-            if r.not_contains_failed:
-                console.print(f"       [red]Unexpected: {', '.join(r.not_contains_failed)}[/red]")
-            if r.error:
-                console.print(f"       [red]Error: {r.error}[/red]")
-
-            if verbose:
-                console.print(f"       [dim]Latency: {r.latency_ms:.0f}ms | Tokens: {r.input_tokens + r.output_tokens}[/dim]")
-
-        console.print()
-
-    # Summary
-    status_icon = "[green]✓[/green]" if result.passed else "[red]✗[/red]"
-    console.print(f"[bold]Summary:[/bold] {status_icon}")
-    console.print(f"  Pass rate: {result.pass_rate:.0%} ({result.passed_tests}/{result.total_tests})")
-    console.print(f"  Avg latency: {result.avg_latency_ms:.0f}ms")
-    console.print(f"  Total tokens: {result.total_tokens}")
+    console.print(table)
     console.print()
 
+    # Detailed results for failed tests (or all if verbose)
+    failed_results = [r for r in result.results if not r.passed]
+    show_results = result.results if verbose else failed_results
+
+    if show_results:
+        for r in show_results:
+            status_icon = "✅" if r.passed else "❌"
+            status_color = "green" if r.passed else "red"
+
+            console.print(f"[bold {status_color}]{status_icon} {r.test_name}[/bold {status_color}]")
+
+            # Show query
+            console.print("\n[bold]Input:[/bold]")
+            query = r.input_query[:200] + "..." if len(r.input_query) > 200 else r.input_query
+            for line in query.split('\n'):
+                console.print(f"  [dim]{line}[/dim]")
+
+            # Show response preview
+            if verbose or not r.passed:
+                console.print("\n[bold]Response:[/bold]")
+                output = r.output[:400] + "..." if len(r.output) > 400 else r.output
+                for line in output.split('\n')[:8]:
+                    console.print(f"  {line}")
+                if len(r.output.split('\n')) > 8:
+                    console.print("  [dim]...[/dim]")
+
+            # Show evaluation checks
+            console.print("\n[bold]Evaluation Checks:[/bold]")
+
+            # Contains checks
+            if r.contains_passed:
+                for phrase in r.contains_passed:
+                    console.print(f"  [green]✓[/green] Contains: \"{phrase}\"")
+            if r.contains_failed:
+                for phrase in r.contains_failed:
+                    console.print(f"  [red]✗[/red] Missing:  \"{phrase}\"")
+
+            # Not contains checks
+            if r.not_contains_passed:
+                for phrase in r.not_contains_passed:
+                    console.print(f"  [green]✓[/green] Excludes: \"{phrase}\"")
+            if r.not_contains_failed:
+                for phrase in r.not_contains_failed:
+                    console.print(f"  [red]✗[/red] Found:    \"{phrase}\" (should not appear)")
+
+            # Error if any
+            if r.error:
+                console.print(f"\n[bold red]Error:[/bold red] {r.error}")
+
+            # Guidance for failed tests
+            if not r.passed:
+                console.print("\n[bold yellow]How to Fix:[/bold yellow]")
+                if r.contains_failed:
+                    console.print("  [yellow]• Your skill's instructions should guide Claude to mention:[/yellow]")
+                    for phrase in r.contains_failed:
+                        console.print(f"    [yellow]  - \"{phrase}\"[/yellow]")
+                    console.print("  [yellow]• Consider adding explicit guidance in your SKILL.md[/yellow]")
+                if r.not_contains_failed:
+                    console.print("  [yellow]• Your skill is producing unwanted phrases:[/yellow]")
+                    for phrase in r.not_contains_failed:
+                        console.print(f"    [yellow]  - \"{phrase}\"[/yellow]")
+                    console.print("  [yellow]• Add constraints or negative examples to your SKILL.md[/yellow]")
+                if r.error:
+                    console.print("  [yellow]• Check your API key and model availability[/yellow]")
+
+            console.print()
+
+    # Summary panel
+    pass_rate_color = "green" if result.pass_rate >= 0.8 else "yellow" if result.pass_rate >= 0.5 else "red"
+    status_text = "[green]● All Tests Passed[/green]" if result.passed else "[bold red]● Some Tests Failed[/bold red]"
+    border_color = "green" if result.passed else "red"
+
+    summary_content = (
+        f"  {status_text}\n"
+        f"\n"
+        f"  [bold]✅ Passed:[/bold]       [green]{result.passed_tests}[/green]\n"
+        f"  [bold]❌ Failed:[/bold]       [red]{result.failed_tests}[/red]\n"
+        f"  [bold]📈 Pass Rate:[/bold]    [{pass_rate_color}]{result.pass_rate:.0%}[/{pass_rate_color}] (required: {suite.min_pass_rate:.0%})\n"
+        f"\n"
+        f"  [bold]⏱️  Avg Latency:[/bold] {result.avg_latency_ms:.0f}ms\n"
+        f"  [bold]🔤 Total Tokens:[/bold] {result.total_tokens:,}"
+    )
+
+    console.print(Panel(summary_content, title="[bold]Overall Statistics[/bold]", border_style=border_color))
+
+    # Actionable next steps for failures
     if not result.passed:
+        console.print()
+        console.print("[bold yellow]⚠️  Skill Test Failed[/bold yellow]")
+        console.print()
+        console.print("[bold]Next Steps to Fix Your Skill:[/bold]")
+        console.print("  1. Review the [bold]How to Fix[/bold] guidance above for each failed test")
+        console.print("  2. Update your [cyan]SKILL.md[/cyan] instructions to address the issues")
+        console.print("  3. Re-run: [dim]evalview skill test " + test_file + "[/dim]")
+        console.print()
+        console.print("[dim]Tip: Use --verbose to see full responses for passing tests too[/dim]")
+        console.print()
         raise SystemExit(1)
+    else:
+        console.print()
+        console.print("[bold green]✓ Skill ready for deployment[/bold green]")
+        console.print()
 
 
 if __name__ == "__main__":
