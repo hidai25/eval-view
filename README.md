@@ -447,6 +447,7 @@ We're building a hosted version:
 - **Watch mode** - Re-run tests automatically on file changes
 - **Configurable weights** - Customize scoring weights globally or per-test
 - **Statistical mode** - Run tests N times, get variance metrics and flakiness scores
+- **Skills testing** - Validate and test Claude Code / OpenAI Codex skills
 
 ---
 
@@ -783,6 +784,165 @@ evalview/
 
 ---
 
+## Skills Testing (Claude Code & OpenAI Codex)
+
+**The first testing framework for AI agent skills.**
+
+Skills are the new plugins. Claude Code, OpenAI Codex CLI, and other AI coding assistants now support custom skills—markdown files that teach the AI new capabilities. But how do you know your skill actually works?
+
+EvalView lets you validate skill structure and test skill behavior before you ship.
+
+### The Problem
+
+| Without Testing | With EvalView |
+|-----------------|---------------|
+| "I think my skill works" | **Proven behavior** |
+| Users report bugs | **Catch issues before release** |
+| No CI/CD for skills | **Block bad skills in PRs** |
+| Manual testing only | **Automated regression tests** |
+
+### Validate Skill Structure
+
+Catch errors before Claude ever sees your skill:
+
+```bash
+# Validate a single skill
+evalview skill validate ./my-skill/SKILL.md
+
+# Validate all skills in a directory
+evalview skill validate ~/.claude/skills/ -r
+
+# CI-friendly JSON output
+evalview skill validate ./skills/ -r --json
+```
+
+**What it checks:**
+- ✅ Valid YAML frontmatter
+- ✅ Required fields (name, description)
+- ✅ Naming conventions (lowercase, hyphens)
+- ✅ Token size (warns if >5k tokens)
+- ✅ Policy compliance (no prompt injection patterns)
+- ✅ Best practices (examples, guidelines sections)
+
+```
+━━━ Skill Validation Results ━━━
+
+✓ skills/code-reviewer/SKILL.md
+   Name: code-reviewer
+   Tokens: ~2,400
+
+✓ skills/doc-writer/SKILL.md
+   Name: doc-writer
+   Tokens: ~1,800
+
+✗ skills/broken/SKILL.md
+   ERROR [MISSING_DESCRIPTION] Skill description is required
+
+Summary: 2 valid, 1 invalid
+```
+
+### Test Skill Behavior
+
+Validation catches syntax errors. Behavior tests catch **logic errors**.
+
+Define what your skill should do, then verify it actually does it:
+
+```yaml
+# tests/code-reviewer.yaml
+name: test-code-reviewer
+skill: ./skills/code-reviewer/SKILL.md
+
+tests:
+  - name: detects-sql-injection
+    input: |
+      Review this code:
+      query = f"SELECT * FROM users WHERE id = {user_id}"
+    expected:
+      output_contains: ["SQL injection", "parameterized"]
+      output_not_contains: ["looks good", "no issues"]
+
+  - name: approves-safe-code
+    input: |
+      Review this code:
+      query = db.execute("SELECT * FROM users WHERE id = ?", [user_id])
+    expected:
+      output_contains: ["secure", "parameterized"]
+      output_not_contains: ["vulnerability", "injection"]
+```
+
+Run it:
+
+```bash
+export ANTHROPIC_API_KEY=your-key
+evalview skill test tests/code-reviewer.yaml
+```
+
+```
+━━━ Running Skill Tests ━━━
+
+Suite:  test-code-reviewer
+Skill:  ./skills/code-reviewer/SKILL.md
+Model:  claude-sonnet-4-20250514
+Tests:  2
+
+Results:
+
+  PASS detects-sql-injection
+  PASS approves-safe-code
+
+Summary: ✓
+  Pass rate: 100% (2/2)
+  Avg latency: 1,240ms
+  Total tokens: 3,847
+```
+
+### Add to CI
+
+Block bad skills before they reach users:
+
+```yaml
+# .github/workflows/skills.yml
+name: Skill Tests
+on: [push, pull_request]
+
+jobs:
+  test-skills:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install evalview
+
+      # Validate structure
+      - run: evalview skill validate ./skills/ -r --strict
+
+      # Test behavior
+      - run: evalview skill test ./tests/skills/*.yaml
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+### Why Test Skills?
+
+Skills are code. Code needs tests.
+
+- **Regressions happen** — A small edit breaks existing behavior
+- **Edge cases exist** — Does your skill handle empty input? Long input? Malformed input?
+- **Users expect reliability** — Published skills should work consistently
+- **AI is non-deterministic** — The same skill can behave differently across runs
+
+EvalView brings the rigor of software testing to the AI skills ecosystem.
+
+### Compatible With
+
+| Platform | Status |
+|----------|--------|
+| Claude Code | ✅ Supported |
+| Claude.ai Skills | ✅ Supported |
+| OpenAI Codex CLI | ✅ Same SKILL.md format |
+| Custom Skills | ✅ Any SKILL.md file |
+
+---
+
 ### Like what you see?
 
 If EvalView caught a regression, saved you debugging time, or kept your agent costs in check — **[give it a ⭐ star](https://github.com/hidai25/eval-view)** to help others discover it.
@@ -791,12 +951,16 @@ If EvalView caught a regression, saved you debugging time, or kept your agent co
 
 ## Roadmap
 
-**Coming Soon:**
+**Shipped:**
 - [x] Multi-run flakiness detection ✅
+- [x] Skills testing (Claude Code, OpenAI Codex) ✅
+
+**Coming Soon:**
+- [ ] MCP server testing
 - [ ] Multi-turn conversation testing
 - [ ] Grounded hallucination checking
+- [ ] LLM-as-judge for skill guideline compliance
 - [ ] Error compounding metrics
-- [ ] Memory/context influence tracking
 
 **Want these?** [Vote in GitHub Discussions](https://github.com/hidai25/eval-view/discussions)
 
@@ -833,6 +997,15 @@ LangSmith is for tracing/observability. EvalView is for testing. Use both: LangS
 
 **Can I test for hallucinations?**
 Yes. EvalView has built-in hallucination detection that compares agent output against tool results.
+
+**Can I test Claude Code skills?**
+Yes. Use `evalview skill validate` for structure checks and `evalview skill test` for behavior tests. See [Skills Testing](#skills-testing-claude-code--openai-codex).
+
+**Does EvalView work with OpenAI Codex CLI skills?**
+Yes. Codex CLI uses the same SKILL.md format as Claude Code. Your tests work for both.
+
+**Do I need an API key for skill validation?**
+No. `evalview skill validate` runs locally without any API calls. Only `evalview skill test` requires an Anthropic API key.
 
 ---
 

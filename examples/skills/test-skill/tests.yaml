@@ -1,0 +1,54 @@
+# Example skill test suite
+# Run with: evalview skill test examples/skills/test-skill/tests.yaml
+
+name: test-code-reviewer
+description: Tests for the code-reviewer skill
+
+# Path to the skill being tested (relative to this file or absolute)
+skill: ./SKILL.md
+
+# Model to use (optional, defaults to claude-sonnet-4-20250514)
+model: claude-sonnet-4-20250514
+
+# Minimum pass rate required (0-1)
+min_pass_rate: 0.8
+
+tests:
+  - name: detects-sql-injection
+    description: Should identify SQL injection vulnerability
+    input: |
+      Review this Python code for security issues:
+
+      def get_user(user_id):
+          query = f"SELECT * FROM users WHERE id = {user_id}"
+          return db.execute(query)
+    expected:
+      output_contains:
+        - "SQL injection"
+      output_not_contains:
+        - "looks good"
+        - "no issues"
+
+  - name: suggests-parameterized-queries
+    description: Should recommend parameterized queries as a fix
+    input: |
+      How do I fix this SQL injection vulnerability?
+
+      query = f"SELECT * FROM users WHERE id = {user_id}"
+    expected:
+      output_contains:
+        - "parameterized"
+
+  - name: identifies-hardcoded-secret
+    description: Should flag hardcoded API keys
+    input: |
+      Review this code:
+
+      API_KEY = "sk-1234567890abcdef"
+      response = requests.get(url, headers={"Authorization": API_KEY})
+    expected:
+      output_contains:
+        - "secret"
+      output_not_contains:
+        - "secure"
+        - "no issues"
