@@ -3,7 +3,7 @@
 import re
 from pathlib import Path
 from typing import Optional, Tuple, Dict, Any
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 from evalview.skills.types import (
     Skill,
@@ -16,7 +16,7 @@ from evalview.skills.types import (
 class SkillParseError(Exception):
     """Raised when a skill file cannot be parsed."""
 
-    def __init__(self, message: str, errors: list = None):
+    def __init__(self, message: str, errors: Optional[list] = None):
         super().__init__(message)
         self.errors = errors or []
 

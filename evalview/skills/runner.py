@@ -2,8 +2,8 @@
 
 import time
 from pathlib import Path
-from typing import Optional
-import yaml
+from typing import Any, Optional
+import yaml  # type: ignore[import-untyped]
 
 from evalview.skills.types import (
     Skill,
@@ -42,7 +42,7 @@ class SkillRunner:
                 "Anthropic API key required. Set ANTHROPIC_API_KEY env var or pass api_key."
             )
         self.model = model
-        self._client = None
+        self._client: Optional[Any] = None
 
     @property
     def client(self):
