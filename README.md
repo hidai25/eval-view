@@ -34,7 +34,7 @@
 Already using LangSmith, Langfuse, or other tracing?
 Use them to *see* what happened. Use EvalView to **block bad behavior in CI before it hits prod.**
 
-> **Building Claude Code skills?** Jump to [Skills Testing](#skills-testing-claude-code--openai-codex) — validate against official Anthropic spec + test behavior in CI.
+> **Your Claude Code skills might be broken.** Claude silently ignores skills that exceed its [15k char budget](https://blog.fsck.com/2025/12/17/claude-code-skills-not-triggering/). [Check yours →](#skills-testing-claude-code--openai-codex)
 
 ---
 
@@ -788,20 +788,62 @@ evalview/
 
 ## Skills Testing (Claude Code & OpenAI Codex)
 
-**The first CI/CD testing framework for AI agent skills.**
+### Your Skills Are Probably Broken. Claude Is Ignoring Them.
 
-Skills are the new plugins. With thousands of skills on marketplaces and enterprises deploying skills to employees, they need the same testing rigor as any other code.
+**Common symptoms:**
+- Skills installed but never trigger
+- Claude says "I don't have that skill"
+- Works locally, breaks in production
+- No errors, just... silence
 
-EvalView lets you validate skill structure and test skill behavior **automatically on every commit**—before your skill reaches users.
+**Why it happens:** Claude Code has a [15k character budget](https://blog.fsck.com/2025/12/17/claude-code-skills-not-triggering/) for skill descriptions. Exceed it and skills aren't loaded. No warning. No error. EvalView catches this.
 
-### Quick Start: Add CI to Your Skills in 2 Minutes
+**EvalView catches this before you waste hours debugging:**
 
-**1. Install**
+### 30 Seconds: Validate Your Skill
+
 ```bash
 pip install evalview
+evalview skill validate ./SKILL.md
 ```
 
-**2. Create a test file** next to your SKILL.md:
+That's it. Catches naming errors, missing fields, reserved words, and spec violations.
+
+**Try it now** with the included example:
+```bash
+evalview skill validate examples/skills/test-skill/SKILL.md
+```
+
+### Why Is Claude Ignoring My Skills?
+
+Run the doctor to find out:
+
+```bash
+evalview skill doctor ~/.claude/skills/
+```
+
+```
+⚠️  Character Budget: 127% OVER - Claude is ignoring 4 of your 24 skills
+
+ISSUE: Character budget exceeded
+  Claude Code won't see all your skills.
+  Fix: Set SLASH_COMMAND_TOOL_CHAR_BUDGET=30000 or reduce descriptions
+
+ISSUE: Duplicate skill names
+  code-reviewer defined in:
+    - ~/.claude/skills/old/SKILL.md
+    - ~/.claude/skills/new/SKILL.md
+
+✗ 4 skills are INVISIBLE to Claude - fix now
+```
+
+This is why your skills "don't work." Claude literally can't see them.
+
+---
+
+### 2 Minutes: Add Behavior Tests + CI
+
+**1. Create a test file** next to your SKILL.md:
 ```yaml
 # tests.yaml
 name: my-skill-tests
@@ -814,30 +856,13 @@ tests:
       output_contains: ["expected", "words"]
 ```
 
-**3. Run locally**
+**2. Run locally**
 ```bash
-# Set your API key (or create .env.local file)
 echo "ANTHROPIC_API_KEY=your-key" > .env.local
-
-# Validate structure
-evalview skill validate ./SKILL.md
-
-# Test behavior
 evalview skill test tests.yaml
 ```
 
-**4. Add to CI** — copy [examples/skills/test-skill/.github/workflows/skill-tests.yml](examples/skills/test-skill/.github/workflows/skill-tests.yml) to your repo
-
-```yaml
-# .github/workflows/skill-tests.yml
-- run: pip install evalview
-- run: evalview skill validate .claude/skills/ -r --strict
-- run: evalview skill test tests/*.yaml
-  env:
-    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-```
-
-Done. Your skills are now tested on every PR.
+**3. Add to CI** — copy [examples/skills/test-skill/.github/workflows/skill-tests.yml](examples/skills/test-skill/.github/workflows/skill-tests.yml) to your repo
 
 > **Starter template:** See [examples/skills/test-skill/](examples/skills/test-skill/) for a complete copy-paste example with GitHub Actions.
 

@@ -342,6 +342,28 @@ class SkillValidator:
                 )
                 break
 
+        # Check for multi-line description (can break with Prettier/formatters)
+        if "\n" in desc:
+            errors.append(
+                SkillValidationError(
+                    code="MULTILINE_DESCRIPTION",
+                    message="Description contains newlines",
+                    severity=SkillSeverity.WARNING,
+                    suggestion="Use single-line description to avoid issues with Prettier and YAML formatters",
+                )
+            )
+
+        # Check for very long description (may hit Claude Code char budget)
+        if len(desc) > 500:
+            errors.append(
+                SkillValidationError(
+                    code="DESCRIPTION_CHAR_BUDGET",
+                    message=f"Description is {len(desc)} chars (recommended: <500)",
+                    severity=SkillSeverity.WARNING,
+                    suggestion="Keep descriptions concise to stay within Claude Code's 15k char budget for all skills",
+                )
+            )
+
         return errors
 
     @classmethod

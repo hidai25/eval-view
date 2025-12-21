@@ -39,7 +39,7 @@ console = Console()
 
 
 @click.group()
-@click.version_option(version="0.1.5")
+@click.version_option(version="0.1.6")
 def main():
     """EvalView - Testing framework for multi-step AI agents."""
     pass
@@ -3970,7 +3970,10 @@ def skill_validate(path: str, recursive: bool, strict: bool, verbose: bool, outp
                     console.print("[dim]Tip: Use --recursive to search subdirectories[/dim]")
             return
 
-    # Validate each file
+    # Validate each file with timing
+    import time
+    start_time = time.time()
+
     results = {}
     total_errors = 0
     total_warnings = 0
@@ -3984,6 +3987,8 @@ def skill_validate(path: str, recursive: bool, strict: bool, verbose: bool, outp
         total_warnings += len(result.warnings)
         if result.valid:
             total_valid += 1
+
+    elapsed_ms = (time.time() - start_time) * 1000
 
     # Output results
     if output_json:
@@ -4020,6 +4025,8 @@ def skill_validate(path: str, recursive: bool, strict: bool, verbose: bool, outp
     console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]║[/bold cyan]           [dim]Testing framework for multi-step AI agents[/dim]            [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
+    console.print()
+    console.print("[dim]Validating against official Anthropic spec...[/dim]")
     console.print()
 
     for file_path, result in results.items():
@@ -4060,6 +4067,7 @@ def skill_validate(path: str, recursive: bool, strict: bool, verbose: bool, outp
     console.print(f"  Invalid:  [red]{len(files) - total_valid}[/red]")
     console.print(f"  Errors:   [red]{total_errors}[/red]")
     console.print(f"  Warnings: [yellow]{total_warnings}[/yellow]")
+    console.print(f"  Time:     [dim]{elapsed_ms:.0f}ms[/dim]")
     console.print()
 
     # Exit with error code if validation failed
@@ -4105,6 +4113,163 @@ def skill_list(path: str, recursive: bool):
         console.print()
 
     console.print(f"[dim]Total: {len(files)} skill(s)[/dim]\n")
+
+
+@skill.command("doctor")
+@click.argument("path", type=click.Path(exists=True), default=".")
+@click.option("--recursive", "-r", is_flag=True, default=True, help="Search subdirectories")
+def skill_doctor(path: str, recursive: bool):
+    """Diagnose skill issues that cause Claude Code problems.
+
+    Checks for common issues:
+    - Total description chars exceeding Claude Code's 15k budget
+    - Duplicate skill names
+    - Invalid skills
+    - Multi-line descriptions that break formatters
+
+    Examples:
+        evalview skill doctor ~/.claude/skills/
+        evalview skill doctor .claude/skills/
+        evalview skill doctor ./my-skills/ -r
+    """
+    import time
+    from pathlib import Path as PathLib
+    from evalview.skills import SkillParser, SkillValidator
+
+    start_time = time.time()
+    CHAR_BUDGET = 15000  # Claude Code's default limit
+
+    files = SkillParser.find_skills(path, recursive=recursive)
+
+    if not files:
+        console.print(f"[yellow]No SKILL.md files found in {path}[/yellow]")
+        console.print("[dim]Tip: Skills should be in ~/.claude/skills/ or .claude/skills/[/dim]")
+        return
+
+    # Analyze all skills
+    skills_data = []
+    total_desc_chars = 0
+    names_seen = {}
+    invalid_count = 0
+    multiline_count = 0
+
+    for file_path in files:
+        result = SkillValidator.validate_file(file_path)
+        if result.valid and result.skill:
+            name = result.skill.metadata.name
+            desc = result.skill.metadata.description
+            desc_len = len(desc)
+            total_desc_chars += desc_len
+
+            # Track duplicates
+            if name in names_seen:
+                names_seen[name].append(file_path)
+            else:
+                names_seen[name] = [file_path]
+
+            # Track multi-line
+            if "\n" in desc:
+                multiline_count += 1
+
+            skills_data.append({
+                "name": name,
+                "path": file_path,
+                "desc_chars": desc_len,
+                "valid": True,
+            })
+        else:
+            invalid_count += 1
+            skills_data.append({
+                "name": "INVALID",
+                "path": file_path,
+                "desc_chars": 0,
+                "valid": False,
+                "error": result.errors[0].message if result.errors else "Unknown error",
+            })
+
+    elapsed_ms = (time.time() - start_time) * 1000
+
+    # Find duplicates
+    duplicates = {name: paths for name, paths in names_seen.items() if len(paths) > 1}
+
+    # Output report
+    console.print()
+    console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗██╗   ██╗ █████╗ ██╗    ██╗   ██╗██╗███████╗██╗    ██╗[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔════╝██║   ██║██╔══██╗██║    ██║   ██║██║██╔════╝██║    ██║[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]█████╗  ██║   ██║███████║██║    ██║   ██║██║█████╗  ██║ █╗ ██║[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔══╝  ╚██╗ ██╔╝██╔══██║██║    ╚██╗ ██╔╝██║██╔══╝  ██║███╗██║[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗ ╚████╔╝ ██║  ██║███████╗╚████╔╝ ██║███████╗╚███╔███╔╝[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]╚══════╝  ╚═══╝  ╚═╝  ╚═╝╚══════╝ ╚═══╝  ╚═╝╚══════╝ ╚══╝╚══╝ [/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]           [dim]Skill Doctor - Diagnose Claude Code Issues[/dim]           [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
+    console.print()
+
+    # Character budget check
+    budget_pct = (total_desc_chars / CHAR_BUDGET) * 100
+    skills_over = max(0, int((total_desc_chars - CHAR_BUDGET) / 500))  # Estimate skills ignored
+
+    if budget_pct > 100:
+        console.print(f"[bold red]⚠️  Character Budget: {budget_pct:.0f}% OVER - Claude is ignoring ~{skills_over} of your {len(files)} skills[/bold red]")
+    elif budget_pct > 75:
+        console.print(f"[bold yellow]⚠️  Character Budget: {budget_pct:.0f}% - approaching limit[/bold yellow]")
+    else:
+        console.print(f"[bold green]✓ Character Budget: {budget_pct:.0f}% ({total_desc_chars:,} / {CHAR_BUDGET:,} chars)[/bold green]")
+    console.print(f"[bold]Total Skills:[/bold]      {len(files)}")
+    console.print(f"[bold]Valid:[/bold]             [green]{len(files) - invalid_count}[/green]")
+    console.print(f"[bold]Invalid:[/bold]           [red]{invalid_count}[/red]")
+    console.print(f"[bold]Duplicates:[/bold]        [{'red' if duplicates else 'green'}]{len(duplicates)}[/{'red' if duplicates else 'green'}]")
+    console.print(f"[bold]Multi-line Desc:[/bold]   [{'yellow' if multiline_count else 'green'}]{multiline_count}[/{'yellow' if multiline_count else 'green'}]")
+    console.print()
+
+    # Show issues
+    has_issues = False
+
+    if budget_pct > 100:
+        has_issues = True
+        console.print("[bold red]ISSUE: Character budget exceeded[/bold red]")
+        console.print("  Claude Code won't see all your skills.")
+        console.print("  [dim]Fix: Set SLASH_COMMAND_TOOL_CHAR_BUDGET=30000 or reduce descriptions[/dim]")
+        console.print()
+
+    if duplicates:
+        has_issues = True
+        console.print("[bold red]ISSUE: Duplicate skill names[/bold red]")
+        for name, paths in duplicates.items():
+            console.print(f"  [yellow]{name}[/yellow] defined in:")
+            for p in paths:
+                console.print(f"    - {p}")
+        console.print()
+
+    if invalid_count > 0:
+        has_issues = True
+        console.print("[bold red]ISSUE: Invalid skills[/bold red]")
+        for s in skills_data:
+            if not s["valid"]:
+                console.print(f"  [red]✗[/red] {s['path']}")
+                console.print(f"    [dim]{s.get('error', 'Unknown error')}[/dim]")
+        console.print()
+
+    if multiline_count > 0:
+        console.print("[bold yellow]WARNING: Multi-line descriptions[/bold yellow]")
+        console.print("  These may break with Prettier or YAML formatters.")
+        console.print("  [dim]Fix: Use single-line descriptions[/dim]")
+        console.print()
+
+    # Summary
+    if not has_issues and multiline_count == 0:
+        console.print("[bold green]✓ All skills visible to Claude[/bold green]")
+    elif not has_issues:
+        console.print("[bold yellow]⚠ Minor warnings - skills should work[/bold yellow]")
+    else:
+        invisible_count = skills_over + invalid_count + len(duplicates)
+        if invisible_count > 0:
+            console.print(f"[bold red]✗ {invisible_count} skill(s) are INVISIBLE to Claude - fix now[/bold red]")
+        else:
+            console.print("[bold red]✗ Issues found - fix before deploying[/bold red]")
+
+    console.print(f"\n[dim]Time: {elapsed_ms:.0f}ms[/dim]\n")
 
 
 @skill.command("test")
@@ -4170,22 +4335,54 @@ def skill_test(test_file: str, model: str, verbose: bool, output_json: bool):
     console.print(f"  [bold]Tests:[/bold]  {len(suite.tests)}")
     console.print()
 
-    # Run the suite
-    try:
-        from rich.progress import Progress, SpinnerColumn, TextColumn
+    # Run the suite with live elapsed timer
+    import time
+    import threading
+    from rich.live import Live
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Running tests...", total=len(suite.tests))
+    start_time = time.time()
+    result = None
+    run_error = None
+
+    def format_elapsed():
+        elapsed = time.time() - start_time
+        mins, secs = divmod(elapsed, 60)
+        secs_int = int(secs)
+        ms = int((secs - secs_int) * 1000)
+        return f"{int(mins):02d}:{secs_int:02d}.{ms:03d}"
+
+    spinner_frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+    spinner_idx = [0]
+
+    def get_display():
+        spinner = spinner_frames[spinner_idx[0] % len(spinner_frames)]
+        spinner_idx[0] += 1
+        return f"{spinner} Running tests... [yellow]{format_elapsed()}[/yellow]"
+
+    def run_tests():
+        nonlocal result, run_error
+        try:
             result = runner.run_suite(suite)
-            progress.update(task, completed=len(suite.tests))
+        except Exception as e:
+            run_error = e
 
-    except Exception as e:
-        console.print(f"[red]Error running tests: {e}[/red]")
+    # Start test runner in background thread
+    test_thread = threading.Thread(target=run_tests)
+    test_thread.start()
+
+    # Show live timer while tests run
+    with Live(get_display(), console=console, refresh_per_second=10) as live:
+        while test_thread.is_alive():
+            live.update(get_display())
+            time.sleep(0.1)
+
+    test_thread.join()
+
+    if run_error:
+        console.print(f"[red]Error running tests: {run_error}[/red]")
         raise SystemExit(1)
+
+    elapsed_ms = (time.time() - start_time) * 1000
 
     # Output results
     if output_json:
@@ -4320,7 +4517,8 @@ def skill_test(test_file: str, model: str, verbose: bool, output_json: bool):
         f"  [bold]📈 Pass Rate:[/bold]    [{pass_rate_color}]{result.pass_rate:.0%}[/{pass_rate_color}] (required: {suite.min_pass_rate:.0%})\n"
         f"\n"
         f"  [bold]⏱️  Avg Latency:[/bold] {result.avg_latency_ms:.0f}ms\n"
-        f"  [bold]🔤 Total Tokens:[/bold] {result.total_tokens:,}"
+        f"  [bold]🔤 Total Tokens:[/bold] {result.total_tokens:,}\n"
+        f"  [bold]⏲️  Total Time:[/bold]  {elapsed_ms:.0f}ms"
     )
 
     console.print(Panel(summary_content, title="[bold]Overall Statistics[/bold]", border_style=border_color))
