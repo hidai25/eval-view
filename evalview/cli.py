@@ -4134,6 +4134,7 @@ def skill_doctor(path: str, recursive: bool):
     """
     import time
     from pathlib import Path as PathLib
+    from rich.panel import Panel
     from evalview.skills import SkillParser, SkillValidator
 
     start_time = time.time()
@@ -4142,8 +4143,22 @@ def skill_doctor(path: str, recursive: bool):
     files = SkillParser.find_skills(path, recursive=recursive)
 
     if not files:
-        console.print(f"[yellow]No SKILL.md files found in {path}[/yellow]")
-        console.print("[dim]Tip: Skills should be in ~/.claude/skills/ or .claude/skills/[/dim]")
+        console.print(f"[yellow]No SKILL.md files found in {path}[/yellow]\n")
+        console.print("[bold white]Here's what skill doctor catches:[/bold white]\n")
+        console.print(
+            Panel(
+                "[bold red]⚠️  Character Budget: 127% OVER[/bold red]\n"
+                "[red]Claude is ignoring ~4 of your 24 skills[/red]\n\n"
+                "[red]✗[/red] my-claude-helper [dim]- reserved word \"claude\" in name[/dim]\n"
+                "[red]✗[/red] api-tools [dim]- multiline description (breaks with Prettier)[/dim]\n"
+                "[red]✗[/red] code-review [dim]- description too long (1847 chars)[/dim]\n"
+                "[green]✓[/green] git-commit [dim]- OK[/dim]\n"
+                "[green]✓[/green] test-runner [dim]- OK[/dim]",
+                title="[bold]Example Output[/bold]",
+                border_style="dim",
+            )
+        )
+        console.print("\n[dim]Create skills in .claude/skills/ or ~/.claude/skills/[/dim]")
         return
 
     # Analyze all skills
