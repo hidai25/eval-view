@@ -1,0 +1,24 @@
+# Copy this workflow to your repo's .github/workflows/ folder
+name: Skill Tests
+
+on: [push, pull_request]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install EvalView
+        run: pip install evalview
+
+      - name: Validate skills
+        run: evalview skill validate .claude/skills/ -r --strict
+
+      - name: Test skills
+        run: evalview skill test tests/*.yaml
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

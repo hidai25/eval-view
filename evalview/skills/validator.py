@@ -28,8 +28,12 @@ class SkillValidator:
     METADATA_TOKEN_ESTIMATE = 100  # ~100 tokens for metadata scanning
     MAX_RECOMMENDED_TOKENS = 5000  # Skills should be under 5k tokens when loaded
 
-    # Naming rules
+    # Naming rules (per official Anthropic spec)
     NAME_PATTERN = re.compile(r"^[a-z][a-z0-9-]*[a-z0-9]$|^[a-z]$")
+    NAME_MAX_LENGTH = 64  # Official spec
+    DESCRIPTION_MAX_LENGTH = 1024  # Official spec
+    RESERVED_WORDS = ["anthropic", "claude"]  # Cannot appear in name
+    XML_TAG_PATTERN = re.compile(r"<[^>]+>")
 
     # Prohibited patterns in instructions (policy compliance)
     PROHIBITED_PATTERNS = [
@@ -194,7 +198,7 @@ class SkillValidator:
 
     @classmethod
     def _validate_name(cls, skill: Skill) -> List[SkillValidationError]:
-        """Validate skill name format."""
+        """Validate skill name format per official Anthropic spec."""
         errors = []
         name = skill.metadata.name
 
@@ -231,14 +235,37 @@ class SkillValidator:
                 )
             )
 
-        # Check name length
-        if len(name) > 50:
+        # Check name length (official spec: max 64)
+        if len(name) > cls.NAME_MAX_LENGTH:
             errors.append(
                 SkillValidationError(
                     code="NAME_TOO_LONG",
-                    message=f"Skill name is too long ({len(name)} chars, max 50)",
-                    severity=SkillSeverity.WARNING,
+                    message=f"Skill name exceeds limit ({len(name)} chars, max {cls.NAME_MAX_LENGTH})",
+                    severity=SkillSeverity.ERROR,
                     suggestion="Use a shorter, more concise name",
+                )
+            )
+
+        # Check for reserved words (official spec: no "anthropic" or "claude")
+        for reserved in cls.RESERVED_WORDS:
+            if reserved in name.lower():
+                errors.append(
+                    SkillValidationError(
+                        code="RESERVED_WORD_IN_NAME",
+                        message=f"Skill name contains reserved word: '{reserved}'",
+                        severity=SkillSeverity.ERROR,
+                        suggestion=f"Remove '{reserved}' from the skill name. Reserved words: {', '.join(cls.RESERVED_WORDS)}",
+                    )
+                )
+
+        # Check for XML tags (official spec: no XML tags)
+        if cls.XML_TAG_PATTERN.search(name):
+            errors.append(
+                SkillValidationError(
+                    code="XML_TAG_IN_NAME",
+                    message="Skill name contains XML tags",
+                    severity=SkillSeverity.ERROR,
+                    suggestion="Remove XML tags from the skill name",
                 )
             )
 
@@ -246,11 +273,45 @@ class SkillValidator:
 
     @classmethod
     def _validate_description(cls, skill: Skill) -> List[SkillValidationError]:
-        """Validate skill description."""
+        """Validate skill description per official Anthropic spec."""
         errors = []
         desc = skill.metadata.description
 
-        # Check minimum length
+        # Check non-empty (official spec: must be non-empty)
+        if not desc or not desc.strip():
+            errors.append(
+                SkillValidationError(
+                    code="EMPTY_DESCRIPTION",
+                    message="Description is required and cannot be empty",
+                    severity=SkillSeverity.ERROR,
+                    suggestion="Add a description of what the skill does and when to use it",
+                )
+            )
+            return errors
+
+        # Check max length (official spec: max 1024)
+        if len(desc) > cls.DESCRIPTION_MAX_LENGTH:
+            errors.append(
+                SkillValidationError(
+                    code="DESCRIPTION_TOO_LONG",
+                    message=f"Description exceeds limit ({len(desc)} chars, max {cls.DESCRIPTION_MAX_LENGTH})",
+                    severity=SkillSeverity.ERROR,
+                    suggestion="Shorten the description to under 1024 characters",
+                )
+            )
+
+        # Check for XML tags (official spec: no XML tags)
+        if cls.XML_TAG_PATTERN.search(desc):
+            errors.append(
+                SkillValidationError(
+                    code="XML_TAG_IN_DESCRIPTION",
+                    message="Description contains XML tags",
+                    severity=SkillSeverity.ERROR,
+                    suggestion="Remove XML tags from the description",
+                )
+            )
+
+        # Check minimum length (best practice)
         if len(desc) < 20:
             errors.append(
                 SkillValidationError(

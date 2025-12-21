@@ -34,6 +34,8 @@
 Already using LangSmith, Langfuse, or other tracing?
 Use them to *see* what happened. Use EvalView to **block bad behavior in CI before it hits prod.**
 
+> **Building Claude Code skills?** Jump to [Skills Testing](#skills-testing-claude-code--openai-codex) — validate against official Anthropic spec + test behavior in CI.
+
 ---
 
 ## What is EvalView?
@@ -447,7 +449,7 @@ We're building a hosted version:
 - **Watch mode** - Re-run tests automatically on file changes
 - **Configurable weights** - Customize scoring weights globally or per-test
 - **Statistical mode** - Run tests N times, get variance metrics and flakiness scores
-- **Skills testing** - Validate and test Claude Code / OpenAI Codex skills
+- **Skills testing** - Validate and test Claude Code / OpenAI Codex skills against [official Anthropic spec](#skills-testing-claude-code--openai-codex)
 
 ---
 
@@ -456,6 +458,9 @@ We're building a hosted version:
 ```bash
 # Basic installation
 pip install evalview
+
+# With skills testing (Claude Code / Codex)
+pip install evalview[skills]
 
 # With HTML reports (Plotly charts)
 pip install evalview[reports]
@@ -792,14 +797,54 @@ Skills are the new plugins. With 25k+ skills on marketplaces and enterprises dep
 
 EvalView lets you validate skill structure and test skill behavior **automatically on every commit**—before your skill reaches users.
 
-### The Problem
+### Quick Start: Add CI to Your Skills in 2 Minutes
 
-| Without Testing | With EvalView |
-|-----------------|---------------|
-| "I think my skill works" | **Proven behavior** |
-| Users report bugs | **Catch issues before release** |
-| No CI/CD for skills | **Block bad skills in PRs** |
-| Manual testing only | **Automated regression tests** |
+**1. Install**
+```bash
+pip install evalview
+```
+
+**2. Create a test file** next to your SKILL.md:
+```yaml
+# tests.yaml
+name: my-skill-tests
+skill: ./SKILL.md
+
+tests:
+  - name: basic-test
+    input: "Your test prompt"
+    expected:
+      output_contains: ["expected", "words"]
+```
+
+**3. Run locally**
+```bash
+# Set your API key (or create .env.local file)
+echo "ANTHROPIC_API_KEY=your-key" > .env.local
+
+# Validate structure
+evalview skill validate ./SKILL.md
+
+# Test behavior
+evalview skill test tests.yaml
+```
+
+**4. Add to CI** — copy [examples/skills/test-skill/.github/workflows/skill-tests.yml](examples/skills/test-skill/.github/workflows/skill-tests.yml) to your repo
+
+```yaml
+# .github/workflows/skill-tests.yml
+- run: pip install evalview
+- run: evalview skill validate .claude/skills/ -r --strict
+- run: evalview skill test tests/*.yaml
+  env:
+    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+Done. Your skills are now tested on every PR.
+
+> **Starter template:** See [examples/skills/test-skill/](examples/skills/test-skill/) for a complete copy-paste example with GitHub Actions.
+
+---
 
 ### Validate Skill Structure
 
@@ -816,13 +861,12 @@ evalview skill validate ~/.claude/skills/ -r
 evalview skill validate ./skills/ -r --json
 ```
 
-**What it checks:**
-- ✅ Valid YAML frontmatter
-- ✅ Required fields (name, description)
-- ✅ Naming conventions (lowercase, hyphens)
-- ✅ Token size (warns if >5k tokens)
-- ✅ Policy compliance (no prompt injection patterns)
-- ✅ Best practices (examples, guidelines sections)
+**Validates against [official Anthropic spec](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices):**
+- `name`: max 64 chars, lowercase/numbers/hyphens only, no reserved words ("anthropic", "claude")
+- `description`: max 1024 chars, non-empty, no XML tags
+- Token size (warns if >5k tokens)
+- Policy compliance (no prompt injection patterns)
+- Best practices (examples, guidelines sections)
 
 ```
 ━━━ Skill Validation Results ━━━
@@ -954,10 +998,10 @@ Skills are code. Code needs tests. EvalView brings the rigor of software testing
 
 | Platform | Status |
 |----------|--------|
-| Claude Code | ✅ Supported |
-| Claude.ai Skills | ✅ Supported |
-| OpenAI Codex CLI | ✅ Same SKILL.md format |
-| Custom Skills | ✅ Any SKILL.md file |
+| Claude Code | Supported |
+| Claude.ai Skills | Supported |
+| OpenAI Codex CLI | Same SKILL.md format |
+| Custom Skills | Any SKILL.md file |
 
 ---
 
@@ -970,8 +1014,8 @@ If EvalView caught a regression, saved you debugging time, or kept your agent co
 ## Roadmap
 
 **Shipped:**
-- [x] Multi-run flakiness detection ✅
-- [x] Skills testing (Claude Code, OpenAI Codex) ✅
+- [x] Multi-run flakiness detection
+- [x] Skills testing (Claude Code, OpenAI Codex)
 
 **Coming Soon:**
 - [ ] MCP server testing
