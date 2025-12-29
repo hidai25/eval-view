@@ -48,7 +48,7 @@ class GoldenTrace(BaseModel):
 class GoldenStore:
     """Manages golden trace storage and retrieval."""
 
-    def __init__(self, base_path: Path = None):
+    def __init__(self, base_path: Optional[Path] = None):
         """
         Initialize golden store.
 
@@ -165,7 +165,7 @@ class GoldenStore:
 _default_store: Optional[GoldenStore] = None
 
 
-def get_store(base_path: Path = None) -> GoldenStore:
+def get_store(base_path: Optional[Path] = None) -> GoldenStore:
     """Get the golden store (creates if needed)."""
     global _default_store
     if _default_store is None or base_path is not None:

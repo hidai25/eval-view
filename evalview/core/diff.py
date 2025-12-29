@@ -140,8 +140,8 @@ class DiffEngine:
         # - STABLE: matches baseline
 
         has_tool_changes = bool(tool_diffs)
-        has_output_drift = output_diff and output_diff.similarity < 0.80
-        has_minor_output_change = output_diff and output_diff.similarity < 0.95
+        has_output_drift = output_diff.similarity < 0.80
+        has_minor_output_change = output_diff.similarity < 0.95
         score_dropped = score_diff < -5
 
         has_differences = has_tool_changes or has_minor_output_change
