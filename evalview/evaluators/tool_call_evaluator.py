@@ -1,8 +1,9 @@
 """Tool call accuracy evaluator."""
 
 import re
-from typing import List, Set, Tuple
-from evalview.core.types import TestCase, ExecutionTrace, ToolEvaluation
+from typing import List, Set, Tuple, Optional, Dict
+from evalview.core.types import TestCase, ExecutionTrace, ToolEvaluation, CategoryResult
+from evalview.core.tool_categories import ToolCategoryMatcher, get_default_matcher
 
 
 def _normalize_tool_name(name: str) -> str:
@@ -30,41 +31,82 @@ def _find_similar_tools(
 class ToolCallEvaluator:
     """Evaluates whether the agent called the expected tools."""
 
+    def __init__(self, category_matcher: Optional[ToolCategoryMatcher] = None):
+        """
+        Initialize with optional custom category matcher.
+
+        Args:
+            category_matcher: Custom matcher, or None to use defaults
+        """
+        self.category_matcher = category_matcher or get_default_matcher()
+
     def evaluate(self, test_case: TestCase, trace: ExecutionTrace) -> ToolEvaluation:
         """
         Evaluate tool call accuracy.
 
+        Supports two modes:
+        1. Exact tool matching: expected.tools = ["bash", "text_editor"]
+        2. Category matching: expected.tool_categories = ["file_read", "search"]
+
+        Category matching is more flexible - it passes if ANY tool in the category was used.
+
         Args:
-            test_case: Test case with expected tools
+            test_case: Test case with expected tools or tool_categories
             trace: Execution trace with actual tool calls
 
         Returns:
             ToolEvaluation with accuracy metrics and helpful hints
         """
         expected_tools = set(test_case.expected.tools or [])
+        expected_categories = test_case.expected.tool_categories or []
         actual_tools = [step.tool_name for step in trace.steps]
 
         correct: List[str] = []
         missing: List[str] = []
         unexpected: List[str] = []
+        category_results: List[CategoryResult] = []
 
-        # Check for expected tools
+        # --- Exact tool matching ---
         for tool in expected_tools:
             if tool in actual_tools:
                 correct.append(tool)
             else:
                 missing.append(tool)
 
-        # Check for unexpected tools
         for tool in actual_tools:
             if tool not in expected_tools:
                 unexpected.append(tool)
 
-        # Calculate accuracy
-        accuracy = 1.0 if len(expected_tools) == 0 else len(correct) / len(expected_tools)
+        # --- Category matching ---
+        categories_satisfied = 0
+        for category in expected_categories:
+            matched = self.category_matcher.get_matching_tools(category, actual_tools)
+            satisfied = len(matched) > 0
+            if satisfied:
+                categories_satisfied += 1
+            category_results.append(
+                CategoryResult(
+                    category=category,
+                    satisfied=satisfied,
+                    matched_tools=matched,
+                )
+            )
+
+        # --- Calculate accuracy ---
+        # Combine exact tools and categories for accuracy calculation
+        total_expected = len(expected_tools) + len(expected_categories)
+        total_correct = len(correct) + categories_satisfied
+
+        if total_expected == 0:
+            accuracy = 1.0  # No expectations = 100% accuracy
+        else:
+            accuracy = total_correct / total_expected
 
         # Generate helpful hints for mismatches
-        hints = self._generate_hints(missing, unexpected, expected_tools, set(actual_tools))
+        hints = self._generate_hints(
+            missing, unexpected, expected_tools, set(actual_tools),
+            expected_categories, category_results
+        )
 
         return ToolEvaluation(
             accuracy=accuracy,
@@ -72,6 +114,9 @@ class ToolCallEvaluator:
             missing=missing,
             unexpected=unexpected,
             hints=hints,
+            category_results=category_results,
+            categories_satisfied=categories_satisfied,
+            categories_total=len(expected_categories),
         )
 
     def _generate_hints(
@@ -80,10 +125,31 @@ class ToolCallEvaluator:
         unexpected: List[str],
         expected: Set[str],
         actual: Set[str],
+        expected_categories: List[str] = None,
+        category_results: List[CategoryResult] = None,
     ) -> List[str]:
         """Generate helpful hints for debugging tool mismatches."""
         hints: List[str] = []
+        expected_categories = expected_categories or []
+        category_results = category_results or []
 
+        # --- Category hints ---
+        unsatisfied_categories = [
+            cr for cr in category_results if not cr.satisfied
+        ]
+        if unsatisfied_categories:
+            for cr in unsatisfied_categories:
+                category_tools = self.category_matcher.get_tools_in_category(cr.category)
+                hints.append(
+                    f"Category '{cr.category}' not satisfied. "
+                    f"Expected one of: {category_tools[:5]}{'...' if len(category_tools) > 5 else ''}"
+                )
+            hints.append(
+                "Tip: Use tool_categories instead of exact tools for flexible matching. "
+                "Categories: file_read, file_write, file_list, search, shell, git, web, python"
+            )
+
+        # --- Exact tool hints ---
         if not missing and not unexpected:
             return hints
 
@@ -95,25 +161,37 @@ class ToolCallEvaluator:
                 f"Update your test case to use '{actual_name}' if this is correct."
             )
 
+        # Suggest categories for common mismatches
+        if missing and unexpected and not similar_pairs:
+            # Check if unexpected tools could satisfy categories for missing tools
+            for m in missing:
+                for u in unexpected:
+                    m_cats = self.category_matcher.get_categories_for_tool(m)
+                    u_cats = self.category_matcher.get_categories_for_tool(u)
+                    common = m_cats & u_cats
+                    if common:
+                        hints.append(
+                            f"'{m}' and '{u}' are both in category '{list(common)[0]}'. "
+                            f"Consider using tool_categories: ['{list(common)[0]}'] instead of exact tools."
+                        )
+                        break
+
         # General hints
         if similar_pairs:
             hints.append(
                 "Tip: Tool names are case-sensitive. Check for snake_case vs camelCase differences."
             )
         elif missing and unexpected:
-            # Tools are different, not just case mismatch
             hints.append(
                 "The agent called different tools than expected. "
-                "Verify your agent is configured correctly and the test case matches your agent's tool names."
+                "Consider using tool_categories for flexible matching."
             )
         elif missing and not unexpected:
-            # Expected tools not called at all
             hints.append(
                 "The agent did not call the expected tools. "
                 "Check that your agent has access to these tools and the query triggers their use."
             )
         elif unexpected and not missing:
-            # Agent called extra tools
             hints.append(
                 "The agent called additional tools beyond what was expected. "
                 "This may be intentional - consider adding them to expected_tools in your test case."

@@ -60,6 +60,7 @@ class ExpectedBehavior(BaseModel):
     """Expected behavior of the agent."""
 
     tools: Optional[List[str]] = None
+    tool_categories: Optional[List[str]] = None  # Flexible matching by category
     tool_sequence: Optional[List[str]] = None
     sequence: Optional[List[str]] = None  # Alias for tool_sequence
     output: Optional[Union[ExpectedOutput, Dict[str, Any]]] = None
@@ -273,6 +274,14 @@ class ExecutionTrace(BaseModel):
 # ============================================================================
 
 
+class CategoryResult(BaseModel):
+    """Result for a single tool category check."""
+
+    category: str
+    satisfied: bool
+    matched_tools: List[str] = Field(default_factory=list)
+
+
 class ToolEvaluation(BaseModel):
     """Tool call accuracy evaluation."""
 
@@ -281,6 +290,10 @@ class ToolEvaluation(BaseModel):
     unexpected: List[str] = Field(default_factory=list)
     correct: List[str] = Field(default_factory=list)
     hints: List[str] = Field(default_factory=list, description="Helpful hints for fixing mismatches")
+    # Category-based evaluation results
+    category_results: List[CategoryResult] = Field(default_factory=list)
+    categories_satisfied: int = 0
+    categories_total: int = 0
 
 
 class SequenceEvaluation(BaseModel):

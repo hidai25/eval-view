@@ -12,7 +12,9 @@ input:
     extensions: ["developer"]
 
 expected:
-  # No strict tool requirement - just check that it doesn't hallucinate dependencies
+  # Must read files - flexible matching for different file reading tools
+  tool_categories:
+    - file_read
   output:
     not_contains:
       - "typically uses"

@@ -12,7 +12,10 @@ input:
     extensions: ["developer"]
 
 expected:
-  # No strict tool requirement - just check output quality
+  # Flexible matching: must explore (file_list/search) and read (file_read)
+  tool_categories:
+    - file_list
+    - file_read
   output:
     not_contains:
       - "I don't have access"

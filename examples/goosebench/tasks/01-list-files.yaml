@@ -12,7 +12,9 @@ input:
     extensions: ["developer"]
 
 expected:
-  # No strict tool requirement - just check output quality and that some tool was used
+  # Use tool_categories for flexible matching (bash ls OR analyze OR list_directory)
+  tool_categories:
+    - file_list
   output:
     not_contains:
       - "I don't have access"

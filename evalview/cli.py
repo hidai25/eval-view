@@ -40,7 +40,7 @@ console = Console()
 
 
 @click.group()
-@click.version_option(version="0.1.6")
+@click.version_option(version="0.1.7")
 def main():
     """EvalView - Testing framework for multi-step AI agents."""
     pass
@@ -1265,6 +1265,11 @@ thresholds:
     type=click.Choice(["http", "langgraph", "crewai", "anthropic", "openai-assistants", "tapescope", "huggingface", "goose", "ollama"]),
     help="Override adapter type (e.g., goose, langgraph, anthropic). Overrides config file.",
 )
+@click.option(
+    "--diff",
+    is_flag=True,
+    help="Compare against golden traces and show regressions. Use 'evalview golden save' to create baselines.",
+)
 def run(
     path: Optional[str],
     pattern: str,
@@ -1286,6 +1291,7 @@ def run(
     judge_model: Optional[str],
     judge_provider: Optional[str],
     adapter: Optional[str],
+    diff: bool,
 ):
     """Run test cases against the agent.
 
@@ -1303,7 +1309,7 @@ def run(
     asyncio.run(_run_async(
         path, pattern, test, filter, output, verbose, track, compare_baseline, debug,
         sequential, max_workers, max_retries, retry_delay, watch, html_report, summary, coverage,
-        adapter_override=adapter
+        adapter_override=adapter, diff=diff
     ))
 
 
@@ -1326,6 +1332,7 @@ async def _run_async(
     summary: bool = False,
     coverage: bool = False,
     adapter_override: Optional[str] = None,
+    diff: bool = False,
 ):
     """Async implementation of run command."""
     import fnmatch
@@ -2379,6 +2386,82 @@ async def _run_async(
     JSONReporter.save(results, results_file)
 
     console.print(f"\n[dim]Results saved to: {results_file}[/dim]\n")
+
+    # --- Golden Diff Display ---
+    if diff and results:
+        from evalview.core.golden import GoldenStore
+        from evalview.core.diff import compare_to_golden, DiffStatus
+        from rich.panel import Panel
+
+        store = GoldenStore()
+        diffs_found = []
+
+        for result in results:
+            golden = store.load_golden(result.test_case)
+            if golden:
+                trace_diff = compare_to_golden(golden, result.trace, result.score)
+                if trace_diff.has_differences:
+                    diffs_found.append((result.test_case, trace_diff))
+
+        if diffs_found:
+            console.print("\n[bold cyan]━━━ Golden Diff Report ━━━[/bold cyan]\n")
+
+            for test_name, trace_diff in diffs_found:
+                # Status-based display with proper terminology
+                status = trace_diff.overall_severity
+                if status == DiffStatus.REGRESSION:
+                    icon = "[red]✗ REGRESSION[/red]"
+                elif status == DiffStatus.DRIFT:
+                    icon = "[yellow]⚠ DRIFT[/yellow]"
+                elif status == DiffStatus.CHANGED:
+                    icon = "[dim]~ CHANGED[/dim]"
+                else:
+                    icon = "[green]✓ STABLE[/green]"
+
+                console.print(f"{icon} [bold]{test_name}[/bold]")
+                console.print(f"    Summary: {trace_diff.summary()}")
+
+                # Tool diffs
+                if trace_diff.tool_diffs:
+                    console.print("    [bold]Tool Changes:[/bold]")
+                    for td in trace_diff.tool_diffs[:5]:  # Limit display
+                        if td.type == "added":
+                            console.print(f"      [green]+ {td.actual_tool}[/green] (new step)")
+                        elif td.type == "removed":
+                            console.print(f"      [red]- {td.golden_tool}[/red] (missing)")
+                        elif td.type == "changed":
+                            console.print(f"      [yellow]~ {td.golden_tool} -> {td.actual_tool}[/yellow]")
+
+                # Score diff
+                if abs(trace_diff.score_diff) > 1:
+                    direction = "[green]↑[/green]" if trace_diff.score_diff > 0 else "[red]↓[/red]"
+                    console.print(f"    Score: {direction} {trace_diff.score_diff:+.1f}")
+
+                console.print()
+
+            # Summary with proper terminology
+            regressions = sum(1 for _, d in diffs_found if d.overall_severity == DiffStatus.REGRESSION)
+            drifts = sum(1 for _, d in diffs_found if d.overall_severity == DiffStatus.DRIFT)
+            changes = sum(1 for _, d in diffs_found if d.overall_severity == DiffStatus.CHANGED)
+
+            if regressions > 0:
+                console.print(f"[red]✗ {regressions} REGRESSION(s) detected! Score dropped - review before deploying.[/red]\n")
+            elif drifts > 0:
+                console.print(f"[yellow]⚠ {drifts} DRIFT(s) detected - output changed but score stable[/yellow]\n")
+            elif changes > 0:
+                console.print(f"[dim]~ {changes} minor change(s) - tools changed but output similar[/dim]\n")
+        else:
+            # Check if any golden traces exist
+            goldens = store.list_golden()
+            matched = sum(1 for g in goldens if any(r.test_case == g.test_name for r in results))
+            if matched > 0:
+                console.print(f"[green]✓ STABLE - No differences from golden baseline ({matched} tests compared)[/green]\n")
+            elif goldens:
+                console.print("[yellow]No golden traces match these tests[/yellow]")
+                console.print("[dim]Save one with: evalview golden save " + str(results_file) + "[/dim]\n")
+            else:
+                console.print("[yellow]No golden traces found[/yellow]")
+                console.print("[dim]Create baseline: evalview golden save " + str(results_file) + "[/dim]\n")
 
     # Generate HTML report if requested
     if html_report and results:
@@ -4702,6 +4785,191 @@ def skill_test(test_file: str, model: str, verbose: bool, output_json: bool):
         console.print()
         console.print("[bold green]✓ Skill ready for deployment[/bold green]")
         console.print()
+
+
+# ============================================================================
+# Golden Trace Commands
+# ============================================================================
+
+
+@main.group()
+def golden():
+    """Manage golden traces (blessed baselines for regression detection).
+
+    Golden traces are "blessed" test results that represent expected behavior.
+    Use them with `evalview run --diff` to detect regressions.
+
+    Examples:
+        evalview golden save .evalview/results/2024-01-15T10:30:00.json
+        evalview golden list
+        evalview golden delete "My Test Case"
+    """
+    pass
+
+
+@golden.command("save")
+@click.argument("result_file", type=click.Path(exists=True))
+@click.option("--notes", "-n", help="Notes about why this is the golden baseline")
+@click.option("--test", "-t", help="Save only specific test (by name)")
+def golden_save(result_file: str, notes: str, test: str):
+    """Save a test result as the golden baseline.
+
+    RESULT_FILE is a JSON file from `evalview run` (e.g., .evalview/results/xxx.json)
+
+    Examples:
+        evalview golden save .evalview/results/latest.json
+        evalview golden save results.json --notes "v1.0 release baseline"
+        evalview golden save results.json --test "List Directory Contents"
+    """
+    import json
+    from evalview.core.golden import GoldenStore
+    from evalview.core.types import EvaluationResult
+
+    console.print("\n[cyan]━━━ Saving Golden Trace ━━━[/cyan]\n")
+
+    # Load result file
+    with open(result_file) as f:
+        data = json.load(f)
+
+    # Handle both single result and batch results
+    results = []
+    if type(data).__name__ == "list":
+        results = data
+    elif isinstance(data, dict) and "results" in data:
+        results = data["results"]
+    else:
+        results = [data]
+
+    # Filter by test name if specified
+    if test:
+        results = [r for r in results if r.get("test_case") == test]
+        if not results:
+            console.print(f"[red]❌ No test found with name: {test}[/red]")
+            return
+
+    store = GoldenStore()
+
+    for result_data in results:
+        try:
+            result = EvaluationResult.model_validate(result_data)
+
+            # Check if golden already exists
+            if store.has_golden(result.test_case):
+                if not click.confirm(
+                    f"Golden trace already exists for '{result.test_case}'. Overwrite?",
+                    default=False,
+                ):
+                    console.print(f"[yellow]Skipped: {result.test_case}[/yellow]")
+                    continue
+
+            path = store.save_golden(result, notes=notes, source_file=result_file)
+            console.print(f"[green]✓ Saved golden:[/green] {result.test_case}")
+            console.print(f"  [dim]Score: {result.score:.1f}[/dim]")
+            console.print(f"  [dim]Tools: {len(result.trace.steps)} steps[/dim]")
+            console.print(f"  [dim]File: {path}[/dim]")
+            console.print()
+
+        except Exception as e:
+            console.print(f"[red]❌ Failed to save: {e}[/red]")
+
+    console.print("[green]Done![/green]\n")
+
+
+@golden.command("list")
+def golden_list():
+    """List all golden traces.
+
+    Shows all saved golden baselines with metadata.
+    """
+    from evalview.core.golden import GoldenStore
+
+    store = GoldenStore()
+    goldens = store.list_golden()
+
+    if not goldens:
+        console.print("\n[yellow]No golden traces found.[/yellow]")
+        console.print("[dim]Save one with: evalview golden save <result.json>[/dim]\n")
+        return
+
+    console.print("\n[cyan]━━━ Golden Traces ━━━[/cyan]\n")
+
+    for g in sorted(goldens, key=lambda x: x.test_name):
+        console.print(f"  [bold]{g.test_name}[/bold]")
+        console.print(f"    [dim]Score: {g.score:.1f}[/dim]")
+        console.print(f"    [dim]Blessed: {g.blessed_at.strftime('%Y-%m-%d %H:%M')}[/dim]")
+        if g.notes:
+            console.print(f"    [dim]Notes: {g.notes}[/dim]")
+        console.print()
+
+    console.print(f"[dim]Total: {len(goldens)} golden trace(s)[/dim]\n")
+
+
+@golden.command("delete")
+@click.argument("test_name")
+@click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+def golden_delete(test_name: str, force: bool):
+    """Delete a golden trace.
+
+    TEST_NAME is the name of the test case to delete.
+    """
+    from evalview.core.golden import GoldenStore
+
+    store = GoldenStore()
+
+    if not store.has_golden(test_name):
+        console.print(f"\n[yellow]No golden trace found for: {test_name}[/yellow]\n")
+        return
+
+    if not force:
+        if not click.confirm(f"Delete golden trace for '{test_name}'?", default=False):
+            console.print("[dim]Cancelled[/dim]")
+            return
+
+    store.delete_golden(test_name)
+    console.print(f"\n[green]✓ Deleted golden trace: {test_name}[/green]\n")
+
+
+@golden.command("show")
+@click.argument("test_name")
+def golden_show(test_name: str):
+    """Show details of a golden trace.
+
+    TEST_NAME is the name of the test case.
+    """
+    from evalview.core.golden import GoldenStore
+    from rich.panel import Panel
+
+    store = GoldenStore()
+    golden = store.load_golden(test_name)
+
+    if not golden:
+        console.print(f"\n[yellow]No golden trace found for: {test_name}[/yellow]\n")
+        return
+
+    console.print(f"\n[cyan]━━━ Golden Trace: {test_name} ━━━[/cyan]\n")
+
+    # Metadata
+    console.print("[bold]Metadata:[/bold]")
+    console.print(f"  Score: {golden.metadata.score:.1f}")
+    console.print(f"  Blessed: {golden.metadata.blessed_at.strftime('%Y-%m-%d %H:%M')}")
+    console.print(f"  Source: {golden.metadata.source_result_file or 'N/A'}")
+    if golden.metadata.notes:
+        console.print(f"  Notes: {golden.metadata.notes}")
+    console.print()
+
+    # Tool sequence
+    console.print("[bold]Tool Sequence:[/bold]")
+    for i, tool in enumerate(golden.tool_sequence, 1):
+        console.print(f"  {i}. {tool}")
+    console.print()
+
+    # Output preview
+    console.print("[bold]Output Preview:[/bold]")
+    preview = golden.trace.final_output[:500]
+    if len(golden.trace.final_output) > 500:
+        preview += "..."
+    console.print(Panel(preview, border_style="dim"))
+    console.print()
 
 
 if __name__ == "__main__":
