@@ -21,6 +21,7 @@ from evalview.core.llm_provider import (
     get_or_select_provider,
     save_provider_preference,
     PROVIDER_CONFIGS,
+    judge_cost_tracker,
 )
 from evalview.adapters.http_adapter import HTTPAdapter
 from evalview.adapters.tapescope_adapter import TapeScopeAdapter
@@ -1360,11 +1361,12 @@ async def _run_async(
             early_config = yaml.safe_load(f) or {}
 
     # Apply judge config from config file BEFORE provider selection
+    # Config.yaml judge settings OVERRIDE .env.local (explicit config takes priority)
     judge_config = early_config.get("judge", {})
     if judge_config:
-        if judge_config.get("provider") and not os.environ.get("EVAL_PROVIDER"):
+        if judge_config.get("provider"):
             os.environ["EVAL_PROVIDER"] = judge_config["provider"]
-        if judge_config.get("model") and not os.environ.get("EVAL_MODEL"):
+        if judge_config.get("model"):
             from evalview.core.llm_provider import resolve_model_alias
             os.environ["EVAL_MODEL"] = resolve_model_alias(judge_config["model"])
 
@@ -1382,7 +1384,10 @@ async def _run_async(
     config_for_provider = PROVIDER_CONFIGS[selected_provider]
     if not os.environ.get("EVAL_PROVIDER"):
         os.environ["EVAL_PROVIDER"] = selected_provider.value
-    os.environ[config_for_provider.env_var] = selected_api_key
+    # Don't set OLLAMA_HOST to "ollama" placeholder - Ollama doesn't need it
+    from evalview.core.llm_provider import LLMProvider
+    if selected_provider != LLMProvider.OLLAMA:
+        os.environ[config_for_provider.env_var] = selected_api_key
 
     # Welcome banner
     console.print()
@@ -1479,12 +1484,12 @@ async def _run_async(
         else:
             console.print("[dim]🔒 SSRF protection: blocking private URLs[/dim]")
 
-    # Load judge config from config file (if not already set via CLI flags)
+    # Load judge config from config file (config.yaml overrides .env.local)
     judge_config = config.get("judge", {})
     if judge_config:
-        if not os.environ.get("EVAL_PROVIDER") and judge_config.get("provider"):
+        if judge_config.get("provider"):
             os.environ["EVAL_PROVIDER"] = judge_config["provider"]
-        if not os.environ.get("EVAL_MODEL") and judge_config.get("model"):
+        if judge_config.get("model"):
             from evalview.core.llm_provider import resolve_model_alias
             os.environ["EVAL_MODEL"] = resolve_model_alias(judge_config["model"])
         if verbose:
@@ -2132,6 +2137,9 @@ async def _run_async(
         from rich.live import Live
         from rich.panel import Panel
 
+        # Reset judge cost tracker for this run
+        judge_cost_tracker.reset()
+
         start_time = time_module.time()
         tests_running = set()
         tests_completed = 0
@@ -2166,11 +2174,15 @@ async def _run_async(
             else:
                 status = "[green]● Running[/green]"
 
+            # Get judge cost summary
+            judge_cost = judge_cost_tracker.get_summary()
+
             content = (
                 f"  {status}\n"
                 f"\n"
                 f"  [bold]⏱️  Elapsed:[/bold]    [yellow]{elapsed_str}[/yellow]\n"
                 f"  [bold]📋 Progress:[/bold]   {tests_completed}/{len(test_cases)} tests\n"
+                f"  [bold]💰 Judge:[/bold]      [dim]{judge_cost}[/dim]\n"
                 f"\n"
                 f"{running_lines}\n"
                 f"\n"
@@ -2227,6 +2239,7 @@ async def _run_async(
 
             # Final completion box
             final_elapsed = format_elapsed()
+            final_judge_cost = judge_cost_tracker.get_summary()
             console.print()
             console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
             console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
@@ -2236,6 +2249,7 @@ async def _run_async(
                 console.print(f"[bold cyan]║[/bold cyan]  [bold yellow]⚠ TESTS COMPLETED WITH FAILURES[/bold yellow]                              [bold cyan]║[/bold cyan]")
             console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
             console.print(f"[bold cyan]║[/bold cyan]  [green]✓ Passed:[/green] {passed:<4}  [red]✗ Failed:[/red] {failed:<4}  [dim]Time:[/dim] {final_elapsed}               [bold cyan]║[/bold cyan]")
+            console.print(f"[bold cyan]║[/bold cyan]  [dim]💰 Judge cost:[/dim] {final_judge_cost:<45}[bold cyan]║[/bold cyan]")
             console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
             console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
             console.print()

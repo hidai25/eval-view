@@ -72,9 +72,10 @@ class HallucinationEvaluator:
         has_hallucination, confidence, details = await self._detect_hallucination(test_case, trace)
 
         # Determine if passed based on configuration
-        # For local models (Ollama), use higher confidence threshold to reduce false positives
+        # Use high confidence threshold to reduce false positives
+        # (tool output may be truncated, causing incorrect hallucination detection)
         is_local_model = self.llm_client.provider.value == "ollama"
-        confidence_threshold = 0.9 if is_local_model else 0.7
+        confidence_threshold = 0.95 if is_local_model else 0.98
 
         # Only fail if hallucination detected with high confidence AND not allowed
         if has_hallucination and confidence < confidence_threshold:

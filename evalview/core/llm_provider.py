@@ -209,6 +209,15 @@ def select_provider() -> Tuple[LLMProvider, str]:
     # Check if user specified a provider
     user_provider = get_provider_from_env()
     if user_provider:
+        # Special case for Ollama - check if running, not env var
+        if user_provider == LLMProvider.OLLAMA:
+            if is_ollama_running():
+                return user_provider, "ollama"
+            else:
+                raise ValueError(
+                    "EVAL_PROVIDER=ollama specified but Ollama is not running. Start with: ollama serve"
+                )
+
         for provider, api_key in available:
             if provider == user_provider:
                 return provider, api_key
@@ -220,6 +229,103 @@ def select_provider() -> Tuple[LLMProvider, str]:
 
     # Return first available provider
     return available[0]
+
+
+class JudgeCostTracker:
+    """Track LLM-as-judge API costs across all evaluations."""
+
+    # Pricing per 1M tokens (input, output)
+    PRICING = {
+        "openai": {
+            "gpt-4o": (2.50, 10.00),
+            "gpt-4o-mini": (0.15, 0.60),
+            "gpt-4-turbo": (10.00, 30.00),
+        },
+        "anthropic": {
+            "claude-sonnet-4-5-20250929": (3.00, 15.00),
+            "claude-3-5-haiku-latest": (0.25, 1.25),
+            "claude-opus-4-5-20251101": (15.00, 75.00),
+        },
+        "gemini": {
+            "gemini-2.0-flash": (0.10, 0.40),
+            "gemini-1.5-pro": (1.25, 5.00),
+        },
+        "ollama": {},  # Free - local
+        "huggingface": {
+            "meta-llama/Llama-3.1-8B-Instruct": (0.05, 0.05),
+        },
+    }
+
+    def __init__(self):
+        self.total_input_tokens = 0
+        self.total_output_tokens = 0
+        self.total_cost = 0.0
+        self.call_count = 0
+
+    def add_usage(self, provider: str, model: str, input_tokens: int, output_tokens: int):
+        """Track token usage and calculate cost."""
+        self.total_input_tokens += input_tokens
+        self.total_output_tokens += output_tokens
+        self.call_count += 1
+
+        # Calculate cost
+        pricing = self.PRICING.get(provider, {})
+        model_pricing = None
+
+        # Try exact match first, then partial match
+        for model_name, prices in pricing.items():
+            if model_name in model or model in model_name:
+                model_pricing = prices
+                break
+
+        if model_pricing:
+            input_cost = (input_tokens / 1_000_000) * model_pricing[0]
+            output_cost = (output_tokens / 1_000_000) * model_pricing[1]
+            self.total_cost += input_cost + output_cost
+
+    def get_summary(self) -> str:
+        """Get a summary string of costs."""
+        if self.call_count == 0:
+            return "No judge calls yet"
+
+        total_tokens = self.total_input_tokens + self.total_output_tokens
+
+        if self.total_cost > 0:
+            # Paid API - show cost prominently
+            return f"${self.total_cost:.4f} | {total_tokens:,} tokens ({self.call_count} calls)"
+        else:
+            # Free (Ollama) - just show tokens
+            return f"FREE | {total_tokens:,} tokens ({self.call_count} calls)"
+
+    def get_detailed_summary(self) -> str:
+        """Get detailed breakdown of costs."""
+        if self.call_count == 0:
+            return "No judge calls yet"
+
+        lines = []
+        lines.append(f"Judge LLM Usage:")
+        lines.append(f"  Calls:         {self.call_count}")
+        lines.append(f"  Input tokens:  {self.total_input_tokens:,}")
+        lines.append(f"  Output tokens: {self.total_output_tokens:,}")
+        lines.append(f"  Total tokens:  {self.total_input_tokens + self.total_output_tokens:,}")
+
+        if self.total_cost > 0:
+            lines.append(f"  Total cost:    ${self.total_cost:.4f}")
+        else:
+            lines.append(f"  Total cost:    FREE (local model)")
+
+        return "\n".join(lines)
+
+    def reset(self):
+        """Reset all counters."""
+        self.total_input_tokens = 0
+        self.total_output_tokens = 0
+        self.total_cost = 0.0
+        self.call_count = 0
+
+
+# Global cost tracker instance
+judge_cost_tracker = JudgeCostTracker()
 
 
 class LLMClient:
@@ -327,6 +433,15 @@ class LLMClient:
             params["max_tokens"] = max_tokens
 
         response = await client.chat.completions.create(**params)  # type: ignore[call-overload]
+
+        # Track usage
+        if response.usage:
+            judge_cost_tracker.add_usage(
+                "openai", self.model,
+                response.usage.prompt_tokens,
+                response.usage.completion_tokens
+            )
+
         return json.loads(response.choices[0].message.content or "{}")
 
     async def _anthropic_completion(
@@ -351,6 +466,14 @@ class LLMClient:
             messages=[{"role": "user", "content": user_prompt}],
             temperature=temperature,
         )
+
+        # Track usage
+        if response.usage:
+            judge_cost_tracker.add_usage(
+                "anthropic", self.model,
+                response.usage.input_tokens,
+                response.usage.output_tokens
+            )
 
         # Extract text from response
         text = ""
@@ -555,6 +678,14 @@ Do not include any text before or after the JSON. Do not use markdown code block
             temperature=temperature,
             max_tokens=max_tokens,
         )
+
+        # Track usage (Ollama is free but we track tokens for visibility)
+        if response.usage:
+            judge_cost_tracker.add_usage(
+                "ollama", self.model,
+                response.usage.prompt_tokens,
+                response.usage.completion_tokens
+            )
 
         text = response.choices[0].message.content or "{}"
         return self._extract_json_from_text(text)
@@ -775,13 +906,24 @@ def get_or_select_provider(console, force_interactive: bool = False) -> Optional
         env_provider = get_provider_from_env()
         if env_provider:
             config = PROVIDER_CONFIGS[env_provider]
-            api_key = os.getenv(config.env_var)
-            if api_key:
-                console.print(f"[dim]Using {config.display_name} (from EVAL_PROVIDER)[/dim]")
-                return env_provider, api_key
+
+            # Special case for Ollama - check if running, not env var
+            if env_provider == LLMProvider.OLLAMA:
+                if is_ollama_running():
+                    console.print(f"[dim]Using {config.display_name} (from EVAL_PROVIDER)[/dim]")
+                    return env_provider, "ollama"
+                else:
+                    console.print(f"[yellow]EVAL_PROVIDER=ollama but Ollama is not running[/yellow]")
+                    console.print(f"[dim]Start Ollama with: ollama serve[/dim]")
+                    # Fall through to interactive selection
             else:
-                console.print(f"[yellow]EVAL_PROVIDER={env_provider.value} but {config.env_var} not set[/yellow]")
-                # Fall through to interactive selection
+                api_key = os.getenv(config.env_var)
+                if api_key:
+                    console.print(f"[dim]Using {config.display_name} (from EVAL_PROVIDER)[/dim]")
+                    return env_provider, api_key
+                else:
+                    console.print(f"[yellow]EVAL_PROVIDER={env_provider.value} but {config.env_var} not set[/yellow]")
+                    # Fall through to interactive selection
 
     # Only one provider available -> use it automatically
     if len(available) == 1 and not force_interactive:

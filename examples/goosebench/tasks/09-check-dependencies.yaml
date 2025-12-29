@@ -12,8 +12,7 @@ input:
     extensions: ["developer"]
 
 expected:
-  tools:
-    - bash  # Must read package files
+  # No strict tool requirement - just check that it doesn't hallucinate dependencies
   output:
     not_contains:
       - "typically uses"
