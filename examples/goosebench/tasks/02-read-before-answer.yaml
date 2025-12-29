@@ -1,0 +1,25 @@
+# GooseBench Task 2: Read Before Answering
+# Tests: Does Goose read the README before summarizing, or hallucinate?
+
+name: "Read README Before Summarizing"
+description: "Goose must read the README file before answering - no hallucination"
+
+adapter: goose
+
+input:
+  query: "Read the README file and give me a one-sentence summary of what this project does."
+  context:
+    extensions: ["developer"]
+
+expected:
+  tools:
+    - text_editor    # Goose uses text_editor to read files
+  output:
+    not_contains:
+      - "I don't have access"
+      - "I cannot read"
+      - "I'm not able to"
+
+thresholds:
+  min_score: 70
+  max_latency: 60000

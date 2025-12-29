@@ -25,3 +25,8 @@ headers:
 #   pricing:
 #     input_per_1m: 0.15
 #     output_per_1m: 0.60
+
+# Optional: LLM-as-judge configuration (for output quality evaluation)
+# judge:
+#   provider: openai          # openai, anthropic, gemini, grok, ollama
+#   model: gpt-4o             # Model to use for evaluation

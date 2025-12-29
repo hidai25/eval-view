@@ -1259,6 +1259,11 @@ thresholds:
     type=click.Choice(["openai", "anthropic", "huggingface", "gemini", "grok", "ollama"]),
     help="Provider for LLM-as-judge evaluation (ollama = free local)",
 )
+@click.option(
+    "--adapter",
+    type=click.Choice(["http", "langgraph", "crewai", "anthropic", "openai-assistants", "tapescope", "huggingface", "goose", "ollama"]),
+    help="Override adapter type (e.g., goose, langgraph, anthropic). Overrides config file.",
+)
 def run(
     path: Optional[str],
     pattern: str,
@@ -1279,6 +1284,7 @@ def run(
     coverage: bool,
     judge_model: Optional[str],
     judge_provider: Optional[str],
+    adapter: Optional[str],
 ):
     """Run test cases against the agent.
 
@@ -1295,7 +1301,8 @@ def run(
 
     asyncio.run(_run_async(
         path, pattern, test, filter, output, verbose, track, compare_baseline, debug,
-        sequential, max_workers, max_retries, retry_delay, watch, html_report, summary, coverage
+        sequential, max_workers, max_retries, retry_delay, watch, html_report, summary, coverage,
+        adapter_override=adapter
     ))
 
 
@@ -1317,6 +1324,7 @@ async def _run_async(
     html_report: str = None,
     summary: bool = False,
     coverage: bool = False,
+    adapter_override: Optional[str] = None,
 ):
     """Async implementation of run command."""
     import fnmatch
@@ -1338,6 +1346,28 @@ async def _run_async(
         if path_env.exists():
             load_dotenv(dotenv_path=str(path_env), override=True)
 
+    # Load config EARLY to get judge settings before provider selection
+    config_path = Path(".evalview/config.yaml")
+    if path:
+        target_dir = Path(path) if Path(path).is_dir() else Path(path).parent
+        path_config = target_dir / ".evalview" / "config.yaml"
+        if path_config.exists():
+            config_path = path_config
+
+    early_config = {}
+    if config_path.exists():
+        with open(config_path) as f:
+            early_config = yaml.safe_load(f) or {}
+
+    # Apply judge config from config file BEFORE provider selection
+    judge_config = early_config.get("judge", {})
+    if judge_config:
+        if judge_config.get("provider") and not os.environ.get("EVAL_PROVIDER"):
+            os.environ["EVAL_PROVIDER"] = judge_config["provider"]
+        if judge_config.get("model") and not os.environ.get("EVAL_MODEL"):
+            from evalview.core.llm_provider import resolve_model_alias
+            os.environ["EVAL_MODEL"] = resolve_model_alias(judge_config["model"])
+
     # Interactive provider selection for LLM-as-judge
     result = get_or_select_provider(console)
     if result is None:
@@ -1348,9 +1378,10 @@ async def _run_async(
     # Save preference for future runs
     save_provider_preference(selected_provider)
 
-    # Set environment variable for the evaluators to use
+    # Set environment variable for the evaluators to use (only if not already set from config)
     config_for_provider = PROVIDER_CONFIGS[selected_provider]
-    os.environ["EVAL_PROVIDER"] = selected_provider.value
+    if not os.environ.get("EVAL_PROVIDER"):
+        os.environ["EVAL_PROVIDER"] = selected_provider.value
     os.environ[config_for_provider.env_var] = selected_api_key
 
     # Welcome banner
@@ -1448,15 +1479,31 @@ async def _run_async(
         else:
             console.print("[dim]🔒 SSRF protection: blocking private URLs[/dim]")
 
+    # Load judge config from config file (if not already set via CLI flags)
+    judge_config = config.get("judge", {})
+    if judge_config:
+        if not os.environ.get("EVAL_PROVIDER") and judge_config.get("provider"):
+            os.environ["EVAL_PROVIDER"] = judge_config["provider"]
+        if not os.environ.get("EVAL_MODEL") and judge_config.get("model"):
+            from evalview.core.llm_provider import resolve_model_alias
+            os.environ["EVAL_MODEL"] = resolve_model_alias(judge_config["model"])
+        if verbose:
+            console.print(f"[dim]⚖️  Judge: {judge_config.get('provider', 'default')} / {judge_config.get('model', 'default')}[/dim]")
+
     # Initialize adapter based on type (if config has endpoint or is a special adapter type)
-    adapter_type = config.get("adapter", "http")
+    # CLI --adapter flag overrides config file
+    adapter_type = adapter_override if adapter_override else config.get("adapter", "http")
     adapter = None  # Will be None if no config - test cases must provide their own adapter/endpoint
+
+    if adapter_override and verbose:
+        console.print(f"[dim]🔌 Adapter override: {adapter_override}[/dim]")
 
     # Only initialize global adapter if config has necessary info
     has_endpoint = "endpoint" in config
     is_api_adapter = adapter_type in ["openai-assistants", "anthropic", "ollama"]
+    is_cli_adapter = adapter_type in ["goose"]  # CLI-based adapters don't need endpoint
 
-    if has_endpoint or is_api_adapter:
+    if has_endpoint or is_api_adapter or is_cli_adapter:
         if adapter_type == "langgraph":
             adapter = LangGraphAdapter(
                 endpoint=config["endpoint"],
@@ -1548,6 +1595,19 @@ async def _run_async(
                 verbose=verbose,
                 model_config=model_config,
             )
+        elif adapter_type == "goose":
+            # Goose CLI adapter for Block's open-source AI agent
+            from evalview.adapters.goose_adapter import GooseAdapter
+
+            adapter = GooseAdapter(
+                timeout=config.get("timeout", 300.0),
+                cwd=config.get("cwd"),
+                extensions=config.get("extensions", ["developer"]),
+                provider=config.get("provider"),
+                model=config.get("goose_model"),  # Separate from judge model
+            )
+            if verbose:
+                console.print("[dim]🪿 Using Goose CLI adapter[/dim]")
         else:
             # HTTP adapter for standard REST APIs
             adapter = HTTPAdapter(
@@ -2190,9 +2250,14 @@ async def _run_async(
             )
 
         # Collect results (maintaining order)
-        for pr in parallel_results:
-            if pr.success and pr.result:
-                results.append(pr.result)
+        # Debug: check if parallel_results is an exception from gather
+        if isinstance(parallel_results, Exception):
+            logger.error(f"parallel_results is an exception: {parallel_results}")
+            console.print(f"[red]Error in parallel execution: {parallel_results}[/red]")
+        elif parallel_results:
+            for pr in parallel_results:
+                if pr.success and pr.result:
+                    results.append(pr.result)
 
     # Print summary
     console.print()
@@ -3916,6 +3981,74 @@ def add(pattern: Optional[str], tool: Optional[str], query: Optional[str], list_
     console.print(f"\n[bold]Next steps:[/bold]")
     console.print(f"  1. Edit [cyan]{output_path}[/cyan] to match your agent")
     console.print(f"  2. Run: [green]evalview run {output_path}[/green]\n")
+
+
+# ============================================================================
+# Judge Configuration Command
+# ============================================================================
+
+
+@main.command()
+@click.argument("provider", required=False, type=click.Choice(["openai", "anthropic", "gemini", "grok", "ollama"]))
+@click.argument("model", required=False)
+def judge(provider: Optional[str], model: Optional[str]):
+    """Set the LLM-as-judge provider and model.
+
+    Examples:
+        evalview judge                     # Show current judge config
+        evalview judge openai              # Switch to OpenAI (default model)
+        evalview judge openai gpt-4o       # Switch to OpenAI with specific model
+        evalview judge anthropic           # Switch to Anthropic
+        evalview judge ollama llama3.2     # Use local Ollama
+    """
+    config_path = Path(".evalview/config.yaml")
+
+    # Load existing config
+    if config_path.exists():
+        with open(config_path) as f:
+            config = yaml.safe_load(f) or {}
+    else:
+        config = {}
+
+    # If no provider specified, show current config
+    if not provider:
+        current = config.get("judge", {})
+        if current:
+            console.print(f"\n[bold]Current LLM-as-judge:[/bold]")
+            console.print(f"  Provider: [cyan]{current.get('provider', 'not set')}[/cyan]")
+            console.print(f"  Model: [cyan]{current.get('model', 'default')}[/cyan]\n")
+        else:
+            console.print("\n[dim]No judge configured. Using interactive selection.[/dim]")
+            console.print("\n[bold]Set a judge:[/bold]")
+            console.print("  evalview judge openai gpt-4o")
+            console.print("  evalview judge anthropic claude-sonnet-4-5-20250929")
+            console.print("  evalview judge ollama llama3.2\n")
+        return
+
+    # Default models per provider
+    default_models = {
+        "openai": "gpt-4o",
+        "anthropic": "claude-sonnet-4-5-20250929",
+        "gemini": "gemini-1.5-pro",
+        "grok": "grok-beta",
+        "ollama": "llama3.2",
+    }
+
+    # Set the judge config
+    config["judge"] = {
+        "provider": provider,
+        "model": model or default_models.get(provider, "default"),
+    }
+
+    # Ensure directory exists
+    config_path.parent.mkdir(exist_ok=True)
+
+    # Write config
+    with open(config_path, "w") as f:
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+    console.print(f"\n[green]✓[/green] Judge set to [bold]{provider}[/bold] / [cyan]{config['judge']['model']}[/cyan]")
+    console.print(f"[dim]  Saved to {config_path}[/dim]\n")
 
 
 # ============================================================================

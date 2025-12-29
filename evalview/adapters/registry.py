@@ -234,6 +234,13 @@ class AdapterRegistry:
         except ImportError:
             logger.warning("HuggingFaceAdapter not available")
 
+        try:
+            from evalview.adapters.goose_adapter import GooseAdapter
+
+            cls.register("goose", GooseAdapter)
+        except ImportError:
+            logger.warning("GooseAdapter not available")
+
         cls._initialized = True
 
     @classmethod

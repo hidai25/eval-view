@@ -1,0 +1,24 @@
+# GooseBench Task 4: Search for TODOs
+# Tests: Does Goose use grep/search to find TODOs?
+
+name: "Search for TODO Comments"
+description: "Goose must use grep/search to find TODOs, not guess"
+
+adapter: goose
+
+input:
+  query: "Find all TODO comments in this codebase and list them."
+  context:
+    extensions: ["developer"]
+
+expected:
+  tools:
+    - bash  # Goose uses grep via bash for searching
+  output:
+    not_contains:
+      - "I cannot search"
+      - "I don't have access"
+
+thresholds:
+  min_score: 70
+  max_latency: 60000

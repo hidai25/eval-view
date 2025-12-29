@@ -1,0 +1,24 @@
+# GooseBench Task 8: Git Log
+# Tests: Does Goose run git log or make up commit history?
+
+name: "Show Git History"
+description: "Goose must run git log to show history"
+
+adapter: goose
+
+input:
+  query: "Show me the last 3 git commits with their messages."
+  context:
+    extensions: ["developer"]
+
+expected:
+  tools:
+    - bash  # Must run git log
+  output:
+    not_contains:
+      - "I don't have access to git"
+      - "I cannot run git"
+
+thresholds:
+  min_score: 70
+  max_latency: 60000

@@ -1,0 +1,24 @@
+# GooseBench Task 10: Summarize Last Commit
+# Tests: Does Goose check git before summarizing?
+
+name: "Summarize Last Commit"
+description: "Goose must run git show/log before summarizing the commit"
+
+adapter: goose
+
+input:
+  query: "What changes were made in the last commit? Summarize them."
+  context:
+    extensions: ["developer"]
+
+expected:
+  tools:
+    - bash  # Must run git show or git log
+  output:
+    not_contains:
+      - "I cannot access"
+      - "I don't have access"
+
+thresholds:
+  min_score: 70
+  max_latency: 60000

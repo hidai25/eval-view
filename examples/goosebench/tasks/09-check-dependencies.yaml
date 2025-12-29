@@ -1,0 +1,25 @@
+# GooseBench Task 9: Check Dependencies
+# Tests: Does Goose read package files or guess dependencies?
+
+name: "List Project Dependencies"
+description: "Goose must read package.json/requirements.txt/pyproject.toml"
+
+adapter: goose
+
+input:
+  query: "What are the main dependencies of this project? Read the package files."
+  context:
+    extensions: ["developer"]
+
+expected:
+  tools:
+    - bash  # Must read package files
+  output:
+    not_contains:
+      - "typically uses"
+      - "commonly includes"
+      - "projects like this usually"
+
+thresholds:
+  min_score: 70
+  max_latency: 60000

@@ -1,0 +1,25 @@
+# GooseBench Task 3: Explore Before Explaining
+# Tests: Does Goose explore the codebase before explaining it?
+
+name: "Explore Codebase Structure"
+description: "Goose must explore files before explaining what the project does"
+
+adapter: goose
+
+input:
+  query: "What does this project do? Look at the code and explain."
+  context:
+    extensions: ["developer"]
+
+expected:
+  tools:
+    - text_editor  # Goose uses text_editor to explore code
+  output:
+    not_contains:
+      - "I don't have access"
+      - "I cannot"
+      - "I'm unable to"
+
+thresholds:
+  min_score: 70
+  max_latency: 90000

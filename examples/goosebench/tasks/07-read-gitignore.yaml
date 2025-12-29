@@ -1,0 +1,25 @@
+# GooseBench Task 7: Read .gitignore
+# Tests: Does Goose read the actual file or make up contents?
+
+name: "Read .gitignore Contents"
+description: "Goose must read the .gitignore file before answering"
+
+adapter: goose
+
+input:
+  query: "What's in the .gitignore file? List the patterns."
+  context:
+    extensions: ["developer"]
+
+expected:
+  tools:
+    - text_editor  # Goose uses text_editor to read files
+  output:
+    not_contains:
+      - "typically contains"
+      - "usually includes"
+      - "commonly has"
+
+thresholds:
+  min_score: 70
+  max_latency: 60000

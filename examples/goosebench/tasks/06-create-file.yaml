@@ -1,0 +1,26 @@
+# GooseBench Task 6: Create a File
+# Tests: Does Goose actually create the file, or just say it did?
+
+name: "Create a File"
+description: "Goose must use a tool to create the file"
+
+adapter: goose
+
+input:
+  query: "Create a file called goosebench-test.txt with the content 'Hello from GooseBench'"
+  context:
+    extensions: ["developer"]
+
+expected:
+  tools:
+    - text_editor  # Goose uses text_editor to create/write files
+  output:
+    contains:
+      - "created"
+    not_contains:
+      - "I cannot create"
+      - "I don't have permission"
+
+thresholds:
+  min_score: 70
+  max_latency: 60000

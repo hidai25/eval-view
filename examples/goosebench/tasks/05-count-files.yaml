@@ -1,0 +1,26 @@
+# GooseBench Task 5: Count Files
+# Tests: Does Goose count files by running a command, or guess a number?
+
+name: "Count Python Files"
+description: "Goose must run a command to count files, not guess"
+
+adapter: goose
+
+input:
+  query: "How many Python files (.py) are in this project? Give me the exact count."
+  context:
+    extensions: ["developer"]
+
+expected:
+  tools:
+    - bash  # Must count (find, ls, wc, etc.)
+  output:
+    not_contains:
+      - "approximately"
+      - "around"
+      - "I estimate"
+      - "probably"
+
+thresholds:
+  min_score: 70
+  max_latency: 60000
