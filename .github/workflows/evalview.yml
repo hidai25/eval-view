@@ -25,14 +25,15 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
+
+      - name: Install uv
+        run: pip install uv
 
       - name: Install EvalView
-        run: |
-          pip install -e ".[all]"
+        run: uv sync --all-extras
 
       - name: Verify installation
-        run: evalview --help
+        run: uv run evalview --help
 
       - name: Run agent tests
         env:
@@ -41,7 +42,7 @@ jobs:
           # AGENT_ENDPOINT: ${{ vars.AGENT_ENDPOINT }}
         run: |
           # Run tests with parallel execution (4 workers for CI)
-          evalview run \
+          uv run evalview run \
             --max-workers 4 \
             --max-retries 2 \
             ${{ github.event.inputs.test_filter && format('--filter "{0}"', github.event.inputs.test_filter) || '' }}
@@ -52,7 +53,7 @@ jobs:
           # Find the latest results file and generate HTML report
           RESULTS_FILE=$(ls -t .evalview/results/*.json 2>/dev/null | head -1)
           if [ -n "$RESULTS_FILE" ]; then
-            evalview report "$RESULTS_FILE" --html report.html
+            uv run evalview report "$RESULTS_FILE" --html report.html
           fi
 
       - name: Upload test results

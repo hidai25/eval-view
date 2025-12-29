@@ -15,12 +15,15 @@ pip install evalview[reports]
 pip install evalview jinja2 plotly
 ```
 
-For development (watch mode):
+For development (watch mode, contributing):
 ```bash
-pip install evalview[dev]
-# or
-pip install evalview watchdog
+# Clone the repo and use uv for development
+git clone https://github.com/hidai25/eval-view.git
+cd eval-view
+uv sync --all-extras  # Creates .venv automatically
 ```
+
+> **Note:** Development uses [uv](https://docs.astral.sh/uv/) for fast dependency management. See [CONTRIBUTING.md](../CONTRIBUTING.md) for full setup.
 
 ## Quick Setup (2 minutes)
 

@@ -1,0 +1,24 @@
+{
+  "benchmark": "pip",
+  "timestamp": "2025-12-29T16:27:37Z",
+  "iterations": 3,
+  "system": {
+    "os": "Darwin",
+    "os_version": "25.1.0",
+    "python_version": "3.12.4",
+    "pip_version": "24.0"
+  },
+  "project": {
+    "name": "evalview",
+    "path": "/Users/sigex/gruckion-workdir/eval-view"
+  },
+  "runs": [{"iteration":1,"install_time":31.72,"pytest_time":4.45,"black_time":6.78,"ruff_time":0.47,"mypy_time":25.91,"total_time":69.33},{"iteration":2,"install_time":35.82,"pytest_time":10.14,"black_time":9.14,"ruff_time":0.75,"mypy_time":69.52,"total_time":125.37},{"iteration":3,"install_time":42.09,"pytest_time":4.45,"black_time":8.45,"ruff_time":0.96,"mypy_time":82.25,"total_time":138.2}],
+  "averages": {
+    "install_time": 36.54,
+    "pytest_time": 6.35,
+    "black_time": 8.12,
+    "ruff_time": 0.73,
+    "mypy_time": 59.23,
+    "total_time": 110.97
+  }
+}

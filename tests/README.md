@@ -163,8 +163,8 @@ Comprehensive pytest fixtures for all tests:
 ### Quick Start
 
 ```bash
-# Install development dependencies
-pip install -e ".[dev]"
+# Install development dependencies (creates .venv automatically)
+uv sync --all-extras
 
 # Run all tests
 make test
@@ -173,35 +173,35 @@ make test
 make test-cov
 
 # Run specific test file
-pytest tests/test_types.py -v
+uv run pytest tests/test_types.py -v
 
 # Run specific test class
-pytest tests/test_evaluators.py::TestToolCallEvaluator -v
+uv run pytest tests/test_evaluators.py::TestToolCallEvaluator -v
 
 # Run specific test method
-pytest tests/test_types.py::TestThresholds::test_thresholds_min_score_constraint_min -v
+uv run pytest tests/test_types.py::TestThresholds::test_thresholds_min_score_constraint_min -v
 ```
 
 ### Advanced Usage
 
 ```bash
 # Run tests matching pattern
-pytest tests/ -k "test_parse" -v
+uv run pytest tests/ -k "test_parse" -v
 
 # Run tests with detailed output
-pytest tests/ -vv
+uv run pytest tests/ -vv
 
 # Stop on first failure
-pytest tests/ -x
+uv run pytest tests/ -x
 
 # Show local variables on failure
-pytest tests/ -l
+uv run pytest tests/ -l
 
 # Run in parallel (requires pytest-xdist)
-pytest tests/ -n auto
+uv run pytest tests/ -n auto
 
 # Generate HTML coverage report
-pytest tests/ --cov=evalview --cov-report=html
+uv run pytest tests/ --cov=evalview --cov-report=html
 open htmlcov/index.html
 ```
 
@@ -209,16 +209,16 @@ open htmlcov/index.html
 
 ```bash
 # Run only unit tests
-pytest tests/ -m unit
+uv run pytest tests/ -m unit
 
 # Run only integration tests
-pytest tests/ -m integration
+uv run pytest tests/ -m integration
 
 # Skip slow tests
-pytest tests/ -m "not slow"
+uv run pytest tests/ -m "not slow"
 
 # Skip network tests
-pytest tests/ -m "not network"
+uv run pytest tests/ -m "not network"
 ```
 
 ## Test Statistics

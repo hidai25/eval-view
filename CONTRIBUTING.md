@@ -9,13 +9,11 @@ Thanks for your interest in contributing! This guide will help you get started.
 git clone https://github.com/hidai25/eval-view.git
 cd eval-view
 
-# Create and activate virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install in development mode with dev dependencies
-pip install -e ".[dev]"
+# Install dependencies with uv (creates .venv automatically)
+uv sync --all-extras
 ```
+
+> **Note:** This project uses [uv](https://docs.astral.sh/uv/) for fast dependency management. Install it with `curl -LsSf https://astral.sh/uv/install.sh | sh` or `pip install uv`.
 
 ## Development Workflow
 
@@ -26,10 +24,10 @@ pip install -e ".[dev]"
 make test
 
 # Or manually
-pytest
+uv run pytest
 
 # Run with coverage
-pytest --cov=evalview --cov-report=html
+uv run pytest --cov=evalview --cov-report=html
 ```
 
 ### Code Quality
@@ -51,7 +49,8 @@ make check
 ### Quick Commands
 
 ```bash
-make install     # Install package in dev mode
+make install     # Install package (uv sync)
+make dev-install # Install with all extras (uv sync --all-extras)
 make test        # Run tests
 make format      # Format with black
 make lint        # Lint with ruff
