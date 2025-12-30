@@ -62,8 +62,9 @@ Think: _"pytest / Playwright mindset, but for multi-step agents and tool-calling
 | Catches hallucinations | No | **Yes** |
 | Tracks token cost | No | **Automatic** |
 | Runs in CI/CD | Hard | **Built-in** |
-| Detects regressions | No | **Automatic** |
+| Detects regressions | No | **Golden traces + `--diff`** |
 | Tests tool calls | Manual inspection | **Automated** |
+| Flexible tool matching | Exact names only | **Categories (intent-based)** |
 | Latency tracking | No | **Per-test thresholds** |
 | Handles flaky LLMs | No | **Statistical mode** |
 
@@ -105,6 +106,15 @@ thresholds:
   min_score: 80
 checks:
   hallucination: true
+```
+
+**Regression detection** — fail if behavior drifts from baseline:
+```bash
+# Save a good run as baseline
+evalview golden save .evalview/results/xxx.json
+
+# Future runs compare against it
+evalview run --diff  # Fails on REGRESSION status
 ```
 
 ---
@@ -325,6 +335,128 @@ Overall:    92% behavior coverage
 
 ---
 
+## Golden Traces (Regression Detection)
+
+**Problem:** Your agent worked yesterday. Today it doesn't. What changed?
+
+**Solution:** Save "golden" baselines, detect regressions automatically.
+
+### How It Works
+
+```bash
+# 1. Run your tests
+evalview run
+
+# 2. Save a passing run as your golden baseline
+evalview golden save .evalview/results/20241201_143022.json
+
+# 3. On future runs, compare against golden
+evalview run --diff
+```
+
+When you run with `--diff`, EvalView compares every test against its golden baseline and flags:
+
+| Status | What It Means |
+|--------|---------------|
+| **STABLE** | Matches baseline - no action needed |
+| **CHANGED** | Tools changed but output similar - review |
+| **DRIFT** | Output changed but score stable - investigate |
+| **REGRESSION** | Score dropped significantly - fix before deploy |
+
+### Example Output
+
+```
+━━━ Regression Detection ━━━
+
+✓ test-stock-analysis      STABLE
+⚠ test-customer-support    DRIFT     output similarity: 78%
+✗ test-code-review         REGRESSION  score dropped 15 points
+
+Regressions detected: 1
+Drifts detected: 1
+```
+
+### Golden Commands
+
+```bash
+# Save a result as golden baseline
+evalview golden save .evalview/results/xxx.json
+
+# Save with notes
+evalview golden save result.json --notes "Baseline after v2.0 refactor"
+
+# Save only specific test from a multi-test result
+evalview golden save result.json --test "stock-analysis"
+
+# List all golden traces
+evalview golden list
+
+# Show details of a golden trace
+evalview golden show test-stock-analysis
+
+# Delete a golden trace
+evalview golden delete test-stock-analysis
+```
+
+**Use case:** Add `evalview run --diff` to CI. Block deploys when behavior regresses.
+
+---
+
+## Tool Categories (Flexible Matching)
+
+**Problem:** Your test expects `read_file`. Agent uses `bash cat`. Test fails. Both are correct.
+
+**Solution:** Test by *intent*, not exact tool name.
+
+### Before (Brittle)
+
+```yaml
+expected:
+  tools:
+    - read_file      # Fails if agent uses bash, text_editor, etc.
+```
+
+### After (Flexible)
+
+```yaml
+expected:
+  categories:
+    - file_read      # Passes for read_file, bash cat, text_editor, etc.
+```
+
+### Built-in Categories
+
+| Category | Matches |
+|----------|---------|
+| `file_read` | read_file, bash, text_editor, cat, view, str_replace_editor |
+| `file_write` | write_file, bash, text_editor, edit_file, create_file |
+| `file_list` | list_directory, bash, ls, find, directory_tree |
+| `search` | grep, ripgrep, bash, search_files, code_search |
+| `shell` | bash, shell, terminal, execute, run_command |
+| `web` | web_search, browse, fetch_url, http_request, curl |
+| `git` | git, bash, git_commit, git_push, github |
+| `python` | python, bash, python_repl, execute_python, jupyter |
+
+### Custom Categories
+
+Add project-specific categories in `config.yaml`:
+
+```yaml
+# .evalview/config.yaml
+tool_categories:
+  database:
+    - postgres_query
+    - mysql_execute
+    - sql_run
+  my_custom_api:
+    - internal_api_call
+    - legacy_endpoint
+```
+
+**Why this matters:** Different agents use different tools for the same task. Categories let you test behavior, not implementation.
+
+---
+
 ## What it does (in practice)
 
 - **Write test cases in YAML** – Define inputs, required tools, and scoring thresholds
@@ -435,6 +567,8 @@ We're building a hosted version:
 
 ## Features
 
+- **Golden traces** - Save baselines, detect regressions with `--diff` ([docs](#golden-traces-regression-detection))
+- **Tool categories** - Flexible matching by intent, not exact tool names ([docs](#tool-categories-flexible-matching))
 - **Test Expansion** - Generate 100+ test variations from a single seed test
 - **Test Recording** - Auto-generate tests from live agent interactions
 - **YAML-based test cases** - Write readable, maintainable test definitions
@@ -485,6 +619,7 @@ evalview run [OPTIONS]
 Options:
   --pattern TEXT         Test case file pattern (default: *.yaml)
   -t, --test TEXT        Run specific test(s) by name
+  --diff                 Compare against golden traces, detect regressions
   --verbose              Enable verbose logging
   --sequential           Run tests one at a time (default: parallel)
   --max-workers N        Max parallel executions (default: 8)
@@ -537,6 +672,27 @@ Generate report from results.
 
 ```bash
 evalview report .evalview/results/20241118_004830.json --detailed --html report.html
+```
+
+### `evalview golden`
+
+Manage golden traces for regression detection.
+
+```bash
+# Save a test result as the golden baseline
+evalview golden save .evalview/results/xxx.json
+evalview golden save result.json --notes "Post-refactor baseline"
+evalview golden save result.json --test "specific-test-name"
+
+# List all golden traces
+evalview golden list
+
+# Show details of a golden trace
+evalview golden show test-name
+
+# Delete a golden trace
+evalview golden delete test-name
+evalview golden delete test-name --force
 ```
 
 ---
@@ -1011,6 +1167,8 @@ If EvalView caught a regression, saved you debugging time, or kept your agent co
 ## Roadmap
 
 **Shipped:**
+- [x] Golden traces & regression detection (`evalview run --diff`)
+- [x] Tool categories for flexible matching
 - [x] Multi-run flakiness detection
 - [x] Skills testing (Claude Code, OpenAI Codex)
 
