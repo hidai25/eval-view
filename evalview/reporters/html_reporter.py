@@ -504,4 +504,257 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </body>
 </html>
 """
+
+# Diff report template
+DIFF_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #0d1117; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .container { max-width: 1400px; }
+        .card { background: #161b22; border: 1px solid #30363d; border-radius: 6px; margin-bottom: 1rem; }
+        .card-header { background: #21262d; border-bottom: 1px solid #30363d; padding: 12px 16px; }
+        .status-regression { border-left: 4px solid #f85149; }
+        .status-drift { border-left: 4px solid #d29922; }
+        .status-changed { border-left: 4px solid #8b949e; }
+        .status-stable { border-left: 4px solid #3fb950; }
+        .badge-regression { background: #f85149; }
+        .badge-drift { background: #d29922; }
+        .badge-changed { background: #8b949e; }
+        .badge-stable { background: #3fb950; }
+        .diff-container { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .diff-panel { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 1rem; }
+        .diff-panel h6 { color: #8b949e; margin-bottom: 0.5rem; }
+        .tool-sequence { font-family: monospace; }
+        .tool-added { color: #3fb950; }
+        .tool-removed { color: #f85149; text-decoration: line-through; }
+        .tool-changed { color: #d29922; }
+        .output-preview { background: #0d1117; padding: 1rem; border-radius: 4px; font-family: monospace; font-size: 12px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
+        .metric { display: inline-block; margin-right: 1rem; padding: 4px 8px; background: #21262d; border-radius: 4px; }
+        .metric-label { color: #8b949e; font-size: 11px; }
+        .metric-value { font-weight: 600; }
+        .score-up { color: #3fb950; }
+        .score-down { color: #f85149; }
+        .summary-card { background: linear-gradient(135deg, #21262d 0%, #161b22 100%); }
+        h1, h2, h3, h4, h5 { color: #c9d1d9; }
+        a { color: #58a6ff; }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <h1 class="mb-4">Golden Diff Report</h1>
+        <p class="text-muted">Generated: {{ timestamp }}</p>
+
+        <!-- Summary -->
+        <div class="card summary-card mb-4">
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-3">
+                        <h3>{{ summary.total }}</h3>
+                        <small class="text-muted">Tests Compared</small>
+                    </div>
+                    <div class="col-md-3">
+                        <h3 class="text-danger">{{ summary.regressions }}</h3>
+                        <small class="text-muted">Regressions</small>
+                    </div>
+                    <div class="col-md-3">
+                        <h3 class="text-warning">{{ summary.drifts }}</h3>
+                        <small class="text-muted">Drifts</small>
+                    </div>
+                    <div class="col-md-3">
+                        <h3 class="text-success">{{ summary.stable }}</h3>
+                        <small class="text-muted">Stable</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Diff Cards -->
+        {% for diff in diffs %}
+        <div class="card status-{{ diff.status }}">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="badge badge-{{ diff.status }} me-2">{{ diff.status | upper }}</span>
+                    <strong>{{ diff.test_name }}</strong>
+                </div>
+                <div>
+                    <span class="metric">
+                        <span class="metric-label">Score</span>
+                        <span class="metric-value {% if diff.score_diff > 0 %}score-up{% elif diff.score_diff < 0 %}score-down{% endif %}">
+                            {{ diff.actual_score | round(1) }}
+                            {% if diff.score_diff != 0 %}({{ '%+.1f' | format(diff.score_diff) }}){% endif %}
+                        </span>
+                    </span>
+                    <span class="metric">
+                        <span class="metric-label">Similarity</span>
+                        <span class="metric-value">{{ (diff.similarity * 100) | round(0) }}%</span>
+                    </span>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- Tool Comparison -->
+                <h6>Tool Sequence</h6>
+                <div class="diff-container mb-3">
+                    <div class="diff-panel">
+                        <h6>Golden (Baseline)</h6>
+                        <div class="tool-sequence">
+                            {% for tool in diff.golden_tools %}
+                            <span class="badge bg-secondary me-1">{{ tool }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="diff-panel">
+                        <h6>Actual (Current)</h6>
+                        <div class="tool-sequence">
+                            {% for tool in diff.actual_tools %}
+                            <span class="badge bg-primary me-1">{{ tool }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+
+                {% if diff.tool_changes %}
+                <div class="mb-3">
+                    <h6>Tool Changes</h6>
+                    {% for change in diff.tool_changes %}
+                    <div class="tool-{{ change.type }}">
+                        {% if change.type == 'added' %}+ {{ change.tool }}{% endif %}
+                        {% if change.type == 'removed' %}- {{ change.tool }}{% endif %}
+                        {% if change.type == 'changed' %}~ {{ change.from }} → {{ change.to }}{% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <!-- Output Comparison -->
+                <h6>Output Comparison</h6>
+                <div class="diff-container">
+                    <div class="diff-panel">
+                        <h6>Golden Output</h6>
+                        <div class="output-preview">{{ diff.golden_output }}</div>
+                    </div>
+                    <div class="diff-panel">
+                        <h6>Actual Output</h6>
+                        <div class="output-preview">{{ diff.actual_output }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+
+        <footer class="text-center text-muted py-4">
+            Generated by <a href="https://github.com/hidai25/eval-view">EvalView</a>
+        </footer>
+    </div>
+</body>
+</html>
+"""
+
+
+class DiffReporter:
+    """Generate HTML diff reports comparing actual vs golden traces."""
+
+    def __init__(self):
+        if not JINJA2_AVAILABLE:
+            raise ImportError(
+                "jinja2 is required for HTML reports. Install with: pip install jinja2"
+            )
+
+    def generate(
+        self,
+        diffs: list,  # List of TraceDiff objects
+        results: List[EvaluationResult],
+        output_path: str,
+        title: str = "Golden Diff Report",
+    ) -> str:
+        """
+        Generate an HTML diff report.
+
+        Args:
+            diffs: List of TraceDiff objects from diff engine
+            results: List of EvaluationResult for additional context
+            output_path: Path to write the HTML file
+            title: Report title
+
+        Returns:
+            Path to the generated report
+        """
+        from evalview.core.golden import GoldenStore
+        from evalview.core.diff import DiffStatus
+
+        store = GoldenStore()
+
+        # Build diff data for template
+        diff_data = []
+        regressions = 0
+        drifts = 0
+        stable = 0
+
+        for trace_diff in diffs:
+            # Get corresponding result
+            result = next((r for r in results if r.test_case == trace_diff.test_name), None)
+            golden = store.load_golden(trace_diff.test_name)
+
+            if trace_diff.overall_severity == DiffStatus.REGRESSION:
+                status = "regression"
+                regressions += 1
+            elif trace_diff.overall_severity == DiffStatus.DRIFT:
+                status = "drift"
+                drifts += 1
+            elif trace_diff.overall_severity == DiffStatus.CHANGED:
+                status = "changed"
+                stable += 1  # Count as stable-ish
+            else:
+                status = "stable"
+                stable += 1
+
+            # Build tool changes list
+            tool_changes = []
+            for td in trace_diff.tool_diffs:
+                if td.type == "added":
+                    tool_changes.append({"type": "added", "tool": td.actual_tool})
+                elif td.type == "removed":
+                    tool_changes.append({"type": "removed", "tool": td.golden_tool})
+                elif td.type == "changed":
+                    tool_changes.append({"type": "changed", "from": td.golden_tool, "to": td.actual_tool})
+
+            diff_data.append({
+                "test_name": trace_diff.test_name,
+                "status": status,
+                "score_diff": trace_diff.score_diff,
+                "actual_score": result.score if result else 0,
+                "similarity": trace_diff.output_diff.similarity if trace_diff.output_diff else 1.0,
+                "golden_tools": golden.tool_sequence if golden else [],
+                "actual_tools": [s.tool_name for s in result.trace.steps] if result else [],
+                "tool_changes": tool_changes,
+                "golden_output": golden.trace.final_output[:1000] if golden else "",
+                "actual_output": result.trace.final_output[:1000] if result else "",
+            })
+
+        # Render template
+        env = Environment(loader=BaseLoader())
+        template = env.from_string(DIFF_TEMPLATE)
+        html = template.render(
+            title=title,
+            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            summary={
+                "total": len(diffs),
+                "regressions": regressions,
+                "drifts": drifts,
+                "stable": stable,
+            },
+            diffs=diff_data,
+        )
+
+        output = Path(output_path)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(html)
+
+        return str(output)
+
 # fmt: on

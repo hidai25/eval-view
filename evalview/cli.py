@@ -1262,13 +1262,18 @@ thresholds:
 )
 @click.option(
     "--adapter",
-    type=click.Choice(["http", "langgraph", "crewai", "anthropic", "openai-assistants", "tapescope", "huggingface", "goose", "ollama"]),
-    help="Override adapter type (e.g., goose, langgraph, anthropic). Overrides config file.",
+    type=click.Choice(["http", "langgraph", "crewai", "anthropic", "openai-assistants", "tapescope", "huggingface", "goose", "ollama", "mcp"]),
+    help="Override adapter type (e.g., goose, langgraph, mcp). Overrides config file.",
 )
 @click.option(
     "--diff",
     is_flag=True,
     help="Compare against golden traces and show regressions. Use 'evalview golden save' to create baselines.",
+)
+@click.option(
+    "--diff-report",
+    type=click.Path(),
+    help="Generate HTML diff report to specified path (requires --diff)",
 )
 def run(
     path: Optional[str],
@@ -1292,6 +1297,7 @@ def run(
     judge_provider: Optional[str],
     adapter: Optional[str],
     diff: bool,
+    diff_report: Optional[str],
 ):
     """Run test cases against the agent.
 
@@ -1309,7 +1315,7 @@ def run(
     asyncio.run(_run_async(
         path, pattern, test, filter, output, verbose, track, compare_baseline, debug,
         sequential, max_workers, max_retries, retry_delay, watch, html_report, summary, coverage,
-        adapter_override=adapter, diff=diff
+        adapter_override=adapter, diff=diff, diff_report=diff_report
     ))
 
 
@@ -1333,6 +1339,7 @@ async def _run_async(
     coverage: bool = False,
     adapter_override: Optional[str] = None,
     diff: bool = False,
+    diff_report: Optional[str] = None,
 ):
     """Async implementation of run command."""
     import fnmatch
@@ -1918,6 +1925,12 @@ async def _run_async(
                     model_config=model_config,
                     allow_private_urls=allow_private_urls,
                 )
+            elif test_adapter_type == "mcp":
+                from evalview.adapters.mcp_adapter import MCPAdapter
+                return MCPAdapter(
+                    endpoint=test_endpoint,
+                    timeout=test_config.get("timeout", 30.0),
+                )
             else:  # Default to HTTP adapter
                 return HTTPAdapter(
                     endpoint=test_endpoint,
@@ -2387,6 +2400,9 @@ async def _run_async(
 
     console.print(f"\n[dim]Results saved to: {results_file}[/dim]\n")
 
+    # Initialize for diff tracking (used by both diff display and diff report)
+    diffs_found = []
+
     # --- Golden Diff Display ---
     if diff and results:
         from evalview.core.golden import GoldenStore
@@ -2394,7 +2410,6 @@ async def _run_async(
         from rich.panel import Panel
 
         store = GoldenStore()
-        diffs_found = []
 
         for result in results:
             golden = store.load_golden(result.test_case)
@@ -2475,6 +2490,29 @@ async def _run_async(
         except ImportError as e:
             console.print(f"[yellow]⚠️  Could not generate HTML report: {e}[/yellow]")
             console.print("[dim]Install with: pip install jinja2 plotly[/dim]\n")
+
+    # Generate HTML diff report if requested
+    if diff_report and results:
+        if not diff:
+            console.print("[yellow]⚠️  --diff-report requires --diff flag[/yellow]")
+            console.print("[dim]Usage: evalview run --diff --diff-report diff.html[/dim]\n")
+        elif diffs_found:
+            try:
+                from evalview.reporters.html_reporter import DiffReporter
+                diff_reporter = DiffReporter()
+                diff_path = diff_reporter.generate(
+                    diffs=[d for _, d in diffs_found],  # Extract TraceDiff objects
+                    results=results,
+                    output_path=diff_report,
+                )
+                console.print("\n[bold cyan]📊 Diff Report Generated![/bold cyan]")
+                console.print(f"   [link=file://{Path(diff_path).absolute()}]{diff_path}[/link]")
+                console.print(f"   [dim]Open in browser: open {diff_path}[/dim]\n")
+            except ImportError as e:
+                console.print(f"[yellow]⚠️  Could not generate diff report: {e}[/yellow]")
+                console.print("[dim]Install with: pip install jinja2[/dim]\n")
+        else:
+            console.print("[dim]No differences to report - all tests match golden baseline[/dim]\n")
 
     if track:
         console.print("[dim]📊 Results tracked for regression analysis[/dim]")

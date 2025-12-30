@@ -1,0 +1,35 @@
+# MCP Adapter Example: Test Filesystem Server
+# Tests the official MCP filesystem server from Anthropic
+#
+# Setup:
+#   npm install -g @modelcontextprotocol/server-filesystem
+#
+# This test validates that read_file tool works correctly
+#
+# Before running, create the test file:
+#   echo "hello from evalview test" > /private/tmp/evalview-test.txt
+
+name: "MCP Filesystem - Read File"
+description: "Test that MCP filesystem server can read files"
+
+adapter: mcp
+endpoint: "npx:@modelcontextprotocol/server-filesystem /private/tmp"
+
+input:
+  query: "read_file"  # Tool name to call
+  context:
+    arguments:
+      path: "/private/tmp/evalview-test.txt"
+
+expected:
+  tools:
+    - "read_file"  # Expected tool call
+  output:
+    contains:
+      - "hello"  # File should contain this text
+
+# MCP tool tests check tool execution, not LLM quality
+# Lower score threshold since no LLM reasoning involved
+thresholds:
+  min_score: 50
+  max_latency: 10000

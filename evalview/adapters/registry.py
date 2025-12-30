@@ -241,6 +241,13 @@ class AdapterRegistry:
         except ImportError:
             logger.warning("GooseAdapter not available")
 
+        try:
+            from evalview.adapters.mcp_adapter import MCPAdapter
+
+            cls.register("mcp", MCPAdapter)
+        except ImportError:
+            logger.warning("MCPAdapter not available")
+
         cls._initialized = True
 
     @classmethod
