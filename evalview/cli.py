@@ -1566,13 +1566,14 @@ async def _run_async(
     ci_config = config.get("ci", {})
     if fail_on is None:
         config_fail_on = ci_config.get("fail_on", ["REGRESSION"])
-        if isinstance(config_fail_on, list):
+        # Note: can't use isinstance(x, list) because 'list' is shadowed by the list command
+        if type(config_fail_on).__name__ == "list":
             fail_on = ",".join(config_fail_on)
         else:
             fail_on = str(config_fail_on)
     if warn_on is None:
         config_warn_on = ci_config.get("warn_on", ["TOOLS_CHANGED", "OUTPUT_CHANGED"])
-        if isinstance(config_warn_on, list):
+        if type(config_warn_on).__name__ == "list":
             warn_on = ",".join(config_warn_on)
         else:
             warn_on = str(config_warn_on)
