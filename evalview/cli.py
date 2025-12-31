@@ -510,15 +510,20 @@ model:
     else:
         console.print("[bold]Step 3/4:[/bold] Config already exists\n")
 
-    # Check for any LLM provider API key
-    available_providers = detect_available_providers()
-    if not available_providers:
-        console.print("[yellow]⚠️  No LLM provider API key set[/yellow]")
-        console.print("\nTo complete the quickstart, set at least one API key:")
-        console.print("  [cyan]export ANTHROPIC_API_KEY='your-key'[/cyan]  [dim]# recommended[/dim]")
-        console.print("  [dim]# or: OPENAI_API_KEY, GEMINI_API_KEY, XAI_API_KEY[/dim]\n")
-        console.print("Then run this command again.\n")
-        return
+    # Check for any LLM provider API key (not just Ollama)
+    # We need an actual cloud API key for reliable LLM-as-judge evaluation
+    import os as os_module
+    has_api_key = any([
+        os_module.getenv("ANTHROPIC_API_KEY"),
+        os_module.getenv("OPENAI_API_KEY"),
+        os_module.getenv("GEMINI_API_KEY"),
+        os_module.getenv("XAI_API_KEY"),
+    ])
+    use_deterministic_scoring = not has_api_key
+    if use_deterministic_scoring:
+        console.print("[yellow]⚠️  No LLM provider API key found[/yellow]")
+        console.print("[dim]   Using deterministic scoring (string matching + tool assertions)[/dim]")
+        console.print("[dim]   For full LLM-as-judge evaluation, set: export ANTHROPIC_API_KEY='...'[/dim]\n")
 
     # Step 4: Start demo agent and run test
     console.print("[bold]Step 4/4:[/bold] Starting demo agent and running test...\n")
@@ -578,7 +583,7 @@ model:
     console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗ ╚████╔╝ ██║  ██║███████╗╚████╔╝ ██║███████╗╚███╔███╔╝[/bold green]  [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]║[/bold cyan]  [bold green]╚══════╝  ╚═══╝  ╚═╝  ╚═╝╚══════╝ ╚═══╝  ╚═╝╚══════╝ ╚══╝╚══╝ [/bold green]  [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]           [dim]Testing framework for multi-step AI agents[/dim]            [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]        [dim]Catch agent regressions before you ship[/dim]               [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
     console.print()
 
@@ -601,7 +606,7 @@ model:
             timeout=30.0,
             allow_private_urls=True,  # Allow localhost for demo
         )
-        evaluator = Evaluator()
+        evaluator = Evaluator(skip_llm_judge=use_deterministic_scoring)
 
         # Timer and tracking
         start_time = time_module.time()
@@ -1422,7 +1427,7 @@ async def _run_async(
     console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗ ╚████╔╝ ██║  ██║███████╗╚████╔╝ ██║███████╗╚███╔███╔╝[/bold green]  [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]║[/bold cyan]  [bold green]╚══════╝  ╚═══╝  ╚═╝  ╚═╝╚══════╝ ╚═══╝  ╚═╝╚══════╝ ╚══╝╚══╝ [/bold green]  [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]           [dim]Testing framework for multi-step AI agents[/dim]            [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]        [dim]Catch agent regressions before you ship[/dim]               [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
     console.print()
 
@@ -3800,15 +3805,11 @@ async def _expand_async(
 
 @main.command()
 def demo():
-    """🎬 See what happens when an AI agent goes rogue (simulated)."""
+    """🎬 See EvalView catch agent regressions (no API keys needed)."""
     import time as time_module
-    from rich.live import Live
-    from rich.panel import Panel
-    from rich.table import Table
-    from rich.text import Text
 
     console.print()
-    # EvalView banner (same as quickstart)
+    # EvalView banner
     console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
     console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗██╗   ██╗ █████╗ ██╗    ██╗   ██╗██╗███████╗██╗    ██╗[/bold green]  [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]║[/bold cyan]  [bold green]██╔════╝██║   ██║██╔══██╗██║    ██║   ██║██║██╔════╝██║    ██║[/bold green]  [bold cyan]║[/bold cyan]")
@@ -3817,190 +3818,164 @@ def demo():
     console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗ ╚████╔╝ ██║  ██║███████╗╚████╔╝ ██║███████╗╚███╔███╔╝[/bold green]  [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]║[/bold cyan]  [bold green]╚══════╝  ╚═══╝  ╚═╝  ╚═╝╚══════╝ ╚═══╝  ╚═╝╚══════╝ ╚══╝╚══╝ [/bold green]  [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]           [bold red]🎬 Runaway Agent Simulation[/bold red]                          [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]           [bold yellow]🔍 Regression Detection Demo[/bold yellow]                         [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
     console.print()
-    console.print("[dim]This demo simulates a buggy AI agent stuck in a loop.[/dim]")
-    console.print("[dim]In production, this would drain your API budget.[/dim]")
+    console.print("[dim]This demo shows how EvalView catches agent regressions.[/dim]")
+    console.print("[dim]Using pre-baked traces - no API keys or LLM needed.[/dim]")
     console.print()
-    time_module.sleep(2)
+    time_module.sleep(1.5)
 
-    console.print("[yellow]▶ Starting agent: 'Research Assistant'[/yellow]")
-    console.print("[dim]  Task: 'Find information about climate change'[/dim]")
-    console.print()
-    time_module.sleep(1)
-
-    # Simulation parameters
-    cost = 0.0
-    tokens = 0
-    tool_calls = 0
-    iterations = 0
-    max_cost = 1.00  # Threshold
-    target_cost = 52.34  # Where we stop the "runaway"
-    start_time = time_module.time()
-
-    # Tool call history for display
-    tool_history = []
-    tools_sequence = [
-        ("web_search", "climate change research", 0.02, 1500),
-        ("web_search", "global warming statistics", 0.02, 1800),
-        ("read_document", "IPCC report 2023", 0.05, 4200),
-        ("web_search", "carbon emissions data", 0.02, 1600),
-        ("summarize", "research findings", 0.08, 6500),
-        ("web_search", "climate change solutions", 0.02, 1700),
-        ("read_document", "UN climate report", 0.05, 4000),
-        ("web_search", "renewable energy stats", 0.02, 1500),  # Loop starts
-        ("analyze_data", "emissions trends", 0.12, 9000),
-        ("web_search", "more climate data", 0.02, 1600),
-        ("summarize", "partial findings", 0.08, 6200),
-        ("web_search", "additional research", 0.02, 1500),
+    # Pre-baked test results simulating golden vs current comparison
+    test_results = [
+        {
+            "name": "auth-flow",
+            "status": "PASSED",
+            "golden_tools": ["get_user", "validate_token", "return_session"],
+            "actual_tools": ["get_user", "validate_token", "return_session"],
+            "golden_score": 95,
+            "actual_score": 96,
+            "detail": None,
+        },
+        {
+            "name": "search-query",
+            "status": "TOOLS_CHANGED",
+            "golden_tools": ["parse_query", "db_search"],
+            "actual_tools": ["parse_query", "web_search", "db_search"],
+            "golden_score": 90,
+            "actual_score": 88,
+            "detail": "+web_search (new)",
+        },
+        {
+            "name": "summarizer",
+            "status": "OUTPUT_CHANGED",
+            "golden_tools": ["fetch_doc", "summarize"],
+            "actual_tools": ["fetch_doc", "summarize"],
+            "golden_score": 92,
+            "actual_score": 89,
+            "detail": "similarity: 72%",
+        },
+        {
+            "name": "data-analyzer",
+            "status": "REGRESSION",
+            "golden_tools": ["load_data", "analyze", "format_output"],
+            "actual_tools": ["load_data", "analyze", "format_output"],
+            "golden_score": 85,
+            "actual_score": 71,
+            "detail": "score: 85 → 71 (-14)",
+        },
     ]
 
-    def get_display():
-        # Cost color based on threshold
-        if cost < max_cost * 0.5:
-            cost_color = "green"
-        elif cost < max_cost:
-            cost_color = "yellow"
-        else:
-            cost_color = "bold red"
+    # Cost and latency data
+    golden_cost = 0.12
+    actual_cost = 0.34
+    golden_latency = 1.2
+    actual_latency = 3.8
 
-        # Status
-        if cost < max_cost:
-            status = "[green]● Running[/green]"
-        else:
-            status = "[bold red blink]● THRESHOLD EXCEEDED[/bold red blink]"
+    console.print("[yellow]▶ Comparing current run against golden baseline...[/yellow]")
+    console.print()
+    time_module.sleep(1)
 
-        # Build cost display with dramatic effect
-        cost_display = f"[{cost_color}]${cost:.2f}[/{cost_color}]"
-        if cost >= max_cost:
-            cost_display = f"[bold red]${cost:.2f}[/bold red] [red]⚠ OVER BUDGET[/red]"
+    # Animate running through tests
+    for test in test_results:
+        console.print(f"  [dim]Analyzing[/dim] {test['name']}...", end="")
+        time_module.sleep(0.4)
+        console.print(" [green]done[/green]")
 
-        # Recent tools table
-        tool_table = Table(show_header=False, box=None, padding=(0, 1))
-        tool_table.add_column("", width=3)
-        tool_table.add_column("Tool", width=20)
-        tool_table.add_column("Cost", width=10)
-
-        recent_tools = tool_history[-6:] if tool_history else []
-        for i, (tool_name, tool_cost) in enumerate(recent_tools):
-            if i == len(recent_tools) - 1:
-                tool_table.add_row("[yellow]→[/yellow]", f"[yellow]{tool_name}[/yellow]", f"[yellow]+${tool_cost:.3f}[/yellow]")
-            else:
-                tool_table.add_row("[dim]•[/dim]", f"[dim]{tool_name}[/dim]", f"[dim]+${tool_cost:.3f}[/dim]")
-
-        # Warning messages
-        warnings = ""
-        if cost > max_cost:
-            over_by = cost - max_cost
-            warnings = f"\n\n  [bold red]⚠ OVER THRESHOLD BY ${over_by:.2f}[/bold red]"
-            if cost > 10:
-                warnings += "\n  [red]⚠ Agent appears to be in a loop![/red]"
-            if cost > 30:
-                warnings += "\n  [red blink]⚠ CRITICAL: Runaway cost detected![/red blink]"
-
-        elapsed = time_module.time() - start_time
-        content = f"""
-  {status}
-
-  [bold]💰 Cost:[/bold]      {cost_display}  [dim](threshold: ${max_cost:.2f})[/dim]
-  [bold]🔢 Tokens:[/bold]    {tokens:,}
-  [bold]🔧 Tool Calls:[/bold] {tool_calls}
-  [bold]🔄 Iterations:[/bold] {iterations}
-  [bold]⏱️  Elapsed:[/bold]   {elapsed:.1f}s
-{warnings}
-
-  [dim]Recent tool calls:[/dim]
-"""
-        panel = Panel(
-            Text.from_markup(content),
-            title="[bold]Agent Execution Monitor[/bold]",
-            border_style="red" if cost >= max_cost else "cyan",
-            padding=(0, 1),
-        )
-        return panel
-
-    # Run the simulation with live display
-    with Live(get_display(), console=console, refresh_per_second=12, transient=False) as live:
-        while cost < target_cost:
-            # Pick a tool (cycle through, simulating a loop)
-            tool_idx = iterations % len(tools_sequence)
-            tool_name, _, base_cost, base_tokens = tools_sequence[tool_idx]
-
-            # Add some variance and escalation
-            multiplier = 1 + (iterations * 0.1)  # Costs increase as agent "tries harder"
-            tool_cost = base_cost * multiplier
-            tool_tokens = int(base_tokens * multiplier)
-
-            # Update metrics
-            cost += tool_cost
-            tokens += tool_tokens
-            tool_calls += 1
-            iterations += 1
-            tool_history.append((tool_name, tool_cost))
-
-            live.update(get_display())
-
-            # Speed up as we go (agent spiraling)
-            if cost < 5:
-                time_module.sleep(0.3)
-            elif cost < 20:
-                time_module.sleep(0.15)
-            else:
-                time_module.sleep(0.08)
-
-    # Final dramatic pause
+    console.print()
     time_module.sleep(0.5)
 
-    # Show what would have happened
+    # Display the regression report
+    console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold cyan]")
+    console.print("[bold cyan]                       Regression Report                           [/bold cyan]")
+    console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold cyan]")
     console.print()
-    console.print("[bold red]╔══════════════════════════════════════════════════════════════════╗[/bold red]")
-    console.print("[bold red]║[/bold red]                                                                  [bold red]║[/bold red]")
-    console.print("[bold red]║[/bold red]  [bold white]❌ SIMULATION STOPPED[/bold white]                                        [bold red]║[/bold red]")
-    console.print("[bold red]║[/bold red]                                                                  [bold red]║[/bold red]")
-    console.print(f"[bold red]║[/bold red]  [white]Final cost:[/white]  [bold red]${cost:.2f}[/bold red]                                        [bold red]║[/bold red]")
-    console.print(f"[bold red]║[/bold red]  [white]Tokens used:[/white] [bold red]{tokens:,}[/bold red]                                       [bold red]║[/bold red]")
-    console.print(f"[bold red]║[/bold red]  [white]Tool calls:[/white]  [bold red]{tool_calls}[/bold red]                                           [bold red]║[/bold red]")
-    console.print("[bold red]║[/bold red]                                                                  [bold red]║[/bold red]")
-    console.print("[bold red]║[/bold red]  [yellow]In production, this agent would have kept running...[/yellow]       [bold red]║[/bold red]")
-    console.print("[bold red]╚══════════════════════════════════════════════════════════════════╝[/bold red]")
+
+    # Results table with aligned columns
+    status_width = 14  # Width for status column
+    for test in test_results:
+        status = test["status"]
+        name = test["name"]
+        detail = test["detail"] or ""
+
+        if status == "PASSED":
+            icon = "[bold green]✓[/bold green]"
+            status_text = "[green]PASSED[/green]"
+        elif status == "TOOLS_CHANGED":
+            icon = "[bold yellow]⚠[/bold yellow]"
+            status_text = "[yellow]TOOLS_CHANGED[/yellow]"
+        elif status == "OUTPUT_CHANGED":
+            icon = "[bold blue]~[/bold blue]"
+            status_text = "[blue]OUTPUT_CHANGED[/blue]"
+        else:  # REGRESSION
+            icon = "[bold red]✗[/bold red]"
+            status_text = "[red]REGRESSION[/red]"
+
+        # Calculate padding (account for rich markup not taking visual space)
+        padding = " " * (status_width - len(status))
+        detail_text = f"  [dim]{detail}[/dim]" if detail else ""
+        console.print(f"  {icon} {status_text}{padding} {name:<18}{detail_text}")
+        time_module.sleep(0.3)
+
+    console.print()
+
+    # Cost and latency deltas
+    cost_delta = ((actual_cost - golden_cost) / golden_cost) * 100
+    latency_delta = ((actual_latency - golden_latency) / golden_latency) * 100
+
+    cost_warning = "[yellow]⚠[/yellow]" if cost_delta > 50 else ""
+    latency_warning = "[yellow]⚠[/yellow]" if latency_delta > 50 else ""
+
+    console.print(f"  [bold]Cost:[/bold]    ${golden_cost:.2f} → ${actual_cost:.2f}  [yellow](+{cost_delta:.0f}%)[/yellow]  {cost_warning}")
+    console.print(f"  [bold]Latency:[/bold] {golden_latency:.1f}s → {actual_latency:.1f}s   [yellow](+{latency_delta:.0f}%)[/yellow]  {latency_warning}")
+    console.print()
+
+    time_module.sleep(0.5)
+
+    # CI verdict
+    console.print("[bold red]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold red]")
+    console.print("[bold red]  ❌ This would fail CI[/bold red]")
+    console.print("[bold red]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold red]")
+    console.print()
+
+    time_module.sleep(0.5)
+
+    # Show the tool diff detail for the TOOLS_CHANGED case
+    console.print("[bold cyan]Tool Diff: search-query[/bold cyan]")
+    console.print()
+    console.print("  [dim]Golden:[/dim]  parse_query → db_search")
+    console.print("  [dim]Actual:[/dim]  parse_query → [yellow]web_search[/yellow] → db_search")
+    console.print()
+    console.print("  [yellow]+ web_search[/yellow]  [dim]<< new tool inserted[/dim]")
+    console.print()
+
+    time_module.sleep(0.5)
+
+    # Show the output diff detail
+    console.print("[bold cyan]Output Diff: summarizer[/bold cyan]")
+    console.print()
+    console.print("  [dim]Golden output:[/dim]")
+    console.print('    [dim]"The quarterly report shows revenue increased by 15%..."[/dim]')
+    console.print()
+    console.print("  [dim]Actual output:[/dim]")
+    console.print('    [dim]"Revenue was up in Q3. The report indicates growth..."[/dim]')
+    console.print()
+    console.print("  [blue]Similarity: 72%[/blue]  [dim](threshold: 90%)[/dim]")
     console.print()
 
     time_module.sleep(1)
 
-    # Show how EvalView would catch this
-    console.print("[bold green]━━━ How EvalView Would Catch This ━━━[/bold green]")
-    console.print()
-    console.print("[cyan]With a simple test case:[/cyan]")
-    console.print()
-    console.print("[dim]┌─────────────────────────────────────────────┐[/dim]")
-    console.print("[dim]│[/dim] [yellow]# test-cases/research-agent.yaml[/yellow]          [dim]│[/dim]")
-    console.print("[dim]│[/dim] name: Research Agent Test                  [dim]│[/dim]")
-    console.print("[dim]│[/dim] input:                                     [dim]│[/dim]")
-    console.print("[dim]│[/dim]   query: \"Find info about climate change\" [dim]│[/dim]")
-    console.print("[dim]│[/dim]                                            [dim]│[/dim]")
-    console.print("[dim]│[/dim] thresholds:                                [dim]│[/dim]")
-    console.print("[dim]│[/dim]   [bold green]max_cost: 1.00[/bold green]  [dim]# ← Would fail at $1[/dim]    [dim]│[/dim]")
-    console.print("[dim]│[/dim]   max_latency: 30000                       [dim]│[/dim]")
-    console.print("[dim]└─────────────────────────────────────────────┘[/dim]")
-    console.print()
-
-    time_module.sleep(0.5)
-
-    console.print("[green]✅ EvalView result:[/green]")
-    console.print()
-    console.print("   [red]❌ FAILED[/red] - Cost threshold exceeded")
-    console.print(f"      Expected: ≤ $1.00")
-    console.print(f"      Actual:   ${cost:.2f}")
-    console.print()
-    console.print("   [green]→ CI/CD pipeline blocked[/green]")
-    console.print("   [green]→ Deploy prevented[/green]")
-    console.print(f"   [green]→ ${cost - max_cost:.2f} saved[/green]")
-    console.print()
-
+    # Final CTA
     console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
     console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold white]Don't let your agents drain your budget in production.[/bold white]       [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold white]Catch regressions before your users do.[/bold white]                      [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [dim]What EvalView caught:[/dim]                                          [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]    • 1 regression (score dropped 14 points)                     [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]    • 1 tool change (new tool added to flow)                     [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]    • 1 output change (response differs from baseline)           [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]    • Cost spike: +183%                                          [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]    • Latency spike: +217%                                       [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]║[/bold cyan]  [green]Get started:[/green]                                                 [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]║[/bold cyan]    $ evalview quickstart                                        [bold cyan]║[/bold cyan]")
@@ -4300,7 +4275,7 @@ def skill_validate(path: str, recursive: bool, strict: bool, verbose: bool, outp
     console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗ ╚████╔╝ ██║  ██║███████╗╚████╔╝ ██║███████╗╚███╔███╔╝[/bold green]  [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]║[/bold cyan]  [bold green]╚══════╝  ╚═══╝  ╚═╝  ╚═╝╚══════╝ ╚═══╝  ╚═╝╚══════╝ ╚══╝╚══╝ [/bold green]  [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]           [dim]Testing framework for multi-step AI agents[/dim]            [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]        [dim]Catch agent regressions before you ship[/dim]               [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
     console.print()
     console.print("[dim]Validating against official Anthropic spec...[/dim]")
@@ -4618,7 +4593,7 @@ def skill_test(test_file: str, model: str, verbose: bool, output_json: bool):
     console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗ ╚████╔╝ ██║  ██║███████╗╚████╔╝ ██║███████╗╚███╔███╔╝[/bold green]  [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]║[/bold cyan]  [bold green]╚══════╝  ╚═══╝  ╚═╝  ╚═╝╚══════╝ ╚═══╝  ╚═╝╚══════╝ ╚══╝╚══╝ [/bold green]  [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]           [dim]Testing framework for multi-step AI agents[/dim]            [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]        [dim]Catch agent regressions before you ship[/dim]               [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
     console.print()
     console.print(f"  [bold]Suite:[/bold]  {suite.name}")
