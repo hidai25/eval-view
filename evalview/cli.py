@@ -321,6 +321,14 @@ def simple_agent(query: str) -> tuple:
             tool_calls.append(ToolCall(name="calculator", arguments={"operation": "multiply", "a": a, "b": b}, result=result))
             return f"The result of {a} * {b} = {result}", tool_calls, cost
 
+    elif any(op in query_lower for op in ["divided", "divide", "/"]):
+        numbers = re.findall(r"\\d+", query)
+        if len(numbers) >= 2:
+            a, b = float(numbers[0]), float(numbers[1])
+            result = calculator("divide", a, b)
+            tool_calls.append(ToolCall(name="calculator", arguments={"operation": "divide", "a": a, "b": b}, result=result))
+            return f"The result of {a} / {b} = {result}", tool_calls, cost
+
     # Weather queries
     elif "weather" in query_lower:
         for city in ["new york", "london", "tokyo"]:
@@ -414,10 +422,10 @@ def quickstart():
 
     test_files = [
         ("01-calculator.yaml", """name: "Calculator Test"
-description: "Simple calculator test - tests basic tool calling"
+description: "Division test - tests basic tool calling"
 
 input:
-  query: "What is 5 plus 7?"
+  query: "What is 144 divided by 12?"
 
 expected:
   tools:
@@ -473,6 +481,24 @@ thresholds:
   max_cost: 0.10
   max_latency: 5000
 """),
+        ("04-multiplication.yaml", """name: "Multiplication Test"
+description: "Tests multiplication operation"
+
+input:
+  query: "What is 25 times 4?"
+
+expected:
+  tools:
+    - calculator
+  output:
+    contains:
+      - "100"
+
+thresholds:
+  min_score: 70
+  max_cost: 0.10
+  max_latency: 5000
+"""),
     ]
 
     created_tests = False
@@ -512,12 +538,11 @@ model:
 
     # Check for any LLM provider API key (not just Ollama)
     # We need an actual cloud API key for reliable LLM-as-judge evaluation
-    import os as os_module
     has_api_key = any([
-        os_module.getenv("ANTHROPIC_API_KEY"),
-        os_module.getenv("OPENAI_API_KEY"),
-        os_module.getenv("GEMINI_API_KEY"),
-        os_module.getenv("XAI_API_KEY"),
+        os.getenv("ANTHROPIC_API_KEY"),
+        os.getenv("OPENAI_API_KEY"),
+        os.getenv("GEMINI_API_KEY"),
+        os.getenv("XAI_API_KEY"),
     ])
     use_deterministic_scoring = not has_api_key
     if use_deterministic_scoring:
@@ -653,6 +678,7 @@ model:
         async def run_all_tests():
             nonlocal passed, failed, tests_completed, current_test
             results = []
+            score_suffix = "*" if use_deterministic_scoring else ""
             for test_case in sorted(test_cases, key=lambda t: t.name):
                 current_test = test_case.name[:30]
                 trace = await adapter.execute(test_case.input.query, test_case.input.context)
@@ -661,10 +687,10 @@ model:
                 results.append(result)
                 if result.passed:
                     passed += 1
-                    console.print(f"[green]✅ {test_case.name} - PASSED (score: {result.score})[/green]")
+                    console.print(f"[green]✅ {test_case.name} - PASSED (score: {result.score}{score_suffix})[/green]")
                 else:
                     failed += 1
-                    console.print(f"[red]❌ {test_case.name} - FAILED (score: {result.score})[/red]")
+                    console.print(f"[red]❌ {test_case.name} - FAILED (score: {result.score}{score_suffix})[/red]")
                 tests_completed += 1
             current_test = ""
             return results
@@ -694,6 +720,10 @@ model:
             console.print(f"[bold cyan]║[/bold cyan]  [green]✓ Passed:[/green] {passed:<4}  [red]✗ Failed:[/red] {failed:<4}  [dim]Time:[/dim] {final_elapsed}               [bold cyan]║[/bold cyan]")
             console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
             console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
+            if use_deterministic_scoring:
+                console.print()
+                console.print("[dim]* Deterministic mode: scores capped at 75, no LLM judge.[/dim]")
+                console.print("[dim]  For production scoring, set ANTHROPIC_API_KEY or OPENAI_API_KEY.[/dim]")
             console.print()
         else:
             results = asyncio.run(run_all_tests())
@@ -713,19 +743,23 @@ model:
         console.print("[dim]Your real agent will report actual LLM usage.[/dim]")
 
         console.print("\n[bold]Next steps:[/bold]")
-        console.print("  • Replace the demo agent with your own agent")
-        console.print("  • Write test cases for your agent's capabilities")
-        console.print("  • Run [cyan]evalview run[/cyan] for detailed results")
+        console.print("  1. Connect your agent:")
+        console.print("     [cyan]evalview connect[/cyan]  ← Auto-detect running agents")
+        console.print("     [dim]or edit .evalview/config.yaml manually[/dim]")
+        console.print("  2. Write test cases for your agent's capabilities")
+        console.print("  3. Run [cyan]evalview run[/cyan] for detailed results")
 
         console.print("\n[bold cyan]💡 Pro tip: Scale your tests automatically[/bold cyan]")
-        console.print("  Once you have your own agent connected:")
         console.print("  [cyan]evalview expand your-test.yaml --count 100[/cyan]  # Generate variations")
         console.print("  [cyan]evalview record --interactive[/cyan]              # Record live sessions")
 
         # GitHub star CTA
+        console.print()
         if passed == len(results):
-            console.print("\n[green]✨ Liked what you saw?[/green] A GitHub star helps others discover EvalView:")
-            console.print("   [link=https://github.com/hidai25/eval-view]github.com/hidai25/eval-view[/link]\n")
+            console.print("[green]✨ All tests passed![/green] If EvalView saved you time, a star helps others find it:")
+        else:
+            console.print("[dim]⭐ Like EvalView? Star us on GitHub:[/dim]")
+        console.print("   [link=https://github.com/hidai25/eval-view]github.com/hidai25/eval-view[/link]\n")
 
     except Exception as e:
         console.print(f"[red]❌ Tests failed: {e}[/red]")
@@ -829,6 +863,14 @@ def simple_agent(query: str) -> tuple:
             result = calculator("multiply", a, b)
             tool_calls.append(ToolCall(name="calculator", arguments={"operation": "multiply", "a": a, "b": b}, result=result, cost=0.001))
             return f"The result of {a} * {b} = {result}", tool_calls, 0.001
+
+    elif any(op in query_lower for op in ["divided", "divide", "/"]):
+        numbers = re.findall(r"\\d+", query)
+        if len(numbers) >= 2:
+            a, b = float(numbers[0]), float(numbers[1])
+            result = calculator("divide", a, b)
+            tool_calls.append(ToolCall(name="calculator", arguments={"operation": "divide", "a": a, "b": b}, result=result, cost=0.001))
+            return f"The result of {a} / {b} = {result}", tool_calls, 0.001
 
     # Weather + Fahrenheit conversion (multi-tool)
     elif "weather" in query_lower and "fahrenheit" in query_lower:
@@ -1289,6 +1331,23 @@ thresholds:
     type=click.Path(),
     help="Generate HTML diff report to specified path (requires --diff)",
 )
+@click.option(
+    "--fail-on",
+    type=str,
+    default=None,
+    help="Comma-separated diff statuses that cause exit code 1 (default: REGRESSION, or from ci.fail_on in config.yaml)",
+)
+@click.option(
+    "--warn-on",
+    type=str,
+    default=None,
+    help="Comma-separated diff statuses that print warning but exit 0 (default: TOOLS_CHANGED,OUTPUT_CHANGED, or from ci.warn_on in config.yaml)",
+)
+@click.option(
+    "--strict",
+    is_flag=True,
+    help="Strict mode: fail on any non-PASSED status (equivalent to --fail-on REGRESSION,TOOLS_CHANGED,OUTPUT_CHANGED)",
+)
 def run(
     path: Optional[str],
     pattern: str,
@@ -1312,6 +1371,9 @@ def run(
     adapter: Optional[str],
     diff: bool,
     diff_report: Optional[str],
+    fail_on: Optional[str],
+    warn_on: Optional[str],
+    strict: bool,
 ):
     """Run test cases against the agent.
 
@@ -1326,10 +1388,16 @@ def run(
         from evalview.core.llm_provider import resolve_model_alias
         os.environ["EVAL_MODEL"] = resolve_model_alias(judge_model)
 
+    # Handle --strict flag (overrides config and CLI)
+    if strict:
+        fail_on = "REGRESSION,TOOLS_CHANGED,OUTPUT_CHANGED"
+        warn_on = ""
+
     asyncio.run(_run_async(
         path, pattern, test, filter, output, verbose, track, compare_baseline, debug,
         sequential, max_workers, max_retries, retry_delay, watch, html_report, summary, coverage,
-        adapter_override=adapter, diff=diff, diff_report=diff_report
+        adapter_override=adapter, diff=diff, diff_report=diff_report,
+        fail_on=fail_on, warn_on=warn_on
     ))
 
 
@@ -1354,6 +1422,8 @@ async def _run_async(
     adapter_override: Optional[str] = None,
     diff: bool = False,
     diff_report: Optional[str] = None,
+    fail_on: Optional[str] = None,
+    warn_on: Optional[str] = None,
 ):
     """Async implementation of run command."""
     import fnmatch
@@ -1490,6 +1560,22 @@ async def _run_async(
         config = {}
         if verbose:
             console.print("[dim]No config file found - will use test case adapter/endpoint if available[/dim]")
+
+    # Apply CI config from config.yaml (if CLI flags not provided)
+    # Priority: CLI flags > config.yaml > hardcoded defaults
+    ci_config = config.get("ci", {})
+    if fail_on is None:
+        config_fail_on = ci_config.get("fail_on", ["REGRESSION"])
+        if isinstance(config_fail_on, list):
+            fail_on = ",".join(config_fail_on)
+        else:
+            fail_on = str(config_fail_on)
+    if warn_on is None:
+        config_warn_on = ci_config.get("warn_on", ["TOOLS_CHANGED", "OUTPUT_CHANGED"])
+        if isinstance(config_warn_on, list):
+            warn_on = ",".join(config_warn_on)
+        else:
+            warn_on = str(config_warn_on)
 
     # Extract model config (can be string or dict)
     model_config = config.get("model", {})
@@ -2105,6 +2191,7 @@ async def _run_async(
     results = []
     passed = 0
     failed = 0
+    execution_errors = 0  # Separate from failed tests - execution issues (network, timeout, etc.)
 
     if sequential:
         # Sequential execution (original behavior)
@@ -2129,13 +2216,13 @@ async def _run_async(
 
                 except Exception as e:
                     import httpx
-                    failed += 1
+                    execution_errors += 1
                     error_msg = str(e)
                     if isinstance(e, httpx.ConnectError):
                         error_msg = f"Cannot connect to {config['endpoint']}"
                     elif isinstance(e, httpx.TimeoutException):
                         error_msg = "Request timeout"
-                    progress.update(task, description=f"[red]❌ {test_case.name} - ERROR: {error_msg}[/red]")
+                    progress.update(task, description=f"[red]⚠ {test_case.name} - EXECUTION ERROR: {error_msg}[/red]")
 
                 progress.remove_task(task)
     else:
@@ -2154,15 +2241,15 @@ async def _run_async(
                 console.print(f"[red]❌ {test_name} - FAILED (score: {result.score})[/red]")
 
         def on_error(test_name, exc):
-            nonlocal failed
+            nonlocal execution_errors
             import httpx
-            failed += 1
+            execution_errors += 1
             error_msg = str(exc)
             if isinstance(exc, httpx.ConnectError):
                 error_msg = f"Cannot connect to {config['endpoint']}"
             elif isinstance(exc, httpx.TimeoutException):
                 error_msg = "Request timeout"
-            console.print(f"[red]❌ {test_name} - ERROR: {error_msg}[/red]")
+            console.print(f"[red]⚠ {test_name} - EXECUTION ERROR: {error_msg}[/red]")
 
         console.print(f"[dim]Executing {len(test_cases)} tests with up to {max_workers} parallel workers...[/dim]\n")
 
@@ -2277,12 +2364,17 @@ async def _run_async(
             console.print()
             console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
             console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
-            if failed == 0:
+            if execution_errors > 0:
+                console.print(f"[bold cyan]║[/bold cyan]  [bold red]⚠ EXECUTION ERRORS OCCURRED[/bold red]                                  [bold cyan]║[/bold cyan]")
+            elif failed == 0:
                 console.print(f"[bold cyan]║[/bold cyan]  [bold green]✓ ALL TESTS PASSED[/bold green]                                            [bold cyan]║[/bold cyan]")
             else:
                 console.print(f"[bold cyan]║[/bold cyan]  [bold yellow]⚠ TESTS COMPLETED WITH FAILURES[/bold yellow]                              [bold cyan]║[/bold cyan]")
             console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
-            console.print(f"[bold cyan]║[/bold cyan]  [green]✓ Passed:[/green] {passed:<4}  [red]✗ Failed:[/red] {failed:<4}  [dim]Time:[/dim] {final_elapsed}               [bold cyan]║[/bold cyan]")
+            if execution_errors > 0:
+                console.print(f"[bold cyan]║[/bold cyan]  [green]✓ Passed:[/green] {passed:<4}  [red]✗ Failed:[/red] {failed:<4}  [red]⚠ Errors:[/red] {execution_errors:<4}         [bold cyan]║[/bold cyan]")
+            else:
+                console.print(f"[bold cyan]║[/bold cyan]  [green]✓ Passed:[/green] {passed:<4}  [red]✗ Failed:[/red] {failed:<4}  [dim]Time:[/dim] {final_elapsed}               [bold cyan]║[/bold cyan]")
             console.print(f"[bold cyan]║[/bold cyan]  [dim]💰 Judge cost:[/dim] {final_judge_cost:<45}[bold cyan]║[/bold cyan]")
             console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
             console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
@@ -2569,6 +2661,74 @@ async def _run_async(
         console.print("[dim]🚀 Generate more tests automatically:[/dim]")
         console.print(f"[dim]   evalview expand {test_file} --count 20[/dim]\n")
 
+    # --- Exit Code Logic (for CI) ---
+    # Exit 2 for execution errors (network, timeout, etc.)
+    # Exit 1 for test failures
+    # Exit 0 for success
+    if execution_errors > 0:
+        exit_code = 2
+    elif failed > 0:
+        exit_code = 1
+    else:
+        exit_code = 0
+
+    # Additional exit code logic for --diff mode
+    if diff and diffs_found:
+        from evalview.core.diff import DiffStatus
+
+        # Parse fail_on and warn_on into sets
+        fail_statuses = set()
+        warn_statuses = set()
+        valid_statuses = {"REGRESSION", "TOOLS_CHANGED", "OUTPUT_CHANGED", "PASSED"}
+
+        for s in fail_on.upper().split(","):
+            s = s.strip()
+            if not s:
+                continue
+            if s in valid_statuses:
+                fail_statuses.add(DiffStatus[s])
+            else:
+                console.print(f"[yellow]Warning: Unknown status '{s}' in --fail-on (valid: {', '.join(valid_statuses)})[/yellow]")
+
+        for s in warn_on.upper().split(","):
+            s = s.strip()
+            if not s:
+                continue
+            if s in valid_statuses:
+                warn_statuses.add(DiffStatus[s])
+            else:
+                console.print(f"[yellow]Warning: Unknown status '{s}' in --warn-on (valid: {', '.join(valid_statuses)})[/yellow]")
+
+        # Count statuses found
+        fail_count = 0
+        warn_count = 0
+        status_counts = {}
+
+        for _, trace_diff in diffs_found:
+            status = trace_diff.overall_severity
+            status_counts[status] = status_counts.get(status, 0) + 1
+            if status in fail_statuses:
+                fail_count += 1
+            elif status in warn_statuses:
+                warn_count += 1
+
+        # Print CI summary if there are issues
+        if fail_count > 0 or warn_count > 0:
+            console.print("[bold]━━━ CI Summary ━━━[/bold]")
+            for status, count in sorted(status_counts.items(), key=lambda x: x[0].value):
+                if status in fail_statuses:
+                    console.print(f"  [red]✗ {count} {status.value.upper()}[/red] [dim][FAIL][/dim]")
+                elif status in warn_statuses:
+                    console.print(f"  [yellow]⚠ {count} {status.value.upper()}[/yellow] [dim][WARN][/dim]")
+                else:
+                    console.print(f"  [green]✓ {count} {status.value.upper()}[/green]")
+
+            if fail_count > 0:
+                exit_code = max(exit_code, 1)  # Don't override exit code 2 (execution errors)
+                console.print(f"\n[bold red]Exit: {exit_code}[/bold red] ({fail_count} failure(s) in fail_on set)\n")
+            else:
+                console.print(f"\n[bold green]Exit: {exit_code}[/bold green] ({warn_count} warning(s) only)\n")
+
     # GitHub star CTA (only show when not in watch mode)
     if not watch:
         console.print("[dim]━" * 50 + "[/dim]")
@@ -2628,6 +2788,10 @@ async def _run_async(
             console.print("\n[yellow]Watch mode stopped.[/yellow]")
         finally:
             watcher.stop()
+    else:
+        # Exit with appropriate code (only when not in watch mode)
+        if exit_code != 0:
+            sys.exit(exit_code)
 
 
 @main.command()
@@ -3007,11 +3171,12 @@ async def _connect_async(endpoint: Optional[str]):
         console.print("  2. Non-standard port (check your server logs)")
         console.print("  3. Different endpoint path")
         console.print()
-        console.print("[blue]To start LangGraph agent:[/blue]")
-        console.print("  cd /path/to/langgraph-example")
-        console.print("  langgraph dev  # Runs on port 2024")
-        console.print("  # or")
-        console.print("  python main.py")
+        console.print("[blue]To start an agent:[/blue]")
+        console.print("  # LangGraph example:")
+        console.print("  cd examples/langgraph/agent && langgraph dev  # port 2024")
+        console.print()
+        console.print("  # Or the demo agent:")
+        console.print("  python demo_agent.py  # port 8000")
         console.print()
         console.print("[blue]Then run:[/blue]")
         console.print("  evalview connect")

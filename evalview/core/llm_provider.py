@@ -355,7 +355,59 @@ class LLMClient:
         # Allow EVAL_MODEL to override the default model
         self.model = model or os.getenv("EVAL_MODEL") or self.config.default_model
 
+        # Validate model/provider compatibility
+        self._validate_model_provider_match()
+
         logger.info(f"Using {self.config.display_name} ({self.model}) for LLM-as-judge")
+
+    def _validate_model_provider_match(self):
+        """Check for common model/provider mismatches and provide helpful errors."""
+        model_lower = self.model.lower()
+
+        # Ollama-specific models (not available on OpenAI/Anthropic)
+        ollama_models = ["llama", "mistral", "codellama", "phi", "gemma", "qwen", "deepseek", "vicuna", "orca"]
+        # OpenAI-specific models
+        openai_models = ["gpt-4", "gpt-3.5", "gpt-5", "o1", "o3"]
+        # Anthropic-specific models
+        anthropic_models = ["claude"]
+
+        if self.provider == LLMProvider.OPENAI:
+            for ollama_model in ollama_models:
+                if ollama_model in model_lower:
+                    raise ValueError(
+                        f"Model '{self.model}' is an Ollama model but EVAL_PROVIDER=openai.\n"
+                        f"Either:\n"
+                        f"  1. Use Ollama: set EVAL_PROVIDER=ollama\n"
+                        f"  2. Use OpenAI model: remove EVAL_MODEL or set to gpt-4o-mini"
+                    )
+
+        elif self.provider == LLMProvider.OLLAMA:
+            for openai_model in openai_models:
+                if model_lower.startswith(openai_model):
+                    raise ValueError(
+                        f"Model '{self.model}' is an OpenAI model but EVAL_PROVIDER=ollama.\n"
+                        f"Either:\n"
+                        f"  1. Use OpenAI: set EVAL_PROVIDER=openai\n"
+                        f"  2. Use Ollama model: set EVAL_MODEL=llama3.2"
+                    )
+            for anthropic_model in anthropic_models:
+                if model_lower.startswith(anthropic_model):
+                    raise ValueError(
+                        f"Model '{self.model}' is an Anthropic model but EVAL_PROVIDER=ollama.\n"
+                        f"Either:\n"
+                        f"  1. Use Anthropic: set EVAL_PROVIDER=anthropic\n"
+                        f"  2. Use Ollama model: set EVAL_MODEL=llama3.2"
+                    )
+
+        elif self.provider == LLMProvider.ANTHROPIC:
+            for ollama_model in ollama_models:
+                if ollama_model in model_lower:
+                    raise ValueError(
+                        f"Model '{self.model}' is an Ollama model but EVAL_PROVIDER=anthropic.\n"
+                        f"Either:\n"
+                        f"  1. Use Ollama: set EVAL_PROVIDER=ollama\n"
+                        f"  2. Use Anthropic model: set EVAL_MODEL=claude-sonnet-4-20250514"
+                    )
 
     async def chat_completion(
         self,

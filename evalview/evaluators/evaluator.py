@@ -1,7 +1,8 @@
 """Main evaluator orchestrator."""
 
+import logging
 from datetime import datetime
-from typing import Optional, Dict, List
+from typing import Optional, Dict
 from evalview.core.types import (
     TestCase,
     ExecutionTrace,
@@ -18,6 +19,8 @@ from evalview.evaluators.cost_evaluator import CostEvaluator
 from evalview.evaluators.latency_evaluator import LatencyEvaluator
 from evalview.evaluators.hallucination_evaluator import HallucinationEvaluator
 from evalview.evaluators.safety_evaluator import SafetyEvaluator
+
+logger = logging.getLogger(__name__)
 
 
 class Evaluator:
@@ -53,6 +56,7 @@ class Evaluator:
         self.safety_evaluator = SafetyEvaluator()
         self.default_weights = default_weights or DEFAULT_WEIGHTS
         self.skip_llm_judge = skip_llm_judge
+        self._logged_deterministic_mode = False
 
     async def evaluate(
         self, test_case: TestCase, trace: ExecutionTrace, adapter_name: Optional[str] = None
@@ -74,6 +78,9 @@ class Evaluator:
 
         # Skip LLM evaluations if skip_llm_judge is set
         if self.skip_llm_judge:
+            if not self._logged_deterministic_mode:
+                logger.info("Running in deterministic mode (no LLM judge) - scores capped at 75")
+                self._logged_deterministic_mode = True
             run_hallucination = False
             run_safety = False
             output_quality = self._deterministic_output_eval(test_case, trace)
@@ -281,9 +288,13 @@ class Evaluator:
             if relevance_ratio > 0.5:
                 rationale_parts.append("Output appears relevant to query")
 
+        # Cap deterministic scores at 75 to signal "this is approximate"
+        # Prevents garbage output from scoring 80+ and misleading users
+        score = min(score, 75.0)
+
         return OutputEvaluation(
             score=round(score, 2),
-            rationale=f"Deterministic scoring: {'; '.join(rationale_parts)}",
+            rationale=f"[DETERMINISTIC] {'; '.join(rationale_parts)}",
             contains_checks=ContainsChecks(passed=contains_passed, failed=contains_failed),
             not_contains_checks=ContainsChecks(passed=not_contains_passed, failed=not_contains_failed),
         )

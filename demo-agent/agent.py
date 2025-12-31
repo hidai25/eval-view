@@ -88,6 +88,14 @@ def simple_agent(query: str) -> tuple:
             tool_calls.append(ToolCall(name="calculator", arguments={"operation": "multiply", "a": a, "b": b}, result=result, cost=0.001))
             return f"The result of {a} * {b} = {result}", tool_calls, 0.001
 
+    elif any(op in query_lower for op in ["divided", "divide", "/"]):
+        numbers = re.findall(r"\d+", query)
+        if len(numbers) >= 2:
+            a, b = float(numbers[0]), float(numbers[1])
+            result = calculator("divide", a, b)
+            tool_calls.append(ToolCall(name="calculator", arguments={"operation": "divide", "a": a, "b": b}, result=result, cost=0.001))
+            return f"The result of {a} / {b} = {result}", tool_calls, 0.001
+
     # Weather + Fahrenheit conversion (multi-tool)
     elif "weather" in query_lower and "fahrenheit" in query_lower:
         city = "tokyo"

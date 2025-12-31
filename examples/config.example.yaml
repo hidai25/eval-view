@@ -30,3 +30,8 @@ headers:
 # judge:
 #   provider: openai          # openai, anthropic, gemini, grok, ollama
 #   model: gpt-4o             # Model to use for evaluation
+
+# Optional: CI/CD exit code configuration (for --diff mode)
+# ci:
+#   fail_on: [REGRESSION]                       # Exit 1 on these statuses
+#   warn_on: [TOOLS_CHANGED, OUTPUT_CHANGED]    # Print warning but exit 0

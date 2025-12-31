@@ -19,19 +19,23 @@ logger = logging.getLogger(__name__)
 
 
 class DiffStatus(Enum):
-    """Status/category of differences found.
+    """Result of comparing current run against golden baseline.
+
+    This is a DIFF STATUS (comparison result), not an overall test result.
+    A test may have additional pass/fail criteria (cost limits, latency thresholds)
+    beyond the diff status.
 
     Four states with clear developer-friendly terminology:
-    - PASSED: Matches baseline, safe to ship
-    - TOOLS_CHANGED: Different tools used, behavior shifted
-    - OUTPUT_CHANGED: Same tools, different response
-    - REGRESSION: Score dropped, something got worse
+    - PASSED: Output and tools match within tolerance - safe to ship
+    - TOOLS_CHANGED: Tool sequence differs - agent behavior shifted, review before deploy
+    - OUTPUT_CHANGED: Same tools but output differs beyond threshold - review before deploy
+    - REGRESSION: Score dropped significantly - likely a bug, fix before deploy
     """
 
-    PASSED = "passed"                # No significant differences - matches baseline
-    TOOLS_CHANGED = "tools_changed"  # Tools changed (agent behavior shifted)
-    OUTPUT_CHANGED = "output_changed"  # Output changed but score stable
-    REGRESSION = "regression"        # Score dropped significantly - likely a bug
+    PASSED = "passed"                # Output and tools match within tolerance
+    TOOLS_CHANGED = "tools_changed"  # Tool sequence differs from golden
+    OUTPUT_CHANGED = "output_changed"  # Output differs beyond similarity threshold
+    REGRESSION = "regression"        # Score dropped >5 points from golden
 
 
 # Alias for backwards compatibility

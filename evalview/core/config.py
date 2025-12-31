@@ -49,6 +49,25 @@ class ScoringConfig(BaseModel):
     weights: ScoringWeights = Field(default_factory=ScoringWeights)
 
 
+class CIConfig(BaseModel):
+    """CI/CD configuration for exit codes and failure handling.
+
+    Example in config.yaml:
+        ci:
+          fail_on: [REGRESSION, TOOLS_CHANGED]
+          warn_on: [OUTPUT_CHANGED]
+    """
+
+    fail_on: list = Field(
+        default=["REGRESSION"],
+        description="Diff statuses that cause exit code 1"
+    )
+    warn_on: list = Field(
+        default=["TOOLS_CHANGED", "OUTPUT_CHANGED"],
+        description="Diff statuses that print warning but exit 0"
+    )
+
+
 class EvalViewConfig(BaseModel):
     """Complete EvalView configuration (loaded from config.yaml)."""
 
@@ -62,6 +81,7 @@ class EvalViewConfig(BaseModel):
     # New configuration sections
     scoring: Optional[ScoringConfig] = None
     retry: Optional[RetryConfig] = None
+    ci: Optional[CIConfig] = None
 
     def get_scoring_weights(self) -> ScoringWeights:
         """Get scoring weights with defaults."""
@@ -74,6 +94,12 @@ class EvalViewConfig(BaseModel):
         if self.retry:
             return self.retry
         return RetryConfig()
+
+    def get_ci_config(self) -> CIConfig:
+        """Get CI config with defaults."""
+        if self.ci:
+            return self.ci
+        return CIConfig()
 
 
 # Default weights for backward compatibility

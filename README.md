@@ -101,6 +101,34 @@ Think: _"Regression testing for agents. Like screenshot testing, but for behavio
 
 ---
 
+## Core Workflow
+
+```bash
+# 1. Run tests and capture a baseline
+evalview run
+evalview golden save .evalview/results/latest.json
+
+# 2. Make changes to your agent (prompt, model, tools)
+
+# 3. Run with diff to catch regressions
+evalview run --diff
+
+# 4. CI integration with configurable strictness
+evalview run --diff --fail-on REGRESSION                    # Default: only fail on score drops
+evalview run --diff --fail-on REGRESSION,TOOLS_CHANGED      # Stricter: also fail on tool changes
+evalview run --diff --strict                                # Strictest: fail on any change
+```
+
+**Exit codes:**
+| Scenario | Exit Code |
+|----------|-----------|
+| All tests pass, all PASSED | 0 |
+| All tests pass, only warn-on statuses | 0 (with warnings) |
+| Any test fails OR any fail-on status | 1 |
+| Execution errors (network, timeout) | 2 |
+
+---
+
 ## EvalView vs Manual Testing
 
 | | Manual Testing | EvalView |
