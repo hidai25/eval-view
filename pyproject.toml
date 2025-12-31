@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "evalview"
-version = "0.1.7"
+version = "0.1.8"
 description = "Pytest-style testing framework for AI agents — LangGraph, CrewAI, OpenAI, Anthropic"
 readme = "README.md"
 license = "Apache-2.0"
