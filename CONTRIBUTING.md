@@ -8,12 +8,26 @@ Thanks for your interest in contributing! This guide will help you get started.
 # Clone the repository
 git clone https://github.com/hidai25/eval-view.git
 cd eval-view
+```
 
-# Create and activate virtual environment
-python3 -m venv venv
+### Option A: Using uv (faster, recommended)
+
+```bash
+# Install uv if you don't have it
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install dependencies (creates .venv automatically)
+uv sync --all-extras
+```
+
+### Option B: Using pip (traditional)
+
+```bash
+# Create virtual environment
+python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Install in development mode with dev dependencies
+# Install in development mode
 pip install -e ".[dev]"
 ```
 
@@ -21,44 +35,48 @@ pip install -e ".[dev]"
 
 ### Running Tests
 
+**With uv (faster):**
 ```bash
-# Run all tests
-make test
+make test           # or: uv run pytest
+make test-cov       # with coverage
+```
 
-# Or manually
-pytest
-
-# Run with coverage
-pytest --cov=evalview --cov-report=html
+**With pip:**
+```bash
+make pip-test       # or: pytest
+make pip-test-cov   # with coverage
 ```
 
 ### Code Quality
 
+**With uv:**
 ```bash
-# Format code
-make format
-
-# Run linter
-make lint
-
-# Type checking
-make typecheck
-
-# Run all checks (format + lint + typecheck)
-make check
-```
-
-### Quick Commands
-
-```bash
-make install     # Install package in dev mode
-make test        # Run tests
 make format      # Format with black
 make lint        # Lint with ruff
 make typecheck   # Type check with mypy
 make check       # Run all checks
-make clean       # Clean build artifacts
 ```
+
+**With pip:**
+```bash
+make pip-format      # Format with black
+make pip-lint        # Lint with ruff
+make pip-typecheck   # Type check with mypy
+make pip-check       # Run all checks
+```
+
+### Quick Commands
+
+| uv (faster) | pip (traditional) | Description |
+|-------------|-------------------|-------------|
+| `make install` | `make pip-install` | Install package |
+| `make dev-install` | `make pip-dev` | Install with dev extras |
+| `make test` | `make pip-test` | Run tests |
+| `make format` | `make pip-format` | Format with black |
+| `make lint` | `make pip-lint` | Lint with ruff |
+| `make typecheck` | `make pip-typecheck` | Type check with mypy |
+| `make check` | `make pip-check` | Run all checks |
+| `make clean` | `make clean` | Clean build artifacts |
 
 ## Project Structure
 

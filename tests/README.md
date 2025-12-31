@@ -162,24 +162,35 @@ Comprehensive pytest fixtures for all tests:
 
 ### Quick Start
 
+**Install dependencies:**
 ```bash
-# Install development dependencies
+# Option A: Using uv (faster)
+uv sync --all-extras
+
+# Option B: Using pip
 pip install -e ".[dev]"
+```
 
-# Run all tests
-make test
+**Run tests:**
+```bash
+# Using uv
+make test              # Run all tests
+make test-cov          # Run with coverage
 
-# Run tests with coverage
-make test-cov
+# Using pip
+make pip-test          # Run all tests
+make pip-test-cov      # Run with coverage
+```
 
-# Run specific test file
+**Run specific tests:**
+```bash
+# With uv
+uv run pytest tests/test_types.py -v
+uv run pytest tests/test_evaluators.py::TestToolCallEvaluator -v
+
+# With pip
 pytest tests/test_types.py -v
-
-# Run specific test class
 pytest tests/test_evaluators.py::TestToolCallEvaluator -v
-
-# Run specific test method
-pytest tests/test_types.py::TestThresholds::test_thresholds_min_score_constraint_min -v
 ```
 
 ### Advanced Usage
