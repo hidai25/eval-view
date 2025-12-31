@@ -1,8 +1,12 @@
-# EvalView — Pytest-style Testing for AI Agents
+# EvalView — Catch Agent Regressions Before You Ship
 
-> An open-source testing framework for AI agents, with adapters for LangGraph, CrewAI, OpenAI Assistants, and Anthropic Claude.
+> Your agent worked yesterday. Today it's broken. What changed?
 
-**EvalView** is pytest for AI agents—write readable test cases, run them in CI/CD, and block deploys when behavior, cost, or latency regresses.
+**EvalView catches agent regressions** — tool changes, output changes, cost spikes, and latency spikes — before they hit production.
+
+```bash
+evalview run --diff  # Compare against golden baseline, block on regression
+```
 
 [![CI](https://github.com/hidai25/eval-view/actions/workflows/ci.yml/badge.svg)](https://github.com/hidai25/eval-view/actions/workflows/ci.yml)
 [![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
@@ -26,30 +30,72 @@
 
 ---
 
+## The Problem
+
+You changed a prompt. Or swapped models. Or updated a tool.
+
+Now your agent:
+- ❌ Calls different tools than before
+- ❌ Returns different outputs for the same input
+- ❌ Costs 3x more than yesterday
+- ❌ Takes 5 seconds instead of 500ms
+
+You don't find out until users complain.
+
+## The Solution
+
+**EvalView detects these regressions in CI — before you deploy.**
+
+```bash
+# Save a working run as your baseline
+evalview golden save .evalview/results/xxx.json
+
+# Every future run compares against it
+evalview run --diff  # Fails on REGRESSION
+```
+
+---
+
 **Who is EvalView for?**
-- Solo devs & small teams shipping agents to production
-- Teams already using LangGraph / CrewAI / custom tools
-- People who want *failing tests* in CI, not just dashboards
+
+Builders shipping tool-using agents who keep breaking behavior when they change prompts, models, or tools.
+
+- You're iterating fast on prompts and models
+- You've broken your agent more than once after "just a small change"
+- You want CI to catch regressions, not your users
 
 Already using LangSmith, Langfuse, or other tracing?
-Use them to *see* what happened. Use EvalView to **block bad behavior in CI before it hits prod.**
+Use them to *see* what happened. Use EvalView to **block bad behavior before it ships.**
 
 > **Your Claude Code skills might be broken.** Claude silently ignores skills that exceed its [15k char budget](https://blog.fsck.com/2025/12/17/claude-code-skills-not-triggering/). [Check yours →](#skills-testing-claude-code--openai-codex)
 
 ---
 
+## What EvalView Catches
+
+| Regression Type | What It Means | Status |
+|-----------------|---------------|--------|
+| **REGRESSION** | Score dropped — agent got worse | 🔴 Fix before deploy |
+| **TOOLS_CHANGED** | Agent uses different tools now | 🟡 Review before deploy |
+| **OUTPUT_CHANGED** | Same tools, different response | 🟡 Review before deploy |
+| **PASSED** | Matches baseline | 🟢 Ship it |
+
+EvalView runs in CI. When it detects a regression, your deploy fails. You fix it before users see it.
+
+---
+
 ## What is EvalView?
 
-EvalView is a **testing framework for AI agents**.
+EvalView is a **regression testing framework for AI agents**.
 
 It lets you:
 
-- **Write tests in YAML** that describe inputs, expected tools, and acceptance thresholds
-- **Turn real conversations into regression suites** (record → generate tests → re-run on every change)
-- **Gate deployments in CI** on behavior, tool calls, cost, and latency
-- Plug into **LangGraph, CrewAI, OpenAI Assistants, Anthropic Claude, HTTP agents**, and more
+- **Save golden baselines** — snapshot a working agent run
+- **Detect regressions automatically** — tool changes, output changes, cost spikes, latency spikes
+- **Block bad deploys in CI** — fail the build when behavior regresses
+- Plug into **LangGraph, CrewAI, OpenAI Assistants, Anthropic Claude, MCP servers**, and more
 
-Think: _"pytest / Playwright mindset, but for multi-step agents and tool-calling workflows."_
+Think: _"Regression testing for agents. Like screenshot testing, but for behavior."_
 
 > **Note:** LLM-as-judge evaluations are probabilistic. Results may vary between runs. Use [Statistical Mode](#statistical-mode-variance-testing) for reliable pass/fail decisions.
 
@@ -108,13 +154,13 @@ checks:
   hallucination: true
 ```
 
-**Regression detection** — fail if behavior drifts from baseline:
+**Regression detection** — fail if behavior changes from baseline:
 ```bash
 # Save a good run as baseline
 evalview golden save .evalview/results/xxx.json
 
 # Future runs compare against it
-evalview run --diff  # Fails on REGRESSION status
+evalview run --diff  # Fails on REGRESSION or TOOLS_CHANGED
 ```
 
 ---
@@ -356,24 +402,25 @@ evalview run --diff
 
 When you run with `--diff`, EvalView compares every test against its golden baseline and flags:
 
-| Status | What It Means |
-|--------|---------------|
-| **STABLE** | Matches baseline - no action needed |
-| **CHANGED** | Tools changed but output similar - review |
-| **DRIFT** | Output changed but score stable - investigate |
-| **REGRESSION** | Score dropped significantly - fix before deploy |
+| Status | What It Means | Action |
+|--------|---------------|--------|
+| **PASSED** | Matches baseline | 🟢 Ship it |
+| **TOOLS_CHANGED** | Agent uses different tools | 🟡 Review before deploy |
+| **OUTPUT_CHANGED** | Same tools, different response | 🟡 Review before deploy |
+| **REGRESSION** | Score dropped significantly | 🔴 Fix before deploy |
 
 ### Example Output
 
 ```
-━━━ Regression Detection ━━━
+━━━ Golden Diff Report ━━━
 
-✓ test-stock-analysis      STABLE
-⚠ test-customer-support    DRIFT     output similarity: 78%
-✗ test-code-review         REGRESSION  score dropped 15 points
+✓ PASSED           test-stock-analysis
+⚠ TOOLS_CHANGED    test-customer-support    added: web_search
+~ OUTPUT_CHANGED   test-summarizer          similarity: 78%
+✗ REGRESSION       test-code-review         score dropped 15 points
 
-Regressions detected: 1
-Drifts detected: 1
+1 REGRESSION - fix before deploy
+1 TOOLS_CHANGED - review before deploy
 ```
 
 ### Golden Commands
@@ -1171,9 +1218,10 @@ If EvalView caught a regression, saved you debugging time, or kept your agent co
 - [x] Tool categories for flexible matching
 - [x] Multi-run flakiness detection
 - [x] Skills testing (Claude Code, OpenAI Codex)
+- [x] MCP server testing (`adapter: mcp`)
+- [x] HTML diff reports (`--diff-report`)
 
 **Coming Soon:**
-- [ ] MCP server testing
 - [ ] Multi-turn conversation testing
 - [ ] Grounded hallucination checking
 - [ ] LLM-as-judge for skill guideline compliance

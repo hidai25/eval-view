@@ -520,13 +520,13 @@ DIFF_TEMPLATE = """
         .card { background: #161b22; border: 1px solid #30363d; border-radius: 6px; margin-bottom: 1rem; }
         .card-header { background: #21262d; border-bottom: 1px solid #30363d; padding: 12px 16px; }
         .status-regression { border-left: 4px solid #f85149; }
-        .status-drift { border-left: 4px solid #d29922; }
-        .status-changed { border-left: 4px solid #8b949e; }
-        .status-stable { border-left: 4px solid #3fb950; }
+        .status-tools_changed { border-left: 4px solid #d29922; }
+        .status-output_changed { border-left: 4px solid #8b949e; }
+        .status-passed { border-left: 4px solid #3fb950; }
         .badge-regression { background: #f85149; }
-        .badge-drift { background: #d29922; }
-        .badge-changed { background: #8b949e; }
-        .badge-stable { background: #3fb950; }
+        .badge-tools_changed { background: #d29922; }
+        .badge-output_changed { background: #8b949e; }
+        .badge-passed { background: #3fb950; }
         .diff-container { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
         .diff-panel { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 1rem; }
         .diff-panel h6 { color: #8b949e; margin-bottom: 0.5rem; }
@@ -563,12 +563,12 @@ DIFF_TEMPLATE = """
                         <small class="text-muted">Regressions</small>
                     </div>
                     <div class="col-md-3">
-                        <h3 class="text-warning">{{ summary.drifts }}</h3>
-                        <small class="text-muted">Drifts</small>
+                        <h3 class="text-warning">{{ summary.tools_changed + summary.output_changed }}</h3>
+                        <small class="text-muted">Changed</small>
                     </div>
                     <div class="col-md-3">
-                        <h3 class="text-success">{{ summary.stable }}</h3>
-                        <small class="text-muted">Stable</small>
+                        <h3 class="text-success">{{ summary.passed }}</h3>
+                        <small class="text-muted">Passed</small>
                     </div>
                 </div>
             </div>
@@ -692,8 +692,9 @@ class DiffReporter:
         # Build diff data for template
         diff_data = []
         regressions = 0
-        drifts = 0
-        stable = 0
+        tools_changed = 0
+        output_changed = 0
+        passed = 0
 
         for trace_diff in diffs:
             # Get corresponding result
@@ -703,15 +704,15 @@ class DiffReporter:
             if trace_diff.overall_severity == DiffStatus.REGRESSION:
                 status = "regression"
                 regressions += 1
-            elif trace_diff.overall_severity == DiffStatus.DRIFT:
-                status = "drift"
-                drifts += 1
-            elif trace_diff.overall_severity == DiffStatus.CHANGED:
-                status = "changed"
-                stable += 1  # Count as stable-ish
+            elif trace_diff.overall_severity == DiffStatus.TOOLS_CHANGED:
+                status = "tools_changed"
+                tools_changed += 1
+            elif trace_diff.overall_severity == DiffStatus.OUTPUT_CHANGED:
+                status = "output_changed"
+                output_changed += 1
             else:
-                status = "stable"
-                stable += 1
+                status = "passed"
+                passed += 1
 
             # Build tool changes list
             tool_changes = []
@@ -745,8 +746,9 @@ class DiffReporter:
             summary={
                 "total": len(diffs),
                 "regressions": regressions,
-                "drifts": drifts,
-                "stable": stable,
+                "tools_changed": tools_changed,
+                "output_changed": output_changed,
+                "passed": passed,
             },
             diffs=diff_data,
         )

@@ -19,12 +19,19 @@ logger = logging.getLogger(__name__)
 
 
 class DiffStatus(Enum):
-    """Status/category of differences found."""
+    """Status/category of differences found.
 
-    STABLE = "stable"      # No significant differences - matches baseline
-    CHANGED = "changed"    # Minor changes (tools changed but output similar)
-    DRIFT = "drift"        # Output changed but score stable (behavioral drift)
-    REGRESSION = "regression"  # Score dropped significantly - likely a bug
+    Four states with clear developer-friendly terminology:
+    - PASSED: Matches baseline, safe to ship
+    - TOOLS_CHANGED: Different tools used, behavior shifted
+    - OUTPUT_CHANGED: Same tools, different response
+    - REGRESSION: Score dropped, something got worse
+    """
+
+    PASSED = "passed"                # No significant differences - matches baseline
+    TOOLS_CHANGED = "tools_changed"  # Tools changed (agent behavior shifted)
+    OUTPUT_CHANGED = "output_changed"  # Output changed but score stable
+    REGRESSION = "regression"        # Score dropped significantly - likely a bug
 
 
 # Alias for backwards compatibility
@@ -133,34 +140,31 @@ class DiffEngine:
         # Calculate latency diff
         latency_diff = actual.metrics.total_latency - golden.trace.metrics.total_latency
 
-        # Determine overall status using proper terminology:
-        # - REGRESSION: score dropped significantly (>5 points)
-        # - DRIFT: output changed (>20%) but score is stable
-        # - CHANGED: tools changed but output similar
-        # - STABLE: matches baseline
+        # Determine overall status:
+        # - REGRESSION: score dropped significantly (>5 points) - fix before deploy
+        # - TOOLS_CHANGED: different tools used - review before deploy
+        # - OUTPUT_CHANGED: same tools, different response - review before deploy
+        # - PASSED: matches baseline - safe to ship
 
         has_tool_changes = bool(tool_diffs)
-        has_output_drift = output_diff.similarity < 0.80
-        has_minor_output_change = output_diff.similarity < 0.95
+        has_output_change = output_diff.similarity < 0.95
+        has_significant_output_change = output_diff.similarity < 0.80
         score_dropped = score_diff < -5
 
-        has_differences = has_tool_changes or has_minor_output_change
+        has_differences = has_tool_changes or has_output_change
 
         if score_dropped:
-            # Score dropped significantly - this is a REGRESSION
+            # Score dropped significantly - REGRESSION
             overall_severity = DiffStatus.REGRESSION
-        elif has_output_drift:
-            # Output changed significantly but score stable - DRIFT
-            overall_severity = DiffStatus.DRIFT
-        elif has_tool_changes and not has_minor_output_change:
-            # Only tools changed, output similar - minor CHANGED
-            overall_severity = DiffStatus.CHANGED
-        elif has_minor_output_change:
-            # Small output change - DRIFT (less severe)
-            overall_severity = DiffStatus.DRIFT
+        elif has_tool_changes:
+            # Tools changed - TOOLS_CHANGED (behavior shifted)
+            overall_severity = DiffStatus.TOOLS_CHANGED
+        elif has_output_change:
+            # Output changed but same tools - OUTPUT_CHANGED
+            overall_severity = DiffStatus.OUTPUT_CHANGED
         else:
-            # No significant differences - STABLE
-            overall_severity = DiffStatus.STABLE
+            # No significant differences - PASSED
+            overall_severity = DiffStatus.PASSED
 
         return TraceDiff(
             test_name=golden.metadata.test_name,
@@ -196,7 +200,7 @@ class DiffEngine:
                             position=g_start + i,
                             golden_tool=g,
                             actual_tool=a,
-                            severity=DiffStatus.CHANGED,
+                            severity=DiffStatus.TOOLS_CHANGED,
                             message=f"Tool changed: '{g}' -> '{a}' at step {g_start + i + 1}",
                         )
                     )
@@ -210,7 +214,7 @@ class DiffEngine:
                             position=g_start + i,
                             golden_tool=g,
                             actual_tool=None,
-                            severity=DiffStatus.DRIFT,  # Missing tool is drift
+                            severity=DiffStatus.TOOLS_CHANGED,  # Missing tool = behavior shifted
                             message=f"Tool removed: '{g}' was at step {g_start + i + 1}",
                         )
                     )
@@ -224,7 +228,7 @@ class DiffEngine:
                             position=a_start + i,
                             golden_tool=None,
                             actual_tool=a,
-                            severity=DiffStatus.STABLE,  # Added tools are often OK
+                            severity=DiffStatus.TOOLS_CHANGED,  # Added tool = behavior shifted
                             message=f"Tool added: '{a}' at step {a_start + i + 1}",
                         )
                     )
@@ -253,9 +257,9 @@ class DiffEngine:
 
         # Determine severity (used internally, overall status determined in compare())
         if similarity >= 0.95:
-            severity = DiffStatus.STABLE
+            severity = DiffStatus.PASSED
         elif similarity >= 0.8:
-            severity = DiffStatus.DRIFT
+            severity = DiffStatus.OUTPUT_CHANGED
         else:
             severity = DiffStatus.REGRESSION
 

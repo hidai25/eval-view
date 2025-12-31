@@ -42,7 +42,16 @@ console = Console()
 @click.group()
 @click.version_option(version="0.1.7")
 def main():
-    """EvalView - Testing framework for multi-step AI agents."""
+    """EvalView - Catch agent regressions before you ship.
+
+    Detects tool changes, output changes, cost spikes, and latency spikes
+    by comparing against golden baselines.
+
+    Quick start:
+      evalview quickstart              # Try it in 2 minutes
+      evalview run --diff              # Compare against golden baseline
+      evalview golden save result.json # Save a working run as baseline
+    """
     pass
 
 
@@ -1268,7 +1277,7 @@ thresholds:
 @click.option(
     "--diff",
     is_flag=True,
-    help="Compare against golden traces and show regressions. Use 'evalview golden save' to create baselines.",
+    help="Compare against golden baselines. Shows REGRESSION/TOOLS_CHANGED/OUTPUT_CHANGED/PASSED status.",
 )
 @click.option(
     "--diff-report",
@@ -2422,16 +2431,16 @@ async def _run_async(
             console.print("\n[bold cyan]━━━ Golden Diff Report ━━━[/bold cyan]\n")
 
             for test_name, trace_diff in diffs_found:
-                # Status-based display with proper terminology
+                # Status-based display with developer-friendly terminology
                 status = trace_diff.overall_severity
                 if status == DiffStatus.REGRESSION:
                     icon = "[red]✗ REGRESSION[/red]"
-                elif status == DiffStatus.DRIFT:
-                    icon = "[yellow]⚠ DRIFT[/yellow]"
-                elif status == DiffStatus.CHANGED:
-                    icon = "[dim]~ CHANGED[/dim]"
+                elif status == DiffStatus.TOOLS_CHANGED:
+                    icon = "[yellow]⚠ TOOLS_CHANGED[/yellow]"
+                elif status == DiffStatus.OUTPUT_CHANGED:
+                    icon = "[dim]~ OUTPUT_CHANGED[/dim]"
                 else:
-                    icon = "[green]✓ STABLE[/green]"
+                    icon = "[green]✓ PASSED[/green]"
 
                 console.print(f"{icon} [bold]{test_name}[/bold]")
                 console.print(f"    Summary: {trace_diff.summary()}")
@@ -2454,23 +2463,23 @@ async def _run_async(
 
                 console.print()
 
-            # Summary with proper terminology
+            # Summary with developer-friendly terminology
             regressions = sum(1 for _, d in diffs_found if d.overall_severity == DiffStatus.REGRESSION)
-            drifts = sum(1 for _, d in diffs_found if d.overall_severity == DiffStatus.DRIFT)
-            changes = sum(1 for _, d in diffs_found if d.overall_severity == DiffStatus.CHANGED)
+            tools_changed = sum(1 for _, d in diffs_found if d.overall_severity == DiffStatus.TOOLS_CHANGED)
+            output_changed = sum(1 for _, d in diffs_found if d.overall_severity == DiffStatus.OUTPUT_CHANGED)
 
             if regressions > 0:
-                console.print(f"[red]✗ {regressions} REGRESSION(s) detected! Score dropped - review before deploying.[/red]\n")
-            elif drifts > 0:
-                console.print(f"[yellow]⚠ {drifts} DRIFT(s) detected - output changed but score stable[/yellow]\n")
-            elif changes > 0:
-                console.print(f"[dim]~ {changes} minor change(s) - tools changed but output similar[/dim]\n")
+                console.print(f"[red]✗ {regressions} REGRESSION(s) - score dropped, fix before deploy[/red]\n")
+            elif tools_changed > 0:
+                console.print(f"[yellow]⚠ {tools_changed} TOOLS_CHANGED - agent behavior shifted, review before deploy[/yellow]\n")
+            elif output_changed > 0:
+                console.print(f"[dim]~ {output_changed} OUTPUT_CHANGED - response changed, review before deploy[/dim]\n")
         else:
             # Check if any golden traces exist
             goldens = store.list_golden()
             matched = sum(1 for g in goldens if any(r.test_case == g.test_name for r in results))
             if matched > 0:
-                console.print(f"[green]✓ STABLE - No differences from golden baseline ({matched} tests compared)[/green]\n")
+                console.print(f"[green]✓ PASSED - No differences from golden baseline ({matched} tests compared)[/green]\n")
             elif goldens:
                 console.print("[yellow]No golden traces match these tests[/yellow]")
                 console.print("[dim]Save one with: evalview golden save " + str(results_file) + "[/dim]\n")
