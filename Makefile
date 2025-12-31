@@ -4,16 +4,25 @@
 help:
 	@echo "EvalView Development Commands"
 	@echo ""
-	@echo "Setup:"
+	@echo "Setup (choose pip OR uv):"
 	@echo "  make install       Install package (uv sync)"
 	@echo "  make dev-install   Install with all extras (uv sync --all-extras)"
+	@echo "  make pip-install   Install package (pip install -e .)"
+	@echo "  make pip-dev       Install with dev extras (pip install -e '.[dev]')"
 	@echo ""
-	@echo "Development:"
+	@echo "Development (uv - faster):"
 	@echo "  make format        Format code with black"
 	@echo "  make lint          Lint code with ruff"
 	@echo "  make typecheck     Type check with mypy"
 	@echo "  make check         Run all checks (format + lint + typecheck)"
 	@echo "  make test          Run tests with pytest"
+	@echo ""
+	@echo "Development (pip - traditional):"
+	@echo "  make pip-format    Format code with black (pip)"
+	@echo "  make pip-lint      Lint code with ruff (pip)"
+	@echo "  make pip-typecheck Type check with mypy (pip)"
+	@echo "  make pip-check     Run all checks (pip)"
+	@echo "  make pip-test      Run tests with pytest (pip)"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make clean         Clean build artifacts and cache"
@@ -21,14 +30,16 @@ help:
 	@echo "  make agent-tests   Run EvalView agent tests (no CI required)"
 	@echo ""
 
-# Installation
+# ============================================
+# UV-based commands (faster, recommended)
+# ============================================
+
 install:
 	uv sync
 
 dev-install:
 	uv sync --all-extras
 
-# Code quality
 format:
 	@echo "Formatting code with black..."
 	uv run black evalview/ tests/ --line-length 100
@@ -41,11 +52,9 @@ typecheck:
 	@echo "Type checking with mypy..."
 	uv run mypy evalview/ --strict
 
-# Run all checks
 check: format lint typecheck
 	@echo "✅ All checks passed!"
 
-# Testing
 test:
 	@echo "Running tests with pytest..."
 	uv run pytest tests/ -v
@@ -54,7 +63,43 @@ test-cov:
 	@echo "Running tests with coverage..."
 	uv run pytest tests/ --cov=evalview --cov-report=html --cov-report=term
 
-# Clean up
+# ============================================
+# Pip-based commands (traditional)
+# ============================================
+
+pip-install:
+	pip install -e .
+
+pip-dev:
+	pip install -e ".[dev]"
+
+pip-format:
+	@echo "Formatting code with black..."
+	black evalview/ tests/ --line-length 100
+
+pip-lint:
+	@echo "Linting code with ruff..."
+	ruff check evalview/ tests/
+
+pip-typecheck:
+	@echo "Type checking with mypy..."
+	mypy evalview/ --strict
+
+pip-check: pip-format pip-lint pip-typecheck
+	@echo "✅ All checks passed!"
+
+pip-test:
+	@echo "Running tests with pytest..."
+	pytest tests/ -v
+
+pip-test-cov:
+	@echo "Running tests with coverage..."
+	pytest tests/ --cov=evalview --cov-report=html --cov-report=term
+
+# ============================================
+# Shared utilities
+# ============================================
+
 clean:
 	@echo "Cleaning build artifacts..."
 	rm -rf build/ dist/ *.egg-info/
@@ -65,7 +110,6 @@ clean:
 	find . -type f -name "*.pyc" -delete
 	@echo "✅ Cleaned!"
 
-# Example workflow
 run-example:
 	@echo "Running example test case..."
 	@if [ ! -d ".evalview" ]; then \
@@ -78,12 +122,10 @@ run-example:
 		echo "❌ No example.yaml found. Run 'evalview init' first."; \
 	fi
 
-# Agent tests - run EvalView against your agent (no CI required)
 agent-tests:
 	@echo "Running EvalView agent tests..."
 	uv run evalview run --pattern "tests/test-cases/*.yaml" --verbose
 
-# Development helpers
 dev: dev-install
 	@echo "✅ Development environment ready!"
 	@echo ""
@@ -93,7 +135,6 @@ dev: dev-install
 	@echo "  3. Run 'make check' to verify code quality"
 	@echo "  4. Run 'make test' to run tests"
 
-# Quick test during development
 quick-test:
 	@echo "Running quick test (no coverage)..."
 	uv run pytest tests/ -x --tb=short

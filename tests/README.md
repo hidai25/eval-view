@@ -162,46 +162,57 @@ Comprehensive pytest fixtures for all tests:
 
 ### Quick Start
 
+**Install dependencies:**
 ```bash
-# Install development dependencies (creates .venv automatically)
+# Option A: Using uv (faster)
 uv sync --all-extras
 
-# Run all tests
-make test
+# Option B: Using pip
+pip install -e ".[dev]"
+```
 
-# Run tests with coverage
-make test-cov
+**Run tests:**
+```bash
+# Using uv
+make test              # Run all tests
+make test-cov          # Run with coverage
 
-# Run specific test file
+# Using pip
+make pip-test          # Run all tests
+make pip-test-cov      # Run with coverage
+```
+
+**Run specific tests:**
+```bash
+# With uv
 uv run pytest tests/test_types.py -v
-
-# Run specific test class
 uv run pytest tests/test_evaluators.py::TestToolCallEvaluator -v
 
-# Run specific test method
-uv run pytest tests/test_types.py::TestThresholds::test_thresholds_min_score_constraint_min -v
+# With pip
+pytest tests/test_types.py -v
+pytest tests/test_evaluators.py::TestToolCallEvaluator -v
 ```
 
 ### Advanced Usage
 
 ```bash
 # Run tests matching pattern
-uv run pytest tests/ -k "test_parse" -v
+pytest tests/ -k "test_parse" -v
 
 # Run tests with detailed output
-uv run pytest tests/ -vv
+pytest tests/ -vv
 
 # Stop on first failure
-uv run pytest tests/ -x
+pytest tests/ -x
 
 # Show local variables on failure
-uv run pytest tests/ -l
+pytest tests/ -l
 
 # Run in parallel (requires pytest-xdist)
-uv run pytest tests/ -n auto
+pytest tests/ -n auto
 
 # Generate HTML coverage report
-uv run pytest tests/ --cov=evalview --cov-report=html
+pytest tests/ --cov=evalview --cov-report=html
 open htmlcov/index.html
 ```
 
@@ -209,16 +220,16 @@ open htmlcov/index.html
 
 ```bash
 # Run only unit tests
-uv run pytest tests/ -m unit
+pytest tests/ -m unit
 
 # Run only integration tests
-uv run pytest tests/ -m integration
+pytest tests/ -m integration
 
 # Skip slow tests
-uv run pytest tests/ -m "not slow"
+pytest tests/ -m "not slow"
 
 # Skip network tests
-uv run pytest tests/ -m "not network"
+pytest tests/ -m "not network"
 ```
 
 ## Test Statistics
