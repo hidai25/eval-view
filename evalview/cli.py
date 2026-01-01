@@ -1976,8 +1976,8 @@ async def _run_async(
     def get_adapter_for_test(test_case):
         """Get adapter for test case - use test-specific if specified, otherwise global."""
         # If test specifies its own adapter, create it
-        # Note: openai-assistants doesn't need an endpoint (uses SDK directly)
-        if test_case.adapter and (test_case.endpoint or test_case.adapter == "openai-assistants"):
+        # Note: openai-assistants and goose don't need an endpoint (use SDK/CLI directly)
+        if test_case.adapter and (test_case.endpoint or test_case.adapter in ["openai-assistants", "goose"]):
             test_adapter_type = test_case.adapter
             test_endpoint = test_case.endpoint
             test_config = test_case.adapter_config or {}
@@ -2031,6 +2031,15 @@ async def _run_async(
                 return MCPAdapter(
                     endpoint=test_endpoint,
                     timeout=test_config.get("timeout", 30.0),
+                )
+            elif test_adapter_type == "goose":
+                from evalview.adapters.goose_adapter import GooseAdapter
+                return GooseAdapter(
+                    timeout=test_config.get("timeout", 300.0),
+                    cwd=test_case.input.context.get("cwd") if test_case.input.context else None,
+                    extensions=test_case.input.context.get("extensions") if test_case.input.context else None,
+                    provider=test_config.get("provider"),
+                    model=test_config.get("model"),
                 )
             else:  # Default to HTTP adapter
                 return HTTPAdapter(
