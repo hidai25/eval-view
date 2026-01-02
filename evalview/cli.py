@@ -2820,6 +2820,44 @@ def list(pattern: str, detailed: bool):
     asyncio.run(_list_async(pattern, detailed))
 
 
+@main.command()
+def adapters():
+    """List all available adapters."""
+    from rich.table import Table
+    from evalview.adapters.registry import AdapterRegistry
+
+    console.print("[blue]Available Adapters[/blue]\n")
+
+    table = Table(show_header=True, header_style="bold cyan")
+    table.add_column("Adapter", style="white")
+    table.add_column("Description", style="dim")
+    table.add_column("Needs Endpoint", style="yellow", justify="center")
+
+    adapter_info = {
+        "http": ("Generic REST API adapter", "Yes"),
+        "langgraph": ("LangGraph / LangGraph Cloud", "Yes"),
+        "crewai": ("CrewAI multi-agent", "Yes"),
+        "openai-assistants": ("OpenAI Assistants API", "No (uses SDK)"),
+        "anthropic": ("Anthropic Claude API", "Yes"),
+        "claude": ("Alias for anthropic", "Yes"),
+        "huggingface": ("HuggingFace Inference", "Yes"),
+        "hf": ("Alias for huggingface", "Yes"),
+        "gradio": ("Alias for huggingface", "Yes"),
+        "goose": ("Block's Goose CLI agent", "No (uses CLI)"),
+        "tapescope": ("JSONL streaming API", "Yes"),
+        "streaming": ("Alias for tapescope", "Yes"),
+        "jsonl": ("Alias for tapescope", "Yes"),
+        "mcp": ("Model Context Protocol", "Yes"),
+    }
+
+    for name in sorted(AdapterRegistry.list_names()):
+        desc, needs_endpoint = adapter_info.get(name, ("Custom adapter", "Yes"))
+        table.add_row(name, desc, needs_endpoint)
+
+    console.print(table)
+    console.print(f"\n[dim]Total: {len(AdapterRegistry.list_names())} adapters[/dim]")
+
+
 async def _list_async(pattern: str, detailed: bool):
     """Async implementation of list command."""
     from rich.table import Table
@@ -5167,6 +5205,44 @@ def golden_show(test_name: str):
         preview += "..."
     console.print(Panel(preview, border_style="dim"))
     console.print()
+
+
+@main.command()
+@click.option(
+    "--provider",
+    type=click.Choice(["ollama", "openai", "anthropic"]),
+    default=None,
+    help="LLM provider to use (default: auto-detect, prefers Ollama)",
+)
+@click.option(
+    "--model",
+    default=None,
+    help="Model to use (default: provider's default)",
+)
+def chat(provider: str, model: str):
+    """Interactive chat interface for EvalView.
+
+    Ask questions about testing your AI agents in natural language.
+    The assistant can help you:
+
+    \b
+    - Run test cases
+    - Generate new test cases
+    - Explain test failures
+    - Suggest testing strategies
+
+    Examples:
+
+    \b
+      evalview chat                    # Auto-detect provider (prefers Ollama)
+      evalview chat --provider ollama  # Use Ollama (free, local)
+      evalview chat --provider openai  # Use OpenAI
+
+    Type 'exit' or 'quit' to leave the chat.
+    """
+    from evalview.chat import run_chat
+
+    asyncio.run(run_chat(provider=provider, model=model))
 
 
 if __name__ == "__main__":
