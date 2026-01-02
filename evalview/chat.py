@@ -11,13 +11,53 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Tuple, AsyncGenerator
 
-from rich.console import Console
+from rich.console import Console, Group
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Prompt
+from rich.live import Live
+from rich.text import Text
+from rich.style import Style
+from rich.layout import Layout
+
+from prompt_toolkit import PromptSession
+from prompt_toolkit.styles import Style as PromptStyle
+from prompt_toolkit.history import FileHistory
+from prompt_toolkit.formatted_text import HTML
+from prompt_toolkit.completion import Completer, Completion
+
+
+class SlashCommandCompleter(Completer):
+    """Autocomplete for slash commands like Claude Code."""
+
+    COMMANDS = [
+        ("/model", "Switch to a different model"),
+        ("/docs", "Open EvalView documentation"),
+        ("/cli", "Show CLI commands cheatsheet"),
+        ("/permissions", "Show auto-allowed commands"),
+        ("/context", "Show project status"),
+        ("/help", "Show help and tips"),
+        ("/clear", "Clear chat history"),
+        ("/exit", "Leave chat"),
+    ]
+
+    def get_completions(self, document, complete_event):
+        text = document.text_before_cursor
+
+        # Only show completions when text starts with /
+        if text.startswith("/"):
+            for cmd, desc in self.COMMANDS:
+                if cmd.lower().startswith(text.lower()):
+                    yield Completion(
+                        cmd,
+                        start_position=-len(text),
+                        display=cmd,
+                        display_meta=desc,
+                    )
 
 from evalview.core.llm_provider import (
     LLMProvider,
@@ -306,27 +346,42 @@ class ChatSession:
         self.total_tokens = 0
         self.last_tokens = 0
 
-    async def get_response(self, user_message: str) -> str:
-        """Get a response from the LLM."""
+    async def stream_response(self, user_message: str) -> AsyncGenerator[str, None]:
+        """Get a response from the LLM via streaming."""
         self.history.append({"role": "user", "content": user_message})
 
-        if self.provider == LLMProvider.OLLAMA:
-            response, tokens = await self._ollama_chat()
-        elif self.provider == LLMProvider.OPENAI:
-            response, tokens = await self._openai_chat()
-        elif self.provider == LLMProvider.ANTHROPIC:
-            response, tokens = await self._anthropic_chat()
-        else:
-            response = f"Provider {self.provider.value} not yet supported for chat."
-            tokens = 0
+        collected_text = ""
+        
+        try:
+            if self.provider == LLMProvider.OLLAMA:
+                stream_gen = self._stream_ollama()
+            elif self.provider == LLMProvider.OPENAI:
+                stream_gen = self._stream_openai()
+            elif self.provider == LLMProvider.ANTHROPIC:
+                stream_gen = self._stream_anthropic()
+            else:
+                yield f"Provider {self.provider.value} not yet supported for chat."
+                return
 
-        self.last_tokens = tokens
-        self.total_tokens += tokens
-        self.history.append({"role": "assistant", "content": response})
-        return response
+            async for chunk in stream_gen:
+                if chunk:
+                    collected_text += chunk
+                    yield chunk
 
-    async def _ollama_chat(self) -> Tuple[str, int]:
-        """Chat using Ollama."""
+            # Update tokens estimate (very rough approximation for now as streams differ)
+            tokens = len(collected_text) // 4
+            self.last_tokens = tokens
+            self.total_tokens += tokens
+            
+            self.history.append({"role": "assistant", "content": collected_text})
+            
+        except Exception as e:
+            error_msg = f"\n\n[Error: {str(e)}]"
+            yield error_msg
+            self.history.append({"role": "assistant", "content": error_msg})
+
+    async def _stream_ollama(self) -> AsyncGenerator[str, None]:
+        """Stream chat using Ollama."""
         from openai import AsyncOpenAI
 
         ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
@@ -337,63 +392,61 @@ class ChatSession:
 
         messages = [{"role": "system", "content": SYSTEM_PROMPT}] + self.history
 
-        response = await client.chat.completions.create(
+        stream = await client.chat.completions.create(
             model=self.model,
             messages=messages,
             temperature=0.7,
             max_tokens=2000,
+            stream=True
         )
+        
+        async for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
 
-        tokens = 0
-        if response.usage:
-            tokens = response.usage.total_tokens
-
-        return response.choices[0].message.content or "", tokens
-
-    async def _openai_chat(self) -> Tuple[str, int]:
-        """Chat using OpenAI."""
+    async def _stream_openai(self) -> AsyncGenerator[str, None]:
+        """Stream chat using OpenAI."""
         from openai import AsyncOpenAI
 
         client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
         messages = [{"role": "system", "content": SYSTEM_PROMPT}] + self.history
 
-        response = await client.chat.completions.create(
+        stream = await client.chat.completions.create(
             model=self.model,
             messages=messages,
             temperature=0.7,
             max_tokens=2000,
+            stream=True
         )
+        
+        async for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
 
-        tokens = 0
-        if response.usage:
-            tokens = response.usage.total_tokens
-
-        return response.choices[0].message.content or "", tokens
-
-    async def _anthropic_chat(self) -> Tuple[str, int]:
-        """Chat using Anthropic."""
+    async def _stream_anthropic(self) -> AsyncGenerator[str, None]:
+        """Stream chat using Anthropic."""
         from anthropic import AsyncAnthropic
 
         client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-        response = await client.messages.create(
+        async with client.messages.stream(
             model=self.model,
             max_tokens=2000,
             system=SYSTEM_PROMPT,
             messages=self.history,  # type: ignore[arg-type]
             temperature=0.7,
-        )
-
-        tokens = 0
-        if response.usage:
-            tokens = response.usage.input_tokens + response.usage.output_tokens
-
+        ) as stream:
+            async for text in stream.text_stream:
+                yield text
+    
+    # Keep old methods as simple aliases for backward compatibility if needed, 
+    # but they are not used in the new loop
+    async def get_response(self, user_message: str) -> str:
         text = ""
-        for block in response.content:
-            if block.type == "text":
-                text += block.text
-        return text, tokens
+        async for chunk in self.stream_response(user_message):
+            text += chunk
+        return text
 
 
 VALID_EVALVIEW_COMMANDS = {
@@ -573,25 +626,109 @@ async def run_chat(
     console.print(f"[dim]{context}[/dim]")
     console.print()
 
-    # Track stats
-    import time
-    from rich.live import Live
-    from rich.text import Text
+    # Initialize prompt_toolkit session with history and slash command completion
+    history_file = Path.home() / ".evalview_history"
+    # Electric cyan for a cool vibe
+    box_color = "#22d3ee"  # Tailwind cyan-400
+    prompt_session = PromptSession(
+        history=FileHistory(str(history_file)),
+        completer=SlashCommandCompleter(),
+        complete_while_typing=False,  # Only show on Tab to prevent space reservation
+        style=PromptStyle.from_dict({
+            'prompt': f'{box_color}',
+            'rprompt': f'{box_color}',
+            'bottom-toolbar': f'noinherit {box_color}',
+            'completion-menu': 'bg:#1e293b #e2e8f0',  # Dark bg, light text
+            'completion-menu.completion': 'bg:#1e293b #e2e8f0',
+            'completion-menu.completion.current': 'bg:#22d3ee #0f172a bold',  # Cyan highlight
+            'completion-menu.meta': 'bg:#1e293b #94a3b8 italic',  # Dimmer description
+            'completion-menu.meta.current': 'bg:#22d3ee #0f172a italic',
+        })
+    )
 
     while True:
         try:
-            # Get user input (clean prompt)
-            console.print()
-            user_input = Prompt.ask("[bold green]You[/bold green]")
+            # Format current directory for the prompt
+            cwd_path = Path.cwd()
+            cwd_name = cwd_path.name
+            if cwd_path == Path.home():
+                cwd_display = "~"
+            else:
+                cwd_display = f".../{cwd_name}"
 
-            if not user_input.strip():
+            # Show input box frame BEFORE typing
+            console.print()
+            term_width = console.width or 80
+
+            # Top border with "You" title - electric cyan
+            title_text = "─ You "
+            dashes_needed = term_width - len(title_text) - 2
+            top_border = f"[#22d3ee]╭{title_text}{'─' * dashes_needed}╮[/#22d3ee]"
+            console.print(top_border)
+
+            # Prompt inside the "box" - vertical bars on sides
+            prompt_html = HTML("<style fg='#22d3ee'>│</style> ")
+            rprompt_html = HTML("<style fg='#22d3ee'>│</style>")
+
+            # Bottom border + footer info
+            bottom_border = "╰" + "─" * (term_width - 2) + "╯"
+            # Footer: path left, model right
+            left_info = f"  {cwd_display}"
+            right_info = f"{session.model}  /model"
+            info_spacing = term_width - len(left_info) - len(right_info)
+            info_line = f"{left_info}{' ' * max(info_spacing, 2)}{right_info}"
+            bottom_toolbar_html = HTML(
+                f"<style fg='#22d3ee'>{bottom_border}</style>\n"
+                f"<style fg='#6b7280'>{info_line}</style>"
+            )
+
+            try:
+                user_input = await prompt_session.prompt_async(
+                    prompt_html,
+                    rprompt=rprompt_html,
+                    bottom_toolbar=bottom_toolbar_html,
+                )
+            except KeyboardInterrupt:
+                # Clear the box frame (1 blank + top + input + bottom + footer = 5 lines)
+                for _ in range(5):
+                    console.file.write("\033[F\033[K")
                 continue
 
-            if user_input.lower() in ("exit", "quit", "q"):
+            if not user_input.strip():
+                # Clear the empty box
+                for _ in range(5):
+                    console.file.write("\033[F\033[K")
+                continue
+
+            # Clear the incomplete box
+            lines_to_clear = 5 + user_input.count('\n')
+            for _ in range(lines_to_clear):
+                console.file.write("\033[F\033[K")
+
+            # Create the complete Chat Box with content
+            console.print(Panel(
+                user_input,
+                title="[bold #22d3ee]You[/bold #22d3ee]",
+                title_align="left",
+                border_style="#22d3ee",
+                padding=(1, 1),
+                expand=True
+            ))
+
+            # Footer: path on left, model on right with /model hint
+            left_info = f"  {cwd_display}"
+            right_info = f"{session.model}"
+            hint = "/model"
+            spacing = term_width - len(left_info) - len(right_info) - 2
+            console.print(f"[dim]{left_info}{' ' * max(spacing, 2)}{right_info}[/dim]")
+            console.print(f"[dim]{' ' * (term_width - len(hint) - 2)}{hint}[/dim]")
+
+            if user_input.lower() in ("exit", "quit", "q", "/exit", "/quit"):
                 console.print("\n[dim]Goodbye![/dim]")
                 break
-
+            
             if user_input.lower() in ("help", "/help"):
+                # ... [help logic] ...
                 console.print("\n[bold]Chat Commands:[/bold]")
                 console.print("  [cyan]/model[/cyan]         - Switch to a different model")
                 console.print("  [cyan]/docs[/cyan]          - Open EvalView documentation")
@@ -644,6 +781,7 @@ async def run_chat(
 
             # /model command - switch models mid-session
             if user_input.lower().startswith("/model"):
+                # ... [keep existing model switching logic] ...
                 parts = user_input.split(maxsplit=1)
                 if len(parts) < 2:
                     # Show model selection menu
@@ -780,45 +918,50 @@ async def run_chat(
                 console.print(f"[dim]{context}[/dim]")
                 continue
 
-            if user_input.lower() == "clear":
+            if user_input.lower() in ("clear", "/clear"):
                 session.history = []
                 console.print("[dim]Chat history cleared.[/dim]")
                 continue
 
+            
             # Start timing this query
             query_start = time.time()
-            response = None
+            full_response = ""
 
-            async def get_response_task():
-                nonlocal response
-                response = await session.get_response(user_input)
+            # Spinner animation
+            from rich.spinner import Spinner
 
-            # Run with live updating timer (per-query)
-            import asyncio
-            task = asyncio.create_task(get_response_task())
+            # Use Live to handle the spinner -> stream transition smoothly
+            spinner = Spinner("dots", text=" Thinking...", style="cyan")
 
-            with Live(console=console, refresh_per_second=4, transient=True) as live:
-                while not task.done():
-                    query_elapsed = time.time() - query_start
-                    live.update(Text(f"  Thinking... {query_elapsed:.1f}s", style="dim"))
-                    await asyncio.sleep(0.25)
+            with Live(spinner, console=console, refresh_per_second=12, transient=True) as live:
+                stream_started = False
 
-            await task  # Ensure task is complete
+                async for chunk in session.stream_response(user_input):
+                    if not stream_started:
+                        # First chunk received: switch from spinner to text stream
+                        stream_started = True
+                        live.update(Markdown(""))
 
-            # Show final stats for this query (one line with separators)
+                    full_response += chunk
+                    live.update(Markdown(full_response))
+
+            # Calculate stats
             query_elapsed = time.time() - query_start
             query_tokens = session.last_tokens
+
+            # Stats ABOVE the response (like Claude Code)
             print_separator(console)
-            console.print(f"[dim]  {query_elapsed:.1f}s  │  {query_tokens:,} tokens[/dim]")
+            console.print(f"[dim]  {query_elapsed:.1f}s  │  {query_tokens:,} tokens (est)[/dim]")
             print_separator(console)
 
-            # Display response
+            # Now print the final response
             console.print()
-            console.print("[bold cyan]EvalView[/bold cyan]")
-            console.print(Markdown(response or ""))
+            console.print(Markdown(full_response))
+            console.print()  # Extra spacing before next input
 
             # Check for commands to execute
-            commands = extract_commands(response or "")
+            commands = extract_commands(full_response)
             for cmd in commands:
                 # Validate command before offering to run
                 is_valid, error_msg = validate_command(cmd)
@@ -844,7 +987,11 @@ async def run_chat(
                     console.print(f"  [cyan][1][/cyan] Yes, run once")
                     console.print(f"  [cyan][2][/cyan] Always allow '[bold]{cmd_key}[/bold]' commands")
                     console.print(f"  [cyan][3][/cyan] Skip")
-                    choice = Prompt.ask("[dim]Choice[/dim]", default="1")
+                    
+                    try:
+                        choice = await prompt_session.prompt_async(HTML("<dim>Choice (1-3): </dim>"))
+                    except KeyboardInterrupt:
+                        choice = "3"
 
                     if choice in ("1", "y", "yes", ""):
                         should_run = True
@@ -857,55 +1004,61 @@ async def run_chat(
                 if should_run:
                     console.print()
                     # Run command and capture output
-                    proc = subprocess.run(
-                        cmd,
-                        shell=True,
-                        cwd=os.getcwd(),
-                        capture_output=True,
-                        text=True
-                    )
+                    # Use the same spinner style for tool execution
+                    with console.status(f"[bold green]Running {cmd}...[/bold green]", spinner="dots"):
+                        proc = subprocess.run(
+                            cmd,
+                            shell=True,
+                            cwd=os.getcwd(),
+                            capture_output=True,
+                            text=True
+                        )
 
                     # Show the output
                     output: str = proc.stdout + proc.stderr
                     if output.strip():
-                        console.print(output)
+                        # Use a Panel for cleaner output display
+                        console.print(Panel(output.strip(), title=f"Output: {cmd}", border_style="dim", expand=False))
 
                     # Ask LLM to analyze the results
                     if output.strip():
                         console.print()
-                        analyze = Prompt.ask("[yellow]Analyze results?[/yellow] [dim]y/n[/dim]", default="y")
+                        
+                        try:
+                            analyze = await prompt_session.prompt_async(HTML("<yellow>Analyze results?</yellow> <dim>y/n</dim> "))
+                        except KeyboardInterrupt:
+                            analyze = "n"
+                            
                         if analyze.lower() in ("y", "yes", ""):
                             # Truncate output if too long
                             truncated = output[:4000] + "..." if len(output) > 4000 else output
                             analysis_prompt = f"I ran `{cmd}` and got this output:\n\n```\n{truncated}\n```\n\nBriefly summarize the results. Did tests pass or fail? Any issues to address?"
 
-                            # Get analysis with live timer
                             analysis_start = time.time()
-                            analysis_response = None
+                            analysis_full = ""
 
-                            async def get_analysis():
-                                nonlocal analysis_response
-                                analysis_response = await session.get_response(analysis_prompt)
+                            # Stream the analysis with spinner logic
+                            analysis_spinner = Spinner("dots", text=" Analyzing...", style="cyan")
 
-                            analysis_task = asyncio.create_task(get_analysis())
+                            with Live(analysis_spinner, console=console, refresh_per_second=12, transient=True) as live:
+                                stream_started = False
+                                async for chunk in session.stream_response(analysis_prompt):
+                                    if not stream_started:
+                                        stream_started = True
+                                        live.update(Markdown(""))
+                                    analysis_full += chunk
+                                    live.update(Markdown(analysis_full))
 
-                            with Live(console=console, refresh_per_second=4, transient=True) as live:
-                                while not analysis_task.done():
-                                    elapsed = time.time() - analysis_start
-                                    live.update(Text(f"  Analyzing... {elapsed:.1f}s", style="dim"))
-                                    await asyncio.sleep(0.25)
-
-                            await analysis_task
-
-                            # Show analysis
+                            # Stats ABOVE the response
                             analysis_elapsed = time.time() - analysis_start
                             analysis_tokens = session.last_tokens
                             print_separator(console)
-                            console.print(f"[dim]  {analysis_elapsed:.1f}s  │  {analysis_tokens:,} tokens[/dim]")
+                            console.print(f"[dim]  {analysis_elapsed:.1f}s  │  {analysis_tokens:,} tokens (est)[/dim]")
                             print_separator(console)
+
+                            # Print the response
                             console.print()
-                            console.print("[bold cyan]EvalView[/bold cyan]")
-                            console.print(Markdown(analysis_response or ""))
+                            console.print(Markdown(analysis_full))
 
         except KeyboardInterrupt:
             console.print("\n\n[dim]Use 'exit' to quit.[/dim]\n")
@@ -915,6 +1068,8 @@ async def run_chat(
             break
         except Exception as e:
             console.print(f"[red]Error: {e}[/red]\n")
+            import traceback
+            traceback.print_exc()
             continue
 
 

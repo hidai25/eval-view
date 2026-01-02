@@ -409,6 +409,182 @@ class LLMClient:
                         f"  2. Use Anthropic model: set EVAL_MODEL=claude-sonnet-4-20250514"
                     )
 
+    async def chat_stream(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.3,
+        max_tokens: int = 1000,
+    ):
+        """Make a streaming chat completion request and yield text chunks.
+
+        Args:
+            system_prompt: System message
+            user_prompt: User message
+            temperature: Sampling temperature
+            max_tokens: Maximum tokens in response
+
+        Yields:
+            Text chunks as they generated
+        """
+        if self.provider == LLMProvider.OPENAI:
+            async for chunk in self._openai_stream(system_prompt, user_prompt, temperature, max_tokens):
+                yield chunk
+        elif self.provider == LLMProvider.ANTHROPIC:
+            async for chunk in self._anthropic_stream(system_prompt, user_prompt, temperature, max_tokens):
+                yield chunk
+        elif self.provider == LLMProvider.OLLAMA:
+            async for chunk in self._ollama_stream(system_prompt, user_prompt, temperature, max_tokens):
+                yield chunk
+        elif self.provider == LLMProvider.GEMINI:
+            async for chunk in self._gemini_stream(system_prompt, user_prompt, temperature, max_tokens):
+                yield chunk
+        elif self.provider == LLMProvider.GROK:
+             # Grok uses OpenAI-compatible API
+            async for chunk in self._openai_stream(system_prompt, user_prompt, temperature, max_tokens, base_url="https://api.x.ai/v1"):
+                yield chunk
+        elif self.provider == LLMProvider.HUGGINGFACE:
+             # HF uses OpenAI-compatible API
+            async for chunk in self._openai_stream(system_prompt, user_prompt, temperature, max_tokens, base_url="https://router.huggingface.co/v1"):
+                yield chunk
+        else:
+            # Fallback for unsupported streaming providers: wait for full response then yield it
+            response = await self.chat_completion(system_prompt, user_prompt, temperature, max_tokens)
+            # Try to find a text field in the JSON response, or dump the whole thing
+            if isinstance(response, dict):
+                # Heuristics to find the "content"
+                yield response.get("reasoning", "") + "\n" + str(response.get("score", ""))
+            else:
+                yield str(response)
+
+    async def _openai_stream(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float,
+        max_tokens: int,
+        base_url: Optional[str] = None,
+    ):
+        """OpenAI-compatible streaming."""
+        from openai import AsyncOpenAI
+
+        api_key = self.api_key
+        if self.provider == LLMProvider.OLLAMA:
+            api_key = "ollama"
+            base_url = f"{os.getenv('OLLAMA_HOST', 'http://localhost:11434')}/v1"
+
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+
+        # GPT-5 models require temperature=1 and max_completion_tokens
+        is_gpt5 = self.model.startswith("gpt-5")
+
+        params = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 1 if is_gpt5 else temperature,
+            "stream": True,
+        }
+
+        if is_gpt5:
+            params["max_completion_tokens"] = max_tokens * 5
+        else:
+            params["max_tokens"] = max_tokens
+
+        stream = await client.chat.completions.create(**params)
+
+        async for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                content = chunk.choices[0].delta.content
+                yield content
+            
+            # Track usage if available in last chunk (OpenAI spec)
+            if hasattr(chunk, "usage") and chunk.usage:
+                judge_cost_tracker.add_usage(
+                    self.provider.value, self.model,
+                    chunk.usage.prompt_tokens,
+                    chunk.usage.completion_tokens
+                )
+
+    async def _anthropic_stream(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float,
+        max_tokens: int,
+    ):
+        """Anthropic streaming."""
+        from anthropic import AsyncAnthropic
+
+        client = AsyncAnthropic(api_key=self.api_key)
+
+        async with client.messages.stream(
+            model=self.model,
+            max_tokens=max_tokens,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+            temperature=temperature,
+        ) as stream:
+            async for text in stream.text_stream:
+                yield text
+            
+            # Track usage
+            final_message = await stream.get_final_message()
+            if final_message.usage:
+                judge_cost_tracker.add_usage(
+                    "anthropic", self.model,
+                    final_message.usage.input_tokens,
+                    final_message.usage.output_tokens
+                )
+
+    async def _ollama_stream(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float,
+        max_tokens: int,
+    ):
+        """Ollama streaming (via OpenAI client)."""
+        # Reuse OpenAI compatible streamer
+        async for chunk in self._openai_stream(system_prompt, user_prompt, temperature, max_tokens):
+            yield chunk
+
+    async def _gemini_stream(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float,
+        max_tokens: int,
+    ):
+        """Google Gemini streaming."""
+        try:
+            from google import genai
+            from google.genai import types
+        except ImportError:
+            raise ImportError(
+                "Google GenAI package required. Install with: pip install google-genai"
+            )
+
+        client = genai.Client(api_key=self.api_key)
+
+        # Gemini SDK returns an async iterator
+        response_stream = await client.aio.models.generate_content(
+            model=self.model,
+            contents=user_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=temperature,
+                max_output_tokens=max_tokens,
+            ),
+            stream=True
+        )
+
+        async for chunk in response_stream:
+            if chunk.text:
+                yield chunk.text
+
     async def chat_completion(
         self,
         system_prompt: str,
