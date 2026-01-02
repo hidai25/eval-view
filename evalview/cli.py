@@ -5219,7 +5219,12 @@ def golden_show(test_name: str):
     default=None,
     help="Model to use (default: provider's default)",
 )
-def chat(provider: str, model: str):
+@click.option(
+    "--demo",
+    is_flag=True,
+    help="Run a scripted demo for marketing videos",
+)
+def chat(provider: str, model: str, demo: bool):
     """Interactive chat interface for EvalView.
 
     Ask questions about testing your AI agents in natural language.
@@ -5237,12 +5242,16 @@ def chat(provider: str, model: str):
       evalview chat                    # Auto-detect provider (prefers Ollama)
       evalview chat --provider ollama  # Use Ollama (free, local)
       evalview chat --provider openai  # Use OpenAI
+      evalview chat --demo             # Run scripted demo for videos
 
     Type 'exit' or 'quit' to leave the chat.
     """
-    from evalview.chat import run_chat
+    from evalview.chat import run_chat, run_demo
 
-    asyncio.run(run_chat(provider=provider, model=model))
+    if demo:
+        asyncio.run(run_demo(provider=provider, model=model))
+    else:
+        asyncio.run(run_chat(provider=provider, model=model))
 
 
 if __name__ == "__main__":

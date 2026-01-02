@@ -5,11 +5,13 @@ and explore evaluation results using natural language.
 """
 
 import asyncio
+import glob
 import json
 import os
 import re
 import subprocess
 import sys
+from pathlib import Path
 from typing import Optional, Tuple
 
 from rich.console import Console
@@ -23,6 +25,149 @@ from evalview.core.llm_provider import (
     is_ollama_running,
     detect_available_providers,
 )
+
+
+# Commands that are safe to auto-run without confirmation (read-only)
+SAFE_COMMANDS = {"demo", "list", "adapters", "help", "--help", "--version"}
+
+# Small models that may hallucinate - show warning
+SMALL_OLLAMA_MODELS = {
+    "llama3.2", "llama3.2:1b", "llama3.2:3b",
+    "phi3", "phi3:mini", "gemma:2b", "gemma2:2b",
+    "qwen2:0.5b", "qwen2:1.5b", "tinyllama"
+}
+
+# Recommended larger models for better results
+RECOMMENDED_MODELS = ["llama3:70b", "mixtral", "qwen2:72b", "llama3.1:70b"]
+
+
+def get_installed_ollama_models() -> set[str]:
+    """Get list of installed Ollama models."""
+    try:
+        result = subprocess.run(
+            ["ollama", "list"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0:
+            models = set()
+            for line in result.stdout.strip().split("\n")[1:]:  # Skip header
+                if line.strip():
+                    # First column is model name
+                    model_name = line.split()[0]
+                    models.add(model_name)
+                    # Also add without tag (e.g., "llama3.1" for "llama3.1:latest")
+                    if ":" in model_name:
+                        models.add(model_name.split(":")[0])
+            return models
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+    return set()
+
+
+def get_project_context() -> str:
+    """Gather context about the current project for the LLM."""
+    context_parts = []
+
+    # Find test cases
+    test_dirs = ["tests/test-cases", "tests", "test-cases", "."]
+    test_count = 0
+    test_locations = []
+
+    for test_dir in test_dirs:
+        if os.path.isdir(test_dir):
+            yaml_files = glob.glob(f"{test_dir}/**/*.yaml", recursive=True)
+            yaml_files += glob.glob(f"{test_dir}/**/*.yml", recursive=True)
+            # Filter out config files
+            yaml_files = [f for f in yaml_files if "config" not in f.lower()]
+            if yaml_files:
+                test_count += len(yaml_files)
+                test_locations.append(f"{test_dir}/ ({len(yaml_files)} files)")
+
+    if test_count > 0:
+        context_parts.append(f"- Found {test_count} test case(s) in: {', '.join(test_locations)}")
+    else:
+        context_parts.append("- No test cases found yet (use 'evalview init' or 'evalview quickstart')")
+
+    # Check for .evalview directory
+    evalview_dir = Path(".evalview")
+    if evalview_dir.exists():
+        # Check for results
+        results_dir = evalview_dir / "results"
+        if results_dir.exists():
+            result_files = list(results_dir.glob("*.json"))
+            if result_files:
+                # Get the most recent result
+                latest = max(result_files, key=lambda p: p.stat().st_mtime)
+                try:
+                    with open(latest) as f:
+                        data = json.load(f)
+                    if isinstance(data, dict):
+                        passed = data.get("passed", 0)
+                        failed = data.get("failed", 0)
+                        total = data.get("total", passed + failed)
+                        context_parts.append(f"- Last run: {passed}/{total} passed, {failed} failed ({latest.name})")
+                except (json.JSONDecodeError, KeyError):
+                    context_parts.append(f"- Last run: {latest.name}")
+
+        # Check for golden baseline
+        golden_dir = evalview_dir / "golden"
+        if golden_dir.exists() and list(golden_dir.glob("*.json")):
+            context_parts.append("- Golden baseline exists (can use --diff for regression detection)")
+        else:
+            context_parts.append("- No golden baseline yet (save one with 'evalview golden save')")
+
+        # Check for config
+        config_file = evalview_dir / "config.yaml"
+        if config_file.exists():
+            context_parts.append("- Config file: .evalview/config.yaml")
+    else:
+        context_parts.append("- EvalView not initialized (run 'evalview init' or 'evalview quickstart')")
+
+    # Check for examples directory
+    if os.path.isdir("examples"):
+        example_dirs = [d for d in os.listdir("examples") if os.path.isdir(f"examples/{d}")]
+        if example_dirs:
+            context_parts.append(f"- Example tests available: {', '.join(example_dirs[:5])}")
+
+    return "\n".join(context_parts) if context_parts else "No project context available."
+
+
+def get_command_key(cmd: str) -> str:
+    """Get a key for command permission tracking.
+
+    For 'evalview run examples/foo/' -> 'run'
+    For 'evalview list' -> 'list'
+    For 'evalview demo' -> 'demo'
+    """
+    parts = cmd.split()
+    if len(parts) < 2:
+        return cmd
+    return parts[1]  # Return the subcommand
+
+
+class CommandPermissions:
+    """Track which commands the user has allowed to auto-run."""
+
+    def __init__(self):
+        self.always_allow: set[str] = set()
+        # Pre-allow safe read-only commands
+        self.always_allow.update(SAFE_COMMANDS)
+
+    def is_allowed(self, cmd: str) -> bool:
+        """Check if command is pre-allowed to run without confirmation."""
+        key = get_command_key(cmd)
+        return key in self.always_allow
+
+    def allow_always(self, cmd: str) -> None:
+        """Mark a command type as always allowed for this session."""
+        key = get_command_key(cmd)
+        self.always_allow.add(key)
+
+    def get_allowed_list(self) -> list[str]:
+        """Get list of always-allowed commands."""
+        return sorted(self.always_allow)
 
 
 SYSTEM_PROMPT = """You are EvalView Assistant - an expert on EvalView, a pytest-style testing framework for AI agents.
@@ -47,9 +192,9 @@ EvalView catches agent regressions before you ship:
 | tapescope / streaming | JSONL streaming API | Yes |
 | mcp | Model Context Protocol | Yes |
 
-## EXAMPLES IN THE REPO
-- examples/goosebench/ - Tests for Block's Goose agent (10 tasks)
-- examples/langgraph/agent/ - LangGraph ReAct agent with search + calculator
+## EXAMPLES IN THE REPO (use these exact paths)
+- examples/goosebench/tasks/ - Tests for Block's Goose agent (10 tasks)
+- examples/langgraph/ - LangGraph ReAct agent with search + calculator
 - examples/crewai/ - CrewAI multi-agent example
 - examples/anthropic/ - Claude API example
 - examples/openai-assistants/ - OpenAI Assistants example
@@ -411,6 +556,23 @@ async def run_chat(
         console=console,
     )
 
+    # Initialize command permissions
+    permissions = CommandPermissions()
+
+    # Show model quality warning for small Ollama models
+    if llm_provider == LLMProvider.OLLAMA:
+        model_name = model or PROVIDER_CONFIGS[llm_provider].default_model
+        if any(small in model_name.lower() for small in SMALL_OLLAMA_MODELS):
+            console.print(f"[yellow]Warning:[/yellow] Small model '{model_name}' may give inaccurate suggestions.")
+            console.print(f"[dim]For better results, try: /model llama3:70b or /model mixtral[/dim]")
+            console.print()
+
+    # Show project context
+    context = get_project_context()
+    console.print("[bold]Project Status:[/bold]")
+    console.print(f"[dim]{context}[/dim]")
+    console.print()
+
     # Track stats
     import time
     from rich.live import Live
@@ -429,12 +591,193 @@ async def run_chat(
                 console.print("\n[dim]Goodbye![/dim]")
                 break
 
-            if user_input.lower() == "help":
+            if user_input.lower() in ("help", "/help"):
+                console.print("\n[bold]Chat Commands:[/bold]")
+                console.print("  [cyan]/model[/cyan]         - Switch to a different model")
+                console.print("  [cyan]/docs[/cyan]          - Open EvalView documentation")
+                console.print("  [cyan]/cli[/cyan]           - Show CLI commands cheatsheet")
+                console.print("  [cyan]/permissions[/cyan]   - Show auto-allowed commands")
+                console.print("  [cyan]/context[/cyan]       - Show project status")
+                console.print("  [cyan]clear[/cyan]          - Clear chat history")
+                console.print("  [cyan]exit[/cyan]           - Leave chat")
                 console.print("\n[bold]Tips:[/bold]")
                 console.print("  - Ask how to test your agent")
-                console.print("  - Ask to generate test cases")
                 console.print("  - Ask to run specific tests")
                 console.print("  - Ask to explain test failures")
+                continue
+
+            # /docs command - open documentation
+            if user_input.lower() == "/docs":
+                import webbrowser
+                docs_url = "https://github.com/hidai25/evalview#readme"
+                console.print(f"[dim]Opening documentation: {docs_url}[/dim]")
+                webbrowser.open(docs_url)
+                continue
+
+            # /cli command - show CLI cheatsheet
+            if user_input.lower() == "/cli":
+                console.print("\n[bold]EvalView CLI Cheatsheet:[/bold]")
+                console.print()
+                console.print("[bold cyan]Getting Started:[/bold cyan]")
+                console.print("  evalview quickstart        # Interactive setup wizard")
+                console.print("  evalview init              # Initialize in current directory")
+                console.print("  evalview demo              # See regression detection demo")
+                console.print()
+                console.print("[bold cyan]Running Tests:[/bold cyan]")
+                console.print("  evalview run               # Run all tests")
+                console.print("  evalview run <path>        # Run tests from specific path")
+                console.print("  evalview run --verbose     # Detailed output")
+                console.print("  evalview run --diff        # Compare against golden baseline")
+                console.print()
+                console.print("[bold cyan]Managing Baselines:[/bold cyan]")
+                console.print("  evalview golden save <result.json>   # Save as baseline")
+                console.print("  evalview golden list                 # List saved baselines")
+                console.print("  evalview golden show <name>          # View baseline details")
+                console.print()
+                console.print("[bold cyan]Other Commands:[/bold cyan]")
+                console.print("  evalview adapters          # List available adapters")
+                console.print("  evalview list              # List all test cases")
+                console.print("  evalview record            # Record agent interactions")
+                console.print("  evalview --help            # Full help")
+                console.print()
+                continue
+
+            # /model command - switch models mid-session
+            if user_input.lower().startswith("/model"):
+                parts = user_input.split(maxsplit=1)
+                if len(parts) < 2:
+                    # Show model selection menu
+                    console.print(f"\n[bold]Current model:[/bold] {session.model}")
+                    console.print(f"[bold]Current provider:[/bold] {llm_provider.value}\n")
+
+                    # Get installed Ollama models
+                    installed = get_installed_ollama_models()
+
+                    ollama_models = [
+                        ("llama3.1:70b", "Best quality, needs 40GB+ RAM"),
+                        ("mixtral", "Great balance, needs 25GB+ RAM"),
+                        ("llama3.1:8b", "Good quality, needs 8GB+ RAM"),
+                        ("qwen2:7b", "Fast, needs 8GB+ RAM"),
+                    ]
+
+                    console.print("[bold cyan]Ollama Models (free, local):[/bold cyan]")
+                    for i, (model, desc) in enumerate(ollama_models, 1):
+                        # Check if installed
+                        model_base = model.split(":")[0]
+                        is_installed = model in installed or model_base in installed
+                        status = "[green]✓[/green]" if is_installed else "[dim]○[/dim]"
+                        console.print(f"  {status} [cyan][{i}][/cyan] {model:<16} - {desc}")
+
+                    if not installed:
+                        console.print("  [dim]No models installed. Install: ollama pull llama3.1:8b[/dim]")
+                    else:
+                        console.print(f"  [dim]Installed: {', '.join(sorted(installed)[:5])}{'...' if len(installed) > 5 else ''}[/dim]")
+                    console.print()
+
+                    # Cloud models with API key status
+                    has_openai = bool(os.getenv("OPENAI_API_KEY"))
+                    has_anthropic = bool(os.getenv("ANTHROPIC_API_KEY"))
+
+                    console.print("[bold cyan]Cloud Models:[/bold cyan]")
+                    openai_status = "[green]✓[/green]" if has_openai else "[yellow]![/yellow]"
+                    anthropic_status = "[green]✓[/green]" if has_anthropic else "[yellow]![/yellow]"
+
+                    console.print(f"  {openai_status} [cyan][5][/cyan] gpt-4o            - OpenAI, best overall")
+                    console.print(f"  {openai_status} [cyan][6][/cyan] gpt-4o-mini       - OpenAI, fast & cheap")
+                    console.print(f"  {anthropic_status} [cyan][7][/cyan] claude-sonnet-4-20250514  - Anthropic, excellent")
+                    console.print(f"  {anthropic_status} [cyan][8][/cyan] claude-3-5-haiku-20241022 - Anthropic, fast")
+
+                    if not has_openai and not has_anthropic:
+                        console.print("\n[bold]API Key Setup:[/bold]")
+                        console.print("  [dim]export OPENAI_API_KEY=sk-...[/dim]")
+                        console.print("  [dim]export ANTHROPIC_API_KEY=sk-ant-...[/dim]")
+                        console.print("  [dim]Or add to .env.local file[/dim]")
+                    console.print()
+
+                    choice = Prompt.ask("[dim]Select (1-8) or type model name, Enter to cancel[/dim]", default="")
+
+                    if not choice:
+                        continue
+
+                    model_map = {
+                        "1": ("llama3.1:70b", LLMProvider.OLLAMA),
+                        "2": ("mixtral", LLMProvider.OLLAMA),
+                        "3": ("llama3.1:8b", LLMProvider.OLLAMA),
+                        "4": ("qwen2:7b", LLMProvider.OLLAMA),
+                        "5": ("gpt-4o", LLMProvider.OPENAI),
+                        "6": ("gpt-4o-mini", LLMProvider.OPENAI),
+                        "7": ("claude-sonnet-4-20250514", LLMProvider.ANTHROPIC),
+                        "8": ("claude-3-5-haiku-20241022", LLMProvider.ANTHROPIC),
+                    }
+
+                    if choice in model_map:
+                        new_model, new_provider = model_map[choice]
+
+                        # Check if provider/model is available
+                        if new_provider == LLMProvider.OPENAI and not os.getenv("OPENAI_API_KEY"):
+                            console.print("[red]Error:[/red] OPENAI_API_KEY not set")
+                            console.print("[dim]Run: export OPENAI_API_KEY=sk-...[/dim]")
+                        elif new_provider == LLMProvider.ANTHROPIC and not os.getenv("ANTHROPIC_API_KEY"):
+                            console.print("[red]Error:[/red] ANTHROPIC_API_KEY not set")
+                            console.print("[dim]Run: export ANTHROPIC_API_KEY=sk-ant-...[/dim]")
+                        elif new_provider == LLMProvider.OLLAMA:
+                            if not is_ollama_running():
+                                console.print("[red]Error:[/red] Ollama not running")
+                                console.print("[dim]Run: ollama serve[/dim]")
+                            else:
+                                # Check if model is installed
+                                model_base = new_model.split(":")[0]
+                                if new_model not in installed and model_base not in installed:
+                                    console.print(f"[yellow]Model '{new_model}' not installed.[/yellow]")
+                                    console.print(f"[dim]Install it with: ollama pull {new_model}[/dim]")
+                                    install = Prompt.ask("[dim]Install now? (y/n)[/dim]", default="y")
+                                    if install.lower() in ("y", "yes", ""):
+                                        console.print(f"[dim]Running: ollama pull {new_model}...[/dim]")
+                                        result = subprocess.run(
+                                            ["ollama", "pull", new_model],
+                                            capture_output=False  # Show progress
+                                        )
+                                        if result.returncode == 0:
+                                            session.model = new_model
+                                            session.provider = new_provider
+                                            llm_provider = new_provider
+                                            console.print(f"[green]Installed and switched to {new_model}[/green]")
+                                        else:
+                                            console.print(f"[red]Failed to install {new_model}[/red]")
+                                else:
+                                    session.model = new_model
+                                    session.provider = new_provider
+                                    llm_provider = new_provider
+                                    console.print(f"[green]Switched to {new_model} ({new_provider.value})[/green]")
+                        else:
+                            session.model = new_model
+                            session.provider = new_provider
+                            llm_provider = new_provider
+                            console.print(f"[green]Switched to {new_model} ({new_provider.value})[/green]")
+                    elif choice:
+                        # Direct model name entry
+                        session.model = choice
+                        console.print(f"[green]Switched to model: {choice}[/green]")
+                else:
+                    new_model = parts[1].strip()
+                    session.model = new_model
+                    console.print(f"[green]Switched to model: {new_model}[/green]")
+                continue
+
+            # /permissions command - show what's auto-allowed
+            if user_input.lower() == "/permissions":
+                allowed = permissions.get_allowed_list()
+                console.print("\n[bold]Auto-allowed commands:[/bold]")
+                for cmd in allowed:
+                    console.print(f"  [green]✓[/green] {cmd}")
+                console.print("\n[dim]These commands run without asking. Use option [2] to add more.[/dim]")
+                continue
+
+            # /context command - show project status
+            if user_input.lower() == "/context":
+                context = get_project_context()
+                console.print("\n[bold]Project Status:[/bold]")
+                console.print(f"[dim]{context}[/dim]")
                 continue
 
             if user_input.lower() == "clear":
@@ -485,12 +828,84 @@ async def run_chat(
                     console.print(f"[dim]{error_msg}[/dim]")
                     continue
 
-                console.print()
-                console.print(f"[yellow]Run command?[/yellow] [dim]{cmd}[/dim]")
-                confirm = Prompt.ask("[dim]y/n[/dim]", default="y")
-                if confirm.lower() in ("y", "yes", ""):
+                # Check if command is pre-allowed
+                should_run = False
+                cmd_key = get_command_key(cmd)
+
+                if permissions.is_allowed(cmd):
+                    # Auto-run allowed commands
                     console.print()
-                    result = subprocess.run(cmd, shell=True, cwd=os.getcwd())
+                    console.print(f"[dim]Auto-running:[/dim] {cmd}")
+                    should_run = True
+                else:
+                    # Ask for permission with 1/2/3 options
+                    console.print()
+                    console.print(f"[yellow]Run command?[/yellow] [bold]{cmd}[/bold]")
+                    console.print(f"  [cyan][1][/cyan] Yes, run once")
+                    console.print(f"  [cyan][2][/cyan] Always allow '[bold]{cmd_key}[/bold]' commands")
+                    console.print(f"  [cyan][3][/cyan] Skip")
+                    choice = Prompt.ask("[dim]Choice[/dim]", default="1")
+
+                    if choice in ("1", "y", "yes", ""):
+                        should_run = True
+                    elif choice == "2":
+                        permissions.allow_always(cmd)
+                        console.print(f"[dim]'{cmd_key}' commands will auto-run for this session[/dim]")
+                        should_run = True
+                    # choice == "3" or anything else means skip
+
+                if should_run:
+                    console.print()
+                    # Run command and capture output
+                    result = subprocess.run(
+                        cmd,
+                        shell=True,
+                        cwd=os.getcwd(),
+                        capture_output=True,
+                        text=True
+                    )
+
+                    # Show the output
+                    output = result.stdout + result.stderr
+                    if output.strip():
+                        console.print(output)
+
+                    # Ask LLM to analyze the results
+                    if output.strip():
+                        console.print()
+                        analyze = Prompt.ask("[yellow]Analyze results?[/yellow] [dim]y/n[/dim]", default="y")
+                        if analyze.lower() in ("y", "yes", ""):
+                            # Truncate output if too long
+                            truncated = output[:4000] + "..." if len(output) > 4000 else output
+                            analysis_prompt = f"I ran `{cmd}` and got this output:\n\n```\n{truncated}\n```\n\nBriefly summarize the results. Did tests pass or fail? Any issues to address?"
+
+                            # Get analysis with live timer
+                            analysis_start = time.time()
+                            analysis_response = None
+
+                            async def get_analysis():
+                                nonlocal analysis_response
+                                analysis_response = await session.get_response(analysis_prompt)
+
+                            analysis_task = asyncio.create_task(get_analysis())
+
+                            with Live(console=console, refresh_per_second=4, transient=True) as live:
+                                while not analysis_task.done():
+                                    elapsed = time.time() - analysis_start
+                                    live.update(Text(f"  Analyzing... {elapsed:.1f}s", style="dim"))
+                                    await asyncio.sleep(0.25)
+
+                            await analysis_task
+
+                            # Show analysis
+                            analysis_elapsed = time.time() - analysis_start
+                            analysis_tokens = session.last_tokens
+                            print_separator(console)
+                            console.print(f"[dim]  {analysis_elapsed:.1f}s  │  {analysis_tokens:,} tokens[/dim]")
+                            print_separator(console)
+                            console.print()
+                            console.print("[bold cyan]EvalView[/bold cyan]")
+                            console.print(Markdown(analysis_response))
 
         except KeyboardInterrupt:
             console.print("\n\n[dim]Use 'exit' to quit.[/dim]\n")
@@ -501,6 +916,119 @@ async def run_chat(
         except Exception as e:
             console.print(f"[red]Error: {e}[/red]\n")
             continue
+
+
+async def run_demo(
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+) -> None:
+    """Run a scripted demo for marketing videos.
+
+    This runs a smooth, pre-scripted flow showing EvalView's features
+    without user interaction - perfect for recording demos.
+    """
+    import time
+
+    console = Console()
+
+    # Select provider (same as run_chat)
+    if provider:
+        provider_enum = LLMProvider(provider)
+        if provider_enum == LLMProvider.OLLAMA and not is_ollama_running():
+            console.print("[red]Ollama is not running. Start with: ollama serve[/red]")
+            return
+        llm_provider = provider_enum
+        provider_info = f"Using {PROVIDER_CONFIGS[llm_provider].display_name}"
+    else:
+        llm_provider, _ = select_provider(console)
+        provider_info = f"Using {PROVIDER_CONFIGS[llm_provider].display_name}"
+
+    # Show banner
+    print_banner(console, provider_info + " (Demo Mode)")
+
+    console.print("[bold yellow]Demo Mode[/bold yellow] - Showing EvalView Chat features\n")
+    time.sleep(1)
+
+    # Demo script - each step has a simulated user input and action
+    demo_steps = [
+        {
+            "user": "What can EvalView do?",
+            "description": "Asking about EvalView capabilities",
+        },
+        {
+            "user": "Show me the available adapters",
+            "description": "Exploring adapter options",
+        },
+        {
+            "user": "Run the demo to see regression detection",
+            "description": "Running the regression demo",
+        },
+    ]
+
+    # Create session
+    session = ChatSession(
+        provider=llm_provider,
+        model=model,
+        console=console,
+    )
+
+    from rich.live import Live
+    from rich.text import Text
+
+    for i, step in enumerate(demo_steps, 1):
+        console.print(f"\n[dim]─── Demo Step {i}/{len(demo_steps)} ───[/dim]")
+        time.sleep(0.5)
+
+        # Show simulated user input with typing effect
+        console.print()
+        console.print("[bold green]You[/bold green]")
+        user_text = step["user"]
+        for char in user_text:
+            console.print(char, end="")
+            time.sleep(0.03)  # Typing effect
+        console.print()  # Newline after typing
+
+        time.sleep(0.5)
+
+        # Get response with timer
+        query_start = time.time()
+        response = await session.get_response(user_text)
+        query_elapsed = time.time() - query_start
+
+        # Show stats
+        print_separator(console)
+        console.print(f"[dim]  {query_elapsed:.1f}s  │  {session.last_tokens:,} tokens[/dim]")
+        print_separator(console)
+
+        # Show response
+        console.print()
+        console.print("[bold cyan]EvalView[/bold cyan]")
+        console.print(Markdown(response))
+
+        # Auto-run any commands
+        commands = extract_commands(response)
+        for cmd in commands:
+            is_valid, _ = validate_command(cmd)
+            if is_valid:
+                console.print()
+                console.print(f"[dim]Auto-running:[/dim] {cmd}")
+                time.sleep(0.5)
+
+                result = subprocess.run(
+                    cmd,
+                    shell=True,
+                    cwd=os.getcwd(),
+                    capture_output=True,
+                    text=True
+                )
+                output = result.stdout + result.stderr
+                if output.strip():
+                    console.print(output)
+
+        time.sleep(2)  # Pause between steps
+
+    console.print("\n[bold green]Demo complete![/bold green]")
+    console.print("[dim]Run 'evalview chat' for interactive mode[/dim]\n")
 
 
 def main():
