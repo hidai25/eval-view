@@ -12,7 +12,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -381,7 +381,7 @@ class ChatSession:
             model=self.model,
             max_tokens=2000,
             system=SYSTEM_PROMPT,
-            messages=self.history,
+            messages=self.history,  # type: ignore[arg-type]
             temperature=0.7,
         )
 
@@ -815,10 +815,10 @@ async def run_chat(
             # Display response
             console.print()
             console.print("[bold cyan]EvalView[/bold cyan]")
-            console.print(Markdown(response))
+            console.print(Markdown(response or ""))
 
             # Check for commands to execute
-            commands = extract_commands(response)
+            commands = extract_commands(response or "")
             for cmd in commands:
                 # Validate command before offering to run
                 is_valid, error_msg = validate_command(cmd)
@@ -857,7 +857,7 @@ async def run_chat(
                 if should_run:
                     console.print()
                     # Run command and capture output
-                    result = subprocess.run(
+                    proc = subprocess.run(
                         cmd,
                         shell=True,
                         cwd=os.getcwd(),
@@ -866,7 +866,7 @@ async def run_chat(
                     )
 
                     # Show the output
-                    output = result.stdout + result.stderr
+                    output: str = proc.stdout + proc.stderr
                     if output.strip():
                         console.print(output)
 
@@ -905,7 +905,7 @@ async def run_chat(
                             print_separator(console)
                             console.print()
                             console.print("[bold cyan]EvalView[/bold cyan]")
-                            console.print(Markdown(analysis_response))
+                            console.print(Markdown(analysis_response or ""))
 
         except KeyboardInterrupt:
             console.print("\n\n[dim]Use 'exit' to quit.[/dim]\n")
@@ -939,7 +939,7 @@ async def run_demo(
     time.sleep(0.5)
 
     # Pre-baked demo script with static responses
-    demo_steps = [
+    demo_steps: list[dict[str, Any]] = [
         {
             "user": "What can EvalView do?",
             "response": """EvalView catches **agent regressions** before you ship:
@@ -968,11 +968,16 @@ This will compare a current run against a golden baseline and show you exactly w
         },
     ]
 
-    for i, step in enumerate(demo_steps, 1):
+    for step in demo_steps:
+        user_text: str = step["user"]
+        response_text: str = step["response"]
+        tokens: int = step["tokens"]
+        step_time: float = step["time"]
+        run_command: Optional[str] = step.get("run_command")
+
         # Show simulated user input with typing effect
         console.print()
         console.print("[bold green]You[/bold green]", end=" ")
-        user_text = step["user"]
         for char in user_text:
             console.print(char, end="")
             time.sleep(0.02)  # Fast typing effect
@@ -980,31 +985,30 @@ This will compare a current run against a golden baseline and show you exactly w
 
         # Fake "thinking" animation
         with Live(console=console, refresh_per_second=10, transient=True) as live:
-            for j in range(int(step["time"] * 10)):
+            for j in range(int(step_time * 10)):
                 dots = "." * ((j % 3) + 1)
                 live.update(Text(f"  Thinking{dots}", style="dim"))
                 time.sleep(0.1)
 
         # Show stats
         print_separator(console)
-        console.print(f"[dim]  {step['time']:.1f}s  │  {step['tokens']:,} tokens[/dim]")
+        console.print(f"[dim]  {step_time:.1f}s  │  {tokens:,} tokens[/dim]")
         print_separator(console)
 
         # Show response
         console.print()
         console.print("[bold cyan]EvalView[/bold cyan]")
-        console.print(Markdown(step["response"]))
+        console.print(Markdown(response_text))
 
         # Run command if specified
-        if "run_command" in step:
-            cmd = step["run_command"]
+        if run_command:
             console.print()
-            console.print(f"[dim]Auto-running:[/dim] {cmd}")
+            console.print(f"[dim]Auto-running:[/dim] {run_command}")
             time.sleep(0.3)
             console.print()
 
             # Run the actual command
-            subprocess.run(cmd, shell=True, cwd=os.getcwd())
+            subprocess.run(run_command, shell=True, cwd=os.getcwd())
 
         time.sleep(1)
 
