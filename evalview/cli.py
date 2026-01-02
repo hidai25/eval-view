@@ -5219,12 +5219,10 @@ def golden_show(test_name: str):
     default=None,
     help="Model to use (default: provider's default)",
 )
-@click.option(
-    "--demo",
-    is_flag=True,
-    help="Run a scripted demo for marketing videos",
-)
-def chat(provider: str, model: str, demo: bool):
+@click.option("--demo_1", is_flag=True, help="Run '3am panic' demo")
+@click.option("--demo_2", is_flag=True, help="Run 'instant action' demo")
+@click.option("--demo_3", is_flag=True, help="Run 'cost explosion' demo")
+def chat(provider: str, model: str, demo_1: bool, demo_2: bool, demo_3: bool):
     """Interactive chat interface for EvalView.
 
     Ask questions about testing your AI agents in natural language.
@@ -5242,14 +5240,20 @@ def chat(provider: str, model: str, demo: bool):
       evalview chat                    # Auto-detect provider (prefers Ollama)
       evalview chat --provider ollama  # Use Ollama (free, local)
       evalview chat --provider openai  # Use OpenAI
-      evalview chat --demo             # Run scripted demo for videos
+      evalview chat --demo_1           # "3am panic" demo
+      evalview chat --demo_2           # "Instant action" demo
+      evalview chat --demo_3           # "Cost explosion" demo
 
     Type 'exit' or 'quit' to leave the chat.
     """
     from evalview.chat import run_chat, run_demo
 
-    if demo:
-        asyncio.run(run_demo(provider=provider, model=model))
+    if demo_1:
+        asyncio.run(run_demo(provider=provider, model=model, style=1))
+    elif demo_2:
+        asyncio.run(run_demo(provider=provider, model=model, style=2))
+    elif demo_3:
+        asyncio.run(run_demo(provider=provider, model=model, style=3))
     else:
         asyncio.run(run_chat(provider=provider, model=model))
 
