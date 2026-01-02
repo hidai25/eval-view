@@ -924,111 +924,93 @@ async def run_demo(
 ) -> None:
     """Run a scripted demo for marketing videos.
 
-    This runs a smooth, pre-scripted flow showing EvalView's features
-    without user interaction - perfect for recording demos.
+    Uses pre-baked responses for instant, consistent playback.
+    Perfect for recording demos - no LLM calls, no waiting.
     """
     import time
-
-    console = Console()
-
-    # Select provider (same as run_chat)
-    if provider:
-        provider_enum = LLMProvider(provider)
-        if provider_enum == LLMProvider.OLLAMA and not is_ollama_running():
-            console.print("[red]Ollama is not running. Start with: ollama serve[/red]")
-            return
-        llm_provider = provider_enum
-        provider_info = f"Using {PROVIDER_CONFIGS[llm_provider].display_name}"
-    else:
-        llm_provider, _ = select_provider(console)
-        provider_info = f"Using {PROVIDER_CONFIGS[llm_provider].display_name}"
-
-    # Show banner
-    print_banner(console, provider_info + " (Demo Mode)")
-
-    console.print("[bold yellow]Demo Mode[/bold yellow] - Showing EvalView Chat features\n")
-    time.sleep(1)
-
-    # Demo script - each step has a simulated user input and action
-    demo_steps = [
-        {
-            "user": "What can EvalView do?",
-            "description": "Asking about EvalView capabilities",
-        },
-        {
-            "user": "Show me the available adapters",
-            "description": "Exploring adapter options",
-        },
-        {
-            "user": "Run the demo to see regression detection",
-            "description": "Running the regression demo",
-        },
-    ]
-
-    # Create session
-    session = ChatSession(
-        provider=llm_provider,
-        model=model,
-        console=console,
-    )
-
     from rich.live import Live
     from rich.text import Text
 
-    for i, step in enumerate(demo_steps, 1):
-        console.print(f"\n[dim]─── Demo Step {i}/{len(demo_steps)} ───[/dim]")
-        time.sleep(0.5)
+    console = Console()
 
+    # Show banner
+    print_banner(console, "Demo Mode")
+
+    time.sleep(0.5)
+
+    # Pre-baked demo script with static responses
+    demo_steps = [
+        {
+            "user": "What can EvalView do?",
+            "response": """EvalView catches **agent regressions** before you ship:
+
+- **Tool changes** - detect when your agent uses different tools
+- **Output changes** - catch when responses drift from baseline
+- **Cost spikes** - alert on token/$ increases
+- **Latency spikes** - monitor response time regressions
+
+Think of it as **pytest for AI agents**.""",
+            "tokens": 847,
+            "time": 1.2,
+        },
+        {
+            "user": "Show me how to catch a regression",
+            "response": """Let me run the regression detection demo:
+
+```command
+evalview demo
+```
+
+This will compare a current run against a golden baseline and show you exactly what changed.""",
+            "tokens": 412,
+            "time": 0.8,
+            "run_command": "evalview demo",
+        },
+    ]
+
+    for i, step in enumerate(demo_steps, 1):
         # Show simulated user input with typing effect
         console.print()
-        console.print("[bold green]You[/bold green]")
+        console.print("[bold green]You[/bold green]", end=" ")
         user_text = step["user"]
         for char in user_text:
             console.print(char, end="")
-            time.sleep(0.03)  # Typing effect
-        console.print()  # Newline after typing
+            time.sleep(0.02)  # Fast typing effect
+        console.print()
 
-        time.sleep(0.5)
-
-        # Get response with timer
-        query_start = time.time()
-        response = await session.get_response(user_text)
-        query_elapsed = time.time() - query_start
+        # Fake "thinking" animation
+        with Live(console=console, refresh_per_second=10, transient=True) as live:
+            for j in range(int(step["time"] * 10)):
+                dots = "." * ((j % 3) + 1)
+                live.update(Text(f"  Thinking{dots}", style="dim"))
+                time.sleep(0.1)
 
         # Show stats
         print_separator(console)
-        console.print(f"[dim]  {query_elapsed:.1f}s  │  {session.last_tokens:,} tokens[/dim]")
+        console.print(f"[dim]  {step['time']:.1f}s  │  {step['tokens']:,} tokens[/dim]")
         print_separator(console)
 
         # Show response
         console.print()
         console.print("[bold cyan]EvalView[/bold cyan]")
-        console.print(Markdown(response))
+        console.print(Markdown(step["response"]))
 
-        # Auto-run any commands
-        commands = extract_commands(response)
-        for cmd in commands:
-            is_valid, _ = validate_command(cmd)
-            if is_valid:
-                console.print()
-                console.print(f"[dim]Auto-running:[/dim] {cmd}")
-                time.sleep(0.5)
+        # Run command if specified
+        if "run_command" in step:
+            cmd = step["run_command"]
+            console.print()
+            console.print(f"[dim]Auto-running:[/dim] {cmd}")
+            time.sleep(0.3)
+            console.print()
 
-                result = subprocess.run(
-                    cmd,
-                    shell=True,
-                    cwd=os.getcwd(),
-                    capture_output=True,
-                    text=True
-                )
-                output = result.stdout + result.stderr
-                if output.strip():
-                    console.print(output)
+            # Run the actual command
+            subprocess.run(cmd, shell=True, cwd=os.getcwd())
 
-        time.sleep(2)  # Pause between steps
+        time.sleep(1)
 
-    console.print("\n[bold green]Demo complete![/bold green]")
-    console.print("[dim]Run 'evalview chat' for interactive mode[/dim]\n")
+    console.print()
+    console.print("[bold green]That's EvalView![/bold green] Catch regressions before your users do.")
+    console.print("[dim]Try it: evalview quickstart[/dim]\n")
 
 
 def main():
