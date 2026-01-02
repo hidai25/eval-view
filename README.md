@@ -30,6 +30,35 @@ evalview run --diff  # Compare against golden baseline, block on regression
 
 ---
 
+## New: Interactive Chat Mode
+
+**Don't remember commands? Just ask.**
+
+```bash
+evalview chat
+```
+
+<p align="center">
+  <img src="assets/chat-demo.gif" alt="EvalView Chat Demo" width="700">
+</p>
+
+Ask in plain English. Get answers. Run commands. Analyze results.
+
+- "How do I test my Goose agent?"
+- "Show me what adapters are available"
+- "Run the regression demo"
+
+**Free & local** — powered by Ollama. No API key needed.
+
+```bash
+# Install Ollama, then:
+evalview chat                     # Auto-detects Ollama
+evalview chat --provider openai   # Or use cloud models
+evalview chat --demo              # Watch a scripted demo
+```
+
+---
+
 ## The Problem
 
 You changed a prompt. Or swapped models. Or updated a tool.
