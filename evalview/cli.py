@@ -5222,7 +5222,8 @@ def golden_show(test_name: str):
 @click.option("--demo_1", is_flag=True, help="Run '3am panic' demo")
 @click.option("--demo_2", is_flag=True, help="Run 'instant action' demo")
 @click.option("--demo_3", is_flag=True, help="Run 'cost explosion' demo")
-def chat(provider: str, model: str, demo_1: bool, demo_2: bool, demo_3: bool):
+@click.option("--demo_chat", is_flag=True, help="Run 'interactive chat' demo")
+def chat(provider: str, model: str, demo_1: bool, demo_2: bool, demo_3: bool, demo_chat: bool):
     """Interactive chat interface for EvalView.
 
     Ask questions about testing your AI agents in natural language.
@@ -5243,6 +5244,7 @@ def chat(provider: str, model: str, demo_1: bool, demo_2: bool, demo_3: bool):
       evalview chat --demo_1           # "3am panic" demo
       evalview chat --demo_2           # "Instant action" demo
       evalview chat --demo_3           # "Cost explosion" demo
+      evalview chat --demo_chat        # "Interactive chat" demo
 
     Type 'exit' or 'quit' to leave the chat.
     """
@@ -5254,6 +5256,8 @@ def chat(provider: str, model: str, demo_1: bool, demo_2: bool, demo_3: bool):
         asyncio.run(run_demo(provider=provider, model=model, style=2))
     elif demo_3:
         asyncio.run(run_demo(provider=provider, model=model, style=3))
+    elif demo_chat:
+        asyncio.run(run_demo(provider=provider, model=model, style=4))
     else:
         asyncio.run(run_chat(provider=provider, model=model))
 

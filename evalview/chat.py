@@ -1088,6 +1088,7 @@ async def run_demo(
         1: "3am panic" - Emotional, relatable crisis scenario
         2: "Instant action" - One-liner straight to demo
         3: "Cost explosion" - Money-focused shock and relief
+        4: "Chat UI" - Showcase interactive chat features
     """
     import time
     from rich.live import Live
@@ -1100,6 +1101,7 @@ async def run_demo(
         1: "Demo: The 3am Panic",
         2: "Demo: LangGraph Agent",
         3: "Demo: Cost Explosion",
+        4: "Interactive Chat",
     }
     print_banner(console, banner_subtitles.get(style, "Demo Mode"))
 
@@ -1475,6 +1477,143 @@ async def run_demo(
         console.print()
         console.print("[bold green]Found it.[/bold green] Check doc-processor and report-gen for infinite loops or missing limits.")
         console.print("[dim]pip install evalview[/dim]\n")
+
+    # =========================================================================
+    # DEMO 4: "Chat UI" - Showcase the interactive chat experience
+    # =========================================================================
+    elif style == 4:
+        term_width = console.width or 80
+
+        def show_chat_box(text: str, typing: bool = True) -> None:
+            """Show the beautiful chat box with typing effect."""
+            # Top border
+            title_text = "─ You "
+            dashes = term_width - len(title_text) - 2
+            console.print(f"[#22d3ee]╭{title_text}{'─' * dashes}╮[/#22d3ee]")
+            console.print(f"[#22d3ee]│{' ' * (term_width - 2)}│[/#22d3ee]")
+
+            # Type the text
+            if typing:
+                console.print(f"[#22d3ee]│[/#22d3ee] ", end="")
+                for char in text:
+                    console.print(char, end="", highlight=False)
+                    time.sleep(0.03)
+                padding = term_width - len(text) - 4
+                console.print(f"{' ' * padding}[#22d3ee]│[/#22d3ee]")
+            else:
+                padding = term_width - len(text) - 4
+                console.print(f"[#22d3ee]│[/#22d3ee] {text}{' ' * padding}[#22d3ee]│[/#22d3ee]")
+
+            console.print(f"[#22d3ee]│{' ' * (term_width - 2)}│[/#22d3ee]")
+            console.print(f"[#22d3ee]╰{'─' * (term_width - 2)}╯[/#22d3ee]")
+            console.print(f"[dim]  .../my-project{' ' * (term_width - 35)}claude-sonnet[/dim]")
+            console.print(f"[dim]{' ' * (term_width - 8)}/model[/dim]")
+
+        def show_slash_dropdown() -> None:
+            """Show the slash command dropdown."""
+            console.print()
+            console.print(f"[#22d3ee]╭─ You {'─' * (term_width - 9)}╮[/#22d3ee]")
+            console.print(f"[#22d3ee]│{' ' * (term_width - 2)}│[/#22d3ee]")
+            console.print(f"[#22d3ee]│[/#22d3ee] /", end="")
+            time.sleep(0.3)
+
+            # Dropdown appears
+            console.print()
+            commands = [
+                ("/model", "Switch to a different model"),
+                ("/docs", "Open EvalView documentation"),
+                ("/cli", "Show CLI commands cheatsheet"),
+                ("/help", "Show help and tips"),
+            ]
+            console.print(f"[#22d3ee]│[/#22d3ee] [on #1e293b][#22d3ee bold] /model      [/#22d3ee bold][#94a3b8] Switch to a different model [/#94a3b8][/on #1e293b]")
+            for cmd, desc in commands[1:]:
+                console.print(f"[#22d3ee]│[/#22d3ee] [on #1e293b][#e2e8f0] {cmd:<11} [/#e2e8f0][#94a3b8] {desc:<28}[/#94a3b8][/on #1e293b]")
+
+            time.sleep(1.5)
+
+        def show_ai_response(text: str, tokens: int, duration: float) -> None:
+            """Show AI response with streaming effect."""
+            print_separator(console)
+            console.print(f"[dim]  {duration:.1f}s  │  {tokens:,} tokens[/dim]")
+            print_separator(console)
+            console.print()
+
+            # Stream the response word by word
+            words = text.split()
+            displayed = ""
+            with Live(console=console, refresh_per_second=30, transient=False) as live:
+                for i, word in enumerate(words):
+                    displayed += word + " "
+                    live.update(Markdown(displayed))
+                    time.sleep(0.04)
+
+        # Scene 1: Show slash commands
+        console.print()
+        console.print("[dim]Type / to see available commands...[/dim]")
+        time.sleep(0.8)
+        show_slash_dropdown()
+
+        # Clear and show actual question
+        time.sleep(0.5)
+        console.print()
+        console.print()
+
+        # Scene 2: Ask a question
+        show_chat_box("How do I catch regressions before deploying?")
+        time.sleep(0.3)
+        show_thinking(0.6)
+
+        show_ai_response(
+            """Save a **golden baseline** from a working run, then compare future runs against it:
+
+```bash
+# 1. Save your current working state
+evalview golden save .evalview/results/latest.json
+
+# 2. Make changes to your agent
+
+# 3. Run with --diff to catch regressions
+evalview run --diff
+```
+
+This catches **tool changes**, **output drift**, **cost spikes**, and **latency issues** before they hit production.""",
+            487,
+            0.9,
+        )
+
+        time.sleep(0.8)
+
+        # Scene 3: Follow-up
+        console.print()
+        show_chat_box("Run it now")
+        time.sleep(0.3)
+
+        # Show command execution
+        console.print()
+        console.print("[dim]Running:[/dim] evalview run --diff")
+        time.sleep(0.3)
+
+        # Quick test results
+        tests = [
+            ("auth-flow", "PASSED", "green"),
+            ("search-query", "PASSED", "green"),
+            ("checkout", "REGRESSION", "red"),
+        ]
+        console.print()
+        for name, status, color in tests:
+            time.sleep(0.2)
+            icon = "✓" if status == "PASSED" else "✗"
+            console.print(f"  [{color}]{icon} {status:<12}[/{color}] {name}")
+
+        console.print()
+        console.print("━" * 50)
+        console.print("  [red]❌ 1 regression detected - blocked deploy[/red]")
+        console.print("━" * 50)
+
+        time.sleep(0.8)
+        console.print()
+        console.print("[bold #22d3ee]Ask anything. Get answers. Ship with confidence.[/bold #22d3ee]")
+        console.print("[dim]pip install evalview && evalview chat[/dim]\n")
 
 
 def main():
