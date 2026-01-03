@@ -493,7 +493,7 @@ class LLMClient:
         else:
             params["max_tokens"] = max_tokens
 
-        stream = await client.chat.completions.create(**params)
+        stream = await client.chat.completions.create(**params)  # type: ignore[call-overload]
 
         async for chunk in stream:
             if chunk.choices and chunk.choices[0].delta.content:

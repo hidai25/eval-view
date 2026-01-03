@@ -13,7 +13,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Optional, Tuple, AsyncGenerator
+from typing import Any, Dict, List, Optional, Tuple, AsyncGenerator
 
 from rich.console import Console, Group
 from rich.markdown import Markdown
@@ -630,7 +630,7 @@ async def run_chat(
     history_file = Path.home() / ".evalview_history"
     # Electric cyan for a cool vibe
     box_color = "#22d3ee"  # Tailwind cyan-400
-    prompt_session = PromptSession(
+    prompt_session: PromptSession[str] = PromptSession(
         history=FileHistory(str(history_file)),
         completer=SlashCommandCompleter(),
         complete_while_typing=False,  # Only show on Tab to prevent space reservation
@@ -1191,7 +1191,7 @@ async def run_demo(
         time.sleep(0.3)
 
         # Verbose test execution - focus on finding the regression
-        tests = [
+        tests: List[Dict[str, Any]] = [
             {
                 "name": "auth-flow",
                 "query": "Login with email test@example.com",
@@ -1292,7 +1292,7 @@ async def run_demo(
         time.sleep(0.3)
 
         # Verbose test execution output
-        tests = [
+        demo2_tests: List[Dict[str, Any]] = [
             {
                 "name": "tavily-search",
                 "query": "What is the weather in San Francisco?",
@@ -1338,7 +1338,7 @@ async def run_demo(
         ]
 
         console.print()
-        for i, test in enumerate(tests):
+        for i, test in enumerate(demo2_tests):
             console.print(f"[bold]Test {i+1}/4:[/bold] {test['name']}")
             console.print(f"[dim]  Query:[/dim] \"{test['query']}\"")
             time.sleep(0.2)
@@ -1388,7 +1388,7 @@ async def run_demo(
         # Verbose test execution - focus on COSTS
         # Math: $12/month → $847/month at 30 runs/month
         # Old: $0.40/run, New: $28.23/run
-        tests = [
+        demo3_tests: List[Dict[str, Any]] = [
             {
                 "name": "auth-flow",
                 "query": "Authenticate user with OAuth",
@@ -1436,7 +1436,7 @@ async def run_demo(
         ]
 
         console.print()
-        for i, test in enumerate(tests):
+        for i, test in enumerate(demo3_tests):
             console.print(f"[bold]Test {i+1}/4:[/bold] {test['name']}")
             console.print(f"[dim]  Query:[/dim] \"{test['query']}\"")
             time.sleep(0.15)
@@ -1594,13 +1594,13 @@ This catches **tool changes**, **output drift**, **cost spikes**, and **latency 
         time.sleep(0.3)
 
         # Quick test results
-        tests = [
+        quick_results = [
             ("auth-flow", "PASSED", "green"),
             ("search-query", "PASSED", "green"),
             ("checkout", "REGRESSION", "red"),
         ]
         console.print()
-        for name, status, color in tests:
+        for name, status, color in quick_results:
             time.sleep(0.2)
             icon = "✓" if status == "PASSED" else "✗"
             console.print(f"  [{color}]{icon} {status:<12}[/{color}] {name}")
