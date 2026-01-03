@@ -1595,19 +1595,19 @@ async def run_demo(
         term_width = console.width or 80
 
         def show_chat_box(text: str, typing: bool = True) -> None:
-            """Show the beautiful chat box with typing effect."""
+            """Show the beautiful chat box with fast typing effect."""
             # Top border
             title_text = "─ You "
             dashes = term_width - len(title_text) - 2
             console.print(f"[#22d3ee]╭{title_text}{'─' * dashes}╮[/#22d3ee]")
             console.print(f"[#22d3ee]│{' ' * (term_width - 2)}│[/#22d3ee]")
 
-            # Type the text
+            # Type the text - FAST
             if typing:
                 console.print(f"[#22d3ee]│[/#22d3ee] ", end="")
                 for char in text:
                     console.print(char, end="", highlight=False)
-                    time.sleep(0.03)
+                    time.sleep(0.012)  # Fast typing
                 padding = term_width - len(text) - 4
                 console.print(f"{' ' * padding}[#22d3ee]│[/#22d3ee]")
             else:
@@ -1620,58 +1620,63 @@ async def run_demo(
             console.print(f"[dim]{' ' * (term_width - 8)}/model[/dim]")
 
         def show_slash_dropdown() -> None:
-            """Show the slash command dropdown."""
-            console.print()
-            console.print(f"[#22d3ee]╭─ You {'─' * (term_width - 9)}╮[/#22d3ee]")
-            console.print(f"[#22d3ee]│{' ' * (term_width - 2)}│[/#22d3ee]")
-            console.print(f"[#22d3ee]│[/#22d3ee] /", end="")
-            time.sleep(0.3)
+            """Show the slash command dropdown below the box."""
+            # Show complete box with / inside
+            console.print(Panel(
+                "/",
+                title="[bold #22d3ee]You[/bold #22d3ee]",
+                title_align="left",
+                border_style="#22d3ee",
+                padding=(0, 1),
+                expand=True
+            ))
+            time.sleep(0.15)
 
-            # Dropdown appears
-            console.print()
+            # Dropdown appears BELOW the box
             commands = [
                 ("/model", "Switch to a different model"),
                 ("/docs", "Open EvalView documentation"),
                 ("/cli", "Show CLI commands cheatsheet"),
                 ("/help", "Show help and tips"),
             ]
-            console.print(f"[#22d3ee]│[/#22d3ee] [on #1e293b][#22d3ee bold] /model      [/#22d3ee bold][#94a3b8] Switch to a different model [/#94a3b8][/on #1e293b]")
+            console.print("[dim]─── Slash Commands ───[/dim]")
+            console.print(f"  [#22d3ee bold]▸ /model        [/#22d3ee bold] [dim]Switch to a different model[/dim]")
             for cmd, desc in commands[1:]:
-                console.print(f"[#22d3ee]│[/#22d3ee] [on #1e293b][#e2e8f0] {cmd:<11} [/#e2e8f0][#94a3b8] {desc:<28}[/#94a3b8][/on #1e293b]")
+                console.print(f"    [dim]{cmd:<14} {desc}[/dim]")
 
-            time.sleep(1.5)
+            time.sleep(0.8)
 
         def show_ai_response(text: str, tokens: int, duration: float) -> None:
-            """Show AI response with streaming effect."""
+            """Show AI response with fast streaming effect."""
             print_separator(console)
             console.print(f"[dim]  {duration:.1f}s  │  {tokens:,} tokens[/dim]")
             print_separator(console)
             console.print()
 
-            # Stream the response word by word
+            # Stream the response word by word - FAST
             words = text.split()
             displayed = ""
-            with Live(console=console, refresh_per_second=30, transient=False) as live:
+            with Live(console=console, refresh_per_second=60, transient=False) as live:
                 for i, word in enumerate(words):
                     displayed += word + " "
                     live.update(Markdown(displayed))
-                    time.sleep(0.04)
+                    time.sleep(0.015)  # Super fast streaming
 
         # Scene 1: Show slash commands
         console.print()
         console.print("[dim]Type / to see available commands...[/dim]")
-        time.sleep(0.8)
+        time.sleep(0.4)
         show_slash_dropdown()
 
         # Clear and show actual question
-        time.sleep(0.5)
+        time.sleep(0.3)
         console.print()
         console.print()
 
         # Scene 2: Ask a question
         show_chat_box("How do I catch regressions before deploying?")
-        time.sleep(0.3)
-        show_thinking(0.6)
+        time.sleep(0.15)
+        show_thinking(0.3)
 
         show_ai_response(
             """Save a **golden baseline** from a working run, then compare future runs against it:
@@ -1691,17 +1696,17 @@ This catches **tool changes**, **output drift**, **cost spikes**, and **latency 
             0.9,
         )
 
-        time.sleep(0.8)
+        time.sleep(0.4)
 
         # Scene 3: Follow-up
         console.print()
         show_chat_box("Run it now")
-        time.sleep(0.3)
+        time.sleep(0.15)
 
         # Show command execution
         console.print()
         console.print("[dim]Running:[/dim] evalview run --diff")
-        time.sleep(0.3)
+        time.sleep(0.15)
 
         # Quick test results
         quick_results = [
@@ -1711,7 +1716,7 @@ This catches **tool changes**, **output drift**, **cost spikes**, and **latency 
         ]
         console.print()
         for name, status, color in quick_results:
-            time.sleep(0.2)
+            time.sleep(0.1)
             icon = "✓" if status == "PASSED" else "✗"
             console.print(f"  [{color}]{icon} {status:<12}[/{color}] {name}")
 
@@ -1720,7 +1725,7 @@ This catches **tool changes**, **output drift**, **cost spikes**, and **latency 
         console.print("  [red]❌ 1 regression detected - blocked deploy[/red]")
         console.print("━" * 50)
 
-        time.sleep(0.8)
+        time.sleep(0.5)
         console.print()
         console.print("[bold #22d3ee]Ask anything. Get answers. Ship with confidence.[/bold #22d3ee]")
         console.print("[dim]pip install evalview && evalview chat[/dim]\n")
