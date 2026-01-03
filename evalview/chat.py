@@ -29,28 +29,82 @@ from prompt_toolkit.styles import Style as PromptStyle
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.completion import Completer, Completion
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.filters import Condition
+
+
+SLASH_COMMANDS = [
+    ("/model", "Switch to a different model"),
+    ("/docs", "Open EvalView documentation"),
+    ("/cli", "Show CLI commands cheatsheet"),
+    ("/permissions", "Show auto-allowed commands"),
+    ("/context", "Show project status"),
+    ("/help", "Show help and tips"),
+    ("/clear", "Clear chat history"),
+    ("/exit", "Leave chat"),
+]
+
+
+def show_slash_menu(console: Console, selected: int = 0) -> Optional[str]:
+    """Show slash command dropdown and let user select. Returns selected command or None."""
+    import sys
+    import tty
+    import termios
+
+    def get_key():
+        """Get a single keypress."""
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setraw(fd)
+            ch = sys.stdin.read(1)
+            if ch == '\x1b':  # Escape sequence
+                ch2 = sys.stdin.read(1)
+                ch3 = sys.stdin.read(1)
+                if ch2 == '[':
+                    if ch3 == 'A': return 'up'
+                    if ch3 == 'B': return 'down'
+                return 'esc'
+            return ch
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+    while True:
+        # Clear previous menu and redraw
+        # Move cursor up by number of commands + 1 for the divider
+        for _ in range(len(SLASH_COMMANDS) + 1):
+            console.file.write("\033[F\033[K")
+
+        # Draw menu
+        console.print("[dim]─── Slash Commands ───[/dim]")
+        for i, (cmd, desc) in enumerate(SLASH_COMMANDS):
+            if i == selected:
+                console.print(f"  [#22d3ee bold]▸ {cmd:<14}[/#22d3ee bold] [dim]{desc}[/dim]")
+            else:
+                console.print(f"    [dim]{cmd:<14} {desc}[/dim]")
+
+        key = get_key()
+        if key == 'up':
+            selected = (selected - 1) % len(SLASH_COMMANDS)
+        elif key == 'down':
+            selected = (selected + 1) % len(SLASH_COMMANDS)
+        elif key == '\r' or key == '\n':  # Enter
+            return SLASH_COMMANDS[selected][0]
+        elif key == '\x1b' or key == 'esc' or key == '\x03':  # Esc or Ctrl+C
+            return None
+        elif key == '\x7f' or key == '\x08':  # Backspace
+            return None
 
 
 class SlashCommandCompleter(Completer):
     """Autocomplete for slash commands like Claude Code."""
-
-    COMMANDS = [
-        ("/model", "Switch to a different model"),
-        ("/docs", "Open EvalView documentation"),
-        ("/cli", "Show CLI commands cheatsheet"),
-        ("/permissions", "Show auto-allowed commands"),
-        ("/context", "Show project status"),
-        ("/help", "Show help and tips"),
-        ("/clear", "Clear chat history"),
-        ("/exit", "Leave chat"),
-    ]
 
     def get_completions(self, document, complete_event):
         text = document.text_before_cursor
 
         # Only show completions when text starts with /
         if text.startswith("/"):
-            for cmd, desc in self.COMMANDS:
+            for cmd, desc in SLASH_COMMANDS:
                 if cmd.lower().startswith(text.lower()):
                     yield Completion(
                         cmd,
@@ -630,19 +684,32 @@ async def run_chat(
     history_file = Path.home() / ".evalview_history"
     # Electric cyan for a cool vibe
     box_color = "#22d3ee"  # Tailwind cyan-400
+
+    # Track if we should show slash menu
+    show_slash_dropdown = [False]  # Use list to allow mutation in closure
+
+    # Create key bindings to detect / at start
+    kb = KeyBindings()
+
+    @kb.add('/')
+    def handle_slash(event):
+        """Detect / at start and signal to show menu."""
+        buf = event.app.current_buffer
+        text_before = buf.document.text_before_cursor
+        buf.insert_text('/')
+        # If / is at the beginning, signal to show dropdown after prompt exits
+        if text_before == '':
+            show_slash_dropdown[0] = True
+            # Submit immediately to trigger the menu
+            buf.validate_and_handle()
+
     prompt_session: PromptSession[str] = PromptSession(
         history=FileHistory(str(history_file)),
-        completer=SlashCommandCompleter(),
-        complete_while_typing=False,  # Only show on Tab to prevent space reservation
+        key_bindings=kb,
         style=PromptStyle.from_dict({
             'prompt': f'{box_color}',
             'rprompt': f'{box_color}',
             'bottom-toolbar': f'noinherit {box_color}',
-            'completion-menu': 'bg:#1e293b #e2e8f0',  # Dark bg, light text
-            'completion-menu.completion': 'bg:#1e293b #e2e8f0',
-            'completion-menu.completion.current': 'bg:#22d3ee #0f172a bold',  # Cyan highlight
-            'completion-menu.meta': 'bg:#1e293b #94a3b8 italic',  # Dimmer description
-            'completion-menu.meta.current': 'bg:#22d3ee #0f172a italic',
         })
     )
 
@@ -692,7 +759,50 @@ async def run_chat(
                 # Clear the box frame (1 blank + top + input + bottom + footer = 5 lines)
                 for _ in range(5):
                     console.file.write("\033[F\033[K")
+                show_slash_dropdown[0] = False
                 continue
+
+            # Check if user typed / and we should show the dropdown
+            if show_slash_dropdown[0] and user_input == '/':
+                show_slash_dropdown[0] = False
+
+                # Clear the prompt area and redraw complete box with /
+                for _ in range(5):
+                    console.file.write("\033[F\033[K")
+
+                # Redraw the complete box with / inside
+                console.print(Panel(
+                    "/",
+                    title="[bold #22d3ee]You[/bold #22d3ee]",
+                    title_align="left",
+                    border_style="#22d3ee",
+                    padding=(0, 1),
+                    expand=True
+                ))
+
+                # Show the dropdown menu BELOW the box
+                console.print("[dim]─── Slash Commands ───[/dim]")
+                for i, (cmd, desc) in enumerate(SLASH_COMMANDS):
+                    if i == 0:
+                        console.print(f"  [#22d3ee bold]▸ {cmd:<14}[/#22d3ee bold] [dim]{desc}[/dim]")
+                    else:
+                        console.print(f"    [dim]{cmd:<14} {desc}[/dim]")
+
+                # Let user select
+                selected_cmd = show_slash_menu(console, selected=0)
+
+                # Clear everything (box + menu) - box is 3 lines, menu is 9 lines
+                total_lines = 3 + 1 + len(SLASH_COMMANDS)  # box + header + commands
+                for _ in range(total_lines):
+                    console.file.write("\033[F\033[K")
+
+                if selected_cmd:
+                    user_input = selected_cmd
+                else:
+                    # User cancelled, restart input loop
+                    continue
+
+            show_slash_dropdown[0] = False
 
             if not user_input.strip():
                 # Clear the empty box
