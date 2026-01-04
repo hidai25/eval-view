@@ -11,7 +11,7 @@ pip install evalview
 evalview demo          # See a regression caught in action
 ```
 
-> **Like what you see?** [⭐ Star the repo](https://github.com/hidai25/eval-view) — helps others discover it.
+> **Saved you from a 3am incident?** [⭐ Star it](https://github.com/hidai25/eval-view)
 
 <p align="center">
   <img src="assets/demo.gif" alt="EvalView Demo" width="700">
@@ -313,7 +313,7 @@ Performance:
 ```
 </details>
 
-> **Useful?** [⭐ Star the repo](https://github.com/hidai25/eval-view) — takes 1 second, helps us a lot.
+> **Caught a regression?** [⭐ Star it](https://github.com/hidai25/eval-view) — takes 1 second.
 
 ---
 
@@ -1267,7 +1267,7 @@ Skills are code. Code needs tests. EvalView brings the rigor of software testing
 
 ### Like what you see?
 
-If EvalView caught a regression, saved you debugging time, or kept your agent costs in check — **[give it a ⭐ star](https://github.com/hidai25/eval-view)** to help others discover it.
+If EvalView caught a regression or saved you debugging time — **[⭐ star it](https://github.com/hidai25/eval-view)**.
 
 ---
 
