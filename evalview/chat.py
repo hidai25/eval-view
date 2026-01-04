@@ -1386,7 +1386,9 @@ async def run_demo(
         time.sleep(0.5)
         console.print()
         console.print("[bold green]Found it.[/bold green] The checkout flow broke. Fix it and run `evalview golden update checkout`")
-        console.print("[dim]pip install evalview[/dim]\n")
+        console.print("[dim]pip install evalview[/dim]")
+        console.print()
+        console.print("[dim]⭐ Star if this helped → github.com/hidai25/eval-view[/dim]\n")
 
     # =========================================================================
     # DEMO 2: "LangGraph agent" - Real framework, verbose output
@@ -1480,7 +1482,9 @@ async def run_demo(
         time.sleep(0.5)
         console.print()
         console.print("[bold green]Done.[/bold green] Run `evalview golden update weather-query` after fixing.")
-        console.print("[dim]pip install evalview[/dim]\n")
+        console.print("[dim]pip install evalview[/dim]")
+        console.print()
+        console.print("[dim]⭐ Star if this helped → github.com/hidai25/eval-view[/dim]\n")
 
     # =========================================================================
     # DEMO 3: "Cost explosion" - $847 bill shock (verbose, cost-focused)
@@ -1586,7 +1590,9 @@ async def run_demo(
         time.sleep(0.5)
         console.print()
         console.print("[bold green]Found it.[/bold green] Check doc-processor and report-gen for infinite loops or missing limits.")
-        console.print("[dim]pip install evalview[/dim]\n")
+        console.print("[dim]pip install evalview[/dim]")
+        console.print()
+        console.print("[dim]⭐ Star if this helped → github.com/hidai25/eval-view[/dim]\n")
 
     # =========================================================================
     # DEMO 4: "Chat UI" - Showcase the interactive chat experience
@@ -1616,7 +1622,7 @@ async def run_demo(
 
             console.print(f"[#22d3ee]│{' ' * (term_width - 2)}│[/#22d3ee]")
             console.print(f"[#22d3ee]╰{'─' * (term_width - 2)}╯[/#22d3ee]")
-            console.print(f"[dim]  .../my-project{' ' * (term_width - 35)}claude-sonnet[/dim]")
+            console.print(f"[dim]  .../my-project{' ' * (term_width - 35)}llama3.2[/dim]")
             console.print(f"[dim]{' ' * (term_width - 8)}/model[/dim]")
 
         def show_slash_dropdown() -> None:
@@ -1728,7 +1734,9 @@ This catches **tool changes**, **output drift**, **cost spikes**, and **latency 
         time.sleep(0.5)
         console.print()
         console.print("[bold #22d3ee]Ask anything. Get answers. Ship with confidence.[/bold #22d3ee]")
-        console.print("[dim]pip install evalview && evalview chat[/dim]\n")
+        console.print("[dim]pip install evalview && evalview chat[/dim]")
+        console.print()
+        console.print("[dim]⭐ Star if this helped → github.com/hidai25/eval-view[/dim]\n")
 
 
 def main():

@@ -4,9 +4,18 @@
 
 **EvalView catches agent regressions** — tool changes, output changes, cost spikes, and latency spikes — before they hit production.
 
+### Quick Start (60 seconds)
+
 ```bash
-evalview run --diff  # Compare against golden baseline, block on regression
+pip install evalview
+evalview demo          # See a regression caught in action
 ```
+
+> **Like what you see?** [⭐ Star the repo](https://github.com/hidai25/eval-view) — helps others discover it.
+
+<p align="center">
+  <img src="assets/demo.gif" alt="EvalView Demo" width="700">
+</p>
 
 [![CI](https://github.com/hidai25/eval-view/actions/workflows/ci.yml/badge.svg)](https://github.com/hidai25/eval-view/actions/workflows/ci.yml)
 [![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
@@ -21,12 +30,6 @@ evalview run --diff  # Compare against golden baseline, block on regression
 [![Python downloads](https://img.shields.io/pypi/dm/evalview.svg?label=python%20downloads)](https://pypi.org/project/evalview/)
 [![Node.js downloads](https://img.shields.io/npm/dm/@evalview/node.svg?label=node.js%20downloads)](https://www.npmjs.com/package/@evalview/node)
 [![GitHub Action](https://img.shields.io/badge/GitHub%20Action-Marketplace-blue?logo=github)](https://github.com/marketplace/actions/evalview-ai-agent-testing)
-
-<p align="center">
-  <img src="assets/demo.gif" alt="EvalView Demo" width="700">
-</p>
-
-> **Like what you see?** [⭐ Star the repo](https://github.com/hidai25/eval-view) — helps others discover it.
 
 ---
 

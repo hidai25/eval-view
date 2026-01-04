@@ -2576,9 +2576,13 @@ async def _run_async(
             output_changed = sum(1 for _, d in diffs_found if d.overall_severity == DiffStatus.OUTPUT_CHANGED)
 
             if regressions > 0:
-                console.print(f"[red]✗ {regressions} REGRESSION(s) - score dropped, fix before deploy[/red]\n")
+                console.print(f"[red]✗ {regressions} REGRESSION(s) - score dropped, fix before deploy[/red]")
+                console.print()
+                console.print("[dim]⭐ EvalView caught this before prod! Star → github.com/hidai25/eval-view[/dim]\n")
             elif tools_changed > 0:
-                console.print(f"[yellow]⚠ {tools_changed} TOOLS_CHANGED - agent behavior shifted, review before deploy[/yellow]\n")
+                console.print(f"[yellow]⚠ {tools_changed} TOOLS_CHANGED - agent behavior shifted, review before deploy[/yellow]")
+                console.print()
+                console.print("[dim]⭐ EvalView caught this! Star → github.com/hidai25/eval-view[/dim]\n")
             elif output_changed > 0:
                 console.print(f"[dim]~ {output_changed} OUTPUT_CHANGED - response changed, review before deploy[/dim]\n")
         else:
@@ -4122,13 +4126,24 @@ def demo():
             status_text = "[blue]OUTPUT_CHANGED[/blue]"
         else:  # REGRESSION
             icon = "[bold red]✗[/bold red]"
-            status_text = "[red]REGRESSION[/red]"
+            status_text = "[bold red]REGRESSION[/bold red]"
 
         # Calculate padding (account for rich markup not taking visual space)
         padding = " " * (status_width - len(status))
         detail_text = f"  [dim]{detail}[/dim]" if detail else ""
-        console.print(f"  {icon} {status_text}{padding} {name:<18}{detail_text}")
-        time_module.sleep(0.3)
+
+        # Add dramatic pause for regression
+        if status == "REGRESSION":
+            time_module.sleep(0.5)
+            console.print()
+            console.print(f"  [red]{'━' * 60}[/red]")
+            console.print(f"  {icon} {status_text}{padding} {name:<18}{detail_text}")
+            console.print(f"  [red]{'━' * 60}[/red]")
+            console.print()
+            time_module.sleep(0.5)
+        else:
+            console.print(f"  {icon} {status_text}{padding} {name:<18}{detail_text}")
+            time_module.sleep(0.3)
 
     console.print()
 
@@ -4194,6 +4209,13 @@ def demo():
     console.print("[bold cyan]║[/bold cyan]    $ evalview quickstart                                        [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
+    console.print()
+
+    # Star CTA - appears at the "aha" moment
+    console.print("[dim]┌─────────────────────────────────────────────────────────────────┐[/dim]")
+    console.print("[dim]│[/dim]  [yellow]⭐[/yellow] Like what you saw? Star helps others find it:                [dim]│[/dim]")
+    console.print("[dim]│[/dim]     [link=https://github.com/hidai25/eval-view]github.com/hidai25/eval-view[/link]                                   [dim]│[/dim]")
+    console.print("[dim]└─────────────────────────────────────────────────────────────────┘[/dim]")
     console.print()
 
 
@@ -5107,7 +5129,9 @@ def golden_save(result_file: str, notes: str, test: str):
         except Exception as e:
             console.print(f"[red]❌ Failed to save: {e}[/red]")
 
-    console.print("[green]Done![/green]\n")
+    console.print("[green]Done![/green]")
+    console.print()
+    console.print("[dim]⭐ EvalView saved your baseline! Star if it helped → github.com/hidai25/eval-view[/dim]\n")
 
 
 @golden.command("list")
