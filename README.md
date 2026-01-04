@@ -329,12 +329,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: hidai25/eval-view@v0.1.3
+      - uses: hidai25/eval-view@v0.1.9
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          diff: true              # Compare against golden baselines
+          fail-on: 'REGRESSION'   # Block merge on regression
 ```
 
-That's it. Tests run on every PR, block merges on failure.
+That's it. Tests run on every PR, block merges on regression.
 
 ---
 
@@ -905,11 +907,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run EvalView
-        uses: hidai25/eval-view@v0.1.3
+        uses: hidai25/eval-view@v0.1.9
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          max-workers: '4'
-          fail-on-error: 'true'
+          diff: true
+          fail-on: 'REGRESSION'
 ```
 
 #### Action Inputs
@@ -918,6 +920,8 @@ jobs:
 |-------|-------------|---------|
 | `openai-api-key` | OpenAI API key for LLM-as-judge | - |
 | `anthropic-api-key` | Anthropic API key (optional) | - |
+| `diff` | Compare against golden baselines | `false` |
+| `fail-on` | Statuses that fail CI (REGRESSION, TOOLS_CHANGED, OUTPUT_CHANGED) | `REGRESSION` |
 | `config-path` | Path to config file | `.evalview/config.yaml` |
 | `filter` | Filter tests by name pattern | - |
 | `max-workers` | Parallel workers | `4` |
@@ -954,7 +958,7 @@ jobs:
 
       - name: Run EvalView
         id: evalview
-        uses: hidai25/eval-view@v0.1.3
+        uses: hidai25/eval-view@v0.1.9
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
 
