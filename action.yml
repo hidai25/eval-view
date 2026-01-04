@@ -1,5 +1,5 @@
 name: 'EvalView - AI Agent Testing'
-description: 'Testing framework for AI agents. Works with LangGraph, CrewAI, OpenAI Assistants, Anthropic.'
+description: 'Catch agent regressions in CI. Detects tool changes, output drift, cost spikes. Works with LangGraph, CrewAI, Claude, GPT.'
 author: 'EvalView Team'
 
 branding:
@@ -32,6 +32,14 @@ inputs:
     description: 'Fail the workflow if any test fails'
     required: false
     default: 'true'
+  diff:
+    description: 'Compare against golden baselines for regression detection'
+    required: false
+    default: 'false'
+  fail-on:
+    description: 'Comma-separated statuses that fail CI (REGRESSION, TOOLS_CHANGED, OUTPUT_CHANGED)'
+    required: false
+    default: 'REGRESSION'
   generate-report:
     description: 'Generate HTML report'
     required: false
@@ -91,6 +99,11 @@ runs:
 
         CMD="$CMD --max-workers ${{ inputs.max-workers }}"
         CMD="$CMD --max-retries ${{ inputs.max-retries }}"
+
+        # Regression detection mode
+        if [ "${{ inputs.diff }}" = "true" ]; then
+          CMD="$CMD --diff --fail-on ${{ inputs.fail-on }}"
+        fi
 
         if [ "${{ inputs.generate-report }}" = "true" ]; then
           CMD="$CMD --html-report evalview-report.html"
