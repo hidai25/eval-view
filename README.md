@@ -33,7 +33,7 @@ evalview demo          # See a regression caught in action
 
 ---
 
-## New: Interactive Chat Mode
+## Chat Mode
 
 **Don't remember commands? Just ask.**
 
