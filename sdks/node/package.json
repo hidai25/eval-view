@@ -1,6 +1,6 @@
 {
   "name": "@evalview/node",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Drop-in Node.js middleware for EvalView testing framework",
   "main": "dist/index.js",
   "module": "dist/index.js",
