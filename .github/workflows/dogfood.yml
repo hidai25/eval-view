@@ -1,0 +1,162 @@
+name: Daily Dogfood
+
+on:
+  schedule:
+    # Run daily at 9am UTC (adjusts for timezones)
+    - cron: '0 9 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  dogfood:
+    name: Dogfood Tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install uv
+      run: pip install uv
+
+    - name: Install dependencies
+      run: uv sync --all-extras
+
+    - name: Run pytest
+      id: pytest
+      continue-on-error: true
+      run: |
+        uv run pytest tests/ -v --tb=short 2>&1 | tee pytest-output.txt
+        echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+
+    - name: Run mypy
+      id: mypy
+      continue-on-error: true
+      run: |
+        uv run mypy evalview/ 2>&1 | tee mypy-output.txt
+        echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+
+    - name: Run evalview demo
+      id: demo
+      continue-on-error: true
+      run: |
+        uv run evalview demo 2>&1 | tee demo-output.txt
+        echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+
+    - name: Run evalview --help
+      id: help
+      continue-on-error: true
+      run: |
+        uv run evalview --help 2>&1 | tee help-output.txt
+        echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+
+    - name: Check for failures
+      id: check
+      run: |
+        FAILED=""
+
+        if [ "${{ steps.pytest.outputs.exit_code }}" != "0" ]; then
+          FAILED="${FAILED}pytest,"
+        fi
+
+        if [ "${{ steps.mypy.outputs.exit_code }}" != "0" ]; then
+          FAILED="${FAILED}mypy,"
+        fi
+
+        if [ "${{ steps.demo.outputs.exit_code }}" != "0" ]; then
+          FAILED="${FAILED}demo,"
+        fi
+
+        if [ "${{ steps.help.outputs.exit_code }}" != "0" ]; then
+          FAILED="${FAILED}help,"
+        fi
+
+        if [ -n "$FAILED" ]; then
+          echo "failed=${FAILED%,}" >> $GITHUB_OUTPUT
+          echo "has_failures=true" >> $GITHUB_OUTPUT
+        else
+          echo "has_failures=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Create issue on failure
+      if: steps.check.outputs.has_failures == 'true'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+
+          const failed = '${{ steps.check.outputs.failed }}'.split(',');
+          const date = new Date().toISOString().split('T')[0];
+
+          let body = `## Daily Dogfood Failed - ${date}\n\n`;
+          body += `The following checks failed:\n\n`;
+
+          for (const check of failed) {
+            body += `### ❌ ${check}\n\n`;
+            try {
+              const output = fs.readFileSync(`${check}-output.txt`, 'utf8');
+              // Truncate if too long
+              const truncated = output.length > 3000
+                ? output.slice(-3000) + '\n...(truncated)'
+                : output;
+              body += '```\n' + truncated + '\n```\n\n';
+            } catch (e) {
+              body += `Could not read output file.\n\n`;
+            }
+          }
+
+          body += `---\n`;
+          body += `🔗 [View workflow run](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID})`;
+
+          // Try to create dogfood label if it doesn't exist
+          try {
+            await github.rest.issues.createLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'dogfood',
+              color: 'FFA500',
+              description: 'Daily self-testing failures'
+            });
+          } catch (e) {
+            // Label likely already exists
+          }
+
+          await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: `🐕 Dogfood failed: ${failed.join(', ')} (${date})`,
+            body: body,
+            labels: ['dogfood']
+          });
+
+    - name: Summary
+      run: |
+        echo "## Dogfood Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        if [ "${{ steps.pytest.outputs.exit_code }}" == "0" ]; then
+          echo "✅ pytest passed" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ pytest failed" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        if [ "${{ steps.mypy.outputs.exit_code }}" == "0" ]; then
+          echo "✅ mypy passed" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ mypy failed" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        if [ "${{ steps.demo.outputs.exit_code }}" == "0" ]; then
+          echo "✅ evalview demo passed" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ evalview demo failed" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        if [ "${{ steps.help.outputs.exit_code }}" == "0" ]; then
+          echo "✅ evalview --help passed" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ evalview --help failed" >> $GITHUB_STEP_SUMMARY
+        fi
