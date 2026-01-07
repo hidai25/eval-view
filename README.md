@@ -67,16 +67,11 @@ EvalView runs in CI. When it detects a regression, your deploy fails. You fix it
 
 **Who is EvalView for?**
 
-Builders shipping tool-using agents who keep breaking behavior when they change prompts, models, or tools.
+- **LangGraph / CrewAI teams** shipping agents to production
+- **Solo devs** tired of "it worked yesterday" conversations
+- **Platform teams** who need CI gates before agent deploys
 
-- You're iterating fast on prompts and models
-- You've broken your agent more than once after "just a small change"
-- You want CI to catch regressions, not your users
-
-Already using LangSmith, Langfuse, or other tracing?
-Use them to *see* what happened. Use EvalView to **block bad behavior before it ships.**
-
-> **Your Claude Code skills might be broken.** Claude silently ignores skills that exceed its [15k char budget](https://blog.fsck.com/2025/12/17/claude-code-skills-not-triggering/). [Check yours →](#skills-testing-claude-code--openai-codex)
+Already using LangSmith or Langfuse? Good. Use them to *see* what happened. Use EvalView to **block it from shipping.**
 
 ---
 
@@ -302,16 +297,16 @@ Performance:
 
 ---
 
-## Looking for Design Partners
+## Early Adopter Program
 
-**Using EvalView on a real agent?** I'm looking for 3-5 early adopters.
+**First 10 teams get white-glove setup.** Free.
 
-I'll personally help you set up YAML tests + CI integration in exchange for feedback on what's missing.
+I'll personally configure your YAML tests + CI integration. You tell me what's broken.
 
+- [Claim a spot →](https://github.com/hidai25/eval-view/discussions)
 - Email: hidai@evalview.com
-- [Open a GitHub Discussion](https://github.com/hidai25/eval-view/discussions)
 
-No pitch, just want to learn what's broken and make it work for real use cases.
+3 spots left.
 
 ---
 
@@ -1046,7 +1041,7 @@ evalview chat --demo              # Watch a scripted demo
 
 ## Skills Testing (Claude Code & OpenAI Codex)
 
-### Your Skills Are Probably Broken. Claude Is Ignoring Them.
+> **Your Claude Code skills might be broken.** Claude silently ignores skills that exceed its [15k char budget](https://blog.fsck.com/2025/12/17/claude-code-skills-not-triggering/). EvalView catches this.
 
 **Common symptoms:**
 - Skills installed but never trigger
