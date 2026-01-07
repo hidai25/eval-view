@@ -4,12 +4,14 @@
 
 **EvalView catches agent regressions** — tool changes, output changes, cost spikes, and latency spikes — before they hit production.
 
-### Quick Start (60 seconds)
+### Quick Start
 
 ```bash
 pip install evalview
-evalview demo          # See a regression caught in action
+evalview demo          # Watch a regression get caught (no API key needed)
 ```
+
+Ready to test your own agent? See [Try it in 2 minutes](#try-it-in-2-minutes-no-db-required).
 
 [![CI](https://github.com/hidai25/eval-view/actions/workflows/ci.yml/badge.svg)](https://github.com/hidai25/eval-view/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/evalview.svg)](https://pypi.org/project/evalview/)
@@ -212,13 +214,12 @@ evalview run --diff  # Fails on REGRESSION or TOOLS_CHANGED
 You don't need a database, Docker, or any extra infra to start.
 
 ```bash
-# Install
 pip install evalview
 
 # Set your OpenAI API key (for LLM-as-judge evaluation)
 export OPENAI_API_KEY='your-key-here'
 
-# Run the quickstart – creates a demo agent, a test case, and runs everything
+# Scaffold a test for YOUR agent
 evalview quickstart
 ```
 
@@ -1024,7 +1025,7 @@ evalview chat
 
 Ask in plain English. Get answers. Run commands. Analyze results.
 
-- "How do I test my Goose agent?"
+- "How do I test my LangGraph agent?"
 - "Show me what adapters are available"
 - "Run the regression demo"
 
