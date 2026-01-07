@@ -11,54 +11,14 @@ pip install evalview
 evalview demo          # See a regression caught in action
 ```
 
-> **Saved you from a 3am incident?** [⭐ Star it](https://github.com/hidai25/eval-view)
-
-<p align="center">
-  <img src="assets/demo.gif" alt="EvalView Demo" width="700">
-</p>
-
 [![CI](https://github.com/hidai25/eval-view/actions/workflows/ci.yml/badge.svg)](https://github.com/hidai25/eval-view/actions/workflows/ci.yml)
-[![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
+[![PyPI version](https://img.shields.io/pypi/v/evalview.svg)](https://pypi.org/project/evalview/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![GitHub stars](https://img.shields.io/github/stars/hidai25/eval-view?style=social)](https://github.com/hidai25/eval-view/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/hidai25/eval-view?style=social)](https://github.com/hidai25/eval-view/network/members)
 
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![Checked with mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
-
-[![PyPI version](https://img.shields.io/pypi/v/evalview.svg)](https://pypi.org/project/evalview/)
 [![Python downloads](https://img.shields.io/pypi/dm/evalview.svg?label=python%20downloads)](https://pypi.org/project/evalview/)
 [![Node.js downloads](https://img.shields.io/npm/dm/@evalview/node.svg?label=node.js%20downloads)](https://www.npmjs.com/package/@evalview/node)
-[![GitHub Action](https://img.shields.io/badge/GitHub%20Action-Marketplace-blue?logo=github)](https://github.com/marketplace/actions/evalview-ai-agent-testing)
-
----
-
-## Chat Mode
-
-**Don't remember commands? Just ask.**
-
-```bash
-evalview chat
-```
-
-<p align="center">
-  <img src="assets/chat-demo.gif" alt="EvalView Chat Demo" width="700">
-</p>
-
-Ask in plain English. Get answers. Run commands. Analyze results.
-
-- "How do I test my Goose agent?"
-- "Show me what adapters are available"
-- "Run the regression demo"
-
-**Free & local** — powered by Ollama. No API key needed.
-
-```bash
-# Install Ollama, then:
-evalview chat                     # Auto-detects Ollama
-evalview chat --provider openai   # Or use cloud models
-evalview chat --demo              # Watch a scripted demo
-```
 
 ---
 
@@ -88,6 +48,23 @@ evalview run --diff  # Fails on REGRESSION
 
 ---
 
+## What EvalView Catches
+
+| Regression Type | What It Means | Status |
+|-----------------|---------------|--------|
+| **REGRESSION** | Score dropped — agent got worse | 🔴 Fix before deploy |
+| **TOOLS_CHANGED** | Agent uses different tools now | 🟡 Review before deploy |
+| **OUTPUT_CHANGED** | Same tools, different response | 🟡 Review before deploy |
+| **PASSED** | Matches baseline | 🟢 Ship it |
+
+EvalView runs in CI. When it detects a regression, your deploy fails. You fix it before users see it.
+
+<p align="center">
+  <img src="assets/demo.gif" alt="EvalView Demo" width="700">
+</p>
+
+---
+
 **Who is EvalView for?**
 
 Builders shipping tool-using agents who keep breaking behavior when they change prompts, models, or tools.
@@ -100,19 +77,6 @@ Already using LangSmith, Langfuse, or other tracing?
 Use them to *see* what happened. Use EvalView to **block bad behavior before it ships.**
 
 > **Your Claude Code skills might be broken.** Claude silently ignores skills that exceed its [15k char budget](https://blog.fsck.com/2025/12/17/claude-code-skills-not-triggering/). [Check yours →](#skills-testing-claude-code--openai-codex)
-
----
-
-## What EvalView Catches
-
-| Regression Type | What It Means | Status |
-|-----------------|---------------|--------|
-| **REGRESSION** | Score dropped — agent got worse | 🔴 Fix before deploy |
-| **TOOLS_CHANGED** | Agent uses different tools now | 🟡 Review before deploy |
-| **OUTPUT_CHANGED** | Same tools, different response | 🟡 Review before deploy |
-| **PASSED** | Matches baseline | 🟢 Ship it |
-
-EvalView runs in CI. When it detects a regression, your deploy fails. You fix it before users see it.
 
 ---
 
@@ -158,6 +122,29 @@ evalview run --diff --strict                                # Strictest: fail on
 | All tests pass, only warn-on statuses | 0 (with warnings) |
 | Any test fails OR any fail-on status | 1 |
 | Execution errors (network, timeout) | 2 |
+
+---
+
+## Add to CI in 60 seconds
+
+```yaml
+# .github/workflows/evalview.yml
+name: Agent Tests
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hidai25/eval-view@v0.1.9
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          diff: true              # Compare against golden baselines
+          fail-on: 'REGRESSION'   # Block merge on regression
+```
+
+That's it. Tests run on every PR, block merges on regression.
 
 ---
 
@@ -312,31 +299,6 @@ Performance:
 🎉 Quickstart complete!
 ```
 </details>
-
-> **Caught a regression?** [⭐ Star it](https://github.com/hidai25/eval-view) — takes 1 second.
-
----
-
-## Add to CI in 60 seconds
-
-```yaml
-# .github/workflows/evalview.yml
-name: Agent Tests
-on: [push, pull_request]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hidai25/eval-view@v0.1.9
-        with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          diff: true              # Compare against golden baselines
-          fail-on: 'REGRESSION'   # Block merge on regression
-```
-
-That's it. Tests run on every PR, block merges on regression.
 
 ---
 
@@ -1053,6 +1015,35 @@ evalview/
 
 ---
 
+## Chat Mode
+
+**Don't remember commands? Just ask.**
+
+```bash
+evalview chat
+```
+
+<p align="center">
+  <img src="assets/chat-demo.gif" alt="EvalView Chat Demo" width="700">
+</p>
+
+Ask in plain English. Get answers. Run commands. Analyze results.
+
+- "How do I test my Goose agent?"
+- "Show me what adapters are available"
+- "Run the regression demo"
+
+**Free & local** — powered by Ollama. No API key needed.
+
+```bash
+# Install Ollama, then:
+evalview chat                     # Auto-detects Ollama
+evalview chat --provider openai   # Or use cloud models
+evalview chat --demo              # Watch a scripted demo
+```
+
+---
+
 ## Skills Testing (Claude Code & OpenAI Codex)
 
 ### Your Skills Are Probably Broken. Claude Is Ignoring Them.
@@ -1269,12 +1260,6 @@ Skills are code. Code needs tests. EvalView brings the rigor of software testing
 
 ---
 
-### Like what you see?
-
-If EvalView caught a regression or saved you debugging time — **[⭐ star it](https://github.com/hidai25/eval-view)**.
-
----
-
 ## Roadmap
 
 **Shipped:**
@@ -1352,6 +1337,12 @@ EvalView is open source software licensed under the [Apache License 2.0](LICENSE
 
 - Issues: https://github.com/hidai25/eval-view/issues
 - Discussions: https://github.com/hidai25/eval-view/discussions
+
+---
+
+**Like what you see?** If EvalView saved you from a regression or debugging nightmare — [⭐ star it](https://github.com/hidai25/eval-view).
+
+---
 
 ## Affiliations
 
