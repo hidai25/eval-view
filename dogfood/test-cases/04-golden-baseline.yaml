@@ -1,0 +1,22 @@
+# Dogfood Test: Does EvalView chat understand golden baselines?
+
+name: "Golden Baseline Knowledge"
+description: "Test that EvalView chat understands regression testing concepts"
+
+input:
+  query: "What is a golden baseline in EvalView and how do I create one?"
+
+expected:
+  output:
+    contains:
+      - "golden"
+      - "baseline"
+      - "regression"
+    not_contains:
+      - "I don't know"
+      - "error"
+
+thresholds:
+  min_score: 70
+  max_cost: 0.05
+  max_latency: 30000

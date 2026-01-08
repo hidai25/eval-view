@@ -6,7 +6,7 @@ Supports OpenAI, Anthropic, Gemini, and Grok with automatic provider detection.
 import os
 import json
 import logging
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, List, Tuple, NamedTuple
 from dataclasses import dataclass
 from enum import Enum
 
@@ -21,6 +21,16 @@ class LLMProvider(Enum):
     GROK = "grok"
     HUGGINGFACE = "huggingface"
     OLLAMA = "ollama"
+
+
+class AvailableProvider(NamedTuple):
+    """Result from detect_available_providers().
+
+    Note: This contains the API key, NOT the model name.
+    Use PROVIDER_CONFIGS[provider].default_model to get the default model.
+    """
+    provider: LLMProvider
+    api_key: str
 
 
 @dataclass
@@ -154,25 +164,35 @@ def is_ollama_running() -> bool:
         return False
 
 
-def detect_available_providers() -> List[Tuple[LLMProvider, str]]:
+def detect_available_providers() -> List[AvailableProvider]:
     """Detect which LLM providers have API keys configured.
 
     For most providers, checks if the environment variable is set.
     For Ollama, checks if the server is running locally (no API key needed).
 
     Returns:
-        List of (provider, api_key) tuples for available providers.
+        List of AvailableProvider(provider, api_key) for available providers.
+
+        IMPORTANT: The second field is the API key, NOT the model name.
+        To get the default model, use: PROVIDER_CONFIGS[provider].default_model
+
+    Example:
+        >>> available = detect_available_providers()
+        >>> for p in available:
+        ...     print(f"{p.provider}: key={p.api_key[:8]}...")
+        ...     model = PROVIDER_CONFIGS[p.provider].default_model
+        ...     print(f"  default model: {model}")
     """
-    available: List[Tuple[LLMProvider, str]] = []
+    available: List[AvailableProvider] = []
     for provider, config in PROVIDER_CONFIGS.items():
         if provider == LLMProvider.OLLAMA:
             # Ollama doesn't need an API key - check if it's running
             if is_ollama_running():
-                available.append((provider, "ollama"))  # Placeholder "key"
+                available.append(AvailableProvider(provider, "ollama"))  # Placeholder "key"
         else:
             api_key = os.getenv(config.env_var)
             if api_key:
-                available.append((provider, api_key))
+                available.append(AvailableProvider(provider, api_key))
     return available
 
 

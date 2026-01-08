@@ -1,0 +1,23 @@
+# Dogfood Test: Can EvalView chat explain test case structure?
+
+name: "Test Case Structure"
+description: "Test that EvalView chat can explain YAML test case format"
+
+input:
+  query: "How do I write a test case for EvalView? What fields are required?"
+
+expected:
+  output:
+    contains:
+      - "name"
+      - "input"
+      - "expected"
+      - "yaml"
+    not_contains:
+      - "I don't know"
+      - "error"
+
+thresholds:
+  min_score: 70
+  max_cost: 0.05
+  max_latency: 30000

@@ -1,0 +1,23 @@
+# Dogfood Test: Can EvalView chat suggest run commands?
+
+name: "Run Command Generation"
+description: "Test that EvalView chat can generate valid run commands"
+
+input:
+  query: "How do I run the demo tests?"
+
+expected:
+  tools:
+    - evalview_cli
+  output:
+    contains:
+      - "evalview"
+      - "demo"
+    not_contains:
+      - "error"
+      - "unknown command"
+
+thresholds:
+  min_score: 70
+  max_cost: 0.05
+  max_latency: 60000

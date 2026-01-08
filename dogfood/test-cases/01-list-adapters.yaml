@@ -1,0 +1,22 @@
+# Dogfood Test: Can EvalView chat explain available adapters?
+
+name: "List Adapters Knowledge"
+description: "Test that EvalView chat knows about available adapters"
+
+input:
+  query: "What adapters does EvalView support?"
+
+expected:
+  output:
+    contains:
+      - "http"
+      - "langgraph"
+      - "anthropic"
+    not_contains:
+      - "I don't know"
+      - "error"
+
+thresholds:
+  min_score: 70
+  max_cost: 0.05
+  max_latency: 30000

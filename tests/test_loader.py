@@ -374,3 +374,41 @@ adapter_config:
         assert tc.adapter == "custom_adapter"
         assert tc.endpoint == "http://example.com/api"
         assert tc.adapter_config == {"timeout": 45, "retries": 3}
+
+    def test_load_from_directory_skips_config_files(self, tmp_path):
+        """Test that config.yaml and config.yml files are skipped."""
+        test_dir = tmp_path / "test_cases"
+        test_dir.mkdir()
+
+        # Create a valid test case
+        (test_dir / "test_case.yaml").write_text(
+            """
+name: actual_test
+input:
+  query: test
+expected:
+  tools: []
+thresholds:
+  min_score: 50.0
+"""
+        )
+
+        # Create config files that should be skipped
+        (test_dir / "config.yaml").write_text(
+            """
+adapter: http
+endpoint: http://localhost:8000/execute
+"""
+        )
+
+        (test_dir / "config.yml").write_text(
+            """
+adapter: langgraph
+endpoint: http://localhost:8001/execute
+"""
+        )
+
+        # Should only load the test case, not the config files
+        test_cases = TestCaseLoader.load_from_directory(test_dir)
+        assert len(test_cases) == 1
+        assert test_cases[0].name == "actual_test"
