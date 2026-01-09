@@ -53,6 +53,48 @@ jobs:
         uv run evalview --help 2>&1 | tee help-output.txt
         echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
 
+    - name: Run dogfood self-tests
+      id: dogfood
+      continue-on-error: true
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: |
+        # Skip if no API key
+        if [ -z "$OPENAI_API_KEY" ]; then
+          echo "Skipping dogfood tests - no OPENAI_API_KEY secret configured"
+          echo "exit_code=0" >> $GITHUB_OUTPUT
+          echo "skipped=true" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        # Start dogfood agent in background
+        uv run python dogfood/agent.py &
+        AGENT_PID=$!
+
+        # Wait for agent to be ready
+        for i in {1..30}; do
+          if curl -s http://localhost:8001/health > /dev/null 2>&1; then
+            echo "Dogfood agent ready"
+            break
+          fi
+          sleep 1
+        done
+
+        # Update config to use dogfood agent
+        sed -i 's|localhost:8000|localhost:8001|g' .evalview/config.yaml
+
+        # Run dogfood tests
+        uv run evalview run dogfood/test-cases/ --sequential 2>&1 | tee dogfood-output.txt
+        EXIT_CODE=${PIPESTATUS[0]}
+
+        # Cleanup
+        kill $AGENT_PID 2>/dev/null || true
+
+        # Restore config
+        sed -i 's|localhost:8001|localhost:8000|g' .evalview/config.yaml
+
+        echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+
     - name: Check for failures
       id: check
       run: |
@@ -72,6 +114,10 @@ jobs:
 
         if [ "${{ steps.help.outputs.exit_code }}" != "0" ]; then
           FAILED="${FAILED}help,"
+        fi
+
+        if [ "${{ steps.dogfood.outputs.exit_code }}" != "0" ] && [ "${{ steps.dogfood.outputs.skipped }}" != "true" ]; then
+          FAILED="${FAILED}dogfood,"
         fi
 
         if [ -n "$FAILED" ]; then
@@ -159,4 +205,12 @@ jobs:
           echo "✅ evalview --help passed" >> $GITHUB_STEP_SUMMARY
         else
           echo "❌ evalview --help failed" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        if [ "${{ steps.dogfood.outputs.skipped }}" == "true" ]; then
+          echo "⏭️ dogfood self-tests skipped (no API key)" >> $GITHUB_STEP_SUMMARY
+        elif [ "${{ steps.dogfood.outputs.exit_code }}" == "0" ]; then
+          echo "✅ dogfood self-tests passed" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ dogfood self-tests failed" >> $GITHUB_STEP_SUMMARY
         fi
