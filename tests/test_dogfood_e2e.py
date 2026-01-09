@@ -9,7 +9,6 @@ This is true dogfooding - we're testing that EvalView's evaluation logic
 correctly identifies good vs bad agent behavior.
 """
 
-import asyncio
 import os
 import signal
 import subprocess
@@ -20,8 +19,13 @@ from typing import Generator
 import pytest
 
 from evalview.adapters.http_adapter import HTTPAdapter
-from evalview.core.loader import TestCaseLoader
-from evalview.core.types import TestCase, TestInput, ExpectedBehavior, ExpectedOutput, Thresholds
+from evalview.core.types import (
+    TestCase,
+    TestInput,
+    ExpectedBehavior,
+    ExpectedOutput,
+    Thresholds,
+)
 from evalview.evaluators.evaluator import Evaluator
 from evalview.evaluators.tool_call_evaluator import ToolCallEvaluator
 from evalview.evaluators.sequence_evaluator import SequenceEvaluator
@@ -179,9 +183,9 @@ class TestBadAgentBehavior:
         trace = await adapter.execute(test_case.input.query)
         result = await evaluator.evaluate(test_case, trace)
 
-        # Agent returns "1014" instead of "15", should fail not_contains check
+        # Agent returns "1014" instead of "15", should fail contains check
         assert (
-            not result.passed or result.evaluations.output_quality.contains.failed
+            not result.passed or result.evaluations.output_quality.contains_checks.failed
         ), "EvalView should detect wrong answer"
 
     @pytest.mark.asyncio

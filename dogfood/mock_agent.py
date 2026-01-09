@@ -171,7 +171,7 @@ def handle_multi_step(query: str) -> tuple[str, List[ToolCall]]:
     )
 
 
-def handle_no_tools(query: str) -> tuple[str, List[ToolCall]]:
+def handle_no_tools(_query: str) -> tuple[str, List[ToolCall]]:
     """Answer without using any tools."""
     return (
         "I can answer this from my knowledge: The sky is blue because of Rayleigh scattering.",
@@ -210,8 +210,6 @@ async def execute(request: ExecuteRequest):
         output, tool_calls = handle_hallucinate(query)
     elif "no tools" in query_lower:
         output, tool_calls = handle_no_tools(query)
-    elif "wrong tool" in query_lower:
-        output, tool_calls = handle_wrong_tool(query)
     else:
         output = f"I received your query: {query}"
         tool_calls = []
