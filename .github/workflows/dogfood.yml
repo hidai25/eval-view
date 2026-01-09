@@ -6,6 +6,10 @@ on:
     - cron: '0 9 * * *'
   workflow_dispatch:  # Allow manual trigger
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   dogfood:
     name: Dogfood Tests

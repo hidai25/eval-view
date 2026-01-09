@@ -5,8 +5,11 @@ for known-good and known-bad agent outputs. This is real dogfooding -
 testing the core evaluation logic, not just the chat interface.
 """
 
-import pytest
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+import pytest
+
 from evalview.core.types import (
     TestCase,
     ExecutionTrace,
@@ -31,10 +34,10 @@ from evalview.evaluators.hallucination_evaluator import HallucinationEvaluator
 
 def make_test_case(
     query: str = "test query",
-    expected_tools: list = None,
-    expected_sequence: list = None,
-    contains: list = None,
-    not_contains: list = None,
+    expected_tools: Optional[List[str]] = None,
+    expected_sequence: Optional[List[str]] = None,
+    contains: Optional[List[str]] = None,
+    not_contains: Optional[List[str]] = None,
 ) -> TestCase:
     """Create a test case with specified expectations."""
     return TestCase(
@@ -53,19 +56,31 @@ def make_test_case(
 
 
 def make_trace(
-    tool_calls: list = None,
+    tool_calls: Optional[List[str]] = None,
     final_output: str = "",
+    step_outputs: Optional[List[str]] = None,
+    step_params: Optional[List[Dict[str, Any]]] = None,
 ) -> ExecutionTrace:
-    """Create an execution trace with specified tool calls and output."""
+    """Create an execution trace with specified tool calls and output.
+
+    Args:
+        tool_calls: List of tool names that were called.
+        final_output: The agent's final response.
+        step_outputs: Optional list of outputs for each step (defaults to "tool output").
+        step_params: Optional list of parameters for each step (defaults to {}).
+    """
     steps = []
-    for i, tool_name in enumerate(tool_calls or []):
+    tool_list = tool_calls or []
+    for i, tool_name in enumerate(tool_list):
+        output = step_outputs[i] if step_outputs and i < len(step_outputs) else "tool output"
+        params = step_params[i] if step_params and i < len(step_params) else {}
         steps.append(
             StepTrace(
                 step_id=f"step_{i}",
-                step_name=f"Step {i+1}",
+                step_name=f"Step {i + 1}",
                 tool_name=tool_name,
-                parameters={},
-                output="tool output",
+                parameters=params,
+                output=output,
                 success=True,
                 metrics=StepMetrics(latency=100.0, cost=0.001),
             )
@@ -303,8 +318,7 @@ class TestOutputContainsAccuracy:
 
 @pytest.mark.asyncio
 @pytest.mark.skipif(
-    not pytest.importorskip("os").environ.get("OPENAI_API_KEY"),
-    reason="OPENAI_API_KEY not set"
+    not pytest.importorskip("os").environ.get("OPENAI_API_KEY"), reason="OPENAI_API_KEY not set"
 )
 class TestOutputEvaluatorLLMAccuracy:
     """Test LLM-as-judge scoring with obvious good/bad responses.
@@ -374,8 +388,7 @@ class TestOutputEvaluatorLLMAccuracy:
 
 @pytest.mark.asyncio
 @pytest.mark.skipif(
-    not pytest.importorskip("os").environ.get("OPENAI_API_KEY"),
-    reason="OPENAI_API_KEY not set"
+    not pytest.importorskip("os").environ.get("OPENAI_API_KEY"), reason="OPENAI_API_KEY not set"
 )
 class TestHallucinationEvaluatorAccuracy:
     """Test hallucination detection with obvious true/false cases."""
@@ -389,24 +402,11 @@ class TestHallucinationEvaluatorAccuracy:
         test_case = make_test_case(query="What is 2 + 2?")
 
         # Create trace with tool that returns the answer
-        now = datetime.now()
-        trace = ExecutionTrace(
-            session_id="test",
-            start_time=now,
-            end_time=now,
-            steps=[
-                StepTrace(
-                    step_id="step_0",
-                    step_name="Calculate",
-                    tool_name="calculator",
-                    parameters={"expression": "2 + 2"},
-                    output="4",
-                    success=True,
-                    metrics=StepMetrics(latency=10.0, cost=0.0),
-                )
-            ],
+        trace = make_trace(
+            tool_calls=["calculator"],
+            step_outputs=["4"],
+            step_params=[{"expression": "2 + 2"}],
             final_output="Based on the calculation, 2 + 2 equals 4.",
-            metrics=ExecutionMetrics(total_latency=100.0, total_cost=0.001),
         )
 
         result = await evaluator.evaluate(test_case, trace)
@@ -418,21 +418,21 @@ class TestHallucinationEvaluatorAccuracy:
         test_case = make_test_case(query="What is the weather?")
 
         # No tool output, but response claims specific data
-        now = datetime.now()
-        trace = ExecutionTrace(
-            session_id="test",
-            start_time=now,
-            end_time=now,
-            steps=[],  # No tools called
-            final_output="The weather in Paris is exactly 23.5°C with 45% humidity and winds from the northwest at 12 km/h. The forecast shows rain at 3:47 PM.",
-            metrics=ExecutionMetrics(total_latency=100.0, total_cost=0.001),
+        trace = make_trace(
+            tool_calls=[],  # No tools called
+            final_output=(
+                "The weather in Paris is exactly 23.5C with 45% humidity "
+                "and winds from the northwest at 12 km/h. "
+                "The forecast shows rain at 3:47 PM."
+            ),
         )
 
         result = await evaluator.evaluate(test_case, trace)
 
         # Should detect hallucination with some confidence
-        assert result.has_hallucination is True or result.confidence > 0.5, \
-            f"Missed hallucination: {result.details}"
+        assert (
+            result.has_hallucination is True or result.confidence > 0.5
+        ), f"Missed hallucination: {result.details}"
 
 
 # =============================================================================
