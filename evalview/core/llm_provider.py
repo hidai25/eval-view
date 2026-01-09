@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 class LLMProvider(Enum):
     """Supported LLM providers for evaluation."""
+
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     GEMINI = "gemini"
@@ -29,6 +30,7 @@ class AvailableProvider(NamedTuple):
     Note: This contains the API key, NOT the model name.
     Use PROVIDER_CONFIGS[provider].default_model to get the default model.
     """
+
     provider: LLMProvider
     api_key: str
 
@@ -36,6 +38,7 @@ class AvailableProvider(NamedTuple):
 @dataclass
 class ProviderConfig:
     """Configuration for an LLM provider."""
+
     name: str
     env_var: str
     default_model: str
@@ -385,7 +388,17 @@ class LLMClient:
         model_lower = self.model.lower()
 
         # Ollama-specific models (not available on OpenAI/Anthropic)
-        ollama_models = ["llama", "mistral", "codellama", "phi", "gemma", "qwen", "deepseek", "vicuna", "orca"]
+        ollama_models = [
+            "llama",
+            "mistral",
+            "codellama",
+            "phi",
+            "gemma",
+            "qwen",
+            "deepseek",
+            "vicuna",
+            "orca",
+        ]
         # OpenAI-specific models
         openai_models = ["gpt-4", "gpt-3.5", "gpt-5", "o1", "o3"]
         # Anthropic-specific models
@@ -448,28 +461,46 @@ class LLMClient:
             Text chunks as they generated
         """
         if self.provider == LLMProvider.OPENAI:
-            async for chunk in self._openai_stream(system_prompt, user_prompt, temperature, max_tokens):
+            async for chunk in self._openai_stream(
+                system_prompt, user_prompt, temperature, max_tokens
+            ):
                 yield chunk
         elif self.provider == LLMProvider.ANTHROPIC:
-            async for chunk in self._anthropic_stream(system_prompt, user_prompt, temperature, max_tokens):
+            async for chunk in self._anthropic_stream(
+                system_prompt, user_prompt, temperature, max_tokens
+            ):
                 yield chunk
         elif self.provider == LLMProvider.OLLAMA:
-            async for chunk in self._ollama_stream(system_prompt, user_prompt, temperature, max_tokens):
+            async for chunk in self._ollama_stream(
+                system_prompt, user_prompt, temperature, max_tokens
+            ):
                 yield chunk
         elif self.provider == LLMProvider.GEMINI:
-            async for chunk in self._gemini_stream(system_prompt, user_prompt, temperature, max_tokens):
+            async for chunk in self._gemini_stream(
+                system_prompt, user_prompt, temperature, max_tokens
+            ):
                 yield chunk
         elif self.provider == LLMProvider.GROK:
-             # Grok uses OpenAI-compatible API
-            async for chunk in self._openai_stream(system_prompt, user_prompt, temperature, max_tokens, base_url="https://api.x.ai/v1"):
+            # Grok uses OpenAI-compatible API
+            async for chunk in self._openai_stream(
+                system_prompt, user_prompt, temperature, max_tokens, base_url="https://api.x.ai/v1"
+            ):
                 yield chunk
         elif self.provider == LLMProvider.HUGGINGFACE:
-             # HF uses OpenAI-compatible API
-            async for chunk in self._openai_stream(system_prompt, user_prompt, temperature, max_tokens, base_url="https://router.huggingface.co/v1"):
+            # HF uses OpenAI-compatible API
+            async for chunk in self._openai_stream(
+                system_prompt,
+                user_prompt,
+                temperature,
+                max_tokens,
+                base_url="https://router.huggingface.co/v1",
+            ):
                 yield chunk
         else:
             # Fallback for unsupported streaming providers: wait for full response then yield it
-            response = await self.chat_completion(system_prompt, user_prompt, temperature, max_tokens)
+            response = await self.chat_completion(
+                system_prompt, user_prompt, temperature, max_tokens
+            )
             # Try to find a text field in the JSON response, or dump the whole thing
             if isinstance(response, dict):
                 # Heuristics to find the "content"
@@ -519,13 +550,14 @@ class LLMClient:
             if chunk.choices and chunk.choices[0].delta.content:
                 content = chunk.choices[0].delta.content
                 yield content
-            
+
             # Track usage if available in last chunk (OpenAI spec)
             if hasattr(chunk, "usage") and chunk.usage:
                 judge_cost_tracker.add_usage(
-                    self.provider.value, self.model,
+                    self.provider.value,
+                    self.model,
                     chunk.usage.prompt_tokens,
-                    chunk.usage.completion_tokens
+                    chunk.usage.completion_tokens,
                 )
 
     async def _anthropic_stream(
@@ -549,14 +581,15 @@ class LLMClient:
         ) as stream:
             async for text in stream.text_stream:
                 yield text
-            
+
             # Track usage
             final_message = await stream.get_final_message()
             if final_message.usage:
                 judge_cost_tracker.add_usage(
-                    "anthropic", self.model,
+                    "anthropic",
+                    self.model,
                     final_message.usage.input_tokens,
-                    final_message.usage.output_tokens
+                    final_message.usage.output_tokens,
                 )
 
     async def _ollama_stream(
@@ -598,7 +631,7 @@ class LLMClient:
                 temperature=temperature,
                 max_output_tokens=max_tokens,
             ),
-            stream=True
+            stream=True,
         )
 
         async for chunk in response_stream:
@@ -636,9 +669,7 @@ class LLMClient:
                 system_prompt, user_prompt, temperature, max_tokens
             )
         elif self.provider == LLMProvider.GROK:
-            return await self._grok_completion(
-                system_prompt, user_prompt, temperature, max_tokens
-            )
+            return await self._grok_completion(system_prompt, user_prompt, temperature, max_tokens)
         elif self.provider == LLMProvider.HUGGINGFACE:
             return await self._huggingface_completion(
                 system_prompt, user_prompt, temperature, max_tokens
@@ -685,9 +716,7 @@ class LLMClient:
         # Track usage
         if response.usage:
             judge_cost_tracker.add_usage(
-                "openai", self.model,
-                response.usage.prompt_tokens,
-                response.usage.completion_tokens
+                "openai", self.model, response.usage.prompt_tokens, response.usage.completion_tokens
             )
 
         return json.loads(response.choices[0].message.content or "{}")
@@ -718,9 +747,7 @@ class LLMClient:
         # Track usage
         if response.usage:
             judge_cost_tracker.add_usage(
-                "anthropic", self.model,
-                response.usage.input_tokens,
-                response.usage.output_tokens
+                "anthropic", self.model, response.usage.input_tokens, response.usage.output_tokens
             )
 
         # Extract text from response
@@ -861,7 +888,7 @@ class LLMClient:
         # Strategy 2: Remove markdown code blocks
         if "```" in text:
             # Extract content between code blocks
-            match = re.search(r'```(?:json)?\s*([\s\S]*?)```', text)
+            match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
             if match:
                 try:
                     return json.loads(match.group(1).strip())
@@ -869,7 +896,7 @@ class LLMClient:
                     pass
 
         # Strategy 3: Find JSON object pattern { ... }
-        match = re.search(r'\{[\s\S]*\}', text)
+        match = re.search(r"\{[\s\S]*\}", text)
         if match:
             try:
                 return json.loads(match.group(0))
@@ -881,14 +908,14 @@ class LLMClient:
         logger.warning(f"Could not parse JSON from Ollama response: {text[:200]}...")
 
         # Try to extract a score from the text if mentioned
-        score_match = re.search(r'(\d{1,3})(?:/100|%| out of 100| points)', text.lower())
+        score_match = re.search(r"(\d{1,3})(?:/100|%| out of 100| points)", text.lower())
         score = int(score_match.group(1)) if score_match else 70
 
         return {
             "score": min(score, 100),
             "reasoning": f"Auto-extracted from non-JSON response: {text[:500]}",
             "strengths": ["Response generated"],
-            "weaknesses": ["Model did not return valid JSON format"]
+            "weaknesses": ["Model did not return valid JSON format"],
         }
 
     async def _ollama_completion(
@@ -930,9 +957,7 @@ Do not include any text before or after the JSON. Do not use markdown code block
         # Track usage (Ollama is free but we track tokens for visibility)
         if response.usage:
             judge_cost_tracker.add_usage(
-                "ollama", self.model,
-                response.usage.prompt_tokens,
-                response.usage.completion_tokens
+                "ollama", self.model, response.usage.prompt_tokens, response.usage.completion_tokens
             )
 
         text = response.choices[0].message.content or "{}"
@@ -954,9 +979,13 @@ def get_missing_provider_message() -> str:
     lines.append("  [cyan]export ANTHROPIC_API_KEY='your-key-here'[/cyan]")
     lines.append("\nOr add to your .env file:")
     lines.append("  [cyan]echo 'ANTHROPIC_API_KEY=your-key-here' >> .env[/cyan]")
-    lines.append("\n[dim]Tip: Set EVAL_PROVIDER to choose a specific provider (openai, anthropic, gemini, grok, huggingface, ollama)[/dim]")
+    lines.append(
+        "\n[dim]Tip: Set EVAL_PROVIDER to choose a specific provider (openai, anthropic, gemini, grok, huggingface, ollama)[/dim]"
+    )
     lines.append("[dim]Tip: Set EVAL_MODEL to use a specific model[/dim]")
-    lines.append("[dim]Tip: Use Ollama for free local evaluation - just run 'ollama serve' (no API key needed)[/dim]\n")
+    lines.append(
+        "[dim]Tip: Use Ollama for free local evaluation - just run 'ollama serve' (no API key needed)[/dim]\n"
+    )
     lines.append("Get API keys at:")
 
     for provider, config in PROVIDER_CONFIGS.items():
@@ -1017,7 +1046,9 @@ def interactive_provider_selection(console) -> Optional[Tuple[LLMProvider, str]]
     # Show recommendation if any keys are available
     if available:
         available_names = [PROVIDER_CONFIGS[p].display_name for p, _ in available]
-        console.print(f"\n[dim]Recommended: {', '.join(available_names)} (API key already set)[/dim]")
+        console.print(
+            f"\n[dim]Recommended: {', '.join(available_names)} (API key already set)[/dim]"
+        )
 
     console.print()
 
@@ -1047,7 +1078,9 @@ def interactive_provider_selection(console) -> Optional[Tuple[LLMProvider, str]]
                     return provider, api_key
                 else:
                     # User chose a provider without a key - offer alternatives
-                    console.print(f"\n[yellow]You don't have an API key for {config.display_name}.[/yellow]")
+                    console.print(
+                        f"\n[yellow]You don't have an API key for {config.display_name}.[/yellow]"
+                    )
 
                     if available:
                         # Offer to use an available provider instead
@@ -1056,7 +1089,9 @@ def interactive_provider_selection(console) -> Optional[Tuple[LLMProvider, str]]
                         console.print(f"  [cyan]1.[/cyan] Add {config.display_name} API key")
                         for i, (avail_provider, _) in enumerate(available, 2):
                             avail_config = PROVIDER_CONFIGS[avail_provider]
-                            console.print(f"  [green]{i}.[/green] Use {avail_config.display_name} instead [dim](API key available)[/dim]")
+                            console.print(
+                                f"  [green]{i}.[/green] Use {avail_config.display_name} instead [dim](API key available)[/dim]"
+                            )
 
                         console.print()
                         sub_choice = console.input("[bold]Enter choice: [/bold]").strip()
@@ -1066,7 +1101,9 @@ def interactive_provider_selection(console) -> Optional[Tuple[LLMProvider, str]]
                             console.print(f"\n[bold]To add {config.display_name} API key:[/bold]")
                             console.print(f"  [cyan]export {config.env_var}='your-key-here'[/cyan]")
                             console.print("\nOr add to .env.local:")
-                            console.print(f"  [cyan]echo '{config.env_var}=your-key-here' >> .env.local[/cyan]")
+                            console.print(
+                                f"  [cyan]echo '{config.env_var}=your-key-here' >> .env.local[/cyan]"
+                            )
                             console.print(f"\n[dim]Get your API key at: {config.api_key_url}[/dim]")
                             return None
                         else:
@@ -1076,7 +1113,9 @@ def interactive_provider_selection(console) -> Optional[Tuple[LLMProvider, str]]
                                 if 0 <= sub_idx < len(available):
                                     alt_provider, alt_api_key = available[sub_idx]
                                     alt_config = PROVIDER_CONFIGS[alt_provider]
-                                    console.print(f"\n[green]Using {alt_config.display_name}[/green]")
+                                    console.print(
+                                        f"\n[green]Using {alt_config.display_name}[/green]"
+                                    )
                                     return alt_provider, alt_api_key
                             except (ValueError, IndexError):
                                 pass
@@ -1088,7 +1127,9 @@ def interactive_provider_selection(console) -> Optional[Tuple[LLMProvider, str]]
                         console.print(f"\n[bold]To add {config.display_name} API key:[/bold]")
                         console.print(f"  [cyan]export {config.env_var}='your-key-here'[/cyan]")
                         console.print("\nOr add to .env.local:")
-                        console.print(f"  [cyan]echo '{config.env_var}=your-key-here' >> .env.local[/cyan]")
+                        console.print(
+                            f"  [cyan]echo '{config.env_var}=your-key-here' >> .env.local[/cyan]"
+                        )
                         console.print(f"\n[dim]Get your API key at: {config.api_key_url}[/dim]")
                         return None
             else:
@@ -1126,7 +1167,9 @@ def save_provider_preference(provider: LLMProvider) -> None:
         f.writelines(new_lines)
 
 
-def get_or_select_provider(console, force_interactive: bool = False) -> Optional[Tuple[LLMProvider, str]]:
+def get_or_select_provider(
+    console, force_interactive: bool = False
+) -> Optional[Tuple[LLMProvider, str]]:
     """Get provider from env or interactively select one.
 
     Logic:
@@ -1161,7 +1204,9 @@ def get_or_select_provider(console, force_interactive: bool = False) -> Optional
                     console.print(f"[dim]Using {config.display_name} (from EVAL_PROVIDER)[/dim]")
                     return env_provider, "ollama"
                 else:
-                    console.print(f"[yellow]EVAL_PROVIDER=ollama but Ollama is not running[/yellow]")
+                    console.print(
+                        f"[yellow]EVAL_PROVIDER=ollama but Ollama is not running[/yellow]"
+                    )
                     console.print(f"[dim]Start Ollama with: ollama serve[/dim]")
                     # Fall through to interactive selection
             else:
@@ -1170,7 +1215,9 @@ def get_or_select_provider(console, force_interactive: bool = False) -> Optional
                     console.print(f"[dim]Using {config.display_name} (from EVAL_PROVIDER)[/dim]")
                     return env_provider, api_key
                 else:
-                    console.print(f"[yellow]EVAL_PROVIDER={env_provider.value} but {config.env_var} not set[/yellow]")
+                    console.print(
+                        f"[yellow]EVAL_PROVIDER={env_provider.value} but {config.env_var} not set[/yellow]"
+                    )
                     # Fall through to interactive selection
 
     # Only one provider available -> use it automatically

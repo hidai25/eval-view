@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 
 # Load environment variables from .env.local
 from dotenv import load_dotenv
+
 load_dotenv(".env.local")
 
 from fastapi import FastAPI
@@ -18,6 +19,7 @@ from pydantic import BaseModel
 
 # Import EvalView chat internals
 import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from evalview.chat import ChatSession, extract_commands, SYSTEM_PROMPT
@@ -78,7 +80,7 @@ def execute_command(cmd: str) -> str:
             capture_output=True,
             text=True,
             timeout=60,
-            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         )
         output = result.stdout
         if result.stderr:
@@ -101,18 +103,12 @@ async def execute(request: ExecuteRequest):
         user_msgs = [m for m in request.messages if m.get("role") == "user"]
         if not user_msgs:
             return ExecuteResponse(
-                output="No user message provided",
-                tool_calls=[],
-                cost=0.0,
-                latency=0.0
+                output="No user message provided", tool_calls=[], cost=0.0, latency=0.0
             )
         query = user_msgs[-1].get("content", "")
     else:
         return ExecuteResponse(
-            output="Either query or messages must be provided",
-            tool_calls=[],
-            cost=0.0,
-            latency=0.0
+            output="Either query or messages must be provided", tool_calls=[], cost=0.0, latency=0.0
         )
 
     tool_calls = []
@@ -122,10 +118,7 @@ async def execute(request: ExecuteRequest):
         provider, model = get_provider()
     except RuntimeError as e:
         return ExecuteResponse(
-            output=str(e),
-            tool_calls=[],
-            cost=0.0,
-            latency=(time.time() - start) * 1000
+            output=str(e), tool_calls=[], cost=0.0, latency=(time.time() - start) * 1000
         )
 
     # Create chat session and get response
@@ -146,13 +139,15 @@ async def execute(request: ExecuteRequest):
         result = execute_command(cmd)
         cmd_latency = (time.time() - cmd_start) * 1000
 
-        tool_calls.append(ToolCall(
-            name="evalview_cli",
-            arguments={"command": cmd},
-            result=result,
-            latency=cmd_latency,
-            cost=0.0
-        ))
+        tool_calls.append(
+            ToolCall(
+                name="evalview_cli",
+                arguments={"command": cmd},
+                result=result,
+                latency=cmd_latency,
+                cost=0.0,
+            )
+        )
 
     total_latency = (time.time() - start) * 1000
 
@@ -173,7 +168,7 @@ async def execute(request: ExecuteRequest):
         tool_calls=tool_calls,
         cost=cost,
         latency=total_latency,
-        tokens={"input": input_tokens, "output": output_tokens, "cached": 0}
+        tokens={"input": input_tokens, "output": output_tokens, "cached": 0},
     )
 
 
@@ -184,6 +179,7 @@ async def health():
 
 if __name__ == "__main__":
     import uvicorn
+
     print("EvalView Dogfood Agent running on http://localhost:8001")
     print("This wraps EvalView chat mode as an HTTP agent for self-testing")
     uvicorn.run(app, host="0.0.0.0", port=8001, log_level="info")
