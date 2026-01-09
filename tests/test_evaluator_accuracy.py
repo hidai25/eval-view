@@ -5,6 +5,7 @@ for known-good and known-bad agent outputs. This is real dogfooding -
 testing the core evaluation logic, not just the chat interface.
 """
 
+import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -170,6 +171,16 @@ class TestToolCallEvaluatorAccuracy:
         assert set(result.correct) == {"a", "c"}
         assert set(result.missing) == {"b", "d"}
 
+    def test_duplicate_tool_calls_counted_once(self):
+        """Tool called multiple times still counts as one match."""
+        test_case = make_test_case(expected_tools=["calculator"])
+        trace = make_trace(tool_calls=["calculator", "calculator", "calculator"])
+
+        result = self.evaluator.evaluate(test_case, trace)
+
+        assert result.accuracy == 1.0
+        assert "calculator" in result.correct
+
 
 # =============================================================================
 # Sequence Evaluator Accuracy Tests
@@ -310,6 +321,33 @@ class TestOutputContainsAccuracy:
         assert not_contains_result.passed == []
         assert not_contains_result.failed == []
 
+    def test_empty_output_fails_contains(self):
+        """Empty output fails all contains checks."""
+        output = ""
+
+        result = self.evaluator._check_contains(output, ["anything"])
+
+        assert result.passed == []
+        assert result.failed == ["anything"]
+
+    def test_empty_output_passes_not_contains(self):
+        """Empty output passes all not_contains checks."""
+        output = ""
+
+        result = self.evaluator._check_not_contains(output, ["error", "warning"])
+
+        assert set(result.passed) == {"error", "warning"}
+        assert result.failed == []
+
+    def test_substring_matching(self):
+        """Contains matches substrings, not just whole words."""
+        output = "The calculation returned 42"
+
+        result = self.evaluator._check_contains(output, ["calcul", "42", "turn"])
+
+        assert len(result.passed) == 3
+        assert result.failed == []
+
 
 # =============================================================================
 # LLM-Based Evaluator Tests (Require API Key)
@@ -317,9 +355,7 @@ class TestOutputContainsAccuracy:
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(
-    not pytest.importorskip("os").environ.get("OPENAI_API_KEY"), reason="OPENAI_API_KEY not set"
-)
+@pytest.mark.skipif(not os.environ.get("OPENAI_API_KEY"), reason="OPENAI_API_KEY not set")
 class TestOutputEvaluatorLLMAccuracy:
     """Test LLM-as-judge scoring with obvious good/bad responses.
 
@@ -387,9 +423,7 @@ class TestOutputEvaluatorLLMAccuracy:
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(
-    not pytest.importorskip("os").environ.get("OPENAI_API_KEY"), reason="OPENAI_API_KEY not set"
-)
+@pytest.mark.skipif(not os.environ.get("OPENAI_API_KEY"), reason="OPENAI_API_KEY not set")
 class TestHallucinationEvaluatorAccuracy:
     """Test hallucination detection with obvious true/false cases."""
 
