@@ -49,14 +49,22 @@ class Evaluator:
         """
         self.tool_evaluator = ToolCallEvaluator()
         self.sequence_evaluator = SequenceEvaluator()
-        self.output_evaluator = OutputEvaluator()
         self.cost_evaluator = CostEvaluator()
         self.latency_evaluator = LatencyEvaluator()
-        self.hallucination_evaluator = HallucinationEvaluator()
-        self.safety_evaluator = SafetyEvaluator()
         self.default_weights = default_weights or DEFAULT_WEIGHTS
         self.skip_llm_judge = skip_llm_judge
         self._logged_deterministic_mode = False
+
+        # Only initialize LLM-dependent evaluators when needed
+        # This avoids requiring API keys for deterministic mode
+        if not skip_llm_judge:
+            self.output_evaluator = OutputEvaluator()
+            self.hallucination_evaluator = HallucinationEvaluator()
+            self.safety_evaluator = SafetyEvaluator()
+        else:
+            self.output_evaluator = None
+            self.hallucination_evaluator = None
+            self.safety_evaluator = None
 
     async def evaluate(
         self, test_case: TestCase, trace: ExecutionTrace, adapter_name: Optional[str] = None
