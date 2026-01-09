@@ -1,0 +1,19 @@
+# Test: Agent uses calculator but returns WRONG answer
+# Expected: EvalView should score this LOW (<= 50) due to incorrect output
+name: wrong_answer_detection
+description: Agent uses calculator but returns wrong answer - EvalView should catch this
+
+input:
+  query: "Calculate 10 + 5 wrong"
+
+expected:
+  tools:
+    - calculator
+  output:
+    contains:
+      - "15"  # The correct answer that should be in output
+    not_contains:
+      - "1014"  # The wrong answer the agent will give
+
+thresholds:
+  min_score: 80  # This SHOULD fail - agent gives wrong answer

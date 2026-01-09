@@ -1,0 +1,6 @@
+# Configuration for mock agent dogfood tests
+adapter: http
+endpoint: http://localhost:8002/execute
+
+# These tests use the deterministic mock agent
+# to verify EvalView's evaluation logic is correct

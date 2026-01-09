@@ -1,0 +1,18 @@
+# Test: Agent correctly uses search tool
+# Expected: EvalView should score this HIGH (>= 80)
+name: correct_search
+description: Agent uses search tool and returns relevant results
+
+input:
+  query: "Search for Python tutorials"
+
+expected:
+  tools:
+    - search
+  output:
+    contains:
+      - "Python"
+      - "results"
+
+thresholds:
+  min_score: 80

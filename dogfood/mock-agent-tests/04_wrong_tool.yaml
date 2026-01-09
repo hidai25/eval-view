@@ -1,0 +1,17 @@
+# Test: Agent uses WRONG tool for the task
+# Expected: EvalView should score this LOW due to wrong tool usage
+name: wrong_tool_detection
+description: Agent uses weather tool instead of calculator - EvalView should catch this
+
+input:
+  query: "Calculate 8 * 4 wrong tool"
+
+expected:
+  tools:
+    - calculator  # We expect calculator, but agent uses weather
+  output:
+    contains:
+      - "32"  # Correct answer
+
+thresholds:
+  min_score: 80  # This SHOULD fail - wrong tool used

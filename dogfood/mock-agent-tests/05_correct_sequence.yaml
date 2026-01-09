@@ -1,0 +1,22 @@
+# Test: Agent correctly executes multi-step sequence
+# Expected: EvalView should score this HIGH with correct sequence
+name: correct_sequence
+description: Agent executes search then summarize in correct order
+
+input:
+  query: "Search for EvalView and summarize the results"
+
+expected:
+  tools:
+    - search
+    - summarize
+  tool_sequence:
+    - search
+    - summarize
+  output:
+    contains:
+      - "EvalView"
+      - "testing"
+
+thresholds:
+  min_score: 80

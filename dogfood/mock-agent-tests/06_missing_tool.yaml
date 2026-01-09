@@ -1,0 +1,17 @@
+# Test: Agent doesn't use required tools
+# Expected: EvalView should score this LOW due to missing tool
+name: missing_tool_detection
+description: Agent answers without using required calculator tool
+
+input:
+  query: "Answer with no tools please"
+
+expected:
+  tools:
+    - calculator  # We require calculator, but agent won't use any tools
+  output:
+    contains:
+      - "answer"
+
+thresholds:
+  min_score: 80  # This SHOULD fail - missing required tool

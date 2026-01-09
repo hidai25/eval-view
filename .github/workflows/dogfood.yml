@@ -72,7 +72,18 @@ jobs:
         uv run evalview --help 2>&1 | tee help-output.txt
         echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
 
-    - name: Run dogfood self-tests
+    - name: Run e2e dogfood tests (mock agent)
+      id: dogfood_e2e
+      continue-on-error: true
+      run: |
+        # Install mock agent dependencies
+        uv pip install fastapi uvicorn httpx
+
+        # Run e2e dogfood tests (starts mock agent automatically via fixture)
+        uv run pytest tests/test_dogfood_e2e.py -v --tb=short 2>&1 | tee dogfood-e2e-output.txt
+        echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+
+    - name: Run dogfood self-tests (chat mode)
       id: dogfood
       continue-on-error: true
       env:
@@ -80,7 +91,7 @@ jobs:
       run: |
         # Skip if no API key
         if [ -z "$OPENAI_API_KEY" ]; then
-          echo "Skipping dogfood tests - no OPENAI_API_KEY secret configured"
+          echo "Skipping chat mode dogfood tests - no OPENAI_API_KEY secret configured"
           echo "exit_code=0" >> $GITHUB_OUTPUT
           echo "skipped=true" >> $GITHUB_OUTPUT
           exit 0
@@ -138,6 +149,10 @@ jobs:
 
         if [ "${{ steps.help.outputs.exit_code }}" != "0" ]; then
           FAILED="${FAILED}help,"
+        fi
+
+        if [ "${{ steps.dogfood_e2e.outputs.exit_code }}" != "0" ]; then
+          FAILED="${FAILED}dogfood-e2e,"
         fi
 
         if [ "${{ steps.dogfood.outputs.exit_code }}" != "0" ] && [ "${{ steps.dogfood.outputs.skipped }}" != "true" ]; then
@@ -237,6 +252,12 @@ jobs:
           echo "✅ evalview --help passed" >> $GITHUB_STEP_SUMMARY
         else
           echo "❌ evalview --help failed" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        if [ "${{ steps.dogfood_e2e.outputs.exit_code }}" == "0" ]; then
+          echo "✅ e2e dogfood tests passed (12 tests)" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ e2e dogfood tests failed" >> $GITHUB_STEP_SUMMARY
         fi
 
         if [ "${{ steps.dogfood.outputs.skipped }}" == "true" ]; then

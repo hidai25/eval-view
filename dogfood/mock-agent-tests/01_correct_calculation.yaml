@@ -1,0 +1,20 @@
+# Test: Agent correctly uses calculator and returns right answer
+# Expected: EvalView should score this HIGH (>= 80)
+name: correct_calculation
+description: Agent uses calculator tool and returns correct answer
+
+input:
+  query: "Calculate 15 * 7"
+
+expected:
+  tools:
+    - calculator
+  output:
+    contains:
+      - "105"
+    not_contains:
+      - "error"
+      - "wrong"
+
+thresholds:
+  min_score: 80
