@@ -67,6 +67,13 @@ jobs:
           exit 0
         fi
 
+        # Install dogfood agent dependencies
+        uv pip install fastapi uvicorn python-dotenv
+
+        # Create config directory and file
+        mkdir -p .evalview
+        cp dogfood/config.yaml .evalview/config.yaml
+
         # Start dogfood agent in background
         uv run python dogfood/agent.py &
         AGENT_PID=$!
@@ -80,18 +87,12 @@ jobs:
           sleep 1
         done
 
-        # Update config to use dogfood agent
-        sed -i 's|localhost:8000|localhost:8001|g' .evalview/config.yaml
-
         # Run dogfood tests
         uv run evalview run dogfood/test-cases/ --sequential 2>&1 | tee dogfood-output.txt
         EXIT_CODE=${PIPESTATUS[0]}
 
         # Cleanup
         kill $AGENT_PID 2>/dev/null || true
-
-        # Restore config
-        sed -i 's|localhost:8001|localhost:8000|g' .evalview/config.yaml
 
         echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
 
