@@ -100,7 +100,7 @@ class TestToolCallEvaluatorAccuracy:
         result = self.evaluator.evaluate(test_case, trace)
 
         assert result.accuracy == 1.0
-        assert result.correct == ["calculator", "search"]
+        assert set(result.correct) == {"calculator", "search"}
         assert result.missing == []
 
     def test_missing_tool_reduces_score(self):
@@ -122,7 +122,7 @@ class TestToolCallEvaluatorAccuracy:
         result = self.evaluator.evaluate(test_case, trace)
 
         assert result.accuracy == 0.0
-        assert result.missing == ["calculator", "search"]
+        assert set(result.missing) == {"calculator", "search"}
 
     def test_extra_tools_dont_reduce_score(self):
         """Extra unexpected tools don't reduce accuracy."""
@@ -389,8 +389,11 @@ class TestHallucinationEvaluatorAccuracy:
         test_case = make_test_case(query="What is 2 + 2?")
 
         # Create trace with tool that returns the answer
+        now = datetime.now()
         trace = ExecutionTrace(
             session_id="test",
+            start_time=now,
+            end_time=now,
             steps=[
                 StepTrace(
                     step_id="step_0",
@@ -403,8 +406,7 @@ class TestHallucinationEvaluatorAccuracy:
                 )
             ],
             final_output="Based on the calculation, 2 + 2 equals 4.",
-            total_latency=100.0,
-            total_cost=0.001,
+            metrics=ExecutionMetrics(total_latency=100.0, total_cost=0.001),
         )
 
         result = await evaluator.evaluate(test_case, trace)
@@ -416,12 +418,14 @@ class TestHallucinationEvaluatorAccuracy:
         test_case = make_test_case(query="What is the weather?")
 
         # No tool output, but response claims specific data
+        now = datetime.now()
         trace = ExecutionTrace(
             session_id="test",
+            start_time=now,
+            end_time=now,
             steps=[],  # No tools called
             final_output="The weather in Paris is exactly 23.5°C with 45% humidity and winds from the northwest at 12 km/h. The forecast shows rain at 3:47 PM.",
-            total_latency=100.0,
-            total_cost=0.001,
+            metrics=ExecutionMetrics(total_latency=100.0, total_cost=0.001),
         )
 
         result = await evaluator.evaluate(test_case, trace)
