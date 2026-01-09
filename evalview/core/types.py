@@ -138,6 +138,15 @@ class TestCase(BaseModel):
     # Optional: Model override for this specific test
     model: Optional[str] = None  # e.g., "claude-sonnet-4-5-20250929", "gpt-4o"
 
+    # Optional: Suite type for categorization (capability vs regression)
+    # - "capability": Tests that measure what the agent CAN do (expect lower pass rates, hill-climbing)
+    # - "regression": Tests that verify the agent STILL works (expect ~100% pass rate, safety net)
+    # This affects reporting thresholds and how failures are interpreted.
+    suite_type: Optional[str] = Field(
+        default=None,
+        description="Test suite type: 'capability' (hill-climbing) or 'regression' (safety net)"
+    )
+
 
 # ============================================================================
 # Execution Trace Types
@@ -404,6 +413,9 @@ class EvaluationResult(BaseModel):
     input_query: Optional[str] = None
     actual_output: Optional[str] = None
 
+    # Suite type for categorization (capability vs regression)
+    suite_type: Optional[str] = None  # "capability" or "regression"
+
 
 # ============================================================================
 # Statistical/Variance Evaluation Types
@@ -459,6 +471,20 @@ class StatisticalEvaluationResult(BaseModel):
     pass_rate: float = Field(ge=0, le=1, description="Proportion of individual runs that passed")
     required_pass_rate: float = Field(ge=0, le=1, description="Required pass rate threshold")
     failure_reasons: List[str] = Field(default_factory=list, description="Reasons for statistical failure")
+
+    # Industry-standard reliability metrics
+    # pass@k: P(at least 1 success in k trials) = 1 - (1 - pass_rate)^k
+    # Answers: "Will it work if I give it a few tries?"
+    pass_at_k: float = Field(
+        ge=0, le=1,
+        description="Probability of at least one success in k trials. High pass@k means 'it usually finds a solution eventually'"
+    )
+    # pass^k: P(all k trials succeed) = pass_rate^k
+    # Answers: "Will it work reliably every time?"
+    pass_power_k: float = Field(
+        ge=0, le=1,
+        description="Probability of all k trials succeeding. High pass^k means 'it works consistently'"
+    )
 
     # Individual run results (for detailed analysis)
     individual_results: List[EvaluationResult] = Field(default_factory=list, description="Results from each run")

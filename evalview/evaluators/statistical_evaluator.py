@@ -385,6 +385,15 @@ class StatisticalEvaluator:
                 f"CI lower bound {score_stats.confidence_interval_lower:.2f} below min_score {min_score}"
             )
 
+        # Compute industry-standard reliability metrics
+        # pass@k: probability of at least one success in k trials
+        # Formula: 1 - (1 - p)^k where p = pass_rate, k = total_runs
+        pass_at_k = 1 - ((1 - pass_rate) ** total_runs) if pass_rate < 1 else 1.0
+
+        # pass^k: probability of all k trials succeeding
+        # Formula: p^k where p = pass_rate, k = total_runs
+        pass_power_k = pass_rate ** total_runs
+
         return StatisticalEvaluationResult(
             test_case=test_case.name,
             passed=passed,
@@ -398,6 +407,8 @@ class StatisticalEvaluator:
             pass_rate=pass_rate,
             required_pass_rate=required_pass_rate,
             failure_reasons=failure_reasons if failure_reasons else [],
+            pass_at_k=round(pass_at_k, 4),
+            pass_power_k=round(pass_power_k, 4),
             individual_results=results,
             timestamp=datetime.now(),
             variance_config=variance_config,

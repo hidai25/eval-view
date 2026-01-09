@@ -296,8 +296,12 @@ class TestSequenceEvaluator:
         assert result.actual_sequence == ["search", "summarize"]
         assert result.violations == []
 
-    def test_incorrect_sequence_order(self):
-        """Test evaluation with incorrect tool order."""
+    def test_incorrect_sequence_order_subsequence_mode(self):
+        """Test evaluation with incorrect tool order (default subsequence mode).
+
+        In subsequence mode, tools must appear in expected order but can have
+        other tools between them. If order is wrong, it fails.
+        """
         test_case = TestCaseModel(
             name="test",
             input=TestInputModel(query="test"),
@@ -333,7 +337,54 @@ class TestSequenceEvaluator:
             metrics=ExecutionMetrics(total_cost=0.02, total_latency=200.0),
         )
 
-        evaluator = SequenceEvaluator()
+        evaluator = SequenceEvaluator()  # default mode is "subsequence"
+        result = evaluator.evaluate(test_case, trace)
+
+        assert result.correct is False
+        assert result.expected_sequence == ["search", "summarize"]
+        assert result.actual_sequence == ["summarize", "search"]
+        # In subsequence mode, it finds "search" but not "summarize" after it
+        assert len(result.violations) >= 1
+        assert "Missing" in result.violations[0] or "summarize" in result.violations[0]
+
+    def test_incorrect_sequence_order_exact_mode(self):
+        """Test evaluation with incorrect tool order in exact mode."""
+        test_case = TestCaseModel(
+            name="test",
+            input=TestInputModel(query="test"),
+            expected=ExpectedBehavior(tool_sequence=["search", "summarize"]),
+            thresholds=Thresholds(min_score=50.0),
+        )
+
+        trace = ExecutionTrace(
+            session_id="test",
+            start_time=datetime.now(),
+            end_time=datetime.now(),
+            steps=[
+                StepTrace(
+                    step_id="1",
+                    step_name="Summarize",
+                    tool_name="summarize",  # Wrong order
+                    parameters={},
+                    output="result",
+                    success=True,
+                    metrics=StepMetrics(latency=100.0, cost=0.01),
+                ),
+                StepTrace(
+                    step_id="2",
+                    step_name="Search",
+                    tool_name="search",  # Wrong order
+                    parameters={},
+                    output="result",
+                    success=True,
+                    metrics=StepMetrics(latency=100.0, cost=0.01),
+                ),
+            ],
+            final_output="test",
+            metrics=ExecutionMetrics(total_cost=0.02, total_latency=200.0),
+        )
+
+        evaluator = SequenceEvaluator(default_mode="exact")
         result = evaluator.evaluate(test_case, trace)
 
         assert result.correct is False
@@ -343,8 +394,8 @@ class TestSequenceEvaluator:
         assert "Step 1" in result.violations[0]
         assert "Step 2" in result.violations[1]
 
-    def test_length_mismatch(self):
-        """Test evaluation when sequence lengths don't match."""
+    def test_missing_tools_in_sequence(self):
+        """Test evaluation when expected tools are missing (default subsequence mode)."""
         test_case = TestCaseModel(
             name="test",
             input=TestInputModel(query="test"),
@@ -371,13 +422,146 @@ class TestSequenceEvaluator:
             metrics=ExecutionMetrics(total_cost=0.01, total_latency=100.0),
         )
 
-        evaluator = SequenceEvaluator()
+        evaluator = SequenceEvaluator()  # default mode is "subsequence"
+        result = evaluator.evaluate(test_case, trace)
+
+        assert result.correct is False
+        # In subsequence mode, it reports missing tools
+        assert "Missing" in result.violations[0]
+        assert "summarize" in result.violations[0] or "validate" in result.violations[0]
+
+    def test_length_mismatch_exact_mode(self):
+        """Test evaluation when sequence lengths don't match (exact mode)."""
+        test_case = TestCaseModel(
+            name="test",
+            input=TestInputModel(query="test"),
+            expected=ExpectedBehavior(tool_sequence=["search", "summarize", "validate"]),
+            thresholds=Thresholds(min_score=50.0),
+        )
+
+        trace = ExecutionTrace(
+            session_id="test",
+            start_time=datetime.now(),
+            end_time=datetime.now(),
+            steps=[
+                StepTrace(
+                    step_id="1",
+                    step_name="Search",
+                    tool_name="search",
+                    parameters={},
+                    output="result",
+                    success=True,
+                    metrics=StepMetrics(latency=100.0, cost=0.01),
+                )
+            ],
+            final_output="test",
+            metrics=ExecutionMetrics(total_cost=0.01, total_latency=100.0),
+        )
+
+        evaluator = SequenceEvaluator(default_mode="exact")
         result = evaluator.evaluate(test_case, trace)
 
         assert result.correct is False
         assert "Length mismatch" in result.violations[0]
         assert "expected 3 steps" in result.violations[0]
         assert "got 1" in result.violations[0]
+
+    def test_subsequence_with_extra_tools_passes(self):
+        """Test that subsequence mode allows extra tools between expected ones."""
+        test_case = TestCaseModel(
+            name="test",
+            input=TestInputModel(query="test"),
+            expected=ExpectedBehavior(tool_sequence=["search", "summarize"]),
+            thresholds=Thresholds(min_score=50.0),
+        )
+
+        trace = ExecutionTrace(
+            session_id="test",
+            start_time=datetime.now(),
+            end_time=datetime.now(),
+            steps=[
+                StepTrace(
+                    step_id="1",
+                    step_name="Search",
+                    tool_name="search",
+                    parameters={},
+                    output="result",
+                    success=True,
+                    metrics=StepMetrics(latency=100.0, cost=0.01),
+                ),
+                StepTrace(
+                    step_id="2",
+                    step_name="Think",
+                    tool_name="think",  # Extra tool - allowed in subsequence mode
+                    parameters={},
+                    output="result",
+                    success=True,
+                    metrics=StepMetrics(latency=100.0, cost=0.01),
+                ),
+                StepTrace(
+                    step_id="3",
+                    step_name="Summarize",
+                    tool_name="summarize",
+                    parameters={},
+                    output="result",
+                    success=True,
+                    metrics=StepMetrics(latency=100.0, cost=0.01),
+                ),
+            ],
+            final_output="test",
+            metrics=ExecutionMetrics(total_cost=0.03, total_latency=300.0),
+        )
+
+        evaluator = SequenceEvaluator()  # default mode is "subsequence"
+        result = evaluator.evaluate(test_case, trace)
+
+        # Should pass - expected tools appear in order with extra tool in between
+        assert result.correct is True
+        assert result.violations == []
+
+    def test_unordered_mode(self):
+        """Test unordered mode - tools just need to be called, order doesn't matter."""
+        test_case = TestCaseModel(
+            name="test",
+            input=TestInputModel(query="test"),
+            expected=ExpectedBehavior(tool_sequence=["search", "summarize"]),
+            thresholds=Thresholds(min_score=50.0),
+        )
+
+        trace = ExecutionTrace(
+            session_id="test",
+            start_time=datetime.now(),
+            end_time=datetime.now(),
+            steps=[
+                StepTrace(
+                    step_id="1",
+                    step_name="Summarize",
+                    tool_name="summarize",  # Reversed order
+                    parameters={},
+                    output="result",
+                    success=True,
+                    metrics=StepMetrics(latency=100.0, cost=0.01),
+                ),
+                StepTrace(
+                    step_id="2",
+                    step_name="Search",
+                    tool_name="search",
+                    parameters={},
+                    output="result",
+                    success=True,
+                    metrics=StepMetrics(latency=100.0, cost=0.01),
+                ),
+            ],
+            final_output="test",
+            metrics=ExecutionMetrics(total_cost=0.02, total_latency=200.0),
+        )
+
+        evaluator = SequenceEvaluator(default_mode="unordered")
+        result = evaluator.evaluate(test_case, trace)
+
+        # Should pass - both tools were called (order doesn't matter)
+        assert result.correct is True
+        assert result.violations == []
 
     def test_no_expected_sequence(self):
         """Test when no sequence is expected (None)."""

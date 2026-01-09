@@ -151,61 +151,105 @@ class ConsoleReporter:
         failed = len(results) - passed
         success_rate = (passed / len(results)) * 100 if results else 0
 
+        # Check if any results have suite_type set
+        has_suite_types = any(r.suite_type for r in results)
+
         # Summary table
         table = Table(title="📊 Evaluation Summary", show_header=True)
         table.add_column("Test Case", style="cyan")
+        if has_suite_types:
+            table.add_column("Type", style="dim", width=10)
         table.add_column("Backend", style="magenta")
         table.add_column("Score", justify="right")
         table.add_column("Status")
         table.add_column("Cost", justify="right")
-        table.add_column("Tokens", justify="right")
         table.add_column("Latency", justify="right")
 
         for result in results:
-            status = "[green]✅ PASSED[/green]" if result.passed else "[red]❌ FAILED[/red]"
+            # For capability tests, failures are expected (hill climbing)
+            # For regression tests, failures are critical (safety net)
+            if result.suite_type == "capability":
+                status = "[green]✅ PASSED[/green]" if result.passed else "[yellow]⚡ CLIMBING[/yellow]"
+            elif result.suite_type == "regression":
+                status = "[green]✅ PASSED[/green]" if result.passed else "[red]🚨 REGRESSION[/red]"
+            else:
+                status = "[green]✅ PASSED[/green]" if result.passed else "[red]❌ FAILED[/red]"
+
             score_color = (
                 "green" if result.score >= 80 else "yellow" if result.score >= 60 else "red"
             )
 
-            # Format token usage
-            tokens_usage = result.trace.metrics.total_tokens
-            if tokens_usage:
-                tokens_str = f"{tokens_usage.total_tokens:,}"
-                if tokens_usage.cached_tokens > 0:
-                    tokens_str += f"\n({tokens_usage.cached_tokens:,} cached)"
-            else:
-                tokens_str = "N/A"
-
             # Get adapter name (capitalize for display)
             adapter_display = (result.adapter_name or "unknown").capitalize()
 
-            table.add_row(
-                result.test_case,
+            # Suite type display
+            suite_display = ""
+            if result.suite_type == "capability":
+                suite_display = "[blue]capability[/blue]"
+            elif result.suite_type == "regression":
+                suite_display = "[magenta]regression[/magenta]"
+
+            row = [result.test_case]
+            if has_suite_types:
+                row.append(suite_display)
+            row.extend([
                 adapter_display,
                 f"[{score_color}]{result.score:.1f}[/{score_color}]",
                 status,
                 f"${result.trace.metrics.total_cost:.4f}",
-                tokens_str,
                 f"{result.trace.metrics.total_latency:.0f}ms",
-            )
+            ])
+
+            table.add_row(*row)
 
         self.console.print(table)
         self.console.print()
 
+        # Calculate suite-type breakdowns
+        capability_results = [r for r in results if r.suite_type == "capability"]
+        regression_results = [r for r in results if r.suite_type == "regression"]
+        other_results = [r for r in results if r.suite_type not in ("capability", "regression")]
+
+        capability_passed = sum(1 for r in capability_results if r.passed)
+        regression_passed = sum(1 for r in regression_results if r.passed)
+        regression_failed = len(regression_results) - regression_passed
+
         # Overall stats with status indicator
-        if failed == 0:
+        # Regression failures are critical; capability failures are expected
+        if regression_failed > 0:
+            status = "[bold red]🚨 Regression Failures Detected[/bold red]"
+            border = "red"
+        elif failed == 0:
             status = "[green]● All Tests Passed[/green]"
             border = "green"
         else:
-            status = "[bold red]● Some Tests Failed[/bold red]"
-            border = "red"
+            status = "[yellow]● Capability Tests Still Climbing[/yellow]"
+            border = "yellow"
+
+        stats_content = f"  {status}\n\n"
+        stats_content += f"  [bold]✅ Passed:[/bold]      [green]{passed}[/green]\n"
+        stats_content += f"  [bold]❌ Failed:[/bold]      [red]{failed}[/red]\n"
+        stats_content += f"  [bold]📈 Success Rate:[/bold] [{'green' if success_rate >= 80 else 'yellow' if success_rate >= 50 else 'red'}]{success_rate:.1f}%[/{'green' if success_rate >= 80 else 'yellow' if success_rate >= 50 else 'red'}]"
+
+        # Add suite type breakdown if applicable
+        if has_suite_types:
+            stats_content += "\n\n  [bold]By Suite Type:[/bold]"
+            if regression_results:
+                reg_rate = (regression_passed / len(regression_results) * 100) if regression_results else 0
+                reg_color = "green" if reg_rate == 100 else "red"
+                stats_content += f"\n  [magenta]Regression:[/magenta]  [{reg_color}]{regression_passed}/{len(regression_results)}[/{reg_color}]"
+                if regression_failed > 0:
+                    stats_content += f" [red](⚠️  {regression_failed} regressions!)[/red]"
+            if capability_results:
+                cap_rate = (capability_passed / len(capability_results) * 100) if capability_results else 0
+                cap_color = "green" if cap_rate >= 80 else "yellow" if cap_rate >= 50 else "dim"
+                stats_content += f"\n  [blue]Capability:[/blue]   [{cap_color}]{capability_passed}/{len(capability_results)}[/{cap_color}] [dim](hill climbing)[/dim]"
+            if other_results:
+                other_passed = sum(1 for r in other_results if r.passed)
+                stats_content += f"\n  [dim]Other:[/dim]        {other_passed}/{len(other_results)}"
 
         stats_panel = Panel(
-            f"  {status}\n"
-            f"\n"
-            f"  [bold]✅ Passed:[/bold]      [green]{passed}[/green]\n"
-            f"  [bold]❌ Failed:[/bold]      [red]{failed}[/red]\n"
-            f"  [bold]📈 Success Rate:[/bold] [{'green' if success_rate >= 80 else 'yellow' if success_rate >= 50 else 'red'}]{success_rate:.1f}%[/{'green' if success_rate >= 80 else 'yellow' if success_rate >= 50 else 'red'}]",
+            stats_content,
             title="[bold]Overall Statistics[/bold]",
             border_style=border,
             padding=(0, 1),
@@ -768,14 +812,29 @@ class ConsoleReporter:
         self.console.print(f"[bold {status_color}]{status_text}[/bold {status_color}]")
         self.console.print()
 
-        # Run summary panel
+        # Run summary panel with industry-standard metrics
         pass_rate_color = "green" if result.pass_rate >= 0.8 else "yellow" if result.pass_rate >= 0.5 else "red"
+
+        # pass@k interpretation
+        pass_at_k_color = "green" if result.pass_at_k >= 0.95 else "yellow" if result.pass_at_k >= 0.8 else "red"
+        pass_at_k_meaning = "usually finds a solution" if result.pass_at_k >= 0.8 else "inconsistent"
+
+        # pass^k interpretation
+        pass_power_k_color = "green" if result.pass_power_k >= 0.5 else "yellow" if result.pass_power_k >= 0.2 else "red"
+        pass_power_k_meaning = "reliable" if result.pass_power_k >= 0.5 else "needs improvement" if result.pass_power_k >= 0.2 else "unreliable"
+
         run_summary = (
             f"  [bold]Total Runs:[/bold]     {result.total_runs}\n"
             f"  [bold]Passed:[/bold]         [green]{result.successful_runs}[/green]\n"
             f"  [bold]Failed:[/bold]         [red]{result.failed_runs}[/red]\n"
             f"  [bold]Pass Rate:[/bold]      [{pass_rate_color}]{result.pass_rate:.1%}[/{pass_rate_color}] "
-            f"(required: {result.required_pass_rate:.1%})"
+            f"(required: {result.required_pass_rate:.1%})\n"
+            f"\n"
+            f"  [bold]Reliability Metrics:[/bold]\n"
+            f"  [bold]pass@{result.total_runs}:[/bold]       [{pass_at_k_color}]{result.pass_at_k:.1%}[/{pass_at_k_color}] "
+            f"[dim]({pass_at_k_meaning})[/dim]\n"
+            f"  [bold]pass^{result.total_runs}:[/bold]       [{pass_power_k_color}]{result.pass_power_k:.1%}[/{pass_power_k_color}] "
+            f"[dim]({pass_power_k_meaning})[/dim]"
         )
         self.console.print(Panel(run_summary, title="[bold]Run Summary[/bold]", border_style="cyan"))
 
@@ -953,14 +1012,21 @@ class ConsoleReporter:
         table.add_column("Test Case", style="cyan")
         table.add_column("Status", justify="center")
         table.add_column("Pass Rate", justify="right")
+        table.add_column("pass@k", justify="right")
+        table.add_column("pass^k", justify="right")
         table.add_column("Mean Score", justify="right")
-        table.add_column("Std Dev", justify="right")
         table.add_column("Flakiness", justify="center")
 
         for result in results:
             status = "[green]✓[/green]" if result.passed else "[red]✗[/red]"
             pass_color = "green" if result.pass_rate >= 0.8 else "yellow" if result.pass_rate >= 0.5 else "red"
             score_color = "green" if result.score_stats.mean >= 80 else "yellow" if result.score_stats.mean >= 60 else "red"
+
+            # pass@k coloring (high is good - "will it work eventually?")
+            pass_at_k_color = "green" if result.pass_at_k >= 0.95 else "yellow" if result.pass_at_k >= 0.8 else "red"
+
+            # pass^k coloring (reliability - "will it work every time?")
+            pass_power_k_color = "green" if result.pass_power_k >= 0.5 else "yellow" if result.pass_power_k >= 0.2 else "red"
 
             flakiness_icons = {
                 "stable": "[green]●[/green]",
@@ -975,8 +1041,9 @@ class ConsoleReporter:
                 result.test_case,
                 status,
                 f"[{pass_color}]{result.pass_rate:.1%}[/{pass_color}]",
+                f"[{pass_at_k_color}]{result.pass_at_k:.1%}[/{pass_at_k_color}]",
+                f"[{pass_power_k_color}]{result.pass_power_k:.1%}[/{pass_power_k_color}]",
                 f"[{score_color}]{result.score_stats.mean:.1f}[/{score_color}]",
-                f"{result.score_stats.std_dev:.2f}",
                 f"{flakiness_icon} {result.flakiness.category}",
             )
 

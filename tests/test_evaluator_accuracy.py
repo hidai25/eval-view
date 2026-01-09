@@ -214,23 +214,43 @@ class TestSequenceEvaluatorAccuracy:
         assert len(result.violations) > 0
 
     def test_missing_step_fails(self):
-        """Missing step in sequence -> correct=False."""
+        """Missing step in sequence -> correct=False (subsequence mode default)."""
         test_case = make_test_case(expected_sequence=["a", "b", "c"])
         trace = make_trace(tool_calls=["a", "c"])  # missing b
 
         result = self.evaluator.evaluate(test_case, trace)
 
         assert result.correct is False
-        assert "Length mismatch" in result.violations[0]
+        # In subsequence mode, reports missing tools
+        assert "Missing" in result.violations[0]
+        assert "b" in result.violations[0]
 
-    def test_extra_step_fails(self):
-        """Extra step in sequence -> correct=False."""
+    def test_extra_step_passes_in_subsequence_mode(self):
+        """Extra steps are allowed in subsequence mode (default).
+
+        This is the key benefit of subsequence mode: agents can use additional
+        tools without being penalized, as long as expected tools appear in order.
+        """
         test_case = make_test_case(expected_sequence=["a", "b"])
         trace = make_trace(tool_calls=["a", "b", "c"])  # extra c
 
         result = self.evaluator.evaluate(test_case, trace)
 
+        # In subsequence mode, extra tools are fine - expected tools appeared in order
+        assert result.correct is True
+
+    def test_extra_step_fails_in_exact_mode(self):
+        """Extra step in sequence fails in exact mode."""
+        from evalview.evaluators.sequence_evaluator import SequenceEvaluator
+
+        evaluator = SequenceEvaluator(default_mode="exact")
+        test_case = make_test_case(expected_sequence=["a", "b"])
+        trace = make_trace(tool_calls=["a", "b", "c"])  # extra c
+
+        result = evaluator.evaluate(test_case, trace)
+
         assert result.correct is False
+        assert "Length mismatch" in result.violations[0]
 
     def test_no_expected_sequence_passes(self):
         """No expected sequence -> passes (no requirement)."""
@@ -241,12 +261,28 @@ class TestSequenceEvaluatorAccuracy:
 
         assert result.correct is True
 
-    def test_identifies_specific_violation(self):
-        """Identifies which step is wrong."""
+    def test_identifies_missing_tools_in_subsequence(self):
+        """Identifies which tools are missing in subsequence mode."""
         test_case = make_test_case(expected_sequence=["a", "b", "c"])
         trace = make_trace(tool_calls=["a", "X", "c"])  # b -> X
 
         result = self.evaluator.evaluate(test_case, trace)
+
+        # In subsequence mode: "a" found, then looks for "b", doesn't find it
+        # Eventually finds "c" but "b" was never found
+        assert result.correct is False
+        assert "Missing" in result.violations[0]
+        assert "b" in result.violations[0]
+
+    def test_exact_mode_identifies_specific_step_violation(self):
+        """Exact mode identifies which specific step is wrong."""
+        from evalview.evaluators.sequence_evaluator import SequenceEvaluator
+
+        evaluator = SequenceEvaluator(default_mode="exact")
+        test_case = make_test_case(expected_sequence=["a", "b", "c"])
+        trace = make_trace(tool_calls=["a", "X", "c"])  # b -> X
+
+        result = evaluator.evaluate(test_case, trace)
 
         assert result.correct is False
         assert any("Step 2" in v and "'b'" in v and "'X'" in v for v in result.violations)

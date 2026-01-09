@@ -123,6 +123,7 @@ class Evaluator:
             min_score=test_case.thresholds.min_score,
             input_query=test_case.input.query,
             actual_output=trace.final_output,
+            suite_type=test_case.suite_type,
         )
 
     def _get_weights_for_test(self, test_case: TestCase) -> Dict[str, float]:
