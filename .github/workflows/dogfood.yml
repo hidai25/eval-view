@@ -25,11 +25,26 @@ jobs:
     - name: Install dependencies
       run: uv sync --all-extras
 
-    - name: Run pytest
+    - name: Run pytest (unit tests)
       id: pytest
       continue-on-error: true
       run: |
-        uv run pytest tests/ -v --tb=short 2>&1 | tee pytest-output.txt
+        uv run pytest tests/ -v --tb=short -k "not LLM and not Hallucination" 2>&1 | tee pytest-output.txt
+        echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+
+    - name: Run pytest (LLM evaluator tests)
+      id: pytest_llm
+      continue-on-error: true
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: |
+        if [ -z "$OPENAI_API_KEY" ]; then
+          echo "Skipping LLM evaluator tests - no OPENAI_API_KEY"
+          echo "exit_code=0" >> $GITHUB_OUTPUT
+          echo "skipped=true" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        uv run pytest tests/ -v --tb=short -k "LLM or Hallucination" 2>&1 | tee pytest-llm-output.txt
         echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
 
     - name: Run mypy
@@ -103,6 +118,10 @@ jobs:
 
         if [ "${{ steps.pytest.outputs.exit_code }}" != "0" ]; then
           FAILED="${FAILED}pytest,"
+        fi
+
+        if [ "${{ steps.pytest_llm.outputs.exit_code }}" != "0" ] && [ "${{ steps.pytest_llm.outputs.skipped }}" != "true" ]; then
+          FAILED="${FAILED}pytest-llm,"
         fi
 
         if [ "${{ steps.mypy.outputs.exit_code }}" != "0" ]; then
@@ -185,9 +204,17 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
 
         if [ "${{ steps.pytest.outputs.exit_code }}" == "0" ]; then
-          echo "✅ pytest passed" >> $GITHUB_STEP_SUMMARY
+          echo "✅ pytest (unit tests) passed" >> $GITHUB_STEP_SUMMARY
         else
-          echo "❌ pytest failed" >> $GITHUB_STEP_SUMMARY
+          echo "❌ pytest (unit tests) failed" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        if [ "${{ steps.pytest_llm.outputs.skipped }}" == "true" ]; then
+          echo "⏭️ pytest (LLM evaluator tests) skipped (no API key)" >> $GITHUB_STEP_SUMMARY
+        elif [ "${{ steps.pytest_llm.outputs.exit_code }}" == "0" ]; then
+          echo "✅ pytest (LLM evaluator tests) passed" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ pytest (LLM evaluator tests) failed" >> $GITHUB_STEP_SUMMARY
         fi
 
         if [ "${{ steps.mypy.outputs.exit_code }}" == "0" ]; then
