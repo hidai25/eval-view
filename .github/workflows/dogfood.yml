@@ -76,10 +76,8 @@ jobs:
       id: dogfood_e2e
       continue-on-error: true
       run: |
-        # Install mock agent dependencies
-        uv pip install fastapi uvicorn httpx
-
         # Run e2e dogfood tests (starts mock agent automatically via fixture)
+        # Dependencies (fastapi, uvicorn) are in dev dependencies
         uv run pytest tests/test_dogfood_e2e.py -v --tb=short 2>&1 | tee dogfood-e2e-output.txt
         echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
 

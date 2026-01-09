@@ -62,8 +62,10 @@ def mock_agent() -> Generator[subprocess.Popen, None, None]:
             pass
         time.sleep(0.5)
     else:
+        # Capture stderr for debugging
         proc.kill()
-        raise RuntimeError("Mock agent failed to start")
+        _, stderr = proc.communicate(timeout=5)
+        raise RuntimeError(f"Mock agent failed to start. stderr: {stderr.decode()}")
 
     yield proc
 
