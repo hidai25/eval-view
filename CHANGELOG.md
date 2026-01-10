@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-01-10
+
+### Added
+
+#### Flexible Sequence Evaluation (Breaking Change)
+- **Three sequence matching modes**: `subsequence` (new default), `exact`, and `unordered`
+- `subsequence`: Expected tools must appear in order, but extra tools are allowed between them
+- `exact`: Legacy strict matching - tools must match exactly in count and order
+- `unordered`: Expected tools must be called, order doesn't matter
+- Mode can be set via `SequenceEvaluator(default_mode=...)` or per-test in `adapter_config.sequence_mode`
+
+#### Industry-Standard Reliability Metrics
+- **pass@k**: Probability of at least one success in k trials ("will it work eventually?")
+- **pass^k**: Probability of all k trials succeeding ("will it work reliably every time?")
+- Both metrics now displayed in statistical evaluation summaries
+- Color-coded interpretations: green/yellow/red based on reliability thresholds
+
+#### Suite Type Classification
+- **New `suite_type` field** on test cases: `capability` or `regression`
+- `capability`: Tests measuring what the agent CAN do (expect lower pass rates, hill-climbing)
+- `regression`: Tests verifying the agent STILL works (expect ~100% pass rate, safety net)
+- Different status indicators in console output: `🚨 REGRESSION` vs `⚡ CLIMBING`
+- Suite breakdown in summary panel with regression failure alerts
+
+### Changed
+- **Default sequence mode changed from `exact` to `subsequence`** - This prevents penalizing agents for finding valid alternative paths (per Anthropic's agent evaluation best practices)
+- Console reporter now shows suite type column when tests have suite types defined
+- Statistical comparison table includes pass@k and pass^k columns
+
+### Fixed
+- Sequence evaluator no longer fails tests when agents use additional intermediate tools
+
 ## [0.1.5] - 2025-12-19
 
 ### Added
@@ -178,7 +210,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fixed**: Bug fixes
 - **Security**: Security fixes and improvements
 
-[Unreleased]: https://github.com/hidai25/eval-view/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/hidai25/eval-view/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/hidai25/eval-view/compare/v0.1.5...v0.2.0
 [0.1.5]: https://github.com/hidai25/eval-view/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/hidai25/eval-view/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/hidai25/eval-view/compare/v0.1.1...v0.1.3
