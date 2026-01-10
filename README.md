@@ -82,6 +82,33 @@ Already using LangSmith or Langfuse? Good. Use them to *see* what happened. Use 
 
 ---
 
+## Chat Mode — AI-Powered CLI
+
+**Don't remember commands? Just ask.**
+
+<p align="center">
+  <img src="assets/chat-demo.gif" alt="EvalView Chat Demo" width="700">
+</p>
+
+```bash
+evalview chat
+```
+
+Ask in plain English. Get answers. Run commands. Analyze results.
+
+- *"How do I test my LangGraph agent?"*
+- *"Show me what adapters are available"*
+- *"Run the regression demo"*
+
+**Free & local** — powered by Ollama. No API key needed.
+
+```bash
+evalview chat                     # Auto-detects Ollama
+evalview chat --provider openai   # Or use cloud models
+```
+
+---
+
 ## What is EvalView?
 
 EvalView is a **regression testing framework for AI agents**.
