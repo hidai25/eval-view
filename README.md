@@ -11,6 +11,11 @@ pip install evalview
 evalview demo          # Watch a regression get caught (no API key needed)
 ```
 
+**Don't remember commands?** Just ask:
+```bash
+evalview chat          # AI assistant for EvalView (free, runs locally)
+```
+
 Ready to test your own agent? See [Try it in 2 minutes](#try-it-in-2-minutes-no-db-required).
 
 [![CI](https://github.com/hidai25/eval-view/actions/workflows/ci.yml/badge.svg)](https://github.com/hidai25/eval-view/actions/workflows/ci.yml)
@@ -134,7 +139,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: hidai25/eval-view@v0.1.9
+      - uses: hidai25/eval-view@v0.2.0
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           diff: true              # Compare against golden baselines
@@ -206,6 +211,43 @@ evalview golden save .evalview/results/xxx.json
 # Future runs compare against it
 evalview run --diff  # Fails on REGRESSION or TOOLS_CHANGED
 ```
+
+---
+
+## Suite Types: Capability vs Regression
+
+Not all test failures are equal. Tag your tests to distinguish **expected** failures from **critical** regressions:
+
+```yaml
+# Capability test — measuring what the agent CAN do (failures expected)
+name: complex-multi-step-reasoning
+suite_type: capability
+thresholds:
+  min_score: 70
+
+# Regression test — verifying it STILL works (failures = red alert)
+name: login-flow
+suite_type: regression
+thresholds:
+  min_score: 90
+```
+
+Console output reflects this:
+
+```
+┌─ Test Results ─────────────────────────────────────┐
+│ login-flow          regression  🚨 REGRESSION      │  ← Fix immediately
+│ checkout-process    regression  ✅ PASSED          │
+│ complex-reasoning   capability  ⚡ CLIMBING        │  ← Expected, keep improving
+│ edge-case-handling  capability  ✅ PASSED          │
+└────────────────────────────────────────────────────┘
+
+By Suite Type:
+  Regression:  1/2 (⚠️ 1 regressions!)
+  Capability:  1/2 (hill climbing)
+```
+
+**Why this matters:** Regression failures block deploys. Capability failures track progress.
 
 ---
 
@@ -636,6 +678,10 @@ We're building a hosted version:
 
 - **Golden traces** - Save baselines, detect regressions with `--diff` ([docs](#golden-traces-regression-detection))
 - **Tool categories** - Flexible matching by intent, not exact tool names ([docs](#tool-categories-flexible-matching))
+- **Suite types** - Distinguish capability tests (hill climbing) from regression tests (safety net) ([docs](#suite-types-capability-vs-regression))
+- **Flexible sequence matching** - 3 modes: subsequence, exact, unordered ([docs](#sequence-matching-modes))
+- **pass@k / pass^k metrics** - Industry-standard reliability metrics ([docs](#reliability-metrics-passk-vs-passk))
+- **Chat mode** - AI assistant for EvalView commands (`evalview chat`)
 - **Test Expansion** - Generate 100+ test variations from a single seed test
 - **Test Recording** - Auto-generate tests from live agent interactions
 - **YAML-based test cases** - Write readable, maintainable test definitions
@@ -797,9 +843,27 @@ thresholds:
 ### What You Get
 
 - **Pass rate** - Percentage of runs that passed
+- **pass@k / pass^k** - Industry-standard reliability metrics (see below)
 - **Score statistics** - Mean, std dev, min/max, percentiles, confidence intervals
 - **Flakiness score** - 0 (stable) to 1 (flaky) with category labels
 - **Contributing factors** - Why the test is flaky (score variance, tool inconsistency, etc.)
+
+### Reliability Metrics: pass@k vs pass^k
+
+Two metrics that tell you different things:
+
+| Metric | Question it answers | High = |
+|--------|---------------------|--------|
+| **pass@k** | "Will it work if I give it a few tries?" | Usually finds a solution |
+| **pass^k** | "Will it work reliably every time?" | Consistent and reliable |
+
+```
+Reliability Metrics:
+  pass@10:       99.9% (usually finds a solution)
+  pass^10:       2.8% (unreliable)
+```
+
+This example shows an agent that *eventually* works but isn't production-ready.
 
 ### Example Output
 
@@ -837,11 +901,27 @@ See [examples/statistical-mode-example.yaml](examples/statistical-mode-example.y
 |--------|--------|-------------|
 | **Tool Accuracy** | 30% | Checks if expected tools were called |
 | **Output Quality** | 50% | LLM-as-judge evaluation |
-| **Sequence Correctness** | 20% | Validates exact tool call order |
+| **Sequence Correctness** | 20% | Validates tool call order (flexible matching) |
 | **Cost Threshold** | Pass/Fail | Must stay under `max_cost` |
 | **Latency Threshold** | Pass/Fail | Must complete under `max_latency` |
 
 Weights are configurable globally or per-test.
+
+### Sequence Matching Modes
+
+By default, EvalView uses **flexible sequence matching** — your agent won't fail just because it used extra tools:
+
+| Mode | Behavior | Use When |
+|------|----------|----------|
+| `subsequence` (default) | Expected tools in order, extras allowed | Most cases — agents can think/verify without penalty |
+| `exact` | Exact match required | Strict compliance testing |
+| `unordered` | Tools called, order doesn't matter | Order-independent workflows |
+
+```yaml
+# Per-test override
+adapter_config:
+  sequence_mode: unordered
+```
 
 ---
 
@@ -865,7 +945,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run EvalView
-        uses: hidai25/eval-view@v0.1.9
+        uses: hidai25/eval-view@v0.2.0
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           diff: true
@@ -916,7 +996,7 @@ jobs:
 
       - name: Run EvalView
         id: evalview
-        uses: hidai25/eval-view@v0.1.9
+        uses: hidai25/eval-view@v0.2.0
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
 
@@ -1008,35 +1088,6 @@ evalview/
 - [Ollama (Local LLMs)](examples/ollama/) - Test with local Llama models + free local evaluation
 
 **Using Node.js / Next.js?** See [@evalview/node](sdks/node/) for drop-in middleware.
-
----
-
-## Chat Mode
-
-**Don't remember commands? Just ask.**
-
-```bash
-evalview chat
-```
-
-<p align="center">
-  <img src="assets/chat-demo.gif" alt="EvalView Chat Demo" width="700">
-</p>
-
-Ask in plain English. Get answers. Run commands. Analyze results.
-
-- "How do I test my LangGraph agent?"
-- "Show me what adapters are available"
-- "Run the regression demo"
-
-**Free & local** — powered by Ollama. No API key needed.
-
-```bash
-# Install Ollama, then:
-evalview chat                     # Auto-detects Ollama
-evalview chat --provider openai   # Or use cloud models
-evalview chat --demo              # Watch a scripted demo
-```
 
 ---
 
