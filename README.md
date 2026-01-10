@@ -55,6 +55,95 @@ evalview run --diff  # Fails on REGRESSION
 
 ---
 
+## Try it in 2 minutes (no DB required)
+
+You don't need a database, Docker, or any extra infra to start.
+
+```bash
+pip install evalview
+
+# Set your OpenAI API key (for LLM-as-judge evaluation)
+export OPENAI_API_KEY='your-key-here'
+
+# Scaffold a test for YOUR agent
+evalview quickstart
+```
+
+You'll see a full run with:
+
+- A demo agent spinning up
+- A test case created for you
+- A config file wired up
+- A scored test: tools used, output quality, cost, latency
+
+### Run examples directly (no config needed)
+
+Test cases with `adapter` and `endpoint` defined work without any setup:
+
+```bash
+# Run any example directly
+evalview run examples/langgraph/test-case.yaml
+evalview run examples/ollama/langgraph-ollama-test.yaml
+
+# Your own test case with adapter/endpoint works the same way
+evalview run my-test.yaml
+```
+
+<details>
+<summary>📺 Example quickstart output</summary>
+
+```
+━━━ EvalView Quickstart ━━━
+
+Step 1/4: Creating demo agent...
+✅ Demo agent created
+
+Step 2/4: Creating test case...
+✅ Test case created
+
+Step 3/4: Creating config...
+✅ Config created
+
+Step 4/4: Starting demo agent and running test...
+✅ Demo agent running
+
+Running test...
+
+Test Case: Quickstart Test
+Score: 95.0/100
+Status: ✅ PASSED
+
+Tool Accuracy: 100%
+  Expected tools:  calculator
+  Used tools:      calculator
+
+Output Quality: 90/100
+
+Performance:
+  Cost:    $0.0010
+  Latency: 27ms
+
+🎉 Quickstart complete!
+```
+</details>
+
+### Free local evaluation with Ollama
+
+Don't want to pay for API calls? Use Ollama for free local LLM-as-judge:
+
+```bash
+# Install Ollama and pull a model
+curl -fsSL https://ollama.ai/install.sh | sh
+ollama pull llama3.2
+
+# Run tests with free local evaluation
+evalview run --judge-provider ollama --judge-model llama3.2
+```
+
+No API key needed. Runs entirely on your machine.
+
+---
+
 ## What EvalView Catches
 
 | Regression Type | What It Means | Status |
@@ -275,95 +364,6 @@ By Suite Type:
 ```
 
 **Why this matters:** Regression failures block deploys. Capability failures track progress.
-
----
-
-## Try it in 2 minutes (no DB required)
-
-You don't need a database, Docker, or any extra infra to start.
-
-```bash
-pip install evalview
-
-# Set your OpenAI API key (for LLM-as-judge evaluation)
-export OPENAI_API_KEY='your-key-here'
-
-# Scaffold a test for YOUR agent
-evalview quickstart
-```
-
-You'll see a full run with:
-
-- A demo agent spinning up
-- A test case created for you
-- A config file wired up
-- A scored test: tools used, output quality, cost, latency
-
-### Run examples directly (no config needed)
-
-Test cases with `adapter` and `endpoint` defined work without any setup:
-
-```bash
-# Run any example directly
-evalview run examples/langgraph/test-case.yaml
-evalview run examples/ollama/langgraph-ollama-test.yaml
-
-# Your own test case with adapter/endpoint works the same way
-evalview run my-test.yaml
-```
-
-### Free local evaluation with Ollama
-
-Don't want to pay for API calls? Use Ollama for free local LLM-as-judge:
-
-```bash
-# Install Ollama and pull a model
-curl -fsSL https://ollama.ai/install.sh | sh
-ollama pull llama3.2
-
-# Run tests with free local evaluation
-evalview run --judge-provider ollama --judge-model llama3.2
-```
-
-No API key needed. Runs entirely on your machine.
-
-<details>
-<summary>📺 Example quickstart output</summary>
-
-```
-━━━ EvalView Quickstart ━━━
-
-Step 1/4: Creating demo agent...
-✅ Demo agent created
-
-Step 2/4: Creating test case...
-✅ Test case created
-
-Step 3/4: Creating config...
-✅ Config created
-
-Step 4/4: Starting demo agent and running test...
-✅ Demo agent running
-
-Running test...
-
-Test Case: Quickstart Test
-Score: 95.0/100
-Status: ✅ PASSED
-
-Tool Accuracy: 100%
-  Expected tools:  calculator
-  Used tools:      calculator
-
-Output Quality: 90/100
-
-Performance:
-  Cost:    $0.0010
-  Latency: 27ms
-
-🎉 Quickstart complete!
-```
-</details>
 
 ---
 
