@@ -183,11 +183,36 @@ Already using LangSmith or Langfuse? Good. Use them to *see* what happened. Use 
 evalview chat
 ```
 
-Ask in plain English. Get answers. Run commands. Analyze results.
+Chat mode understands natural language AND knows all EvalView commands:
 
-- *"How do I test my LangGraph agent?"*
-- *"Show me what adapters are available"*
-- *"Run the regression demo"*
+- *"Run my stock analysis test"* → Suggests `/run stock-test.yaml`
+- *"Compare yesterday's run with today"* → Runs `/compare` for you
+- *"What adapters do I have?"* → Lists available adapters
+- *"Show me the trace from my last test"* → Displays execution trace
+
+### Slash Commands
+
+| Command | Description |
+|---------|-------------|
+| `/run <file>` | Run a test case against its adapter |
+| `/test <adapter> <query>` | Quick ad-hoc test against an adapter |
+| `/compare <old> <new>` | Compare two test runs, detect regressions |
+| `/adapters` | List available adapters |
+| `/trace` | View execution trace from last run |
+| `/help` | Show all commands |
+
+### Natural Language Execution
+
+When the LLM suggests a command, it asks if you want to run it:
+
+```
+You: How do I test my LangGraph agent?
+
+Claude: To test your LangGraph agent, you can run:
+  `/test langgraph "What's the weather?"`
+
+Would you like me to run this command? [y/n]
+```
 
 **Free & local** — powered by Ollama. No API key needed.
 
@@ -534,6 +559,26 @@ evalview golden show test-stock-analysis
 evalview golden delete test-stock-analysis
 ```
 
+### Quick Comparison in Chat
+
+Don't want to memorize CLI flags? Use chat mode:
+
+```bash
+evalview chat
+> /compare .evalview/results/old.json .evalview/results/new.json
+```
+
+Shows a side-by-side table with score deltas and regression detection:
+
+```
+┌─────────────────┬───────────┬───────────┬────────┬──────────┐
+│ Test            │ Old Score │ New Score │ Δ      │ Status   │
+├─────────────────┼───────────┼───────────┼────────┼──────────┤
+│ stock-analysis  │ 92.5      │ 94.0      │ +1.5   │ ✅ OK    │
+│ customer-support│ 88.0      │ 71.0      │ -17.0  │ 🔴 REGR  │
+└─────────────────┴───────────┴───────────┴────────┴──────────┘
+```
+
 **Use case:** Add `evalview run --diff` to CI. Block deploys when behavior regresses.
 
 ---
@@ -708,7 +753,8 @@ We're building a hosted version:
 - **Suite types** - Distinguish capability tests (hill climbing) from regression tests (safety net) ([docs](#suite-types-capability-vs-regression))
 - **Flexible sequence matching** - 3 modes: subsequence, exact, unordered ([docs](#sequence-matching-modes))
 - **pass@k / pass^k metrics** - Industry-standard reliability metrics ([docs](#reliability-metrics-passk-vs-passk))
-- **Chat mode** - AI assistant for EvalView commands (`evalview chat`)
+- **Execution tracing** - OpenTelemetry-style spans for LLM calls, tool executions, and agent workflows
+- **Chat mode** - AI assistant with `/run`, `/test`, `/compare`, `/adapters`, and natural language execution
 - **Test Expansion** - Generate 100+ test variations from a single seed test
 - **Test Recording** - Auto-generate tests from live agent interactions
 - **YAML-based test cases** - Write readable, maintainable test definitions
@@ -1079,7 +1125,12 @@ evalview/
 ├── adapters/           # Agent communication (HTTP, OpenAI, Anthropic, etc.)
 ├── evaluators/         # Evaluation logic (tools, output, cost, latency)
 ├── reporters/          # Output formatting (console, JSON, HTML)
-├── core/               # Types, config, parallel execution
+│   └── trace_reporter.py  # Execution trace visualization
+├── core/
+│   ├── types.py        # Core data models
+│   ├── tracing.py      # OpenTelemetry-style execution tracing
+│   └── ...             # Config, parallel execution
+├── chat.py             # Interactive chat mode with slash commands
 └── cli.py              # Click CLI
 ```
 

@@ -1029,7 +1029,7 @@ async def run_chat(
 
                 # Find test cases
                 test_dirs = ["tests/test-cases", "tests", "test-cases", ".evalview/tests", "."]
-                test_files = []
+                test_files: list[Path] = []
 
                 for test_dir in test_dirs:
                     if Path(test_dir).exists():
@@ -1068,15 +1068,15 @@ async def run_chat(
                 console.print(f"[bold cyan]Running test: {test_file.stem}[/bold cyan]\n")
 
                 try:
-                    import yaml
+                    import yaml  # type: ignore[import-untyped]
                     from evalview.adapters.registry import AdapterRegistry
                     from evalview.core.types import TestCase, EvaluationResult
                     from evalview.evaluators import Evaluator
                     from evalview.reporters.trace_reporter import TraceReporter
 
                     # Load test case
-                    with open(test_file) as f:
-                        test_data = yaml.safe_load(f)
+                    with open(test_file) as tc_file:
+                        test_data = yaml.safe_load(tc_file)
 
                     test_case = TestCase(**test_data)
                     adapter_type = test_case.adapter or "http"
@@ -1087,10 +1087,11 @@ async def run_chat(
 
                     # Create adapter
                     try:
+                        timeout = (test_case.adapter_config or {}).get("timeout", 30.0)
                         adapter = AdapterRegistry.create(
                             adapter_type,
                             endpoint=endpoint,
-                            timeout=test_case.timeout or 30.0,
+                            timeout=timeout,
                             verbose=True,
                         )
                     except Exception as e:
@@ -1111,8 +1112,9 @@ async def run_chat(
                     console.print()
 
                     # Show trace
-                    reporter = TraceReporter()
-                    reporter.print_trace(trace)
+                    if trace.trace_context:
+                        reporter = TraceReporter()
+                        reporter.print_trace(trace.trace_context)
 
                     # Show output
                     console.print(f"\n[bold]Output:[/bold]")
@@ -1130,10 +1132,17 @@ async def run_chat(
 
                         if not result.passed and result.evaluations:
                             console.print("[dim]Issues:[/dim]")
-                            if result.evaluations.tool_calls and not result.evaluations.tool_calls.passed:
-                                console.print(f"  • Tool calls: {result.evaluations.tool_calls.details}")
-                            if result.evaluations.sequence and not result.evaluations.sequence.passed:
-                                console.print(f"  • Sequence: {result.evaluations.sequence.details}")
+                            tool_eval = result.evaluations.tool_accuracy
+                            if tool_eval.accuracy < 1.0:
+                                issues = []
+                                if tool_eval.missing:
+                                    issues.append(f"missing: {', '.join(tool_eval.missing)}")
+                                if tool_eval.unexpected:
+                                    issues.append(f"unexpected: {', '.join(tool_eval.unexpected)}")
+                                console.print(f"  • Tool accuracy: {'; '.join(issues) if issues else f'{tool_eval.accuracy:.0%}'}")
+                            seq_eval = result.evaluations.sequence_correctness
+                            if not seq_eval.correct:
+                                console.print(f"  • Sequence: {', '.join(seq_eval.violations) if seq_eval.violations else 'incorrect order'}")
 
                 except Exception as e:
                     console.print(f"[red]Error running test: {e}[/red]")
@@ -1202,15 +1211,16 @@ async def run_chat(
                     console.print()
 
                     # Show trace
-                    reporter = TraceReporter()
-                    reporter.print_trace(trace)
+                    if trace.trace_context:
+                        reporter = TraceReporter()
+                        reporter.print_trace(trace.trace_context)
 
                     # Show output
                     console.print(f"\n[bold]Response:[/bold]")
-                    output = trace.final_output or "(empty)"
-                    if len(output) > 1000:
-                        output = output[:1000] + "..."
-                    console.print(Panel(output, border_style="green"))
+                    response_output = trace.final_output or "(empty)"
+                    if len(response_output) > 1000:
+                        response_output = response_output[:1000] + "..."
+                    console.print(Panel(response_output, border_style="green"))
 
                 except ValueError as e:
                     console.print(f"[red]Unknown adapter: {adapter_type}[/red]")
@@ -1396,7 +1406,7 @@ async def run_chat(
                                 test[:30], "—", f"{r2.score:.0f}", "[cyan]NEW[/cyan]",
                                 "—", f"${cost2:.4f}", "", "[cyan]+ NEW[/cyan]"
                             )
-                        else:
+                        elif r1:
                             # Removed test
                             cost1 = r1.trace.metrics.total_cost if r1.trace and r1.trace.metrics else 0
                             table.add_row(
@@ -1513,11 +1523,11 @@ async def run_chat(
                                     install = Prompt.ask("[dim]Install now? (y/n)[/dim]", default="y")
                                     if install.lower() in ("y", "yes", ""):
                                         console.print(f"[dim]Running: ollama pull {new_model}...[/dim]")
-                                        result = subprocess.run(
+                                        pull_result = subprocess.run(
                                             ["ollama", "pull", new_model],
                                             capture_output=False  # Show progress
                                         )
-                                        if result.returncode == 0:
+                                        if pull_result.returncode == 0:
                                             session.model = new_model
                                             session.provider = new_provider
                                             llm_provider = new_provider
@@ -1657,13 +1667,13 @@ async def run_chat(
                         )
 
                     # Show the output
-                    output: str = proc.stdout + proc.stderr
-                    if output.strip():
+                    cmd_output: str = proc.stdout + proc.stderr
+                    if cmd_output.strip():
                         # Use a Panel for cleaner output display
-                        console.print(Panel(output.strip(), title=f"Output: {cmd}", border_style="dim", expand=False))
+                        console.print(Panel(cmd_output.strip(), title=f"Output: {cmd}", border_style="dim", expand=False))
 
                     # Ask LLM to analyze the results
-                    if output.strip():
+                    if cmd_output.strip():
                         console.print()
                         
                         try:
@@ -1673,7 +1683,7 @@ async def run_chat(
                             
                         if analyze.lower() in ("y", "yes", ""):
                             # Truncate output if too long
-                            truncated = output[:4000] + "..." if len(output) > 4000 else output
+                            truncated = cmd_output[:4000] + "..." if len(cmd_output) > 4000 else cmd_output
                             analysis_prompt = f"I ran `{cmd}` and got this output:\n\n```\n{truncated}\n```\n\nBriefly summarize the results. Did tests pass or fail? Any issues to address?"
 
                             analysis_start = time.time()
@@ -1793,14 +1803,15 @@ async def run_chat(
                                     console.print(f"[dim]Cost: ${trace.metrics.total_cost:.4f}[/dim]")
                                 console.print()
 
-                                reporter = TraceReporter()
-                                reporter.print_trace(trace)
+                                if trace.trace_context:
+                                    reporter = TraceReporter()
+                                    reporter.print_trace(trace.trace_context)
 
                                 console.print(f"\n[bold]Response:[/bold]")
-                                output = trace.final_output or "(empty)"
-                                if len(output) > 1000:
-                                    output = output[:1000] + "..."
-                                console.print(Panel(output, border_style="green"))
+                                test_output = trace.final_output or "(empty)"
+                                if len(test_output) > 1000:
+                                    test_output = test_output[:1000] + "..."
+                                console.print(Panel(test_output, border_style="green"))
 
                             except ValueError as e:
                                 console.print(f"[red]Unknown adapter: {adapter_type}[/red]")
@@ -1831,24 +1842,25 @@ async def run_chat(
                                 console.print(f"[bold cyan]Running test: {test_file.stem}[/bold cyan]\n")
 
                                 try:
-                                    import yaml
+                                    import yaml  # type: ignore[import-untyped]
                                     from evalview.adapters.registry import AdapterRegistry
                                     from evalview.core.types import TestCase
                                     from evalview.evaluators import Evaluator
                                     from evalview.reporters.trace_reporter import TraceReporter
 
-                                    with open(test_file) as f:
-                                        test_data = yaml.safe_load(f)
+                                    with open(test_file) as test_fh:
+                                        test_data = yaml.safe_load(test_fh)
 
                                     test_case = TestCase(**test_data)
                                     adapter_type = test_case.adapter or "http"
                                     endpoint = test_case.endpoint or ""
 
                                     with console.status("[bold green]Executing...[/bold green]", spinner="dots"):
+                                        run_timeout = (test_case.adapter_config or {}).get("timeout", 30.0)
                                         adapter = AdapterRegistry.create(
                                             adapter_type,
                                             endpoint=endpoint,
-                                            timeout=test_case.timeout or 30.0,
+                                            timeout=run_timeout,
                                             verbose=False,
                                         )
                                         trace = await adapter.execute(
@@ -1860,8 +1872,9 @@ async def run_chat(
                                     console.print(f"[dim]Latency: {trace.metrics.total_latency:.0f}ms[/dim]")
                                     console.print()
 
-                                    reporter = TraceReporter()
-                                    reporter.print_trace(trace)
+                                    if trace.trace_context:
+                                        reporter = TraceReporter()
+                                        reporter.print_trace(trace.trace_context)
 
                                     output_preview = trace.final_output[:500] if trace.final_output else "(empty)"
                                     console.print(Panel(output_preview, title="Agent Response", border_style="green"))
@@ -1950,7 +1963,7 @@ async def run_chat(
                                         table.add_row(test[:25], f"{r1.score:.0f}", f"{r2.score:.0f}", status)
                                     elif r2:
                                         table.add_row(test[:25], "—", f"{r2.score:.0f}", "[cyan]NEW[/cyan]")
-                                    else:
+                                    elif r1:
                                         table.add_row(test[:25], f"{r1.score:.0f}", "—", "[yellow]REMOVED[/yellow]")
 
                                 console.print(table)
