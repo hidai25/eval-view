@@ -34,8 +34,12 @@ from prompt_toolkit.filters import Condition
 
 
 SLASH_COMMANDS = [
-    ("/model", "Switch to a different model"),
+    ("/run", "Run a test case against its adapter"),
+    ("/test", "Quick ad-hoc test against an adapter"),
+    ("/compare", "Compare two test runs side by side"),
+    ("/adapters", "List available adapters"),
     ("/trace", "View execution trace from last run"),
+    ("/model", "Switch to a different model"),
     ("/docs", "Open EvalView documentation"),
     ("/cli", "Show CLI commands cheatsheet"),
     ("/permissions", "Show auto-allowed commands"),
@@ -376,6 +380,47 @@ evalview golden save .evalview/results/xxx.json
 ```
 Save a run as baseline for regression detection.
 
+## INTERACTIVE COMMANDS (use these directly in chat)
+The user can run these slash commands directly without leaving chat:
+
+| Command | Description |
+|---------|-------------|
+| /adapters | List all available adapters with tracing status |
+| /test <adapter> <query> | Quick ad-hoc test against any adapter |
+| /run [test-name] | Run a test case from YAML file |
+| /compare | Compare two test runs (detect regressions) |
+| /trace [filter] | View execution trace from last run |
+| /model | Switch LLM provider/model |
+
+## WHEN USERS ASK TO TEST OR RUN THINGS
+When users want to test an agent or run something, suggest the appropriate slash command:
+
+1. "Test my agent" or "Try calling my API" → Suggest `/test <adapter> <query>`
+   Example: "Try `/test http What is 2+2?` or `/test ollama Hello`"
+
+2. "Run my tests" or "Execute test cases" → Suggest `/run` or `/run <test-name>`
+   Example: "Use `/run` to see available tests, or `/run my-test` to run a specific one"
+
+3. "What adapters are available?" → Suggest `/adapters`
+
+4. "What happened?" or "Debug this" → Suggest `/trace`
+
+5. "Did anything break?" or "Compare runs" or "Check for regressions" → Suggest `/compare`
+   Example: "Run `/compare` to see what changed between your last two test runs"
+
+## NATURAL LANGUAGE EXAMPLES
+User: "I want to test my langgraph agent"
+→ "You can quickly test it with `/test langgraph What is 2+2?` - make sure your agent is running at localhost:2024"
+
+User: "Run the calculator test"
+→ "Use `/run calculator` to run that test case"
+
+User: "Test ollama with a math question"
+→ "Try `/test ollama What is 15 * 23?`"
+
+User: "What went wrong with my last test?"
+→ "Run `/trace` to see the detailed execution trace - it shows all LLM calls, tool invocations, and costs"
+
 ## DEBUGGING WITH /trace
 After running tests, users can type `/trace` to see detailed execution traces:
 - LLM calls with token counts, costs, latency
@@ -386,12 +431,6 @@ When users ask about debugging, test failures, or understanding what happened:
 1. Suggest running `/trace` to see the execution details
 2. Explain what the trace shows (LLM calls, tools, costs)
 3. Help interpret trace output if they share it
-
-Example workflow:
-1. User runs tests: `evalview run`
-2. Test fails or behaves unexpectedly
-3. User types `/trace` to see what happened
-4. You help analyze the trace output
 
 ## RULES
 1. Put commands in ```command blocks so they can be executed
@@ -593,6 +632,36 @@ def extract_commands(response: str) -> list[str]:
         if cmd.startswith("evalview"):
             commands.append(cmd)
     return commands
+
+
+def extract_slash_commands(response: str) -> list[str]:
+    """Extract slash commands from LLM response.
+
+    Looks for patterns like:
+    - `/test ollama What is 2+2?`
+    - `/run my-test`
+    - `/adapters`
+    - `/trace`
+    - `/compare`
+    """
+    slash_commands = []
+
+    # Pattern to match slash commands (in backticks or at start of line)
+    # Match: `/command args` or `/command`
+    patterns = [
+        r'`(/(?:test|run|adapters|trace|compare)\s*[^`]*)`',  # In backticks
+        r'^(/(?:test|run|adapters|trace|compare)\s*.*)$',  # At start of line
+        r'\s(/(?:test|run|adapters|trace|compare)\s+\S.*)(?:\s|$)',  # Mid-sentence with args
+    ]
+
+    for pattern in patterns:
+        matches = re.findall(pattern, response, re.MULTILINE)
+        for match in matches:
+            cmd = match.strip().rstrip('`.,;:')
+            if cmd and cmd not in slash_commands:
+                slash_commands.append(cmd)
+
+    return slash_commands
 
 
 def select_provider(console: Console) -> Tuple[LLMProvider, str]:
@@ -913,6 +982,245 @@ async def run_chat(
                 console.print()
                 continue
 
+            # /adapters command - list available adapters
+            if user_input.lower() == "/adapters":
+                from evalview.adapters.registry import AdapterRegistry
+                from rich.table import Table
+
+                adapters = AdapterRegistry.list_adapters()
+
+                table = Table(title="Available Adapters", show_header=True)
+                table.add_column("Adapter", style="cyan")
+                table.add_column("Description")
+                table.add_column("Tracing", justify="center")
+
+                # Adapter descriptions
+                descriptions = {
+                    "http": "Generic REST API",
+                    "langgraph": "LangGraph / LangGraph Cloud",
+                    "crewai": "CrewAI multi-agent",
+                    "anthropic": "Anthropic Claude API",
+                    "claude": "Alias for anthropic",
+                    "openai-assistants": "OpenAI Assistants API",
+                    "tapescope": "JSONL streaming API",
+                    "streaming": "Alias for tapescope",
+                    "jsonl": "Alias for tapescope",
+                    "huggingface": "HuggingFace Spaces",
+                    "hf": "Alias for huggingface",
+                    "gradio": "Alias for huggingface",
+                    "goose": "Block's Goose CLI agent",
+                    "mcp": "Model Context Protocol",
+                    "ollama": "Ollama local LLMs",
+                }
+
+                for name in sorted(adapters.keys()):
+                    desc = descriptions.get(name, "Custom adapter")
+                    table.add_row(name, desc, "[green]✓[/green]")
+
+                console.print(table)
+                console.print(f"\n[dim]Total: {len(adapters)} adapters. All have tracing enabled.[/dim]")
+                console.print("[dim]Use: /test <adapter> <query> for quick testing[/dim]")
+                continue
+
+            # /run command - run a test case
+            if user_input.lower().startswith("/run"):
+                parts = user_input.split(maxsplit=1)
+                test_filter = parts[1].strip() if len(parts) > 1 else None
+
+                # Find test cases
+                test_dirs = ["tests/test-cases", "tests", "test-cases", ".evalview/tests", "."]
+                test_files = []
+
+                for test_dir in test_dirs:
+                    if Path(test_dir).exists():
+                        test_files.extend(Path(test_dir).glob("*.yaml"))
+                        test_files.extend(Path(test_dir).glob("*.yml"))
+
+                if not test_files:
+                    console.print("[yellow]No test cases found.[/yellow]")
+                    console.print("[dim]Create one with: evalview init[/dim]")
+                    continue
+
+                # Filter if specified
+                if test_filter:
+                    test_files = [f for f in test_files if test_filter.lower() in f.stem.lower()]
+                    if not test_files:
+                        console.print(f"[yellow]No tests matching '{test_filter}'[/yellow]")
+                        console.print("[dim]Available tests:[/dim]")
+                        for test_dir in test_dirs:
+                            if Path(test_dir).exists():
+                                for f in Path(test_dir).glob("*.yaml"):
+                                    console.print(f"  [cyan]{f.stem}[/cyan]")
+                        continue
+
+                # If multiple tests and no filter, show selection
+                if len(test_files) > 1 and not test_filter:
+                    console.print("[bold]Available test cases:[/bold]")
+                    for i, f in enumerate(test_files[:10], 1):
+                        console.print(f"  [cyan][{i}][/cyan] {f.stem}")
+                    if len(test_files) > 10:
+                        console.print(f"  [dim]... and {len(test_files) - 10} more[/dim]")
+                    console.print("\n[dim]Usage: /run <test-name>[/dim]")
+                    continue
+
+                # Run the test
+                test_file = test_files[0]
+                console.print(f"[bold cyan]Running test: {test_file.stem}[/bold cyan]\n")
+
+                try:
+                    import yaml
+                    from evalview.adapters.registry import AdapterRegistry
+                    from evalview.core.types import TestCase, EvaluationResult
+                    from evalview.evaluators import Evaluator
+                    from evalview.reporters.trace_reporter import TraceReporter
+
+                    # Load test case
+                    with open(test_file) as f:
+                        test_data = yaml.safe_load(f)
+
+                    test_case = TestCase(**test_data)
+                    adapter_type = test_case.adapter or "http"
+                    endpoint = test_case.endpoint or ""
+
+                    console.print(f"[dim]Adapter: {adapter_type}[/dim]")
+                    console.print(f"[dim]Query: {test_case.input.query[:100]}...[/dim]\n")
+
+                    # Create adapter
+                    try:
+                        adapter = AdapterRegistry.create(
+                            adapter_type,
+                            endpoint=endpoint,
+                            timeout=test_case.timeout or 30.0,
+                            verbose=True,
+                        )
+                    except Exception as e:
+                        console.print(f"[red]Failed to create adapter: {e}[/red]")
+                        continue
+
+                    # Execute
+                    console.print("[dim]Executing...[/dim]")
+                    trace = await adapter.execute(
+                        test_case.input.query,
+                        test_case.input.context,
+                    )
+
+                    console.print(f"\n[green]✓ Execution complete[/green]")
+                    console.print(f"[dim]Latency: {trace.metrics.total_latency:.0f}ms[/dim]")
+                    if trace.metrics.total_cost:
+                        console.print(f"[dim]Cost: ${trace.metrics.total_cost:.4f}[/dim]")
+                    console.print()
+
+                    # Show trace
+                    reporter = TraceReporter()
+                    reporter.print_trace(trace)
+
+                    # Show output
+                    console.print(f"\n[bold]Output:[/bold]")
+                    output_preview = trace.final_output[:500] if trace.final_output else "(empty)"
+                    console.print(Panel(output_preview, title="Agent Response", border_style="green"))
+
+                    # Run evaluation if expectations defined
+                    if test_case.expected:
+                        console.print("\n[bold]Evaluating...[/bold]")
+                        evaluator = Evaluator()
+                        result = await evaluator.evaluate(test_case, trace)
+
+                        status = "[green]PASS[/green]" if result.passed else "[red]FAIL[/red]"
+                        console.print(f"\nResult: {status} (Score: {result.score:.0f})")
+
+                        if not result.passed and result.evaluations:
+                            console.print("[dim]Issues:[/dim]")
+                            if result.evaluations.tool_calls and not result.evaluations.tool_calls.passed:
+                                console.print(f"  • Tool calls: {result.evaluations.tool_calls.details}")
+                            if result.evaluations.sequence and not result.evaluations.sequence.passed:
+                                console.print(f"  • Sequence: {result.evaluations.sequence.details}")
+
+                except Exception as e:
+                    console.print(f"[red]Error running test: {e}[/red]")
+                    import traceback
+                    console.print(f"[dim]{traceback.format_exc()}[/dim]")
+                continue
+
+            # /test command - quick ad-hoc test against an adapter
+            if user_input.lower().startswith("/test"):
+                parts = user_input.split(maxsplit=2)
+
+                if len(parts) < 3:
+                    console.print("[bold]Quick Test - Usage:[/bold]")
+                    console.print("  /test <adapter> <query>")
+                    console.print()
+                    console.print("[bold]Examples:[/bold]")
+                    console.print("  /test ollama What is 2+2?")
+                    console.print("  /test anthropic Explain quantum computing")
+                    console.print("  /test http What's the weather?")
+                    console.print()
+                    console.print("[dim]For http/langgraph/crewai, set endpoint first:[/dim]")
+                    console.print("  export EVALVIEW_ENDPOINT=http://localhost:8000")
+                    continue
+
+                adapter_type = parts[1].lower()
+                query = parts[2]
+
+                try:
+                    from evalview.adapters.registry import AdapterRegistry
+                    from evalview.reporters.trace_reporter import TraceReporter
+
+                    # Get endpoint from env or use defaults
+                    endpoint = os.getenv("EVALVIEW_ENDPOINT", "")
+
+                    # Default endpoints for some adapters
+                    default_endpoints = {
+                        "ollama": "http://localhost:11434",
+                        "langgraph": "http://localhost:2024",
+                        "http": "http://localhost:8000",
+                    }
+
+                    if not endpoint and adapter_type in default_endpoints:
+                        endpoint = default_endpoints[adapter_type]
+
+                    console.print(f"[bold cyan]Testing with {adapter_type}[/bold cyan]")
+                    console.print(f"[dim]Query: {query}[/dim]")
+                    if endpoint:
+                        console.print(f"[dim]Endpoint: {endpoint}[/dim]")
+                    console.print()
+
+                    # Create adapter
+                    adapter = AdapterRegistry.create(
+                        adapter_type,
+                        endpoint=endpoint,
+                        timeout=60.0,
+                        verbose=True,
+                    )
+
+                    # Execute
+                    console.print("[dim]Executing...[/dim]\n")
+                    trace = await adapter.execute(query)
+
+                    console.print(f"[green]✓ Complete[/green] ({trace.metrics.total_latency:.0f}ms)")
+                    if trace.metrics.total_cost:
+                        console.print(f"[dim]Cost: ${trace.metrics.total_cost:.4f}[/dim]")
+                    console.print()
+
+                    # Show trace
+                    reporter = TraceReporter()
+                    reporter.print_trace(trace)
+
+                    # Show output
+                    console.print(f"\n[bold]Response:[/bold]")
+                    output = trace.final_output or "(empty)"
+                    if len(output) > 1000:
+                        output = output[:1000] + "..."
+                    console.print(Panel(output, border_style="green"))
+
+                except ValueError as e:
+                    console.print(f"[red]Unknown adapter: {adapter_type}[/red]")
+                    console.print("[dim]Run /adapters to see available adapters[/dim]")
+                except Exception as e:
+                    console.print(f"[red]Error: {e}[/red]")
+                    import traceback
+                    console.print(f"[dim]{traceback.format_exc()}[/dim]")
+                continue
+
             # /trace command - view execution trace
             if user_input.lower().startswith("/trace"):
                 parts = user_input.split(maxsplit=1)
@@ -962,6 +1270,155 @@ async def run_chat(
 
                 except Exception as e:
                     console.print(f"[red]Error loading trace: {e}[/red]")
+                continue
+
+            # /compare command - compare two test runs
+            if user_input.lower().startswith("/compare"):
+                from rich.table import Table
+                from rich.columns import Columns
+
+                parts = user_input.split()
+
+                # Find result files
+                results_dir = Path(".evalview/results")
+                if not results_dir.exists():
+                    console.print("[yellow]No results found. Run some tests first![/yellow]")
+                    continue
+
+                result_files = sorted(results_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+                if len(result_files) < 2:
+                    console.print("[yellow]Need at least 2 result files to compare.[/yellow]")
+                    console.print("[dim]Run tests multiple times to compare.[/dim]")
+                    continue
+
+                try:
+                    from evalview.reporters.json_reporter import JSONReporter
+                    from evalview.core.types import EvaluationResult
+
+                    # Load the two most recent runs (or specified ones)
+                    if len(parts) >= 3:
+                        # /compare file1.json file2.json
+                        file1 = results_dir / parts[1] if not parts[1].endswith('.json') else Path(parts[1])
+                        file2 = results_dir / parts[2] if not parts[2].endswith('.json') else Path(parts[2])
+                        if not file1.exists():
+                            file1 = results_dir / f"{parts[1]}.json"
+                        if not file2.exists():
+                            file2 = results_dir / f"{parts[2]}.json"
+                    else:
+                        # Compare two most recent
+                        file1, file2 = result_files[1], result_files[0]  # older, newer
+
+                    if not file1.exists() or not file2.exists():
+                        console.print("[red]Could not find result files to compare[/red]")
+                        continue
+
+                    data1 = JSONReporter.load(str(file1))
+                    data2 = JSONReporter.load(str(file2))
+
+                    results1 = {r["test_case"]: EvaluationResult(**r) for r in data1} if data1 else {}
+                    results2 = {r["test_case"]: EvaluationResult(**r) for r in data2} if data2 else {}
+
+                    console.print(f"\n[bold]Comparing Results[/bold]")
+                    console.print(f"[dim]Old: {file1.name}[/dim]")
+                    console.print(f"[dim]New: {file2.name}[/dim]\n")
+
+                    # Build comparison table
+                    table = Table(show_header=True, header_style="bold")
+                    table.add_column("Test", style="cyan")
+                    table.add_column("Old Score", justify="right")
+                    table.add_column("New Score", justify="right")
+                    table.add_column("Δ", justify="right")
+                    table.add_column("Old Cost", justify="right")
+                    table.add_column("New Cost", justify="right")
+                    table.add_column("Δ", justify="right")
+                    table.add_column("Status")
+
+                    all_tests = set(results1.keys()) | set(results2.keys())
+                    regressions = 0
+                    improvements = 0
+
+                    for test in sorted(all_tests):
+                        r1 = results1.get(test)
+                        r2 = results2.get(test)
+
+                        if r1 and r2:
+                            score1 = r1.score
+                            score2 = r2.score
+                            score_delta = score2 - score1
+
+                            cost1 = r1.trace.metrics.total_cost if r1.trace and r1.trace.metrics else 0
+                            cost2 = r2.trace.metrics.total_cost if r2.trace and r2.trace.metrics else 0
+                            cost_delta = cost2 - cost1
+
+                            # Determine status
+                            if score_delta < -5:
+                                status = "[red]↓ REGRESSED[/red]"
+                                regressions += 1
+                            elif score_delta > 5:
+                                status = "[green]↑ IMPROVED[/green]"
+                                improvements += 1
+                            elif not r2.passed and r1.passed:
+                                status = "[red]✗ BROKE[/red]"
+                                regressions += 1
+                            elif r2.passed and not r1.passed:
+                                status = "[green]✓ FIXED[/green]"
+                                improvements += 1
+                            else:
+                                status = "[dim]— same[/dim]"
+
+                            # Format deltas with color
+                            score_delta_str = f"{score_delta:+.0f}" if score_delta != 0 else "—"
+                            if score_delta > 0:
+                                score_delta_str = f"[green]{score_delta_str}[/green]"
+                            elif score_delta < 0:
+                                score_delta_str = f"[red]{score_delta_str}[/red]"
+
+                            cost_delta_str = f"{cost_delta:+.4f}" if cost_delta != 0 else "—"
+                            if cost_delta > 0.001:
+                                cost_delta_str = f"[red]+${cost_delta:.4f}[/red]"
+                            elif cost_delta < -0.001:
+                                cost_delta_str = f"[green]-${abs(cost_delta):.4f}[/green]"
+
+                            table.add_row(
+                                test[:30],
+                                f"{score1:.0f}",
+                                f"{score2:.0f}",
+                                score_delta_str,
+                                f"${cost1:.4f}",
+                                f"${cost2:.4f}",
+                                cost_delta_str,
+                                status,
+                            )
+                        elif r2:
+                            # New test
+                            cost2 = r2.trace.metrics.total_cost if r2.trace and r2.trace.metrics else 0
+                            table.add_row(
+                                test[:30], "—", f"{r2.score:.0f}", "[cyan]NEW[/cyan]",
+                                "—", f"${cost2:.4f}", "", "[cyan]+ NEW[/cyan]"
+                            )
+                        else:
+                            # Removed test
+                            cost1 = r1.trace.metrics.total_cost if r1.trace and r1.trace.metrics else 0
+                            table.add_row(
+                                test[:30], f"{r1.score:.0f}", "—", "[yellow]DEL[/yellow]",
+                                f"${cost1:.4f}", "—", "", "[yellow]- REMOVED[/yellow]"
+                            )
+
+                    console.print(table)
+
+                    # Summary
+                    console.print()
+                    if regressions > 0:
+                        console.print(f"[red]⚠ {regressions} regression(s) detected[/red]")
+                    if improvements > 0:
+                        console.print(f"[green]✓ {improvements} improvement(s)[/green]")
+                    if regressions == 0 and improvements == 0:
+                        console.print("[dim]No significant changes[/dim]")
+
+                except Exception as e:
+                    console.print(f"[red]Error comparing: {e}[/red]")
+                    import traceback
+                    console.print(f"[dim]{traceback.format_exc()}[/dim]")
                 continue
 
             # /model command - switch models mid-session
@@ -1244,6 +1701,259 @@ async def run_chat(
                             # Print the response
                             console.print()
                             console.print(Markdown(analysis_full))
+
+            # Check for slash commands in the LLM response
+            slash_cmds = extract_slash_commands(full_response)
+            for slash_cmd in slash_cmds:
+                console.print()
+                console.print(f"[yellow]Run command?[/yellow] [bold cyan]{slash_cmd}[/bold cyan]")
+                console.print(f"  [cyan][1][/cyan] Yes, run it")
+                console.print(f"  [cyan][2][/cyan] Skip")
+
+                try:
+                    choice = await prompt_session.prompt_async(HTML("<dim>Choice (1-2): </dim>"))
+                except KeyboardInterrupt:
+                    choice = "2"
+
+                if choice in ("1", "y", "yes", ""):
+                    # Inject the slash command to be processed
+                    # We'll handle it inline here for simplicity
+                    console.print()
+
+                    if slash_cmd.lower().startswith("/adapters"):
+                        # Run /adapters inline
+                        from evalview.adapters.registry import AdapterRegistry
+                        from rich.table import Table
+
+                        adapters = AdapterRegistry.list_adapters()
+                        table = Table(title="Available Adapters", show_header=True)
+                        table.add_column("Adapter", style="cyan")
+                        table.add_column("Description")
+                        table.add_column("Tracing", justify="center")
+
+                        descriptions = {
+                            "http": "Generic REST API",
+                            "langgraph": "LangGraph / LangGraph Cloud",
+                            "crewai": "CrewAI multi-agent",
+                            "anthropic": "Anthropic Claude API",
+                            "claude": "Alias for anthropic",
+                            "openai-assistants": "OpenAI Assistants API",
+                            "tapescope": "JSONL streaming API",
+                            "streaming": "Alias for tapescope",
+                            "jsonl": "Alias for tapescope",
+                            "huggingface": "HuggingFace Spaces",
+                            "hf": "Alias for huggingface",
+                            "gradio": "Alias for huggingface",
+                            "goose": "Block's Goose CLI agent",
+                            "mcp": "Model Context Protocol",
+                            "ollama": "Ollama local LLMs",
+                        }
+
+                        for name in sorted(adapters.keys()):
+                            desc = descriptions.get(name, "Custom adapter")
+                            table.add_row(name, desc, "[green]✓[/green]")
+
+                        console.print(table)
+                        console.print(f"\n[dim]Total: {len(adapters)} adapters[/dim]")
+
+                    elif slash_cmd.lower().startswith("/test"):
+                        # Run /test inline
+                        parts = slash_cmd.split(maxsplit=2)
+                        if len(parts) >= 3:
+                            adapter_type = parts[1].lower()
+                            query = parts[2]
+
+                            try:
+                                from evalview.adapters.registry import AdapterRegistry
+                                from evalview.reporters.trace_reporter import TraceReporter
+
+                                endpoint = os.getenv("EVALVIEW_ENDPOINT", "")
+                                default_endpoints = {
+                                    "ollama": "http://localhost:11434",
+                                    "langgraph": "http://localhost:2024",
+                                    "http": "http://localhost:8000",
+                                }
+                                if not endpoint and adapter_type in default_endpoints:
+                                    endpoint = default_endpoints[adapter_type]
+
+                                console.print(f"[bold cyan]Testing with {adapter_type}[/bold cyan]")
+                                console.print(f"[dim]Query: {query}[/dim]\n")
+
+                                with console.status("[bold green]Executing...[/bold green]", spinner="dots"):
+                                    adapter = AdapterRegistry.create(
+                                        adapter_type,
+                                        endpoint=endpoint,
+                                        timeout=60.0,
+                                        verbose=False,
+                                    )
+                                    trace = await adapter.execute(query)
+
+                                console.print(f"[green]✓ Complete[/green] ({trace.metrics.total_latency:.0f}ms)")
+                                if trace.metrics.total_cost:
+                                    console.print(f"[dim]Cost: ${trace.metrics.total_cost:.4f}[/dim]")
+                                console.print()
+
+                                reporter = TraceReporter()
+                                reporter.print_trace(trace)
+
+                                console.print(f"\n[bold]Response:[/bold]")
+                                output = trace.final_output or "(empty)"
+                                if len(output) > 1000:
+                                    output = output[:1000] + "..."
+                                console.print(Panel(output, border_style="green"))
+
+                            except ValueError as e:
+                                console.print(f"[red]Unknown adapter: {adapter_type}[/red]")
+                                console.print("[dim]Run /adapters to see available adapters[/dim]")
+                            except Exception as e:
+                                console.print(f"[red]Error: {e}[/red]")
+                        else:
+                            console.print("[yellow]Usage: /test <adapter> <query>[/yellow]")
+
+                    elif slash_cmd.lower().startswith("/run"):
+                        # Run /run inline
+                        parts = slash_cmd.split(maxsplit=1)
+                        test_filter = parts[1].strip() if len(parts) > 1 else None
+
+                        test_dirs = ["tests/test-cases", "tests", "test-cases", ".evalview/tests", "."]
+                        test_files = []
+                        for test_dir in test_dirs:
+                            if Path(test_dir).exists():
+                                test_files.extend(Path(test_dir).glob("*.yaml"))
+                                test_files.extend(Path(test_dir).glob("*.yml"))
+
+                        if not test_files:
+                            console.print("[yellow]No test cases found.[/yellow]")
+                        elif test_filter:
+                            test_files = [f for f in test_files if test_filter.lower() in f.stem.lower()]
+                            if test_files:
+                                test_file = test_files[0]
+                                console.print(f"[bold cyan]Running test: {test_file.stem}[/bold cyan]\n")
+
+                                try:
+                                    import yaml
+                                    from evalview.adapters.registry import AdapterRegistry
+                                    from evalview.core.types import TestCase
+                                    from evalview.evaluators import Evaluator
+                                    from evalview.reporters.trace_reporter import TraceReporter
+
+                                    with open(test_file) as f:
+                                        test_data = yaml.safe_load(f)
+
+                                    test_case = TestCase(**test_data)
+                                    adapter_type = test_case.adapter or "http"
+                                    endpoint = test_case.endpoint or ""
+
+                                    with console.status("[bold green]Executing...[/bold green]", spinner="dots"):
+                                        adapter = AdapterRegistry.create(
+                                            adapter_type,
+                                            endpoint=endpoint,
+                                            timeout=test_case.timeout or 30.0,
+                                            verbose=False,
+                                        )
+                                        trace = await adapter.execute(
+                                            test_case.input.query,
+                                            test_case.input.context,
+                                        )
+
+                                    console.print(f"[green]✓ Execution complete[/green]")
+                                    console.print(f"[dim]Latency: {trace.metrics.total_latency:.0f}ms[/dim]")
+                                    console.print()
+
+                                    reporter = TraceReporter()
+                                    reporter.print_trace(trace)
+
+                                    output_preview = trace.final_output[:500] if trace.final_output else "(empty)"
+                                    console.print(Panel(output_preview, title="Agent Response", border_style="green"))
+
+                                    if test_case.expected:
+                                        evaluator = Evaluator()
+                                        result = await evaluator.evaluate(test_case, trace)
+                                        status = "[green]PASS[/green]" if result.passed else "[red]FAIL[/red]"
+                                        console.print(f"\nResult: {status} (Score: {result.score:.0f})")
+
+                                except Exception as e:
+                                    console.print(f"[red]Error: {e}[/red]")
+                            else:
+                                console.print(f"[yellow]No tests matching '{test_filter}'[/yellow]")
+                        else:
+                            console.print("[bold]Available test cases:[/bold]")
+                            for i, f in enumerate(test_files[:10], 1):
+                                console.print(f"  [cyan][{i}][/cyan] {f.stem}")
+
+                    elif slash_cmd.lower().startswith("/trace"):
+                        # Run /trace inline
+                        results_dir = Path(".evalview/results")
+                        if results_dir.exists():
+                            result_files = sorted(results_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+                            if result_files:
+                                from evalview.reporters.json_reporter import JSONReporter
+                                from evalview.reporters.trace_reporter import TraceReporter
+                                from evalview.core.types import EvaluationResult
+
+                                latest = result_files[0]
+                                console.print(f"[dim]Loading trace from {latest.name}...[/dim]\n")
+
+                                results_data = JSONReporter.load(str(latest))
+                                if results_data:
+                                    results = [EvaluationResult(**data) for data in results_data]
+                                    reporter = TraceReporter()
+                                    for result in results[:3]:  # Show first 3
+                                        console.print(f"[bold cyan]Test: {result.test_case}[/bold cyan]")
+                                        reporter.print_trace_from_result(result)
+                                        console.print()
+                            else:
+                                console.print("[yellow]No results found.[/yellow]")
+                        else:
+                            console.print("[yellow]No results found. Run some tests first![/yellow]")
+
+                    elif slash_cmd.lower().startswith("/compare"):
+                        # Run /compare inline
+                        from rich.table import Table
+                        results_dir = Path(".evalview/results")
+
+                        if not results_dir.exists():
+                            console.print("[yellow]No results found.[/yellow]")
+                        else:
+                            result_files = sorted(results_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+                            if len(result_files) < 2:
+                                console.print("[yellow]Need at least 2 runs to compare.[/yellow]")
+                            else:
+                                from evalview.reporters.json_reporter import JSONReporter
+                                from evalview.core.types import EvaluationResult
+
+                                file1, file2 = result_files[1], result_files[0]
+                                data1 = JSONReporter.load(str(file1))
+                                data2 = JSONReporter.load(str(file2))
+
+                                results1 = {r["test_case"]: EvaluationResult(**r) for r in data1} if data1 else {}
+                                results2 = {r["test_case"]: EvaluationResult(**r) for r in data2} if data2 else {}
+
+                                console.print(f"\n[bold]Comparing:[/bold] {file1.name} → {file2.name}\n")
+
+                                table = Table(show_header=True)
+                                table.add_column("Test", style="cyan")
+                                table.add_column("Old", justify="right")
+                                table.add_column("New", justify="right")
+                                table.add_column("Status")
+
+                                for test in sorted(set(results1.keys()) | set(results2.keys())):
+                                    r1, r2 = results1.get(test), results2.get(test)
+                                    if r1 and r2:
+                                        delta = r2.score - r1.score
+                                        if delta < -5:
+                                            status = "[red]↓ REGRESSED[/red]"
+                                        elif delta > 5:
+                                            status = "[green]↑ IMPROVED[/green]"
+                                        else:
+                                            status = "[dim]— same[/dim]"
+                                        table.add_row(test[:25], f"{r1.score:.0f}", f"{r2.score:.0f}", status)
+                                    elif r2:
+                                        table.add_row(test[:25], "—", f"{r2.score:.0f}", "[cyan]NEW[/cyan]")
+                                    else:
+                                        table.add_row(test[:25], f"{r1.score:.0f}", "—", "[yellow]REMOVED[/yellow]")
+
+                                console.print(table)
 
         except KeyboardInterrupt:
             console.print("\n\n[dim]Use 'exit' to quit.[/dim]\n")

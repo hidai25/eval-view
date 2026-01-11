@@ -19,7 +19,9 @@ from evalview.core.types import (
     StepMetrics,
     ExecutionMetrics,
     TokenUsage,
+    SpanKind,
 )
+from evalview.core.tracing import Tracer
 
 
 class OllamaAdapter(AgentAdapter):
@@ -68,6 +70,9 @@ class OllamaAdapter(AgentAdapter):
         """Execute a query against the Ollama model."""
         start_time = datetime.now()
 
+        # Initialize tracer
+        tracer = Tracer()
+
         # Build request
         url = f"{self.endpoint}/v1/chat/completions"
         payload = {
@@ -76,28 +81,47 @@ class OllamaAdapter(AgentAdapter):
             "stream": False,
         }
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(
-                url,
-                json=payload,
-                headers={"Content-Type": "application/json"},
+        # Start agent span
+        async with tracer.start_span_async("Ollama Chat", SpanKind.AGENT):
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                api_start = datetime.now()
+                response = await client.post(
+                    url,
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                )
+                response.raise_for_status()
+                data = response.json()
+                api_end = datetime.now()
+                api_latency = (api_end - api_start).total_seconds() * 1000
+
+            # Extract response
+            output = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            usage = data.get("usage", {})
+            finish_reason = data.get("choices", [{}])[0].get("finish_reason", "stop")
+
+            # Build token usage
+            token_usage = TokenUsage(
+                input_tokens=usage.get("prompt_tokens", 0),
+                output_tokens=usage.get("completion_tokens", 0),
+                total_tokens=usage.get("total_tokens", 0),
             )
-            response.raise_for_status()
-            data = response.json()
+
+            # Record LLM call span
+            tracer.record_llm_call(
+                model=self.model,
+                provider="ollama",
+                prompt=query,
+                completion=output,
+                prompt_tokens=token_usage.input_tokens,
+                completion_tokens=token_usage.output_tokens,
+                finish_reason=finish_reason,
+                cost=0.0,  # Local = free
+                duration_ms=api_latency,
+            )
 
         end_time = datetime.now()
         latency_ms = (end_time - start_time).total_seconds() * 1000
-
-        # Extract response
-        output = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-        usage = data.get("usage", {})
-
-        # Build token usage
-        token_usage = TokenUsage(
-            input_tokens=usage.get("prompt_tokens", 0),
-            output_tokens=usage.get("completion_tokens", 0),
-            total_tokens=usage.get("total_tokens", 0),
-        )
 
         # Create step trace (no tools for basic chat)
         step = StepTrace(
@@ -114,6 +138,9 @@ class OllamaAdapter(AgentAdapter):
             ),
         )
 
+        # Build trace context
+        trace_context = tracer.build_trace_context()
+
         return ExecutionTrace(
             session_id=str(uuid.uuid4()),
             start_time=start_time,
@@ -125,4 +152,5 @@ class OllamaAdapter(AgentAdapter):
                 total_cost=0.0,
                 total_tokens=token_usage,
             ),
+            trace_context=trace_context,
         )

@@ -14,8 +14,10 @@ from evalview.core.types import (
     StepMetrics,
     ExecutionMetrics,
     TokenUsage,
+    SpanKind,
 )
 from evalview.core.pricing import calculate_cost
+from evalview.core.tracing import Tracer
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -175,6 +177,9 @@ class TapeScopeAdapter(AgentAdapter):
         """Internal execution logic (wrapped by timeout)."""
         start_time = datetime.now()
 
+        # Initialize tracer
+        tracer = Tracer()
+
         # Default context if not provided
         if context is None:
             context = {}
@@ -198,197 +203,226 @@ class TapeScopeAdapter(AgentAdapter):
             logger.info(f"🚀 Executing request: {query[:100]}...")
             logger.debug(f"📤 Payload: {json.dumps(payload, indent=2)}")
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            async with client.stream(
-                "POST",
-                self.endpoint,
-                json=payload,
-                headers={
-                    "Content-Type": "application/json",
-                    **self.headers,
-                },
-            ) as response:
-                response.raise_for_status()
-
-                if self.verbose:
-                    logger.info(f"✅ Response status: {response.status_code}")
-
-                # Read JSONL stream line by line
-                line_count = 0
-                async for line in response.aiter_lines():
-                    line_count += 1
-                    if not line.strip():
-                        continue
-
-                    raw_text += line + "\n"  # Keep raw text as fallback
+        async with tracer.start_span_async("TapeScope Agent", SpanKind.AGENT):
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                async with client.stream(
+                    "POST",
+                    self.endpoint,
+                    json=payload,
+                    headers={
+                        "Content-Type": "application/json",
+                        **self.headers,
+                    },
+                ) as response:
+                    response.raise_for_status()
 
                     if self.verbose:
-                        logger.debug(f"📥 Line {line_count}: {line[:200]}...")
+                        logger.info(f"✅ Response status: {response.status_code}")
 
-                    # Try to parse as JSON (JSONL format)
-                    try:
-                        event = json.loads(line)
-                        events.append(event)
+                    # Read JSONL stream line by line
+                    line_count = 0
+                    async for line in response.aiter_lines():
+                        line_count += 1
+                        if not line.strip():
+                            continue
 
-                        # Parse different event types
-                        event_type = event.get("type", "")
+                        raw_text += line + "\n"  # Keep raw text as fallback
 
                         if self.verbose:
-                            logger.debug(f"🔍 Event type: '{event_type}'")
+                            logger.debug(f"📥 Line {line_count}: {line[:200]}...")
 
-                        if event_type == "tool_call":
-                            # Tool execution step
-                            tool_data = event.get("data", {})
-                            step = StepTrace(
-                                step_id=f"tool-{len(steps)}",
-                                step_name=tool_data.get("name", "unknown"),
-                                tool_name=tool_data.get("name", "unknown"),
-                                parameters=tool_data.get("args", {}),
-                                output=None,  # Will be filled by tool_result
-                                success=True,
-                                error=None,
-                                metrics=StepMetrics(latency=0.0, cost=0.0, tokens=TokenUsage()),
-                            )
-                            steps.append(step)
+                        # Try to parse as JSON (JSONL format)
+                        try:
+                            event = json.loads(line)
+                            events.append(event)
 
-                        elif event_type == "tool_result":
-                            # Update last step with result
-                            if steps:
-                                result_data = event.get("data", {})
-                                steps[-1].output = result_data.get("result", "")
-                                steps[-1].success = result_data.get("success", True)
-                                steps[-1].error = result_data.get("error")
+                            # Parse different event types
+                            event_type = event.get("type", "")
 
-                        elif event_type == "final_message":
-                            # Final agent response
-                            final_output = event.get("data", {}).get("text", "")
-
-                        elif event_type == "message_complete":
-                            # Complete message with clean text (preferred)
-                            complete_data = event.get("data", {})
-                            if "content" in complete_data:
-                                final_output = complete_data["content"]
                             if self.verbose:
-                                logger.info(f"✅ Got complete message, length: {len(final_output)}")
+                                logger.debug(f"🔍 Event type: '{event_type}'")
 
-                        elif event_type == "token":
-                            # Accumulate streaming tokens (fallback if no message_complete)
-                            token = event.get("data", {}).get("token", "")
-                            if token:
-                                final_output += token
-
-                        elif event_type == "error":
-                            # Error occurred
-                            error_msg = event.get("error", event.get("message", "Unknown error"))
-                            if self.verbose:
-                                logger.error(f"❌ Error event: {error_msg}")
-                            final_output = f"Error: {error_msg}"
-
-                        elif event_type == "step_narration":
-                            # Step narration - capture as tool execution
-                            narration_data = event.get("data", {})
-                            step_name = narration_data.get("text", "").strip()
-
-                            if step_name and not step_name.startswith("Step"):
-                                # Create step for narration
+                            if event_type == "tool_call":
+                                # Tool execution step
+                                tool_data = event.get("data", {})
                                 step = StepTrace(
-                                    step_id=f"step-{len(steps)}",
-                                    step_name=step_name,
-                                    tool_name=narration_data.get("toolName", "unknown"),
-                                    parameters={},
-                                    output=step_name,
+                                    step_id=f"tool-{len(steps)}",
+                                    step_name=tool_data.get("name", "unknown"),
+                                    tool_name=tool_data.get("name", "unknown"),
+                                    parameters=tool_data.get("args", {}),
+                                    output=None,  # Will be filled by tool_result
                                     success=True,
                                     error=None,
                                     metrics=StepMetrics(latency=0.0, cost=0.0, tokens=TokenUsage()),
                                 )
                                 steps.append(step)
 
+                            elif event_type == "tool_result":
+                                # Update last step with result
+                                if steps:
+                                    result_data = event.get("data", {})
+                                    steps[-1].output = result_data.get("result", "")
+                                    steps[-1].success = result_data.get("success", True)
+                                    steps[-1].error = result_data.get("error")
+
+                                    # Record tool span now that we have the result
+                                    tracer.record_tool_call(
+                                        tool_name=steps[-1].tool_name,
+                                        parameters=steps[-1].parameters,
+                                        result=steps[-1].output,
+                                        error=steps[-1].error,
+                                        duration_ms=steps[-1].metrics.latency,
+                                    )
+
+                            elif event_type == "final_message":
+                                # Final agent response
+                                final_output = event.get("data", {}).get("text", "")
+
+                            elif event_type == "message_complete":
+                                # Complete message with clean text (preferred)
+                                complete_data = event.get("data", {})
+                                if "content" in complete_data:
+                                    final_output = complete_data["content"]
                                 if self.verbose:
-                                    logger.info(f"📝 Step: {step_name}")
+                                    logger.info(f"✅ Got complete message, length: {len(final_output)}")
 
-                        elif event_type == "usage":
-                            # Token usage event - calculate costs
-                            usage_data = event.get("data", {})
+                            elif event_type == "token":
+                                # Accumulate streaming tokens (fallback if no message_complete)
+                                token = event.get("data", {}).get("token", "")
+                                if token:
+                                    final_output += token
 
-                            input_tokens = usage_data.get("input_tokens", 0)
-                            output_tokens = usage_data.get("output_tokens", 0)
-                            cached_tokens = usage_data.get("cached_tokens", 0)
+                            elif event_type == "error":
+                                # Error occurred
+                                error_msg = event.get("error", event.get("message", "Unknown error"))
+                                if self.verbose:
+                                    logger.error(f"❌ Error event: {error_msg}")
+                                final_output = f"Error: {error_msg}"
 
-                            # Update total usage
-                            total_usage.input_tokens += input_tokens
-                            total_usage.output_tokens += output_tokens
-                            total_usage.cached_tokens += cached_tokens
+                            elif event_type == "step_narration":
+                                # Step narration - capture as tool execution
+                                narration_data = event.get("data", {})
+                                step_name = narration_data.get("text", "").strip()
 
-                            # Calculate cost using pricing module
-                            model_name = self.model_config.get("name", "gpt-5-mini")
-                            custom_pricing = self.model_config.get("pricing")
+                                if step_name and not step_name.startswith("Step"):
+                                    # Create step for narration
+                                    step = StepTrace(
+                                        step_id=f"step-{len(steps)}",
+                                        step_name=step_name,
+                                        tool_name=narration_data.get("toolName", "unknown"),
+                                        parameters={},
+                                        output=step_name,
+                                        success=True,
+                                        error=None,
+                                        metrics=StepMetrics(latency=0.0, cost=0.0, tokens=TokenUsage()),
+                                    )
+                                    steps.append(step)
 
-                            if custom_pricing:
-                                # Use custom pricing
-                                cost = (
-                                    (input_tokens / 1_000_000)
-                                    * custom_pricing.get("input_per_1m", 0.25)
-                                    + (output_tokens / 1_000_000)
-                                    * custom_pricing.get("output_per_1m", 2.0)
-                                    + (cached_tokens / 1_000_000)
-                                    * custom_pricing.get("cached_per_1m", 0.025)
+                                    # Record tool span for narration step
+                                    tracer.record_tool_call(
+                                        tool_name=step.tool_name,
+                                        parameters={},
+                                        result=step_name,
+                                        duration_ms=0.0,
+                                    )
+
+                                    if self.verbose:
+                                        logger.info(f"📝 Step: {step_name}")
+
+                            elif event_type == "usage":
+                                # Token usage event - calculate costs
+                                usage_data = event.get("data", {})
+
+                                input_tokens = usage_data.get("input_tokens", 0)
+                                output_tokens = usage_data.get("output_tokens", 0)
+                                cached_tokens = usage_data.get("cached_tokens", 0)
+
+                                # Update total usage
+                                total_usage.input_tokens += input_tokens
+                                total_usage.output_tokens += output_tokens
+                                total_usage.cached_tokens += cached_tokens
+
+                                # Calculate cost using pricing module
+                                model_name = self.model_config.get("name", "gpt-5-mini")
+                                custom_pricing = self.model_config.get("pricing")
+
+                                if custom_pricing:
+                                    # Use custom pricing
+                                    cost = (
+                                        (input_tokens / 1_000_000)
+                                        * custom_pricing.get("input_per_1m", 0.25)
+                                        + (output_tokens / 1_000_000)
+                                        * custom_pricing.get("output_per_1m", 2.0)
+                                        + (cached_tokens / 1_000_000)
+                                        * custom_pricing.get("cached_per_1m", 0.025)
+                                    )
+                                else:
+                                    # Use standard pricing
+                                    cost = calculate_cost(
+                                        model_name=model_name,
+                                        input_tokens=input_tokens,
+                                        output_tokens=output_tokens,
+                                        cached_tokens=cached_tokens,
+                                    )
+
+                                # Record LLM span for usage event
+                                tracer.record_llm_call(
+                                    model=model_name,
+                                    provider="tapescope",
+                                    prompt=query,
+                                    prompt_tokens=input_tokens,
+                                    completion_tokens=output_tokens,
+                                    cost=cost,
+                                    duration_ms=0.0,
                                 )
+
+                                # Update last step with token usage and cost
+                                if steps:
+                                    steps[-1].metrics.tokens = TokenUsage(
+                                        input_tokens=input_tokens,
+                                        output_tokens=output_tokens,
+                                        cached_tokens=cached_tokens,
+                                    )
+                                    steps[-1].metrics.cost = cost
+
+                                if self.verbose:
+                                    logger.info(
+                                        f"💰 Usage: {input_tokens} in, {output_tokens} out, "
+                                        f"{cached_tokens} cached → ${cost:.4f}"
+                                    )
+
+                            elif event_type in [
+                                "start",
+                                "status",
+                                "thinking",
+                                "step_start",
+                                "step_complete",
+                            ]:
+                                # Informational events - just log
+                                if self.verbose:
+                                    logger.debug(f"ℹ️ Info event: {event_type}")
+
                             else:
-                                # Use standard pricing
-                                cost = calculate_cost(
-                                    model_name=model_name,
-                                    input_tokens=input_tokens,
-                                    output_tokens=output_tokens,
-                                    cached_tokens=cached_tokens,
-                                )
+                                # Unknown event type - try to extract any text/message
+                                if self.verbose:
+                                    logger.warning(f"⚠️ Unhandled event type: '{event_type}'")
 
-                            # Update last step with token usage and cost
-                            if steps:
-                                steps[-1].metrics.tokens = TokenUsage(
-                                    input_tokens=input_tokens,
-                                    output_tokens=output_tokens,
-                                    cached_tokens=cached_tokens,
-                                )
-                                steps[-1].metrics.cost = cost
+                                # Try to find text in common fields
+                                for field in ["text", "message", "content", "data"]:
+                                    if field in event:
+                                        text = event[field]
+                                        if isinstance(text, str):
+                                            final_output += text
+                                        elif isinstance(text, dict) and "text" in text:
+                                            final_output += text["text"]
 
+                        except json.JSONDecodeError:
+                            # Not JSON - might be plain text streaming
                             if self.verbose:
-                                logger.info(
-                                    f"💰 Usage: {input_tokens} in, {output_tokens} out, "
-                                    f"{cached_tokens} cached → ${cost:.4f}"
-                                )
-
-                        elif event_type in [
-                            "start",
-                            "status",
-                            "thinking",
-                            "step_start",
-                            "step_complete",
-                        ]:
-                            # Informational events - just log
-                            if self.verbose:
-                                logger.debug(f"ℹ️ Info event: {event_type}")
-
-                        else:
-                            # Unknown event type - try to extract any text/message
-                            if self.verbose:
-                                logger.warning(f"⚠️ Unhandled event type: '{event_type}'")
-
-                            # Try to find text in common fields
-                            for field in ["text", "message", "content", "data"]:
-                                if field in event:
-                                    text = event[field]
-                                    if isinstance(text, str):
-                                        final_output += text
-                                    elif isinstance(text, dict) and "text" in text:
-                                        final_output += text["text"]
-
-                    except json.JSONDecodeError:
-                        # Not JSON - might be plain text streaming
-                        if self.verbose:
-                            logger.debug(f"⚠️ Not JSON (plain text?): {line[:100]}...")
-                        # Accumulate as plain text
-                        final_output += line.strip() + " "
-                        continue
+                                logger.debug(f"⚠️ Not JSON (plain text?): {line[:100]}...")
+                            # Accumulate as plain text
+                            final_output += line.strip() + " "
+                            continue
 
         end_time = datetime.now()
 
@@ -426,6 +460,7 @@ class TapeScopeAdapter(AgentAdapter):
                 total_latency=total_latency,
                 total_tokens=total_usage if total_usage.total_tokens > 0 else None,
             ),
+            trace_context=tracer.build_trace_context(),
         )
 
     async def health_check(self) -> bool:

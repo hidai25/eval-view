@@ -42,7 +42,9 @@ from evalview.core.types import (
     ExecutionTrace,
     StepMetrics,
     StepTrace,
+    SpanKind,
 )
+from evalview.core.tracing import Tracer
 
 logger = logging.getLogger(__name__)
 
@@ -112,13 +114,17 @@ class MCPAdapter(AgentAdapter):
         start_time = datetime.now()
         steps: List[StepTrace] = []
 
+        # Initialize tracer
+        tracer = Tracer()
+
         transport, target = self._parse_endpoint()
 
         try:
-            if transport == "stdio":
-                steps = await self._execute_stdio(query, context, target)
-            else:
-                steps = await self._execute_http(query, context, target)
+            async with tracer.start_span_async("MCP Server", SpanKind.AGENT):
+                if transport == "stdio":
+                    steps = await self._execute_stdio(query, context, target, tracer)
+                else:
+                    steps = await self._execute_http(query, context, target, tracer)
 
             end_time = datetime.now()
 
@@ -136,15 +142,16 @@ class MCPAdapter(AgentAdapter):
                     total_latency=(end_time - start_time).total_seconds() * 1000,
                     total_tokens=None,
                 ),
+                trace_context=tracer.build_trace_context(),
             )
 
         except Exception as e:
             end_time = datetime.now()
             logger.error(f"MCP execution failed: {e}")
-            return self._create_error_trace(str(e), start_time, end_time)
+            return self._create_error_trace(str(e), start_time, end_time, tracer)
 
     async def _execute_stdio(
-        self, query: str, context: Dict[str, Any], command: str
+        self, query: str, context: Dict[str, Any], command: str, tracer: Tracer
     ) -> List[StepTrace]:
         """Execute via stdio transport (subprocess)."""
         steps = []
@@ -216,6 +223,15 @@ class MCPAdapter(AgentAdapter):
                 output = self._format_content(content)
                 error = result.get("error") if not success else None
 
+                # Record tool span
+                tracer.record_tool_call(
+                    tool_name=tool_name,
+                    parameters=arguments,
+                    result=output,
+                    error=error,
+                    duration_ms=step_latency,
+                )
+
                 steps.append(StepTrace(
                     step_id=f"step-{i+1}",
                     step_name=f"Call {tool_name}",
@@ -235,7 +251,7 @@ class MCPAdapter(AgentAdapter):
         return steps
 
     async def _execute_http(
-        self, query: str, context: Dict[str, Any], url: str
+        self, query: str, context: Dict[str, Any], url: str, tracer: Tracer
     ) -> List[StepTrace]:
         """Execute via HTTP transport."""
         import httpx
@@ -279,6 +295,15 @@ class MCPAdapter(AgentAdapter):
                 result = response.json()
 
                 if "error" in result:
+                    error_msg = str(result["error"])
+                    # Record tool span for error
+                    tracer.record_tool_call(
+                        tool_name=tool_name,
+                        parameters=arguments,
+                        result="",
+                        error=error_msg,
+                        duration_ms=step_latency,
+                    )
                     steps.append(StepTrace(
                         step_id=f"step-{i+1}",
                         step_name=f"Call {tool_name}",
@@ -286,12 +311,21 @@ class MCPAdapter(AgentAdapter):
                         parameters=arguments,
                         output="",
                         success=False,
-                        error=str(result["error"]),
+                        error=error_msg,
                         metrics=StepMetrics(latency=step_latency, cost=0.0),
                     ))
                 else:
                     content = result.get("result", {}).get("content", [])
                     output = self._format_content(content)
+
+                    # Record tool span for success
+                    tracer.record_tool_call(
+                        tool_name=tool_name,
+                        parameters=arguments,
+                        result=output,
+                        error=None,
+                        duration_ms=step_latency,
+                    )
 
                     steps.append(StepTrace(
                         step_id=f"step-{i+1}",
@@ -378,9 +412,18 @@ class MCPAdapter(AgentAdapter):
         return "\n\n".join(parts)
 
     def _create_error_trace(
-        self, error_msg: str, start_time: datetime, end_time: datetime
+        self, error_msg: str, start_time: datetime, end_time: datetime, tracer: Tracer
     ) -> ExecutionTrace:
         """Create error trace."""
+        # Record the error as a tool call
+        tracer.record_tool_call(
+            tool_name="error",
+            parameters={},
+            result=error_msg,
+            error=error_msg,
+            duration_ms=(end_time - start_time).total_seconds() * 1000,
+        )
+
         return ExecutionTrace(
             session_id=f"mcp-error-{uuid.uuid4().hex[:8]}",
             start_time=start_time,
@@ -403,6 +446,7 @@ class MCPAdapter(AgentAdapter):
                 total_latency=(end_time - start_time).total_seconds() * 1000,
                 total_tokens=None,
             ),
+            trace_context=tracer.build_trace_context(),
         )
 
     async def health_check(self) -> bool:

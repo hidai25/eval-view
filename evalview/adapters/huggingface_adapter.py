@@ -26,7 +26,9 @@ from evalview.core.types import (
     StepMetrics,
     ExecutionMetrics,
     TokenUsage,
+    SpanKind,
 )
+from evalview.core.tracing import Tracer
 
 logger = logging.getLogger(__name__)
 
@@ -227,6 +229,9 @@ class HuggingFaceAdapter(AgentAdapter):
         context = context or {}
         start_time = datetime.now()
 
+        # Initialize tracer
+        tracer = Tracer()
+
         # Discover the function to call
         fn_name = await self._discover_function()
 
@@ -240,23 +245,12 @@ class HuggingFaceAdapter(AgentAdapter):
         chat_history = context.get("history", [])
         payload = {"data": [query, chat_history]}
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            # Step 1: Submit the request
-            submit_url = f"{self.endpoint}/gradio_api/call/{fn_name}"
+        async with tracer.start_span_async("HuggingFace Space", SpanKind.AGENT):
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                # Step 1: Submit the request
+                submit_url = f"{self.endpoint}/gradio_api/call/{fn_name}"
 
-            try:
-                submit_response = await client.post(
-                    submit_url,
-                    json=payload,
-                    headers={"Content-Type": "application/json", **self.headers},
-                )
-                submit_response.raise_for_status()
-                submit_data = submit_response.json()
-
-            except httpx.HTTPStatusError as e:
-                # Try simpler payload format (just message, no history)
-                if e.response.status_code == 422:
-                    payload = {"data": [query]}
+                try:
                     submit_response = await client.post(
                         submit_url,
                         json=payload,
@@ -264,61 +258,84 @@ class HuggingFaceAdapter(AgentAdapter):
                     )
                     submit_response.raise_for_status()
                     submit_data = submit_response.json()
-                else:
-                    raise
 
-            event_id = submit_data.get("event_id")
-            if not event_id:
-                # Some Gradio versions return result directly
-                return self._parse_direct_response(submit_data, start_time, query)
+                except httpx.HTTPStatusError as e:
+                    # Try simpler payload format (just message, no history)
+                    if e.response.status_code == 422:
+                        payload = {"data": [query]}
+                        submit_response = await client.post(
+                            submit_url,
+                            json=payload,
+                            headers={"Content-Type": "application/json", **self.headers},
+                        )
+                        submit_response.raise_for_status()
+                        submit_data = submit_response.json()
+                    else:
+                        raise
 
-            if self.verbose:
-                logger.info(f"📨 Got event_id: {event_id}")
+                event_id = submit_data.get("event_id")
+                if not event_id:
+                    # Some Gradio versions return result directly
+                    trace = self._parse_direct_response(submit_data, start_time, query, tracer)
+                    return trace
 
-            # Step 2: Poll for results (SSE stream)
-            result_url = f"{self.endpoint}/gradio_api/call/{fn_name}/{event_id}"
+                if self.verbose:
+                    logger.info(f"📨 Got event_id: {event_id}")
 
-            final_output = ""
-            steps: List[StepTrace] = []
-            raw_data = None
+                # Step 2: Poll for results (SSE stream)
+                result_url = f"{self.endpoint}/gradio_api/call/{fn_name}/{event_id}"
 
-            async with client.stream("GET", result_url, headers=self.headers) as response:
-                response.raise_for_status()
+                final_output = ""
+                steps: List[StepTrace] = []
+                raw_data = None
 
-                async for line in response.aiter_lines():
-                    line = line.strip()
-                    if not line:
-                        continue
+                async with client.stream("GET", result_url, headers=self.headers) as response:
+                    response.raise_for_status()
 
-                    if line.startswith("data: "):
-                        try:
-                            data = json.loads(line[6:])
-                            raw_data = data
+                    async for line in response.aiter_lines():
+                        line = line.strip()
+                        if not line:
+                            continue
 
+                        if line.startswith("data: "):
+                            try:
+                                data = json.loads(line[6:])
+                                raw_data = data
+
+                                if self.verbose:
+                                    logger.debug(f"📦 Received: {json.dumps(data)[:200]}")
+
+                                # Extract output from various formats
+                                if isinstance(data, list) and len(data) > 0:
+                                    # Format: [response_text, updated_history]
+                                    final_output = self._extract_text(data[0])
+                                elif isinstance(data, dict):
+                                    final_output = self._extract_text(data)
+
+                                # Try to extract tool calls if present
+                                extracted_steps = self._extract_tool_calls(data)
+                                if extracted_steps:
+                                    steps.extend(extracted_steps)
+
+                            except json.JSONDecodeError:
+                                # Might be partial streaming data
+                                if self.verbose:
+                                    logger.debug(f"⚠️ Non-JSON line: {line[:50]}")
+
+                        elif line.startswith("event: "):
+                            event_type = line[7:]
                             if self.verbose:
-                                logger.debug(f"📦 Received: {json.dumps(data)[:200]}")
+                                logger.debug(f"📡 Event: {event_type}")
 
-                            # Extract output from various formats
-                            if isinstance(data, list) and len(data) > 0:
-                                # Format: [response_text, updated_history]
-                                final_output = self._extract_text(data[0])
-                            elif isinstance(data, dict):
-                                final_output = self._extract_text(data)
-
-                            # Try to extract tool calls if present
-                            extracted_steps = self._extract_tool_calls(data)
-                            if extracted_steps:
-                                steps.extend(extracted_steps)
-
-                        except json.JSONDecodeError:
-                            # Might be partial streaming data
-                            if self.verbose:
-                                logger.debug(f"⚠️ Non-JSON line: {line[:50]}")
-
-                    elif line.startswith("event: "):
-                        event_type = line[7:]
-                        if self.verbose:
-                            logger.debug(f"📡 Event: {event_type}")
+            # Record tool spans for extracted steps
+            for step in steps:
+                tracer.record_tool_call(
+                    tool_name=step.tool_name,
+                    parameters=step.parameters,
+                    result=step.output,
+                    error=step.error,
+                    duration_ms=step.metrics.latency if step.metrics else 0.0,
+                )
 
         end_time = datetime.now()
 
@@ -331,6 +348,7 @@ class HuggingFaceAdapter(AgentAdapter):
             steps=steps,
             final_output=final_output,
             metrics=self._calculate_metrics(steps, start_time, end_time),
+            trace_context=tracer.build_trace_context(),
         )
 
     def _extract_text(self, data: Any) -> str:
@@ -399,7 +417,7 @@ class HuggingFaceAdapter(AgentAdapter):
         return steps
 
     def _parse_direct_response(
-        self, data: Dict[str, Any], start_time: datetime, query: str
+        self, data: Dict[str, Any], start_time: datetime, query: str, tracer: Tracer
     ) -> ExecutionTrace:
         """Parse response when Gradio returns result directly (no event_id)."""
         end_time = datetime.now()
@@ -409,6 +427,16 @@ class HuggingFaceAdapter(AgentAdapter):
         final_output = self._extract_text(output_data)
         steps = self._extract_tool_calls(data)
 
+        # Record tool spans for extracted steps
+        for step in steps:
+            tracer.record_tool_call(
+                tool_name=step.tool_name,
+                parameters=step.parameters,
+                result=step.output,
+                error=step.error,
+                duration_ms=step.metrics.latency if step.metrics else 0.0,
+            )
+
         return ExecutionTrace(
             session_id=f"hf-{int(start_time.timestamp())}",
             start_time=start_time,
@@ -416,6 +444,7 @@ class HuggingFaceAdapter(AgentAdapter):
             steps=steps,
             final_output=final_output,
             metrics=self._calculate_metrics(steps, start_time, end_time),
+            trace_context=tracer.build_trace_context(),
         )
 
     def _calculate_metrics(

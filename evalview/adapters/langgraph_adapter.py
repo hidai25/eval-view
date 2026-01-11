@@ -15,7 +15,9 @@ from evalview.core.types import (
     StepTrace,
     StepMetrics,
     ExecutionMetrics,
+    SpanKind,
 )
+from evalview.core.tracing import Tracer
 
 logger = logging.getLogger(__name__)
 
@@ -82,15 +84,18 @@ class LangGraphAdapter(AgentAdapter):
         context = context or {}
         start_time = datetime.now()
 
+        # Initialize tracer
+        tracer = Tracer()
+
         if self.use_cloud_api:
-            return await self._execute_cloud_api(query, context, start_time)
+            return await self._execute_cloud_api(query, context, start_time, tracer)
         elif self.streaming:
-            return await self._execute_streaming(query, context, start_time)
+            return await self._execute_streaming(query, context, start_time, tracer)
         else:
-            return await self._execute_standard(query, context, start_time)
+            return await self._execute_standard(query, context, start_time, tracer)
 
     async def _execute_cloud_api(
-        self, query: str, context: Dict[str, Any], start_time: datetime
+        self, query: str, context: Dict[str, Any], start_time: datetime, tracer: Tracer
     ) -> ExecutionTrace:
         """Execute LangGraph Cloud API (threads + runs pattern)."""
 
@@ -302,6 +307,28 @@ class LangGraphAdapter(AgentAdapter):
 
         metrics = self._calculate_metrics(steps, start_time, end_time, total_cost, token_usage_obj)
 
+        # Record LLM call span if we have token info
+        if total_tokens > 0:
+            model_name = self.model_config.get("name", "gpt-4o")
+            tracer.record_llm_call(
+                model=model_name,
+                provider="langgraph",
+                prompt=query,
+                prompt_tokens=input_tokens,
+                completion_tokens=output_tokens,
+                cost=total_cost,
+                duration_ms=(end_time - start_time).total_seconds() * 1000,
+            )
+
+        # Record tool spans
+        for step in steps:
+            tracer.record_tool_call(
+                tool_name=step.tool_name,
+                parameters=step.parameters,
+                result=step.output,
+                duration_ms=step.metrics.latency if step.metrics else 0.0,
+            )
+
         if self.verbose:
             logger.info(f"✅ Run completed: {final_output[:50]}...")
 
@@ -312,10 +339,11 @@ class LangGraphAdapter(AgentAdapter):
             steps=steps,
             final_output=final_output,
             metrics=metrics,
+            trace_context=tracer.build_trace_context(),
         )
 
     async def _execute_standard(
-        self, query: str, context: Dict[str, Any], start_time: datetime
+        self, query: str, context: Dict[str, Any], start_time: datetime, tracer: Tracer
     ) -> ExecutionTrace:
         """Execute LangGraph invoke endpoint."""
 
@@ -348,6 +376,15 @@ class LangGraphAdapter(AgentAdapter):
         final_output = self._extract_output(data)
         metrics = self._calculate_metrics(steps, start_time, end_time)
 
+        # Record tool spans
+        for step in steps:
+            tracer.record_tool_call(
+                tool_name=step.tool_name,
+                parameters=step.parameters,
+                result=step.output,
+                duration_ms=step.metrics.latency if step.metrics else 0.0,
+            )
+
         return ExecutionTrace(
             session_id=data.get("thread_id", f"langgraph-{start_time.timestamp()}"),
             start_time=start_time,
@@ -355,10 +392,11 @@ class LangGraphAdapter(AgentAdapter):
             steps=steps,
             final_output=final_output,
             metrics=metrics,
+            trace_context=tracer.build_trace_context(),
         )
 
     async def _execute_streaming(
-        self, query: str, context: Dict[str, Any], start_time: datetime
+        self, query: str, context: Dict[str, Any], start_time: datetime, tracer: Tracer
     ) -> ExecutionTrace:
         """Execute LangGraph streaming endpoint."""
 
@@ -409,6 +447,15 @@ class LangGraphAdapter(AgentAdapter):
         end_time = datetime.now()
         metrics = self._calculate_metrics(steps, start_time, end_time)
 
+        # Record tool spans
+        for step in steps:
+            tracer.record_tool_call(
+                tool_name=step.tool_name,
+                parameters=step.parameters,
+                result=step.output,
+                duration_ms=step.metrics.latency if step.metrics else 0.0,
+            )
+
         return ExecutionTrace(
             session_id=thread_id or f"langgraph-{start_time.timestamp()}",
             start_time=start_time,
@@ -416,6 +463,7 @@ class LangGraphAdapter(AgentAdapter):
             steps=steps,
             final_output=final_output.strip(),
             metrics=metrics,
+            trace_context=tracer.build_trace_context(),
         )
 
     def _parse_steps(self, data: Dict[str, Any]) -> List[StepTrace]:

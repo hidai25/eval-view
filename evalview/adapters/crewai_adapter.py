@@ -16,8 +16,10 @@ from evalview.core.types import (
     StepMetrics,
     ExecutionMetrics,
     TokenUsage,
+    SpanKind,
 )
 from evalview.core.pricing import calculate_cost
+from evalview.core.tracing import Tracer
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +70,9 @@ class CrewAIAdapter(AgentAdapter):
         context = context or {}
         start_time = datetime.now()
 
+        # Initialize tracer
+        tracer = Tracer()
+
         # CrewAI typically expects inputs
         payload = {"inputs": {"query": query, **context}}
 
@@ -109,6 +114,29 @@ class CrewAIAdapter(AgentAdapter):
         # Distribute total metrics across steps (CrewAI doesn't provide per-step timing)
         self._distribute_metrics_to_steps(steps, metrics)
 
+        # Record LLM span if we have token info
+        if metrics.total_tokens and metrics.total_tokens.total_tokens > 0:
+            model_name = data.get("model") or self.model_config.get("model") or "gpt-4o-mini"
+            tracer.record_llm_call(
+                model=model_name,
+                provider="crewai",
+                prompt=query,
+                prompt_tokens=metrics.total_tokens.input_tokens,
+                completion_tokens=metrics.total_tokens.output_tokens,
+                cost=metrics.total_cost,
+                duration_ms=metrics.total_latency,
+            )
+
+        # Record tool spans
+        for step in steps:
+            tracer.record_tool_call(
+                tool_name=step.tool_name,
+                parameters=step.parameters,
+                result=step.output,
+                error=step.error,
+                duration_ms=step.metrics.latency if step.metrics else 0.0,
+            )
+
         return ExecutionTrace(
             session_id=data.get("crew_id", f"crewai-{start_time.timestamp()}"),
             start_time=start_time,
@@ -116,6 +144,7 @@ class CrewAIAdapter(AgentAdapter):
             steps=steps,
             final_output=final_output,
             metrics=metrics,
+            trace_context=tracer.build_trace_context(),
         )
 
     def _parse_tasks(self, data: Dict[str, Any]) -> List[StepTrace]:

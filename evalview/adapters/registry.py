@@ -248,6 +248,13 @@ class AdapterRegistry:
         except ImportError:
             logger.warning("MCPAdapter not available")
 
+        try:
+            from evalview.adapters.ollama_adapter import OllamaAdapter
+
+            cls.register("ollama", OllamaAdapter)
+        except ImportError:
+            logger.warning("OllamaAdapter not available")
+
         cls._initialized = True
 
     @classmethod

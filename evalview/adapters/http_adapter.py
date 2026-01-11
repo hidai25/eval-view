@@ -11,8 +11,10 @@ from evalview.core.types import (
     StepMetrics,
     ExecutionMetrics,
     TokenUsage,
+    SpanKind,
 )
 from evalview.core.pricing import calculate_cost
+from evalview.core.tracing import Tracer
 
 logger = logging.getLogger(__name__)
 
@@ -67,28 +69,83 @@ class HTTPAdapter(AgentAdapter):
         """Execute agent via HTTP and capture trace."""
         start_time = datetime.now()
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(
-                self.endpoint,
-                json={
-                    "query": query,
-                    "context": context,
-                    "enable_tracing": True,
-                },
-                headers={
-                    "Content-Type": "application/json",
-                    **self.headers,
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
+        # Initialize tracer
+        tracer = Tracer()
+
+        async with tracer.start_span_async("HTTP Agent", SpanKind.AGENT):
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                api_start = datetime.now()
+                response = await client.post(
+                    self.endpoint,
+                    json={
+                        "query": query,
+                        "context": context,
+                        "enable_tracing": True,
+                    },
+                    headers={
+                        "Content-Type": "application/json",
+                        **self.headers,
+                    },
+                )
+                response.raise_for_status()
+                data = response.json()
+                api_end = datetime.now()
+                api_latency = (api_end - api_start).total_seconds() * 1000
+
+            # Record the API call as an LLM span if model info is available
+            model_name = self.model_config.get("name", "unknown")
+            if model_name != "unknown":
+                tokens_data = data.get("tokens") or data.get("metadata", {}).get("tokens", {})
+                input_tokens = 0
+                output_tokens = 0
+                if isinstance(tokens_data, dict):
+                    input_tokens = tokens_data.get("input", tokens_data.get("input_tokens", 0))
+                    output_tokens = tokens_data.get("output", tokens_data.get("output_tokens", 0))
+
+                tracer.record_llm_call(
+                    model=model_name,
+                    provider="http",
+                    prompt=query,
+                    prompt_tokens=input_tokens,
+                    completion_tokens=output_tokens,
+                    cost=data.get("cost", 0.0),
+                    duration_ms=api_latency,
+                )
+
+            # Record tool calls from response
+            steps_data = data.get("steps") or data.get("tool_calls") or []
+            for step_data in steps_data:
+                tool_name = (
+                    step_data.get("tool")
+                    or step_data.get("tool_name")
+                    or step_data.get("name")
+                    or "unknown"
+                )
+                parameters = (
+                    step_data.get("parameters")
+                    or step_data.get("params")
+                    or step_data.get("arguments")
+                    or {}
+                )
+                output = step_data.get("output") or step_data.get("result")
+
+                tracer.record_tool_call(
+                    tool_name=tool_name,
+                    parameters=parameters,
+                    result=output,
+                    error=step_data.get("error"),
+                    duration_ms=step_data.get("latency", 0.0),
+                )
 
         end_time = datetime.now()
 
         # Store raw response for debug mode
         self._last_raw_response = data
 
-        return self._parse_response(data, start_time, end_time)
+        # Parse response and attach trace context
+        trace = self._parse_response(data, start_time, end_time)
+        trace.trace_context = tracer.build_trace_context()
+        return trace
 
     def _parse_response(
         self, data: Dict[str, Any], start_time: datetime, end_time: datetime

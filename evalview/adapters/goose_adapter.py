@@ -37,7 +37,9 @@ from evalview.core.types import (
     StepMetrics,
     StepTrace,
     TokenUsage,
+    SpanKind,
 )
+from evalview.core.tracing import Tracer
 
 logger = logging.getLogger(__name__)
 
@@ -250,6 +252,18 @@ class GooseAdapter(AgentAdapter):
             if not final_output:
                 final_output = error_msg
 
+        # Build trace context from steps
+        tracer = Tracer()
+        with tracer.start_span("Goose Execution", SpanKind.AGENT):
+            for step in steps:
+                tracer.record_tool_call(
+                    tool_name=step.tool_name,
+                    parameters=step.parameters,
+                    result=step.output,
+                    error=step.error,
+                    duration_ms=step.metrics.latency if step.metrics else 0.0,
+                )
+
         return ExecutionTrace(
             session_id=session_id,
             start_time=start_time,
@@ -261,6 +275,7 @@ class GooseAdapter(AgentAdapter):
                 total_latency=total_latency,
                 total_tokens=self._extract_tokens(stdout),
             ),
+            trace_context=tracer.build_trace_context(),
         )
 
     def _parse_json_output(
