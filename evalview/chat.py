@@ -35,6 +35,7 @@ from prompt_toolkit.filters import Condition
 
 SLASH_COMMANDS = [
     ("/model", "Switch to a different model"),
+    ("/trace", "View execution trace from last run"),
     ("/docs", "Open EvalView documentation"),
     ("/cli", "Show CLI commands cheatsheet"),
     ("/permissions", "Show auto-allowed commands"),
@@ -375,12 +376,30 @@ evalview golden save .evalview/results/xxx.json
 ```
 Save a run as baseline for regression detection.
 
+## DEBUGGING WITH /trace
+After running tests, users can type `/trace` to see detailed execution traces:
+- LLM calls with token counts, costs, latency
+- Tool calls with parameters and results
+- Hierarchical view of agent execution
+
+When users ask about debugging, test failures, or understanding what happened:
+1. Suggest running `/trace` to see the execution details
+2. Explain what the trace shows (LLM calls, tools, costs)
+3. Help interpret trace output if they share it
+
+Example workflow:
+1. User runs tests: `evalview run`
+2. Test fails or behaves unexpectedly
+3. User types `/trace` to see what happened
+4. You help analyze the trace output
+
 ## RULES
 1. Put commands in ```command blocks so they can be executed
 2. Answer questions using the knowledge above - don't hallucinate
 3. For adapter questions, refer to the adapters table
 4. For example questions, give the actual path from examples list
 5. Keep responses concise but accurate
+6. When debugging, suggest /trace to see execution details
 """
 
 
@@ -838,15 +857,20 @@ async def run_chat(
                 break
             
             if user_input.lower() in ("help", "/help"):
-                # ... [help logic] ...
                 console.print("\n[bold]Chat Commands:[/bold]")
                 console.print("  [cyan]/model[/cyan]         - Switch to a different model")
+                console.print("  [cyan]/trace[/cyan]         - View execution trace from last run")
+                console.print("  [cyan]/trace <name>[/cyan]  - View trace filtered by test name")
                 console.print("  [cyan]/docs[/cyan]          - Open EvalView documentation")
                 console.print("  [cyan]/cli[/cyan]           - Show CLI commands cheatsheet")
                 console.print("  [cyan]/permissions[/cyan]   - Show auto-allowed commands")
                 console.print("  [cyan]/context[/cyan]       - Show project status")
                 console.print("  [cyan]clear[/cyan]          - Clear chat history")
                 console.print("  [cyan]exit[/cyan]           - Leave chat")
+                console.print("\n[bold]Debugging:[/bold]")
+                console.print("  - Run tests, then use /trace to see LLM calls")
+                console.print("  - /trace shows tokens, costs, tool calls")
+                console.print("  - Ask \"why did this test fail?\" for AI analysis")
                 console.print("\n[bold]Tips:[/bold]")
                 console.print("  - Ask how to test your agent")
                 console.print("  - Ask to run specific tests")
@@ -887,6 +911,57 @@ async def run_chat(
                 console.print("  evalview record            # Record agent interactions")
                 console.print("  evalview --help            # Full help")
                 console.print()
+                continue
+
+            # /trace command - view execution trace
+            if user_input.lower().startswith("/trace"):
+                parts = user_input.split(maxsplit=1)
+                test_filter = parts[1].strip() if len(parts) > 1 else None
+
+                # Find latest results
+                results_dir = Path(".evalview/results")
+                if not results_dir.exists():
+                    console.print("[yellow]No results found. Run some tests first![/yellow]")
+                    console.print("[dim]Try: evalview run[/dim]")
+                    continue
+
+                result_files = sorted(results_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+                if not result_files:
+                    console.print("[yellow]No results found. Run some tests first![/yellow]")
+                    continue
+
+                latest = result_files[0]
+                console.print(f"[dim]Loading trace from {latest.name}...[/dim]\n")
+
+                try:
+                    from evalview.reporters.json_reporter import JSONReporter
+                    from evalview.reporters.trace_reporter import TraceReporter
+                    from evalview.core.types import EvaluationResult
+
+                    results_data = JSONReporter.load(str(latest))
+                    if not results_data:
+                        console.print("[yellow]No results in file[/yellow]")
+                        continue
+
+                    results = [EvaluationResult(**data) for data in results_data]
+
+                    # Filter by test name if specified
+                    if test_filter:
+                        results = [r for r in results if test_filter.lower() in r.test_case.lower()]
+                        if not results:
+                            console.print(f"[yellow]No tests matching '{test_filter}'[/yellow]")
+                            continue
+
+                    reporter = TraceReporter()
+                    for result in results:
+                        console.print(f"[bold cyan]Test: {result.test_case}[/bold cyan]")
+                        console.print(f"[dim]Score: {result.score:.0f} | Pass: {result.passed}[/dim]")
+                        console.print()
+                        reporter.print_trace_from_result(result)
+                        console.print()
+
+                except Exception as e:
+                    console.print(f"[red]Error loading trace: {e}[/red]")
                 continue
 
             # /model command - switch models mid-session
