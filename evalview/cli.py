@@ -2956,6 +2956,202 @@ def report(results_file: str, detailed: bool, html: str):
 
 
 @main.command()
+@click.argument("run_id", required=False)
+@click.option(
+    "-t", "--test",
+    help="Filter by test name (substring match)",
+)
+@click.option(
+    "--llm-only",
+    is_flag=True,
+    help="Only show LLM call spans",
+)
+@click.option(
+    "--tools-only",
+    is_flag=True,
+    help="Only show tool call spans",
+)
+@click.option(
+    "--prompts",
+    is_flag=True,
+    help="Show LLM prompts (truncated)",
+)
+@click.option(
+    "--completions",
+    is_flag=True,
+    help="Show LLM completions (truncated)",
+)
+@click.option(
+    "--table",
+    is_flag=True,
+    help="Show span table instead of tree",
+)
+@click.option(
+    "--json",
+    "output_json",
+    is_flag=True,
+    help="Output as JSON",
+)
+@click.option(
+    "--llm-summary",
+    is_flag=True,
+    help="Show LLM call summary with token/cost breakdown",
+)
+def view(
+    run_id: Optional[str],
+    test: Optional[str],
+    llm_only: bool,
+    tools_only: bool,
+    prompts: bool,
+    completions: bool,
+    table: bool,
+    output_json: bool,
+    llm_summary: bool,
+):
+    """View execution trace for debugging.
+
+    RUN_ID can be:
+      - "latest" (default): View the most recent run
+      - A timestamp or partial match of a result file
+      - A full path to a results JSON file
+
+    Examples:
+        evalview view                    # View latest run
+        evalview view latest             # Same as above
+        evalview view latest -t "stock"  # Filter by test name
+        evalview view abc123 --llm-only  # Show only LLM calls
+        evalview view --json             # Output as JSON
+        evalview view --llm-summary      # Show LLM token/cost breakdown
+    """
+    from evalview.reporters.trace_reporter import TraceReporter
+    from evalview.core.types import EvaluationResult
+
+    # Default to "latest" if no run_id provided
+    if not run_id:
+        run_id = "latest"
+
+    # Find the results file
+    results_path = _find_results_file(run_id)
+    if not results_path:
+        console.print(f"[red]Could not find results for: {run_id}[/red]")
+        console.print("[dim]Run 'evalview run' first to generate results[/dim]")
+        return
+
+    console.print(f"[blue]Loading results from {results_path}...[/blue]\n")
+
+    # Load results
+    results_data = JSONReporter.load(str(results_path))
+    if not results_data:
+        console.print("[yellow]No results found in file[/yellow]")
+        return
+
+    # Convert to EvaluationResult objects
+    results = [EvaluationResult(**data) for data in results_data]
+
+    # Filter by test name if specified
+    if test:
+        results = [r for r in results if test.lower() in r.test_case.lower()]
+        if not results:
+            console.print(f"[yellow]No tests matching '{test}'[/yellow]")
+            return
+
+    reporter = TraceReporter()
+
+    for result in results:
+        console.print(f"[bold cyan]Test: {result.test_case}[/bold cyan]")
+        console.print()
+
+        if output_json:
+            # Output trace context as JSON
+            from evalview.core.tracing import steps_to_trace_context
+
+            if result.trace.trace_context:
+                trace_context = result.trace.trace_context
+            else:
+                trace_context = steps_to_trace_context(
+                    steps=result.trace.steps,
+                    session_id=result.trace.session_id,
+                    start_time=result.trace.start_time,
+                    end_time=result.trace.end_time,
+                )
+            console.print(reporter.export_json(trace_context))
+        elif table:
+            # Show span table
+            from evalview.core.tracing import steps_to_trace_context
+
+            if result.trace.trace_context:
+                trace_context = result.trace.trace_context
+            else:
+                trace_context = steps_to_trace_context(
+                    steps=result.trace.steps,
+                    session_id=result.trace.session_id,
+                    start_time=result.trace.start_time,
+                    end_time=result.trace.end_time,
+                )
+            reporter.print_trace_table(trace_context)
+        elif llm_summary:
+            # Show LLM summary
+            from evalview.core.tracing import steps_to_trace_context
+
+            if result.trace.trace_context:
+                trace_context = result.trace.trace_context
+            else:
+                trace_context = steps_to_trace_context(
+                    steps=result.trace.steps,
+                    session_id=result.trace.session_id,
+                    start_time=result.trace.start_time,
+                    end_time=result.trace.end_time,
+                )
+            reporter.print_llm_summary(trace_context)
+        else:
+            # Default: show trace tree
+            reporter.print_trace_from_result(
+                result,
+                show_prompts=prompts,
+                show_completions=completions,
+                llm_only=llm_only,
+                tools_only=tools_only,
+            )
+
+        console.print()
+
+
+def _find_results_file(run_id: str) -> Optional[Path]:
+    """Find a results file by run ID or path.
+
+    Args:
+        run_id: "latest", a timestamp substring, or a file path
+
+    Returns:
+        Path to the results file, or None if not found.
+    """
+    # Check if it's a direct path
+    if Path(run_id).exists():
+        return Path(run_id)
+
+    # Look in the default results directory
+    results_dir = Path(".evalview/results")
+    if not results_dir.exists():
+        return None
+
+    # Get all JSON files
+    result_files = sorted(results_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not result_files:
+        return None
+
+    # Handle "latest"
+    if run_id.lower() == "latest":
+        return result_files[0]
+
+    # Search for matching file
+    for f in result_files:
+        if run_id in f.stem:
+            return f
+
+    return None
+
+
+@main.command()
 @click.option(
     "--endpoint",
     help="Agent endpoint URL to test (optional - will auto-detect common ones)",

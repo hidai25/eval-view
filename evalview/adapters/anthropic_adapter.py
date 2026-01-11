@@ -15,7 +15,9 @@ from evalview.core.types import (
     StepMetrics,
     ExecutionMetrics,
     TokenUsage,
+    SpanKind,
 )
+from evalview.core.tracing import Tracer
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +138,9 @@ class AnthropicAdapter(AgentAdapter):
         total_input_tokens = 0
         total_output_tokens = 0
 
+        # Initialize tracer for detailed span capture
+        tracer = Tracer()
+
         if self.verbose:
             logger.info(f"🚀 Executing Anthropic Claude: {query[:50]}...")
             logger.debug(f"Model: {model}, Tools: {len(api_tools)}")
@@ -149,137 +154,174 @@ class AnthropicAdapter(AgentAdapter):
         final_output = ""
         round_count = 0
 
-        while round_count < self.max_tool_rounds:
-            round_count += 1
+        # Start agent-level span
+        async with tracer.start_span_async("Agent Execution", SpanKind.AGENT):
+            while round_count < self.max_tool_rounds:
+                round_count += 1
 
-            # Make API call
-            kwargs: Dict[str, Any] = {
-                "model": model,
-                "max_tokens": self.max_tokens,
-                "messages": messages,
-            }
+                # Make API call
+                kwargs: Dict[str, Any] = {
+                    "model": model,
+                    "max_tokens": self.max_tokens,
+                    "messages": messages,
+                }
 
-            if system_prompt:
-                kwargs["system"] = system_prompt
+                if system_prompt:
+                    kwargs["system"] = system_prompt
 
-            if api_tools:
-                kwargs["tools"] = api_tools
+                if api_tools:
+                    kwargs["tools"] = api_tools
 
-            # Track API call timing
-            api_call_start = datetime.now()
-            response = await client.messages.create(**kwargs)
-            api_call_end = datetime.now()
-            api_call_latency = (api_call_end - api_call_start).total_seconds() * 1000
+                # Track API call timing with LLM span
+                api_call_start = datetime.now()
+                response = await client.messages.create(**kwargs)
+                api_call_end = datetime.now()
+                api_call_latency = (api_call_end - api_call_start).total_seconds() * 1000
 
-            # Track token usage for this round
-            round_input_tokens = 0
-            round_output_tokens = 0
-            if hasattr(response, "usage"):
-                round_input_tokens = response.usage.input_tokens
-                round_output_tokens = response.usage.output_tokens
-                total_input_tokens += round_input_tokens
-                total_output_tokens += round_output_tokens
+                # Track token usage for this round
+                round_input_tokens = 0
+                round_output_tokens = 0
+                if hasattr(response, "usage"):
+                    round_input_tokens = response.usage.input_tokens
+                    round_output_tokens = response.usage.output_tokens
+                    total_input_tokens += round_input_tokens
+                    total_output_tokens += round_output_tokens
 
-            # Calculate cost for this round
-            round_token_usage = TokenUsage(
-                input_tokens=round_input_tokens,
-                output_tokens=round_output_tokens,
-                cached_tokens=0,
-            )
-            round_cost = self._calculate_cost(model, round_token_usage)
+                # Calculate cost for this round
+                round_token_usage = TokenUsage(
+                    input_tokens=round_input_tokens,
+                    output_tokens=round_output_tokens,
+                    cached_tokens=0,
+                )
+                round_cost = self._calculate_cost(model, round_token_usage)
 
-            # Check for tool use
-            tool_use_blocks = [
-                block for block in response.content if block.type == "tool_use"
-            ]
+                # Extract text content for LLM span
+                llm_completion = ""
+                for block in response.content:
+                    if block.type == "text":
+                        llm_completion += block.text
 
-            if not tool_use_blocks:
-                # No tool calls - extract final text response
+                # Determine finish reason
+                finish_reason = response.stop_reason if hasattr(response, "stop_reason") else None
+
+                # Record LLM call span
+                tracer.record_llm_call(
+                    model=model,
+                    provider="anthropic",
+                    prompt=query if round_count == 1 else None,  # Only include initial prompt
+                    completion=llm_completion if llm_completion else None,
+                    prompt_tokens=round_input_tokens,
+                    completion_tokens=round_output_tokens,
+                    finish_reason=finish_reason,
+                    cost=round_cost,
+                    duration_ms=api_call_latency,
+                )
+
+                # Check for tool use
+                tool_use_blocks = [
+                    block for block in response.content if block.type == "tool_use"
+                ]
+
+                if not tool_use_blocks:
+                    # No tool calls - extract final text response
+                    for block in response.content:
+                        if block.type == "text":
+                            final_output += block.text
+                    break
+
+                # Process tool calls - distribute round cost/latency across tools in this round
+                num_tools_in_round = len(tool_use_blocks)
+                per_tool_latency = api_call_latency / num_tools_in_round
+                per_tool_cost = round_cost / num_tools_in_round
+
+                tool_results = []
+
+                for tool_block in tool_use_blocks:
+                    tool_name = tool_block.name
+                    tool_input = tool_block.input
+                    tool_id = tool_block.id
+
+                    if self.verbose:
+                        logger.debug(f"🔧 Tool call: {tool_name}({tool_input})")
+
+                    # Execute tool with timing
+                    tool_start = datetime.now()
+                    tool_result = None
+                    tool_error = None
+
+                    if tool_executor:
+                        try:
+                            # Support both sync and async executors
+                            import asyncio
+                            import inspect
+
+                            if inspect.iscoroutinefunction(tool_executor):
+                                tool_result = await tool_executor(tool_name, tool_input)
+                            else:
+                                tool_result = await asyncio.to_thread(
+                                    tool_executor, tool_name, tool_input
+                                )
+                        except Exception as e:
+                            tool_error = str(e)
+                            tool_result = f"Error: {e}"
+                    else:
+                        # Check for mock_response in tool definition (use original tools with mocks)
+                        mock_response = self._get_mock_response(tool_name, tools_with_mocks)
+                        if mock_response is not None:
+                            tool_result = mock_response
+                            if self.verbose:
+                                logger.debug(f"📦 Using mock response for {tool_name}")
+                        else:
+                            tool_result = f"Tool '{tool_name}' executed (no executor provided)"
+
+                    tool_end = datetime.now()
+                    tool_duration = (tool_end - tool_start).total_seconds() * 1000
+
+                    # Record tool span
+                    tracer.record_tool_call(
+                        tool_name=tool_name,
+                        parameters=tool_input,
+                        result=tool_result if not tool_error else None,
+                        error=tool_error,
+                        duration_ms=tool_duration,
+                    )
+
+                    # Record step with actual API latency/cost for this round
+                    step_trace = StepTrace(
+                        step_id=tool_id,
+                        step_name=tool_name,
+                        tool_name=tool_name,
+                        parameters=tool_input,
+                        output=tool_result if not tool_error else None,
+                        error=tool_error,
+                        success=tool_error is None,
+                        metrics=StepMetrics(latency=per_tool_latency, cost=per_tool_cost),
+                    )
+                    steps.append(step_trace)
+
+                    # Prepare tool result for next message
+                    tool_results.append(
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": tool_id,
+                            "content": (
+                                json.dumps(tool_result)
+                                if not isinstance(tool_result, str)
+                                else tool_result
+                            ),
+                        }
+                    )
+
+                # Add assistant message with tool use
+                messages.append({"role": "assistant", "content": response.content})
+
+                # Add tool results
+                messages.append({"role": "user", "content": tool_results})
+
+                # Also capture any text from this response
                 for block in response.content:
                     if block.type == "text":
                         final_output += block.text
-                break
-
-            # Process tool calls - distribute round cost/latency across tools in this round
-            num_tools_in_round = len(tool_use_blocks)
-            per_tool_latency = api_call_latency / num_tools_in_round
-            per_tool_cost = round_cost / num_tools_in_round
-
-            tool_results = []
-
-            for tool_block in tool_use_blocks:
-                tool_name = tool_block.name
-                tool_input = tool_block.input
-                tool_id = tool_block.id
-
-                if self.verbose:
-                    logger.debug(f"🔧 Tool call: {tool_name}({tool_input})")
-
-                # Execute tool
-                tool_result = None
-                tool_error = None
-
-                if tool_executor:
-                    try:
-                        # Support both sync and async executors
-                        import asyncio
-                        import inspect
-
-                        if inspect.iscoroutinefunction(tool_executor):
-                            tool_result = await tool_executor(tool_name, tool_input)
-                        else:
-                            tool_result = await asyncio.to_thread(
-                                tool_executor, tool_name, tool_input
-                            )
-                    except Exception as e:
-                        tool_error = str(e)
-                        tool_result = f"Error: {e}"
-                else:
-                    # Check for mock_response in tool definition (use original tools with mocks)
-                    mock_response = self._get_mock_response(tool_name, tools_with_mocks)
-                    if mock_response is not None:
-                        tool_result = mock_response
-                        if self.verbose:
-                            logger.debug(f"📦 Using mock response for {tool_name}")
-                    else:
-                        tool_result = f"Tool '{tool_name}' executed (no executor provided)"
-
-                # Record step with actual API latency/cost for this round
-                step_trace = StepTrace(
-                    step_id=tool_id,
-                    step_name=tool_name,
-                    tool_name=tool_name,
-                    parameters=tool_input,
-                    output=tool_result if not tool_error else None,
-                    error=tool_error,
-                    success=tool_error is None,
-                    metrics=StepMetrics(latency=per_tool_latency, cost=per_tool_cost),
-                )
-                steps.append(step_trace)
-
-                # Prepare tool result for next message
-                tool_results.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": tool_id,
-                        "content": (
-                            json.dumps(tool_result)
-                            if not isinstance(tool_result, str)
-                            else tool_result
-                        ),
-                    }
-                )
-
-            # Add assistant message with tool use
-            messages.append({"role": "assistant", "content": response.content})
-
-            # Add tool results
-            messages.append({"role": "user", "content": tool_results})
-
-            # Also capture any text from this response
-            for block in response.content:
-                if block.type == "text":
-                    final_output += block.text
 
         end_time = datetime.now()
 
@@ -292,6 +334,9 @@ class AnthropicAdapter(AgentAdapter):
 
         total_cost = self._calculate_cost(model, token_usage)
         total_latency = (end_time - start_time).total_seconds() * 1000
+
+        # Build trace context from recorded spans
+        trace_context = tracer.build_trace_context()
 
         if self.verbose:
             logger.info(
@@ -310,6 +355,7 @@ class AnthropicAdapter(AgentAdapter):
                 total_latency=total_latency,
                 total_tokens=token_usage,
             ),
+            trace_context=trace_context,
         )
 
     def _get_mock_response(self, tool_name: str, tools: List[Dict[str, Any]]) -> Any:

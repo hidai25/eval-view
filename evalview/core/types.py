@@ -2,7 +2,8 @@
 
 import logging
 from datetime import datetime
-from typing import Any, Optional, List, Dict, Union
+from enum import Enum
+from typing import Any, Optional, List, Dict, Union, Literal
 from pydantic import BaseModel, Field, field_validator, ValidationInfo
 
 logger = logging.getLogger(__name__)
@@ -250,6 +251,113 @@ class ExecutionMetrics(BaseModel):
         )
 
 
+# ============================================================================
+# Tracing Types (OpenTelemetry-aligned)
+# ============================================================================
+
+
+class SpanKind(str, Enum):
+    """Type of span in the execution trace.
+
+    Aligned with OpenTelemetry GenAI semantic conventions.
+    """
+
+    AGENT = "agent"  # Top-level agent execution
+    LLM = "llm"  # LLM inference call
+    TOOL = "tool"  # Tool/function execution
+
+
+class LLMCallInfo(BaseModel):
+    """Information about an LLM inference call."""
+
+    model: str
+    provider: str
+    prompt: Optional[str] = None
+    completion: Optional[str] = None
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    finish_reason: Optional[str] = None
+
+
+class ToolCallInfo(BaseModel):
+    """Information about a tool/function execution."""
+
+    tool_name: str
+    parameters: Dict[str, Any] = Field(default_factory=dict)
+    result: Optional[Any] = None
+
+
+class Span(BaseModel):
+    """A single span in the execution trace.
+
+    Follows OpenTelemetry GenAI semantic conventions for future
+    compatibility with OTEL export.
+    """
+
+    span_id: str
+    parent_span_id: Optional[str] = None
+    trace_id: str
+    kind: SpanKind
+    name: str
+    start_time: datetime
+    end_time: Optional[datetime] = None
+    duration_ms: Optional[float] = None
+    status: Literal["ok", "error", "unset"] = "unset"
+    error_message: Optional[str] = None
+    llm: Optional[LLMCallInfo] = None  # Populated for SpanKind.LLM
+    tool: Optional[ToolCallInfo] = None  # Populated for SpanKind.TOOL
+    cost: float = 0.0
+
+    @field_validator("start_time", "end_time", mode="before")
+    @classmethod
+    def coerce_span_datetime(cls, v, info: ValidationInfo):
+        """Convert ISO string to datetime."""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            try:
+                return datetime.fromisoformat(v.replace("Z", "+00:00"))
+            except ValueError:
+                raise ValueError(
+                    f"Invalid datetime format for {info.field_name}: {v}. "
+                    f"Use ISO format (YYYY-MM-DDTHH:MM:SS) or datetime object."
+                )
+        return v
+
+
+class TraceContext(BaseModel):
+    """Complete trace context for an agent execution.
+
+    Contains all spans (LLM calls, tool executions) organized
+    in a hierarchical structure for debugging and visualization.
+    """
+
+    trace_id: str
+    root_span_id: str
+    spans: List[Span] = Field(default_factory=list)
+    start_time: datetime
+    end_time: Optional[datetime] = None
+    total_llm_calls: int = 0
+    total_tool_calls: int = 0
+    total_cost: float = 0.0
+
+    @field_validator("start_time", "end_time", mode="before")
+    @classmethod
+    def coerce_trace_datetime(cls, v, info: ValidationInfo):
+        """Convert ISO string to datetime."""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            try:
+                return datetime.fromisoformat(v.replace("Z", "+00:00"))
+            except ValueError:
+                raise ValueError(
+                    f"Invalid datetime format for {info.field_name}: {v}. "
+                    f"Use ISO format (YYYY-MM-DDTHH:MM:SS) or datetime object."
+                )
+        return v
+
+
 class ExecutionTrace(BaseModel):
     """Execution trace captured from agent run."""
 
@@ -259,6 +367,10 @@ class ExecutionTrace(BaseModel):
     steps: List[StepTrace]
     final_output: str
     metrics: ExecutionMetrics
+
+    # Optional detailed trace context with LLM call spans
+    # Defaults to None for backward compatibility with existing adapters
+    trace_context: Optional[TraceContext] = None
 
     @field_validator("start_time", "end_time", mode="before")
     @classmethod
