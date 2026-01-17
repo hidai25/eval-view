@@ -1348,6 +1348,16 @@ thresholds:
     is_flag=True,
     help="Strict mode: fail on any non-PASSED status (equivalent to --fail-on REGRESSION,TOOLS_CHANGED,OUTPUT_CHANGED)",
 )
+@click.option(
+    "--trace",
+    is_flag=True,
+    help="Show live trace output: LLM calls, tool executions, costs, and latency.",
+)
+@click.option(
+    "--trace-out",
+    type=click.Path(),
+    help="Export trace to JSONL file for debugging or sharing.",
+)
 def run(
     path: Optional[str],
     pattern: str,
@@ -1374,6 +1384,8 @@ def run(
     fail_on: Optional[str],
     warn_on: Optional[str],
     strict: bool,
+    trace: bool,
+    trace_out: Optional[str],
 ):
     """Run test cases against the agent.
 
@@ -1397,7 +1409,7 @@ def run(
         path, pattern, test, filter, output, verbose, track, compare_baseline, debug,
         sequential, max_workers, max_retries, retry_delay, watch, html_report, summary, coverage,
         adapter_override=adapter, diff=diff, diff_report=diff_report,
-        fail_on=fail_on, warn_on=warn_on
+        fail_on=fail_on, warn_on=warn_on, trace=trace, trace_out=trace_out
     ))
 
 
@@ -1424,6 +1436,8 @@ async def _run_async(
     diff_report: Optional[str] = None,
     fail_on: Optional[str] = None,
     warn_on: Optional[str] = None,
+    trace: bool = False,
+    trace_out: Optional[str] = None,
 ):
     """Async implementation of run command."""
     import fnmatch
@@ -1437,6 +1451,7 @@ async def _run_async(
         is_statistical_mode,
     )
     from evalview.reporters.console_reporter import ConsoleReporter
+    from evalview.reporters.trace_live_reporter import create_trace_reporter
 
     # Load environment variables from path directory if provided
     if path:
@@ -1519,6 +1534,18 @@ async def _run_async(
 
     if max_retries > 0:
         console.print(f"[dim]🔄 Retry enabled: up to {max_retries} retries with {retry_delay}s base delay[/dim]\n")
+
+    # Initialize trace reporter if trace mode enabled
+    trace_reporter = None
+    if trace or trace_out:
+        trace_reporter = create_trace_reporter(
+            console=console,
+            trace_out_path=trace_out,
+        )
+        if trace:
+            console.print("[dim]📡 Trace mode enabled - showing live execution details[/dim]\n")
+        if trace_out:
+            console.print(f"[dim]📄 Trace output: {trace_out}[/dim]\n")
 
     # Handle watch mode - wrap test execution in a loop
     if watch:
@@ -2144,8 +2171,14 @@ async def _run_async(
             if not retry_result.success:
                 raise retry_result.exception
             trace = retry_result.result
+            # Show trace output if enabled (retry path)
+            if trace_reporter:
+                trace_reporter.report_from_execution_trace(trace, test_case.name)
         else:
             trace = await _execute()
+            # Show trace output if enabled (standard path)
+            if trace_reporter:
+                trace_reporter.report_from_execution_trace(trace, test_case.name)
 
         # Show debug information if enabled
         if debug:
@@ -2802,7 +2835,12 @@ async def _run_async(
             console.print("\n[yellow]Watch mode stopped.[/yellow]")
         finally:
             watcher.stop()
+            if trace_reporter:
+                trace_reporter.close()
     else:
+        # Cleanup trace reporter
+        if trace_reporter:
+            trace_reporter.close()
         # Exit with appropriate code (only when not in watch mode)
         if exit_code != 0:
             sys.exit(exit_code)
