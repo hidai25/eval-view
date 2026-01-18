@@ -23,7 +23,7 @@ from __future__ import annotations
 import sys
 import time
 import functools
-from typing import Any, Callable, Optional, List
+from typing import Any, Callable, List
 
 __all__ = ["patch_sdks", "get_patched_sdks"]
 
@@ -88,6 +88,7 @@ def _patch_openai_sync(original_create: Callable) -> Callable:
         collector = get_collector()
         start_time = time.time()
         error_msg = None
+        response = None
 
         try:
             response = original_create(*args, **kwargs)
@@ -105,11 +106,11 @@ def _patch_openai_sync(original_create: Callable) -> Callable:
                 output_tokens = 0
                 finish_reason = None
 
-                if error_msg is None and hasattr(response, "usage") and response.usage:
+                if error_msg is None and response and hasattr(response, "usage") and response.usage:
                     input_tokens = response.usage.prompt_tokens or 0
                     output_tokens = response.usage.completion_tokens or 0
 
-                if error_msg is None and hasattr(response, "choices") and response.choices:
+                if error_msg is None and response and hasattr(response, "choices") and response.choices:
                     finish_reason = response.choices[0].finish_reason
 
                 cost = _estimate_cost(model, input_tokens, output_tokens)

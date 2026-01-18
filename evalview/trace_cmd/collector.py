@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import threading
 
-__all__ = ["TraceCollector", "get_collector"]
+__all__ = ["TraceCollector", "get_collector", "close_collector"]
 
 # Global collector instance (set via env var path)
 _collector: Optional["TraceCollector"] = None
@@ -41,6 +41,7 @@ class TraceCollector:
         self._span_count = 0
         self._total_tokens = 0
         self._total_cost = 0.0
+        self._closed = False
 
         # Write trace start record
         self._write_record({
@@ -65,7 +66,7 @@ class TraceCollector:
         """Record an LLM API call.
 
         Args:
-            provider: SDK provider (openai, anthropic)
+            provider: SDK provider (openai, anthropic, ollama)
             model: Model identifier
             input_tokens: Number of input/prompt tokens
             output_tokens: Number of output/completion tokens
@@ -74,14 +75,19 @@ class TraceCollector:
             finish_reason: Reason for completion
             error: Error message if call failed
         """
-        self._span_count += 1
-        self._total_tokens += input_tokens + output_tokens
-        self._total_cost += cost
+        with self._lock:
+            if self._closed:
+                return
+
+            self._span_count += 1
+            self._total_tokens += input_tokens + output_tokens
+            self._total_cost += cost
+            span_id = f"span_{self._span_count:04d}"
 
         self._write_record({
             "type": "span",
             "span_type": "llm",
-            "span_id": f"span_{self._span_count:04d}",
+            "span_id": span_id,
             "provider": provider,
             "model": model,
             "input_tokens": input_tokens,
@@ -97,15 +103,22 @@ class TraceCollector:
     def _write_record(self, record: Dict[str, Any]) -> None:
         """Write a record to the output file (thread-safe)."""
         with self._lock:
+            if self._closed:
+                return
             self._file.write(json.dumps(record) + "\n")
             self._file.flush()
 
-    def close(self) -> Dict[str, Any]:
+    def close(self) -> Optional[Dict[str, Any]]:
         """Close the collector and return summary stats.
 
         Returns:
-            Summary dictionary with totals
+            Summary dictionary with totals, or None if already closed
         """
+        with self._lock:
+            if self._closed:
+                return None
+            self._closed = True
+
         total_time_ms = (time.time() - self._start_time) * 1000
 
         summary = {
@@ -117,7 +130,9 @@ class TraceCollector:
             "total_time_ms": total_time_ms,
         }
 
-        self._write_record(summary)
+        # Write without lock since we're the only one who can reach here after _closed=True
+        self._file.write(json.dumps(summary) + "\n")
+        self._file.flush()
         self._file.close()
 
         return summary

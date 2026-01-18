@@ -12,7 +12,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from rich.console import Console
 from rich.text import Text
@@ -86,10 +86,10 @@ def _print_summary(console: Console, trace_file: Path) -> None:
     total_tokens = 0
     total_cost = 0.0
     total_time_ms = 0.0
-    by_model: dict = {}
+    by_model: Dict[str, Dict[str, Any]] = {}
     errors = 0
 
-    with open(trace_file) as f:
+    with open(trace_file, encoding="utf-8") as f:
         for line in f:
             try:
                 record = json.loads(line)
@@ -208,9 +208,9 @@ def run_traced_command(
     bootstrap_dir = str(Path(bootstrap_path).parent)
     existing_pythonpath = env.get("PYTHONPATH", "")
     if existing_pythonpath:
-        env["PYTHONPATH"] = f"{bootstrap_dir}:{evalview_path}:{existing_pythonpath}"
+        env["PYTHONPATH"] = os.pathsep.join([bootstrap_dir, evalview_path, existing_pythonpath])
     else:
-        env["PYTHONPATH"] = f"{bootstrap_dir}:{evalview_path}"
+        env["PYTHONPATH"] = os.pathsep.join([bootstrap_dir, evalview_path])
 
     # Create sitecustomize.py in the bootstrap directory to auto-run
     sitecustomize_path = Path(bootstrap_dir) / "sitecustomize.py"
