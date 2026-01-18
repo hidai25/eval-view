@@ -39,6 +39,7 @@ SLASH_COMMANDS = [
     ("/compare", "Compare two test runs side by side"),
     ("/adapters", "List available adapters"),
     ("/trace", "View execution trace from last run"),
+    ("/trace-script", "Trace LLM calls in any Python script"),
     ("/model", "Switch to a different model"),
     ("/docs", "Open EvalView documentation"),
     ("/cli", "Show CLI commands cheatsheet"),
@@ -386,20 +387,25 @@ The user can run these slash commands directly without leaving chat:
 | Command | Description |
 |---------|-------------|
 | /adapters | List all available adapters with tracing status |
-| /test <adapter> <query> | Quick ad-hoc test against any adapter |
-| /run [test-name] | Run a test case from YAML file |
+| /test [--trace] <adapter> <query> | Quick ad-hoc test against any adapter |
+| /run [--trace] [test-name] | Run a test case from YAML file |
 | /compare | Compare two test runs (detect regressions) |
 | /trace [filter] | View execution trace from last run |
+| /trace-script <file> [args] | Trace LLM calls in any Python script |
 | /model | Switch LLM provider/model |
+
+**Trace flags:** Add `--trace` or `-t` to `/test` or `/run` for live trace output during execution.
 
 ## WHEN USERS ASK TO TEST OR RUN THINGS
 When users want to test an agent or run something, suggest the appropriate slash command:
 
 1. "Test my agent" or "Try calling my API" → Suggest `/test <adapter> <query>`
    Example: "Try `/test http What is 2+2?` or `/test ollama Hello`"
+   For live tracing: "Use `/test --trace ollama What is 2+2?` to see LLM calls in real-time"
 
 2. "Run my tests" or "Execute test cases" → Suggest `/run` or `/run <test-name>`
    Example: "Use `/run` to see available tests, or `/run my-test` to run a specific one"
+   For live tracing: "Use `/run --trace my-test` to see detailed trace during execution"
 
 3. "What adapters are available?" → Suggest `/adapters`
 
@@ -407,6 +413,9 @@ When users want to test an agent or run something, suggest the appropriate slash
 
 5. "Did anything break?" or "Compare runs" or "Check for regressions" → Suggest `/compare`
    Example: "Run `/compare` to see what changed between your last two test runs"
+
+6. "Trace my script" or "See what LLM calls my script makes" → Suggest `/trace-script`
+   Example: "Use `/trace-script my_agent.py` to see all OpenAI/Anthropic/Ollama calls"
 
 ## NATURAL LANGUAGE EXAMPLES
 User: "I want to test my langgraph agent"
@@ -421,16 +430,25 @@ User: "Test ollama with a math question"
 User: "What went wrong with my last test?"
 → "Run `/trace` to see the detailed execution trace - it shows all LLM calls, tool invocations, and costs"
 
-## DEBUGGING WITH /trace
+User: "I want to see what API calls my agent script makes"
+→ "Use `/trace-script your_agent.py` to trace all LLM calls - it instruments OpenAI, Anthropic, and Ollama automatically"
+
+## DEBUGGING WITH /trace AND /trace-script
 After running tests, users can type `/trace` to see detailed execution traces:
 - LLM calls with token counts, costs, latency
 - Tool calls with parameters and results
 - Hierarchical view of agent execution
 
+For tracing arbitrary Python scripts, use `/trace-script`:
+- Automatically instruments OpenAI, Anthropic, and Ollama SDK calls
+- No code changes needed - just run `/trace-script my_script.py`
+- Shows token counts, costs, and timing for each LLM call
+
 When users ask about debugging, test failures, or understanding what happened:
-1. Suggest running `/trace` to see the execution details
-2. Explain what the trace shows (LLM calls, tools, costs)
-3. Help interpret trace output if they share it
+1. Suggest `/trace` to see execution details from past test runs
+2. Suggest `/trace-script` to trace a Python script live
+3. Explain what the trace shows (LLM calls, tools, costs)
+4. Help interpret trace output if they share it
 
 ## RULES
 1. Put commands in ```command blocks so they can be executed
@@ -642,16 +660,18 @@ def extract_slash_commands(response: str) -> list[str]:
     - `/run my-test`
     - `/adapters`
     - `/trace`
+    - `/trace-script my_agent.py`
     - `/compare`
     """
     slash_commands = []
 
     # Pattern to match slash commands (in backticks or at start of line)
     # Match: `/command args` or `/command`
+    # Note: trace-script must come before trace to match correctly
     patterns = [
-        r'`(/(?:test|run|adapters|trace|compare)\s*[^`]*)`',  # In backticks
-        r'^(/(?:test|run|adapters|trace|compare)\s*.*)$',  # At start of line
-        r'\s(/(?:test|run|adapters|trace|compare)\s+\S.*)(?:\s|$)',  # Mid-sentence with args
+        r'`(/(?:test|run|adapters|trace-script|trace|compare)\s*[^`]*)`',  # In backticks
+        r'^(/(?:test|run|adapters|trace-script|trace|compare)\s*.*)$',  # At start of line
+        r'\s(/(?:test|run|adapters|trace-script|trace|compare)\s+\S.*)(?:\s|$)',  # Mid-sentence with args
     ]
 
     for pattern in patterns:
@@ -927,18 +947,20 @@ async def run_chat(
             
             if user_input.lower() in ("help", "/help"):
                 console.print("\n[bold]Chat Commands:[/bold]")
-                console.print("  [cyan]/model[/cyan]         - Switch to a different model")
-                console.print("  [cyan]/trace[/cyan]         - View execution trace from last run")
-                console.print("  [cyan]/trace <name>[/cyan]  - View trace filtered by test name")
-                console.print("  [cyan]/docs[/cyan]          - Open EvalView documentation")
-                console.print("  [cyan]/cli[/cyan]           - Show CLI commands cheatsheet")
-                console.print("  [cyan]/permissions[/cyan]   - Show auto-allowed commands")
-                console.print("  [cyan]/context[/cyan]       - Show project status")
-                console.print("  [cyan]clear[/cyan]          - Clear chat history")
-                console.print("  [cyan]exit[/cyan]           - Leave chat")
+                console.print("  [cyan]/model[/cyan]            - Switch to a different model")
+                console.print("  [cyan]/trace[/cyan]            - View execution trace from last run")
+                console.print("  [cyan]/trace <name>[/cyan]     - View trace filtered by test name")
+                console.print("  [cyan]/trace-script <file>[/cyan] - Trace LLM calls in any Python script")
+                console.print("  [cyan]/docs[/cyan]             - Open EvalView documentation")
+                console.print("  [cyan]/cli[/cyan]              - Show CLI commands cheatsheet")
+                console.print("  [cyan]/permissions[/cyan]      - Show auto-allowed commands")
+                console.print("  [cyan]/context[/cyan]          - Show project status")
+                console.print("  [cyan]clear[/cyan]             - Clear chat history")
+                console.print("  [cyan]exit[/cyan]              - Leave chat")
                 console.print("\n[bold]Debugging:[/bold]")
-                console.print("  - Run tests, then use /trace to see LLM calls")
-                console.print("  - /trace shows tokens, costs, tool calls")
+                console.print("  - Add --trace to /run or /test for live tracing")
+                console.print("  - Use /trace to view traces from past runs")
+                console.print("  - Use /trace-script to instrument any Python script")
                 console.print("  - Ask \"why did this test fail?\" for AI analysis")
                 console.print("\n[bold]Tips:[/bold]")
                 console.print("  - Ask how to test your agent")
@@ -1024,8 +1046,17 @@ async def run_chat(
 
             # /run command - run a test case
             if user_input.lower().startswith("/run"):
-                parts = user_input.split(maxsplit=1)
-                test_filter = parts[1].strip() if len(parts) > 1 else None
+                parts = user_input.split()
+
+                # Parse flags
+                enable_live_trace = False
+                test_filter = None
+
+                for part in parts[1:]:
+                    if part in ("--trace", "-t"):
+                        enable_live_trace = True
+                    elif not part.startswith("-"):
+                        test_filter = part
 
                 # Find test cases
                 test_dirs = ["tests/test-cases", "tests", "test-cases", ".evalview/tests", "."]
@@ -1065,7 +1096,10 @@ async def run_chat(
 
                 # Run the test
                 test_file = test_files[0]
-                console.print(f"[bold cyan]Running test: {test_file.stem}[/bold cyan]\n")
+                console.print(f"[bold cyan]Running test: {test_file.stem}[/bold cyan]")
+                if enable_live_trace:
+                    console.print("[dim]Live tracing enabled[/dim]")
+                console.print()
 
                 try:
                     import yaml  # type: ignore[import-untyped]
@@ -1085,6 +1119,12 @@ async def run_chat(
                     console.print(f"[dim]Adapter: {adapter_type}[/dim]")
                     console.print(f"[dim]Query: {test_case.input.query[:100]}...[/dim]\n")
 
+                    # Create live trace reporter if enabled
+                    live_trace_reporter = None
+                    if enable_live_trace:
+                        from evalview.reporters.trace_live_reporter import create_trace_reporter
+                        live_trace_reporter = create_trace_reporter(console=console)
+
                     # Create adapter
                     try:
                         timeout = (test_case.adapter_config or {}).get("timeout", 30.0)
@@ -1096,6 +1136,8 @@ async def run_chat(
                         )
                     except Exception as e:
                         console.print(f"[red]Failed to create adapter: {e}[/red]")
+                        if live_trace_reporter:
+                            live_trace_reporter.close()
                         continue
 
                     # Execute
@@ -1105,14 +1147,19 @@ async def run_chat(
                         test_case.input.context,
                     )
 
+                    # Show live trace if enabled
+                    if live_trace_reporter and trace:
+                        live_trace_reporter.report_from_execution_trace(trace, test_case.name)
+                        live_trace_reporter.close()
+
                     console.print(f"\n[green]✓ Execution complete[/green]")
                     console.print(f"[dim]Latency: {trace.metrics.total_latency:.0f}ms[/dim]")
                     if trace.metrics.total_cost:
                         console.print(f"[dim]Cost: ${trace.metrics.total_cost:.4f}[/dim]")
                     console.print()
 
-                    # Show trace
-                    if trace.trace_context:
+                    # Show trace (standard view if live trace not enabled)
+                    if trace.trace_context and not enable_live_trace:
                         reporter = TraceReporter()
                         reporter.print_trace(trace.trace_context)
 
@@ -1152,16 +1199,24 @@ async def run_chat(
 
             # /test command - quick ad-hoc test against an adapter
             if user_input.lower().startswith("/test"):
-                parts = user_input.split(maxsplit=2)
+                # Parse for --trace flag
+                enable_live_trace = False
+                test_input = user_input
+
+                if " --trace " in user_input or " -t " in user_input:
+                    enable_live_trace = True
+                    test_input = user_input.replace(" --trace ", " ").replace(" -t ", " ")
+
+                parts = test_input.split(maxsplit=2)
 
                 if len(parts) < 3:
                     console.print("[bold]Quick Test - Usage:[/bold]")
-                    console.print("  /test <adapter> <query>")
+                    console.print("  /test [--trace] <adapter> <query>")
                     console.print()
                     console.print("[bold]Examples:[/bold]")
                     console.print("  /test ollama What is 2+2?")
-                    console.print("  /test anthropic Explain quantum computing")
-                    console.print("  /test http What's the weather?")
+                    console.print("  /test --trace anthropic Explain quantum computing")
+                    console.print("  /test -t http What's the weather?")
                     console.print()
                     console.print("[dim]For http/langgraph/crewai, set endpoint first:[/dim]")
                     console.print("  export EVALVIEW_ENDPOINT=http://localhost:8000")
@@ -1188,10 +1243,18 @@ async def run_chat(
                         endpoint = default_endpoints[adapter_type]
 
                     console.print(f"[bold cyan]Testing with {adapter_type}[/bold cyan]")
+                    if enable_live_trace:
+                        console.print("[dim]Live tracing enabled[/dim]")
                     console.print(f"[dim]Query: {query}[/dim]")
                     if endpoint:
                         console.print(f"[dim]Endpoint: {endpoint}[/dim]")
                     console.print()
+
+                    # Create live trace reporter if enabled
+                    live_trace_reporter = None
+                    if enable_live_trace:
+                        from evalview.reporters.trace_live_reporter import create_trace_reporter
+                        live_trace_reporter = create_trace_reporter(console=console)
 
                     # Create adapter
                     adapter = AdapterRegistry.create(
@@ -1205,13 +1268,18 @@ async def run_chat(
                     console.print("[dim]Executing...[/dim]\n")
                     trace = await adapter.execute(query)
 
+                    # Show live trace if enabled
+                    if live_trace_reporter and trace:
+                        live_trace_reporter.report_from_execution_trace(trace, f"test-{adapter_type}")
+                        live_trace_reporter.close()
+
                     console.print(f"[green]✓ Complete[/green] ({trace.metrics.total_latency:.0f}ms)")
                     if trace.metrics.total_cost:
                         console.print(f"[dim]Cost: ${trace.metrics.total_cost:.4f}[/dim]")
                     console.print()
 
-                    # Show trace
-                    if trace.trace_context:
+                    # Show trace (standard view if live trace not enabled)
+                    if trace.trace_context and not enable_live_trace:
                         reporter = TraceReporter()
                         reporter.print_trace(trace.trace_context)
 
@@ -1227,6 +1295,54 @@ async def run_chat(
                     console.print("[dim]Run /adapters to see available adapters[/dim]")
                 except Exception as e:
                     console.print(f"[red]Error: {e}[/red]")
+                    import traceback
+                    console.print(f"[dim]{traceback.format_exc()}[/dim]")
+                continue
+
+            # /trace-script command - trace LLM calls in a Python script
+            if user_input.lower().startswith("/trace-script"):
+                parts = user_input.split(maxsplit=1)
+
+                if len(parts) < 2:
+                    console.print("[bold]Trace Script - Usage:[/bold]")
+                    console.print("  /trace-script <script.py> [args...]")
+                    console.print()
+                    console.print("[bold]Examples:[/bold]")
+                    console.print("  /trace-script my_agent.py")
+                    console.print("  /trace-script scripts/test.py --verbose")
+                    console.print("  /trace-script agent.py input.json")
+                    console.print()
+                    console.print("[dim]Instruments OpenAI, Anthropic, and Ollama SDK calls[/dim]")
+                    continue
+
+                # Parse script and args
+                script_parts = parts[1].strip().split()
+                script_path = script_parts[0]
+                script_args = script_parts[1:] if len(script_parts) > 1 else []
+
+                # Check if file exists
+                if not Path(script_path).exists():
+                    console.print(f"[red]File not found: {script_path}[/red]")
+                    continue
+
+                try:
+                    from evalview.trace_cmd import run_traced_command
+
+                    console.print()
+                    cmd = ["python", script_path]
+                    cmd.extend(script_args)
+
+                    exit_code, trace_file = run_traced_command(
+                        command=cmd,
+                        output_path=None,
+                        console=console,
+                    )
+
+                    if exit_code != 0:
+                        console.print(f"[yellow]Script exited with code {exit_code}[/yellow]")
+
+                except Exception as e:
+                    console.print(f"[red]Error tracing script: {e}[/red]")
                     import traceback
                     console.print(f"[dim]{traceback.format_exc()}[/dim]")
                 continue

@@ -39,7 +39,7 @@ load_dotenv(dotenv_path=".env.local", override=True)  # Override with .env.local
 console = Console()
 
 
-@click.group()
+@click.group(context_settings={"allow_interspersed_args": False})
 @click.version_option(version="0.1.7")
 def main():
     """EvalView - Catch agent regressions before you ship.
@@ -5518,6 +5518,43 @@ def chat(provider: str, model: str, demo_1: bool, demo_2: bool, demo_3: bool, de
         asyncio.run(run_demo(provider=provider, model=model, style=4))
     else:
         asyncio.run(run_chat(provider=provider, model=model))
+
+
+@main.command("trace")
+@click.option("--output", "-o", type=click.Path(), help="Save trace to file (JSONL format)")
+@click.argument("script", type=click.Path(exists=True))
+@click.argument("script_args", nargs=-1)
+def trace_cmd(output: Optional[str], script: str, script_args: tuple):
+    """Trace LLM calls in any Python script.
+
+    Automatically instruments OpenAI, Anthropic, and Ollama SDK calls
+    to capture execution traces without code changes.
+
+    \b
+    Examples:
+        evalview trace my_agent.py
+        evalview trace -o trace.jsonl my_agent.py arg1 arg2
+        evalview trace scripts/test.py --verbose
+
+    The trace shows:
+        - LLM API calls with token counts and costs
+        - Call duration and latency
+        - Model and provider information
+        - Error details if calls fail
+    """
+    from evalview.trace_cmd import run_traced_command
+
+    # Build command: python <script> [args...]
+    cmd = ["python", script]
+    cmd.extend(script_args)
+
+    exit_code, trace_file = run_traced_command(
+        command=cmd,
+        output_path=output,
+        console=console,
+    )
+
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":
