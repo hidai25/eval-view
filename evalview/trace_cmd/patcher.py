@@ -71,8 +71,9 @@ def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
             if model.startswith(key):
                 pricing = PRICING[key]
                 break
-        if pricing is None:
-            return 0.0
+
+    if pricing is None:
+        return 0.0
 
     input_cost = (input_tokens / 1_000_000) * pricing["input"]
     output_cost = (output_tokens / 1_000_000) * pricing["output"]
@@ -427,12 +428,12 @@ def patch_openai() -> bool:
         # Patch sync client
         if hasattr(openai, "OpenAI"):
             original_sync = openai.resources.chat.completions.Completions.create
-            openai.resources.chat.completions.Completions.create = _patch_openai_sync(original_sync)
+            setattr(openai.resources.chat.completions.Completions, "create", _patch_openai_sync(original_sync))
 
         # Patch async client
         if hasattr(openai, "AsyncOpenAI"):
             original_async = openai.resources.chat.completions.AsyncCompletions.create
-            openai.resources.chat.completions.AsyncCompletions.create = _patch_openai_async(original_async)
+            setattr(openai.resources.chat.completions.AsyncCompletions, "create", _patch_openai_async(original_async))
 
         _patched_sdks.append("openai")
         return True
@@ -456,12 +457,12 @@ def patch_anthropic() -> bool:
         # Patch sync client
         if hasattr(anthropic, "Anthropic"):
             original_sync = anthropic.resources.messages.Messages.create
-            anthropic.resources.messages.Messages.create = _patch_anthropic_sync(original_sync)
+            setattr(anthropic.resources.messages.Messages, "create", _patch_anthropic_sync(original_sync))
 
         # Patch async client
         if hasattr(anthropic, "AsyncAnthropic"):
             original_async = anthropic.resources.messages.AsyncMessages.create
-            anthropic.resources.messages.AsyncMessages.create = _patch_anthropic_async(original_async)
+            setattr(anthropic.resources.messages.AsyncMessages, "create", _patch_anthropic_async(original_async))
 
         _patched_sdks.append("anthropic")
         return True

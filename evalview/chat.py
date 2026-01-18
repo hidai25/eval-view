@@ -1329,11 +1329,11 @@ async def run_chat(
                     from evalview.trace_cmd import run_traced_command
 
                     console.print()
-                    cmd = ["python", script_path]
-                    cmd.extend(script_args)
+                    trace_command = ["python", script_path]
+                    trace_command.extend(script_args)
 
                     exit_code, trace_file = run_traced_command(
-                        command=cmd,
+                        command=trace_command,
                         output_path=None,
                         console=console,
                     )
