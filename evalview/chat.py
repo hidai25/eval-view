@@ -38,8 +38,8 @@ SLASH_COMMANDS = [
     ("/test", "Quick ad-hoc test against an adapter"),
     ("/compare", "Compare two test runs side by side"),
     ("/adapters", "List available adapters"),
-    ("/trace", "View execution trace from last run"),
-    ("/trace-script", "Trace LLM calls in any Python script"),
+    ("/trace", "Trace LLM calls in a Python script"),
+    ("/traces", "List and query stored traces"),
     ("/model", "Switch to a different model"),
     ("/docs", "Open EvalView documentation"),
     ("/cli", "Show CLI commands cheatsheet"),
@@ -390,8 +390,10 @@ The user can run these slash commands directly without leaving chat:
 | /test [--trace] <adapter> <query> | Quick ad-hoc test against any adapter |
 | /run [--trace] [test-name] | Run a test case from YAML file |
 | /compare | Compare two test runs (detect regressions) |
-| /trace [filter] | View execution trace from last run |
-| /trace-script <file> [args] | Trace LLM calls in any Python script |
+| /trace <script.py> [args] | Trace LLM calls in any Python script |
+| /traces | List stored traces from past runs |
+| /traces <id> | Show details of a specific trace |
+| /traces cost | Show cost report for recent traces |
 | /model | Switch LLM provider/model |
 
 **Trace flags:** Add `--trace` or `-t` to `/test` or `/run` for live trace output during execution.
@@ -409,13 +411,17 @@ When users want to test an agent or run something, suggest the appropriate slash
 
 3. "What adapters are available?" → Suggest `/adapters`
 
-4. "What happened?" or "Debug this" → Suggest `/trace`
+4. "What traces have I run?" or "Show my traces" → Suggest `/traces`
+   Example: "Use `/traces` to see your recent traces, or `/traces abc123` to see a specific one"
 
-5. "Did anything break?" or "Compare runs" or "Check for regressions" → Suggest `/compare`
+5. "How much have I spent?" or "Show costs" → Suggest `/traces cost`
+   Example: "Use `/traces cost` to see your spending breakdown by model"
+
+6. "Did anything break?" or "Compare runs" or "Check for regressions" → Suggest `/compare`
    Example: "Run `/compare` to see what changed between your last two test runs"
 
-6. "Trace my script" or "See what LLM calls my script makes" → Suggest `/trace-script`
-   Example: "Use `/trace-script my_agent.py` to see all OpenAI/Anthropic/Ollama calls"
+7. "Trace my script" or "See what LLM calls my script makes" → Suggest `/trace`
+   Example: "Use `/trace my_agent.py` to see all OpenAI/Anthropic/Ollama calls"
 
 ## NATURAL LANGUAGE EXAMPLES
 User: "I want to test my langgraph agent"
@@ -427,28 +433,33 @@ User: "Run the calculator test"
 User: "Test ollama with a math question"
 → "Try `/test ollama What is 15 * 23?`"
 
-User: "What went wrong with my last test?"
-→ "Run `/trace` to see the detailed execution trace - it shows all LLM calls, tool invocations, and costs"
-
 User: "I want to see what API calls my agent script makes"
-→ "Use `/trace-script your_agent.py` to trace all LLM calls - it instruments OpenAI, Anthropic, and Ollama automatically"
+→ "Use `/trace your_agent.py` to trace all LLM calls - it instruments OpenAI, Anthropic, and Ollama automatically"
 
-## DEBUGGING WITH /trace AND /trace-script
-After running tests, users can type `/trace` to see detailed execution traces:
-- LLM calls with token counts, costs, latency
-- Tool calls with parameters and results
-- Hierarchical view of agent execution
+User: "What traces have I run?"
+→ "Use `/traces` to see your recent traces. Each trace has an ID you can use to see details with `/traces <id>`"
 
-For tracing arbitrary Python scripts, use `/trace-script`:
+User: "How much am I spending on LLM calls?"
+→ "Use `/traces cost` to see a breakdown of your spending by model over the last 7 days"
+
+## DEBUGGING WITH /trace AND /traces
+For tracing Python scripts, use `/trace`:
 - Automatically instruments OpenAI, Anthropic, and Ollama SDK calls
-- No code changes needed - just run `/trace-script my_script.py`
+- No code changes needed - just run `/trace my_script.py`
 - Shows token counts, costs, and timing for each LLM call
+- Traces are automatically saved for later viewing
+
+For viewing past traces, use `/traces`:
+- `/traces` - List your recent traces
+- `/traces <id>` - Show details of a specific trace
+- `/traces cost` - See spending breakdown by model and day
 
 When users ask about debugging, test failures, or understanding what happened:
-1. Suggest `/trace` to see execution details from past test runs
-2. Suggest `/trace-script` to trace a Python script live
-3. Explain what the trace shows (LLM calls, tools, costs)
-4. Help interpret trace output if they share it
+1. Suggest `/trace script.py` to trace a Python script
+2. Suggest `/traces` to see past traces
+3. Suggest `/traces cost` to see spending
+4. Explain what traces show (LLM calls, tokens, costs)
+5. Help interpret trace output if they share it
 
 ## RULES
 1. Put commands in ```command blocks so they can be executed
@@ -659,8 +670,9 @@ def extract_slash_commands(response: str) -> list[str]:
     - `/test ollama What is 2+2?`
     - `/run my-test`
     - `/adapters`
-    - `/trace`
-    - `/trace-script my_agent.py`
+    - `/trace my_agent.py`
+    - `/traces`
+    - `/traces cost`
     - `/compare`
     """
     slash_commands = []
@@ -948,9 +960,10 @@ async def run_chat(
             if user_input.lower() in ("help", "/help"):
                 console.print("\n[bold]Chat Commands:[/bold]")
                 console.print("  [cyan]/model[/cyan]            - Switch to a different model")
-                console.print("  [cyan]/trace[/cyan]            - View execution trace from last run")
-                console.print("  [cyan]/trace <name>[/cyan]     - View trace filtered by test name")
-                console.print("  [cyan]/trace-script <file>[/cyan] - Trace LLM calls in any Python script")
+                console.print("  [cyan]/trace <file>[/cyan]     - Trace LLM calls in a Python script")
+                console.print("  [cyan]/traces[/cyan]           - List stored traces")
+                console.print("  [cyan]/traces <id>[/cyan]      - Show specific trace details")
+                console.print("  [cyan]/traces cost[/cyan]      - Show cost report")
                 console.print("  [cyan]/docs[/cyan]             - Open EvalView documentation")
                 console.print("  [cyan]/cli[/cyan]              - Show CLI commands cheatsheet")
                 console.print("  [cyan]/permissions[/cyan]      - Show auto-allowed commands")
@@ -959,8 +972,8 @@ async def run_chat(
                 console.print("  [cyan]exit[/cyan]              - Leave chat")
                 console.print("\n[bold]Debugging:[/bold]")
                 console.print("  - Add --trace to /run or /test for live tracing")
-                console.print("  - Use /trace to view traces from past runs")
-                console.print("  - Use /trace-script to instrument any Python script")
+                console.print("  - Use /trace script.py to trace any Python script")
+                console.print("  - Use /traces to see past traces and costs")
                 console.print("  - Ask \"why did this test fail?\" for AI analysis")
                 console.print("\n[bold]Tips:[/bold]")
                 console.print("  - Ask how to test your agent")
@@ -1299,20 +1312,130 @@ async def run_chat(
                     console.print(f"[dim]{traceback.format_exc()}[/dim]")
                 continue
 
-            # /trace-script command - trace LLM calls in a Python script
-            if user_input.lower().startswith("/trace-script"):
+            # /traces command - list and query stored traces
+            if user_input.lower().startswith("/traces"):
+                parts = user_input.split(maxsplit=1)
+                subcommand = parts[1].strip() if len(parts) > 1 else None
+
+                try:
+                    from evalview.storage import TraceDB
+
+                    with TraceDB() as db:
+                        # /traces cost - show cost report
+                        if subcommand and subcommand.lower() == "cost":
+                            report = db.get_cost_report(last_days=7)
+                            totals = report["totals"]
+                            total_cost = totals.get("total_cost") or 0
+                            total_calls = totals.get("total_calls") or 0
+
+                            console.print("[bold cyan]━━━ Cost Report (Last 7 Days) ━━━[/bold cyan]")
+                            console.print()
+
+                            cost_str = f"${total_cost:.4f}" if total_cost < 0.01 and total_cost > 0 else f"${total_cost:.2f}"
+                            console.print(f"[bold]Total:[/bold]     {cost_str} across {total_calls:,} LLM calls")
+                            console.print()
+
+                            models = report.get("by_model", [])
+                            if models:
+                                console.print("[bold]By Model:[/bold]")
+                                max_cost = max((m.get("total_cost") or 0) for m in models) if models else 1
+                                for m in models[:10]:
+                                    model_name = m.get("model") or "unknown"
+                                    model_cost = m.get("total_cost") or 0
+                                    pct = (model_cost / total_cost * 100) if total_cost > 0 else 0
+                                    mc_str = f"${model_cost:.4f}" if model_cost < 0.01 and model_cost > 0 else f"${model_cost:.2f}"
+                                    bar_width = 16
+                                    filled = int((model_cost / max_cost) * bar_width) if max_cost > 0 else 0
+                                    bar = "█" * filled + "░" * (bar_width - filled)
+                                    console.print(f"  {model_name:<22} {mc_str:>8}  ({pct:>4.0f}%)  {bar}")
+                                console.print()
+
+                        # /traces <id> - show specific trace
+                        elif subcommand and len(subcommand) >= 4 and not subcommand.startswith("-"):
+                            trace_data = db.get_trace(subcommand)
+                            if not trace_data:
+                                console.print(f"[red]Trace not found: {subcommand}[/red]")
+                                continue
+
+                            spans = db.get_trace_spans(subcommand)
+
+                            console.print("[bold cyan]━━━ Trace Details ━━━[/bold cyan]")
+                            console.print()
+                            console.print(f"[bold]Trace ID:[/bold]     {trace_data['run_id']}")
+                            console.print(f"[bold]Created:[/bold]      {trace_data['created_at'][:19].replace('T', ' ')}")
+                            if trace_data.get("script_name"):
+                                console.print(f"[bold]Script:[/bold]       {trace_data['script_name']}")
+                            console.print()
+
+                            console.print("[bold]Summary:[/bold]")
+                            console.print(f"  Total calls:    {trace_data.get('total_calls', 0)}")
+                            tokens = trace_data.get("total_tokens", 0)
+                            in_tokens = trace_data.get("total_input_tokens", 0)
+                            out_tokens = trace_data.get("total_output_tokens", 0)
+                            console.print(f"  Total tokens:   {tokens:,} (in: {in_tokens:,} / out: {out_tokens:,})")
+                            cost = trace_data.get("total_cost", 0)
+                            cost_str = f"${cost:.4f}" if cost < 0.01 and cost > 0 else f"${cost:.2f}"
+                            console.print(f"  Total cost:     {cost_str}")
+                            console.print()
+
+                            if spans:
+                                console.print("[bold]LLM Calls:[/bold]")
+                                for i, span in enumerate(spans, 1):
+                                    if span.get("span_type") == "llm":
+                                        model = span.get("model", "unknown")
+                                        duration = span.get("duration_ms", 0)
+                                        dur_str = f"{duration:.0f}ms" if duration < 1000 else f"{duration/1000:.1f}s"
+                                        span_cost = span.get("cost_usd", 0)
+                                        span_cost_str = f"${span_cost:.4f}" if span_cost < 0.01 and span_cost > 0 else f"${span_cost:.2f}"
+                                        status = span.get("status", "success")
+                                        status_icon = "✓" if status == "success" else "✗"
+                                        console.print(f"  {i}. {status_icon} {model:<25} {dur_str:>8}  {span_cost_str}")
+                            console.print()
+
+                        # /traces - list recent traces
+                        else:
+                            traces_data = db.list_traces(limit=20)
+
+                            if not traces_data:
+                                console.print("[dim]No traces found.[/dim]")
+                                console.print("[dim]Run '/trace <script.py>' to capture traces.[/dim]")
+                                continue
+
+                            console.print("[bold cyan]━━━ Recent Traces ━━━[/bold cyan]")
+                            console.print()
+
+                            for tr in traces_data:
+                                created = tr["created_at"][:16].replace("T", " ")
+                                cost = tr.get("total_cost", 0)
+                                cost_str = f"${cost:.4f}" if cost < 0.01 and cost > 0 else f"${cost:.2f}"
+                                script = tr.get("script_name") or "-"
+                                console.print(
+                                    f"[bold]{tr['run_id']}[/bold]  {created}  "
+                                    f"{tr.get('total_calls', 0)} calls  {cost_str}  [dim]{script}[/dim]"
+                                )
+
+                            console.print()
+                            console.print("[dim]Use '/traces <id>' to see trace details, '/traces cost' for cost report[/dim]")
+
+                except Exception as e:
+                    console.print(f"[red]Error: {e}[/red]")
+                continue
+
+            # /trace command - trace LLM calls in a Python script
+            if user_input.lower().startswith("/trace"):
                 parts = user_input.split(maxsplit=1)
 
                 if len(parts) < 2:
-                    console.print("[bold]Trace Script - Usage:[/bold]")
-                    console.print("  /trace-script <script.py> [args...]")
+                    console.print("[bold]Trace - Usage:[/bold]")
+                    console.print("  /trace <script.py> [args...]")
                     console.print()
                     console.print("[bold]Examples:[/bold]")
-                    console.print("  /trace-script my_agent.py")
-                    console.print("  /trace-script scripts/test.py --verbose")
-                    console.print("  /trace-script agent.py input.json")
+                    console.print("  /trace my_agent.py")
+                    console.print("  /trace scripts/test.py --verbose")
+                    console.print("  /trace agent.py input.json")
                     console.print()
                     console.print("[dim]Instruments OpenAI, Anthropic, and Ollama SDK calls[/dim]")
+                    console.print("[dim]Use '/traces' to see past traces[/dim]")
                     continue
 
                 # Parse script and args
@@ -1345,57 +1468,6 @@ async def run_chat(
                     console.print(f"[red]Error tracing script: {e}[/red]")
                     import traceback
                     console.print(f"[dim]{traceback.format_exc()}[/dim]")
-                continue
-
-            # /trace command - view execution trace
-            if user_input.lower().startswith("/trace"):
-                parts = user_input.split(maxsplit=1)
-                test_filter = parts[1].strip() if len(parts) > 1 else None
-
-                # Find latest results
-                results_dir = Path(".evalview/results")
-                if not results_dir.exists():
-                    console.print("[yellow]No results found. Run some tests first![/yellow]")
-                    console.print("[dim]Try: evalview run[/dim]")
-                    continue
-
-                result_files = sorted(results_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
-                if not result_files:
-                    console.print("[yellow]No results found. Run some tests first![/yellow]")
-                    continue
-
-                latest = result_files[0]
-                console.print(f"[dim]Loading trace from {latest.name}...[/dim]\n")
-
-                try:
-                    from evalview.reporters.json_reporter import JSONReporter
-                    from evalview.reporters.trace_reporter import TraceReporter
-                    from evalview.core.types import EvaluationResult
-
-                    results_data = JSONReporter.load(str(latest))
-                    if not results_data:
-                        console.print("[yellow]No results in file[/yellow]")
-                        continue
-
-                    results = [EvaluationResult(**data) for data in results_data]
-
-                    # Filter by test name if specified
-                    if test_filter:
-                        results = [r for r in results if test_filter.lower() in r.test_case.lower()]
-                        if not results:
-                            console.print(f"[yellow]No tests matching '{test_filter}'[/yellow]")
-                            continue
-
-                    reporter = TraceReporter()
-                    for result in results:
-                        console.print(f"[bold cyan]Test: {result.test_case}[/bold cyan]")
-                        console.print(f"[dim]Score: {result.score:.0f} | Pass: {result.passed}[/dim]")
-                        console.print()
-                        reporter.print_trace_from_result(result)
-                        console.print()
-
-                except Exception as e:
-                    console.print(f"[red]Error loading trace: {e}[/red]")
                 continue
 
             # /compare command - compare two test runs

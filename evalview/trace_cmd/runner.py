@@ -75,12 +75,42 @@ def _format_duration(ms: float) -> str:
     return f"{ms / 1000:.1f}s"
 
 
-def _print_summary(console: Console, trace_file: Path) -> None:
-    """Print trace summary from the trace file."""
-    if not trace_file.exists():
-        return
+def _parse_trace_file(trace_file: Path) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Parse a trace file and return spans and summary.
 
-    # Parse trace file
+    Args:
+        trace_file: Path to the JSONL trace file
+
+    Returns:
+        Tuple of (spans list, summary dict)
+    """
+    spans: List[Dict[str, Any]] = []
+    summary: Dict[str, Any] = {}
+
+    if not trace_file.exists():
+        return spans, summary
+
+    with open(trace_file, encoding="utf-8") as f:
+        for line in f:
+            try:
+                record = json.loads(line)
+                if record.get("type") == "span":
+                    spans.append(record)
+                elif record.get("type") == "trace_end":
+                    summary = record
+            except json.JSONDecodeError:
+                continue
+
+    return spans, summary
+
+
+def _print_summary(
+    console: Console,
+    spans: List[Dict[str, Any]],
+    summary: Dict[str, Any],
+) -> None:
+    """Print trace summary from parsed data."""
+    # Calculate stats from spans
     total_calls = 0
     total_input_tokens = 0
     total_output_tokens = 0
@@ -90,45 +120,38 @@ def _print_summary(console: Console, trace_file: Path) -> None:
     all_calls: List[Dict[str, Any]] = []
     errors = 0
 
-    with open(trace_file, encoding="utf-8") as f:
-        for line in f:
-            try:
-                record = json.loads(line)
-                if record.get("type") == "span" and record.get("span_type") == "llm":
-                    total_calls += 1
-                    input_tokens = record.get("input_tokens", 0)
-                    output_tokens = record.get("output_tokens", 0)
-                    cost = record.get("cost_usd", 0.0)
-                    duration = record.get("duration_ms", 0.0)
+    for span in spans:
+        if span.get("span_type") == "llm":
+            total_calls += 1
+            input_tokens = span.get("input_tokens", 0)
+            output_tokens = span.get("output_tokens", 0)
+            cost = span.get("cost_usd", 0.0)
+            duration = span.get("duration_ms", 0.0)
 
-                    total_input_tokens += input_tokens
-                    total_output_tokens += output_tokens
-                    total_cost += cost
-                    total_time_ms += duration
+            total_input_tokens += input_tokens
+            total_output_tokens += output_tokens
+            total_cost += cost
+            total_time_ms += duration
 
-                    model = record.get("model", "unknown")
-                    if model not in by_model:
-                        by_model[model] = {"calls": 0, "cost": 0.0, "tokens": 0}
-                    by_model[model]["calls"] += 1
-                    by_model[model]["cost"] += cost
-                    by_model[model]["tokens"] += input_tokens + output_tokens
+            model = span.get("model", "unknown")
+            if model not in by_model:
+                by_model[model] = {"calls": 0, "cost": 0.0, "tokens": 0}
+            by_model[model]["calls"] += 1
+            by_model[model]["cost"] += cost
+            by_model[model]["tokens"] += input_tokens + output_tokens
 
-                    # Track individual calls for slowest calls section
-                    all_calls.append({
-                        "model": model,
-                        "duration_ms": duration,
-                        "cost": cost,
-                    })
+            all_calls.append({
+                "model": model,
+                "duration_ms": duration,
+                "cost": cost,
+            })
 
-                    if record.get("status") == "error":
-                        errors += 1
+            if span.get("status") == "error":
+                errors += 1
 
-                elif record.get("type") == "trace_end":
-                    # Use the trace_end total time if available (more accurate)
-                    total_time_ms = record.get("total_time_ms", total_time_ms)
-
-            except json.JSONDecodeError:
-                continue
+    # Use trace_end total time if available (more accurate)
+    if summary.get("total_time_ms"):
+        total_time_ms = summary["total_time_ms"]
 
     if total_calls == 0:
         console.print("[dim]No LLM calls captured.[/dim]")
@@ -140,27 +163,27 @@ def _print_summary(console: Console, trace_file: Path) -> None:
     console.print()
     console.print("[bold cyan]━━━ Trace Summary ━━━[/bold cyan]")
 
-    summary = Text()
-    summary.append("Total LLM calls:  ", style="bold")
-    summary.append(str(total_calls), style="bold")
+    summary_text = Text()
+    summary_text.append("Total LLM calls:  ", style="bold")
+    summary_text.append(str(total_calls), style="bold")
     if errors > 0:
-        summary.append(f" ({errors} errors)", style="red")
-    summary.append("\n")
+        summary_text.append(f" ({errors} errors)", style="red")
+    summary_text.append("\n")
 
-    summary.append("Total tokens:     ", style="bold")
-    summary.append(_format_tokens(total_tokens), style="bold")
-    summary.append(f" (in: {_format_tokens(total_input_tokens)} / out: {_format_tokens(total_output_tokens)})", style="dim")
-    summary.append("\n")
+    summary_text.append("Total tokens:     ", style="bold")
+    summary_text.append(_format_tokens(total_tokens), style="bold")
+    summary_text.append(f" (in: {_format_tokens(total_input_tokens)} / out: {_format_tokens(total_output_tokens)})", style="dim")
+    summary_text.append("\n")
 
-    summary.append("Total cost:       ", style="bold")
+    summary_text.append("Total cost:       ", style="bold")
     cost_color = "green" if total_cost < 0.10 else "yellow" if total_cost < 1.0 else "red"
-    summary.append(_format_cost(total_cost), style=f"bold {cost_color}")
-    summary.append("\n")
+    summary_text.append(_format_cost(total_cost), style=f"bold {cost_color}")
+    summary_text.append("\n")
 
-    summary.append("Total time:       ", style="bold")
-    summary.append(_format_duration(total_time_ms), style="bold")
+    summary_text.append("Total time:       ", style="bold")
+    summary_text.append(_format_duration(total_time_ms), style="bold")
 
-    console.print(summary)
+    console.print(summary_text)
 
     # Slowest calls section
     if len(all_calls) > 1:
@@ -185,10 +208,41 @@ def _print_summary(console: Console, trace_file: Path) -> None:
     console.print()
 
 
+def _save_to_sqlite(
+    spans: List[Dict[str, Any]],
+    summary: Dict[str, Any],
+    script_name: Optional[str] = None,
+) -> Optional[str]:
+    """Save trace data to SQLite database.
+
+    Args:
+        spans: List of span records
+        summary: Summary record from trace_end
+
+    Returns:
+        The run_id if saved, None on error
+    """
+    try:
+        from evalview.storage import TraceDB
+
+        with TraceDB() as db:
+            run_id = db.save_trace(
+                source="trace_cmd",
+                script_name=script_name,
+                spans=spans,
+                summary=summary,
+            )
+            return run_id
+    except Exception:
+        # Silently fail - don't break the trace command if DB fails
+        return None
+
+
 def run_traced_command(
     command: List[str],
     output_path: Optional[str] = None,
     console: Optional[Console] = None,
+    save_to_db: bool = True,
 ) -> Tuple[int, Optional[Path]]:
     """Run a command with automatic SDK instrumentation.
 
@@ -196,11 +250,19 @@ def run_traced_command(
         command: Command and arguments to run (e.g., ["python", "script.py"])
         output_path: Optional path for trace output. Auto-generates if None.
         console: Rich console for output
+        save_to_db: Whether to save trace to SQLite database
 
     Returns:
         Tuple of (exit_code, trace_file_path)
     """
     console = console or Console()
+
+    # Extract script name from command
+    script_name = None
+    for arg in command:
+        if arg.endswith(".py"):
+            script_name = Path(arg).name
+            break
 
     # Create temp file for trace output
     if output_path:
@@ -241,6 +303,8 @@ def run_traced_command(
         with open(sitecustomize_path, "w", encoding="utf-8") as f:
             f.write(BOOTSTRAP_CODE)
 
+    run_id: Optional[str] = None
+
     try:
         # Print header
         console.print("[bold cyan]━━━ EvalView Trace ━━━[/bold cyan]")
@@ -250,8 +314,17 @@ def run_traced_command(
         # Run the command
         result = subprocess.run(command, env=env)
 
+        # Parse trace file
+        spans, summary = _parse_trace_file(trace_file)
+
         # Print summary
-        _print_summary(console, trace_file)
+        _print_summary(console, spans, summary)
+
+        # Save to SQLite
+        if save_to_db and spans:
+            run_id = _save_to_sqlite(spans, summary, script_name)
+            if run_id:
+                console.print(f"[dim]Trace ID: {run_id}[/dim]")
 
         if output_path:
             console.print(f"[dim]Trace saved to: {trace_file}[/dim]")
