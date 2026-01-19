@@ -393,6 +393,7 @@ The user can run these slash commands directly without leaving chat:
 | /trace <script.py> [args] | Trace LLM calls in any Python script |
 | /traces | List stored traces from past runs |
 | /traces <id> | Show details of a specific trace |
+| /traces export <id> | Export trace to HTML file |
 | /traces cost | Show cost report for recent traces |
 | /model | Switch LLM provider/model |
 
@@ -452,6 +453,7 @@ For tracing Python scripts, use `/trace`:
 For viewing past traces, use `/traces`:
 - `/traces` - List your recent traces
 - `/traces <id>` - Show details of a specific trace
+- `/traces export <id>` - Export trace to HTML file with charts
 - `/traces cost` - See spending breakdown by model and day
 
 When users ask about debugging, test failures, or understanding what happened:
@@ -963,6 +965,7 @@ async def run_chat(
                 console.print("  [cyan]/trace <file>[/cyan]     - Trace LLM calls in a Python script")
                 console.print("  [cyan]/traces[/cyan]           - List stored traces")
                 console.print("  [cyan]/traces <id>[/cyan]      - Show specific trace details")
+                console.print("  [cyan]/traces export <id>[/cyan] - Export trace to HTML")
                 console.print("  [cyan]/traces cost[/cyan]      - Show cost report")
                 console.print("  [cyan]/docs[/cyan]             - Open EvalView documentation")
                 console.print("  [cyan]/cli[/cyan]              - Show CLI commands cheatsheet")
@@ -1350,6 +1353,32 @@ async def run_chat(
                                     console.print(f"  {model_name:<22} {mc_str:>8}  ({pct:>4.0f}%)  {bar}")
                                 console.print()
 
+                        # /traces export <id> - export trace to HTML
+                        elif subcommand and subcommand.lower().startswith("export"):
+                            export_parts = subcommand.split(maxsplit=1)
+                            if len(export_parts) < 2:
+                                console.print("[bold]Usage:[/bold] /traces export <trace_id>")
+                                console.print("[dim]Exports trace to HTML file[/dim]")
+                                continue
+
+                            export_id = export_parts[1].strip()
+                            trace_data = db.get_trace(export_id)
+                            if not trace_data:
+                                console.print(f"[red]Trace not found: {export_id}[/red]")
+                                continue
+
+                            spans = db.get_trace_spans(export_id)
+
+                            try:
+                                from evalview.exporters import TraceHTMLExporter
+                                exporter = TraceHTMLExporter()
+                                output_path = f"trace_{export_id}.html"
+                                exporter.export(trace_data, spans, output_path)
+                                console.print(f"[green]Exported to: {output_path}[/green]")
+                            except ImportError:
+                                console.print("[red]HTML export requires jinja2. Install with:[/red]")
+                                console.print("  pip install evalview[reports]")
+
                         # /traces <id> - show specific trace
                         elif subcommand and len(subcommand) >= 4 and not subcommand.startswith("-"):
                             trace_data = db.get_trace(subcommand)
@@ -1415,7 +1444,7 @@ async def run_chat(
                                 )
 
                             console.print()
-                            console.print("[dim]Use '/traces <id>' to see trace details, '/traces cost' for cost report[/dim]")
+                            console.print("[dim]Use '/traces <id>' for details, '/traces export <id>' to export HTML, '/traces cost' for cost report[/dim]")
 
                 except Exception as e:
                     console.print(f"[red]Error: {e}[/red]")

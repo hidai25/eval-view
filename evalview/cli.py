@@ -5571,6 +5571,7 @@ def traces():
         evalview traces list              # List recent traces
         evalview traces list --last-24h   # Last 24 hours
         evalview traces show abc123       # Show specific trace
+        evalview traces export abc123     # Export trace to HTML
         evalview traces cost-report       # Cost report for last 7 days
     """
     pass
@@ -5806,6 +5807,59 @@ def traces_cost_report(last_7d: bool, last_30d: bool, by_model: bool):
                     console.print(f"  {day}  {dc_str:>8}  {bar}")
 
                 console.print()
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
+
+
+@traces.command("export")
+@click.argument("trace_id")
+@click.option("--json", "as_json", is_flag=True, help="Export as JSON instead of HTML")
+@click.option("-o", "--output", "output_path", help="Output file path")
+def traces_export(trace_id: str, as_json: bool, output_path: Optional[str]):
+    """Export a trace to HTML or JSON.
+
+    \b
+    Examples:
+        evalview traces export abc123            # Export to HTML
+        evalview traces export abc123 --json    # Export to JSON
+        evalview traces export abc123 -o report.html
+    """
+    import json as json_module
+    from evalview.storage import TraceDB
+
+    try:
+        with TraceDB() as db:
+            trace = db.get_trace(trace_id)
+
+            if not trace:
+                console.print(f"[red]Trace not found: {trace_id}[/red]")
+                sys.exit(1)
+
+            spans = db.get_trace_spans(trace_id)
+
+            if as_json:
+                output = output_path or f"trace_{trace_id}.json"
+                data = {"trace": trace, "spans": spans}
+                Path(output).write_text(
+                    json_module.dumps(data, indent=2, default=str),
+                    encoding="utf-8",
+                )
+                console.print(f"[green]Exported to: {output}[/green]")
+            else:
+                # HTML export (default)
+                try:
+                    from evalview.exporters import TraceHTMLExporter
+                except ImportError:
+                    console.print("[red]HTML export requires jinja2. Install with:[/red]")
+                    console.print("  pip install evalview[reports]")
+                    sys.exit(1)
+
+                output = output_path or f"trace_{trace_id}.html"
+                exporter = TraceHTMLExporter()
+                exporter.export(trace, spans, output)
+                console.print(f"[green]Exported to: {output}[/green]")
 
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
