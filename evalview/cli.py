@@ -5759,7 +5759,6 @@ def traces_cost_report(last_7d: bool, last_30d: bool, by_model: bool):
                 for m in models[:10]:
                     model_name = m.get("model") or "unknown"
                     model_cost = m.get("total_cost") or 0
-                    call_count = m.get("call_count") or 0
 
                     # Calculate percentage
                     pct = (model_cost / total_cost * 100) if total_cost > 0 else 0

@@ -14,7 +14,7 @@ import sqlite3
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 __all__ = ["TraceDB"]
 
@@ -129,21 +129,22 @@ class TraceDB:
         Returns:
             The run_id of the saved trace
         """
-        run_id = str(uuid.uuid4())[:8]
+        run_id = uuid.uuid4().hex[:8]  # 8 hex chars = 4 billion combinations
         now = datetime.now().isoformat()
         spans = spans or []
         summary = summary or {}
 
-        # Calculate totals from spans if not in summary
+        # Calculate totals from spans (single pass)
         total_cost = summary.get("total_cost_usd", 0.0)
         total_tokens = summary.get("total_tokens", 0)
         total_input_tokens = 0
         total_output_tokens = 0
         total_latency_ms = summary.get("total_time_ms", 0.0)
-        total_calls = len([s for s in spans if s.get("span_type") == "llm"])
+        total_calls = 0
 
         for span in spans:
             if span.get("span_type") == "llm":
+                total_calls += 1
                 total_input_tokens += span.get("input_tokens", 0)
                 total_output_tokens += span.get("output_tokens", 0)
                 if total_cost == 0:

@@ -218,6 +218,7 @@ def _save_to_sqlite(
     Args:
         spans: List of span records
         summary: Summary record from trace_end
+        script_name: Name of the script being traced
 
     Returns:
         The run_id if saved, None on error
@@ -233,8 +234,10 @@ def _save_to_sqlite(
                 summary=summary,
             )
             return run_id
-    except Exception:
-        # Silently fail - don't break the trace command if DB fails
+    except Exception as e:
+        # Log but don't break - trace output is more important than persistence
+        import sys
+        print(f"[evalview] Warning: Failed to save trace to database: {e}", file=sys.stderr)
         return None
 
 
