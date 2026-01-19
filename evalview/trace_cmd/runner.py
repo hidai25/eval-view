@@ -243,7 +243,7 @@ def run_traced_command(
 
     try:
         # Print header
-        console.print(f"[bold cyan]━━━ EvalView Trace ━━━[/bold cyan]")
+        console.print("[bold cyan]━━━ EvalView Trace ━━━[/bold cyan]")
         console.print(f"[dim]Running: {' '.join(command)}[/dim]")
         console.print()
 
