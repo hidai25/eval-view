@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -83,10 +82,12 @@ def _print_summary(console: Console, trace_file: Path) -> None:
 
     # Parse trace file
     total_calls = 0
-    total_tokens = 0
+    total_input_tokens = 0
+    total_output_tokens = 0
     total_cost = 0.0
     total_time_ms = 0.0
     by_model: Dict[str, Dict[str, Any]] = {}
+    all_calls: List[Dict[str, Any]] = []
     errors = 0
 
     with open(trace_file, encoding="utf-8") as f:
@@ -100,7 +101,8 @@ def _print_summary(console: Console, trace_file: Path) -> None:
                     cost = record.get("cost_usd", 0.0)
                     duration = record.get("duration_ms", 0.0)
 
-                    total_tokens += input_tokens + output_tokens
+                    total_input_tokens += input_tokens
+                    total_output_tokens += output_tokens
                     total_cost += cost
                     total_time_ms += duration
 
@@ -110,6 +112,13 @@ def _print_summary(console: Console, trace_file: Path) -> None:
                     by_model[model]["calls"] += 1
                     by_model[model]["cost"] += cost
                     by_model[model]["tokens"] += input_tokens + output_tokens
+
+                    # Track individual calls for slowest calls section
+                    all_calls.append({
+                        "model": model,
+                        "duration_ms": duration,
+                        "cost": cost,
+                    })
 
                     if record.get("status") == "error":
                         errors += 1
@@ -125,7 +134,9 @@ def _print_summary(console: Console, trace_file: Path) -> None:
         console.print("[dim]No LLM calls captured.[/dim]")
         return
 
-    # Print summary
+    total_tokens = total_input_tokens + total_output_tokens
+
+    # Print summary header
     console.print()
     console.print("[bold cyan]━━━ Trace Summary ━━━[/bold cyan]")
 
@@ -138,6 +149,7 @@ def _print_summary(console: Console, trace_file: Path) -> None:
 
     summary.append("Total tokens:     ", style="bold")
     summary.append(_format_tokens(total_tokens), style="bold")
+    summary.append(f" (in: {_format_tokens(total_input_tokens)} / out: {_format_tokens(total_output_tokens)})", style="dim")
     summary.append("\n")
 
     summary.append("Total cost:       ", style="bold")
@@ -147,18 +159,28 @@ def _print_summary(console: Console, trace_file: Path) -> None:
 
     summary.append("Total time:       ", style="bold")
     summary.append(_format_duration(total_time_ms), style="bold")
-    summary.append("\n")
 
     console.print(summary)
 
-    # By model breakdown
-    if len(by_model) > 1 or (len(by_model) == 1 and list(by_model.keys())[0] != "unknown"):
+    # Slowest calls section
+    if len(all_calls) > 1:
+        sorted_by_duration = sorted(all_calls, key=lambda x: x["duration_ms"], reverse=True)
+        top_slowest = sorted_by_duration[:3]
+
         console.print()
-        console.print("[dim]By model:[/dim]")
+        console.print("[dim]Slowest calls:[/dim]")
+        for i, call in enumerate(top_slowest, 1):
+            console.print(f"  {i}. {call['model']:<20} {_format_duration(call['duration_ms'])}")
+
+    # Most expensive by model
+    if by_model:
+        console.print()
+        console.print("[dim]Most expensive:[/dim]")
         sorted_models = sorted(by_model.items(), key=lambda x: x[1]["cost"], reverse=True)
-        for model, stats in sorted_models:
+        for model, stats in sorted_models[:5]:
             cost_str = _format_cost(stats["cost"])
-            console.print(f"  {model}: {stats['calls']} calls, {cost_str}")
+            calls_str = f"({stats['calls']} call{'s' if stats['calls'] != 1 else ''})"
+            console.print(f"  {model:<20} {cost_str} {calls_str}")
 
     console.print()
 
@@ -192,7 +214,7 @@ def run_traced_command(
     # Create bootstrap file
     fd, bootstrap_path = tempfile.mkstemp(suffix=".py", prefix="evalview_bootstrap_")
     os.close(fd)
-    with open(bootstrap_path, "w") as f:
+    with open(bootstrap_path, "w", encoding="utf-8") as f:
         f.write(BOOTSTRAP_CODE)
 
     # Get the evalview package path
@@ -216,7 +238,7 @@ def run_traced_command(
     sitecustomize_path = Path(bootstrap_dir) / "sitecustomize.py"
     sitecustomize_existed = sitecustomize_path.exists()
     if not sitecustomize_existed:
-        with open(sitecustomize_path, "w") as f:
+        with open(sitecustomize_path, "w", encoding="utf-8") as f:
             f.write(BOOTSTRAP_CODE)
 
     try:
