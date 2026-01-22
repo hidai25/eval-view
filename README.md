@@ -1,57 +1,59 @@
-# EvalView — Catch Agent Regressions Before You Ship
+# EvalView — Regression Testing for AI Agents
 
-> Your agent worked yesterday. Today it's broken. What changed?
-
-**EvalView catches agent regressions** — tool changes, output changes, cost spikes, and latency spikes — before they hit production.
-
-```bash
-pip install evalview
-evalview demo          # Watch a regression get caught (no API key needed)
-```
-
-[![CI](https://github.com/hidai25/eval-view/actions/workflows/ci.yml/badge.svg)](https://github.com/hidai25/eval-view/actions/workflows/ci.yml)
-[![PyPI version](https://img.shields.io/pypi/v/evalview.svg)](https://pypi.org/project/evalview/)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![GitHub stars](https://img.shields.io/github/stars/hidai25/eval-view?style=social)](https://github.com/hidai25/eval-view/stargazers)
-
-[![Python downloads](https://img.shields.io/pypi/dm/evalview.svg?label=python%20downloads)](https://pypi.org/project/evalview/)
-[![Node.js downloads](https://img.shields.io/npm/dm/@evalview/node.svg?label=node.js%20downloads)](https://www.npmjs.com/package/@evalview/node)
+**Catch agent regressions before they hit production.**
 
 <p align="center">
   <img src="assets/demo.gif" alt="EvalView Demo" width="700">
 </p>
 
+```bash
+pip install evalview && evalview demo   # No API key needed
+```
+
+[![PyPI downloads](https://img.shields.io/pypi/dm/evalview.svg?label=downloads)](https://pypi.org/project/evalview/)
+[![GitHub stars](https://img.shields.io/github/stars/hidai25/eval-view?style=social)](https://github.com/hidai25/eval-view/stargazers)
+[![CI](https://github.com/hidai25/eval-view/actions/workflows/ci.yml/badge.svg)](https://github.com/hidai25/eval-view/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 ---
 
-## The Problem
+**Your agent worked yesterday. Today it's broken. What changed?**
 
-You changed a prompt, swapped models, or updated a tool. Now your agent:
+You updated a prompt, swapped models, or changed a tool. Now your agent calls different tools, returns wrong outputs, costs 3x more, or takes 10x longer. You find out when users complain.
 
-- Calls different tools than before
-- Returns different outputs for the same input
-- Costs 3x more than yesterday
-- Takes 5 seconds instead of 500ms
-
-You don't find out until users complain.
-
-## The Solution
-
-**EvalView detects these regressions in CI — before you deploy.**
+**EvalView catches this in CI — before you deploy.**
 
 ```bash
-evalview golden save .evalview/results/xxx.json   # Save a working run as baseline
-evalview run --diff                                # Future runs compare against it
+evalview golden save .evalview/results/xxx.json   # Save working run as baseline
+evalview run --diff                                # Fail CI on regression
 ```
+
+[Get started in 60 seconds →](#quick-start)
+
+---
+
+## Why EvalView?
+
+|  | Observability Tools | Generic Eval Frameworks | **EvalView** |
+|---|:---:|:---:|:---:|
+| Blocks bad deploys in CI | ❌ | ⚠️ Manual | ✅ Built-in |
+| Detects tool call changes | ❌ | ❌ | ✅ |
+| Tracks cost/latency regressions | ⚠️ Alerts only | ❌ | ✅ Fails CI |
+| Golden baseline diffing | ❌ | ❌ | ✅ |
+| Free & open source | ❌ | ✅ | ✅ |
+| Works offline (Ollama) | ❌ | ⚠️ Some | ✅ |
+
+**Use observability tools to see what happened. Use EvalView to block it from shipping.**
 
 ---
 
 ## What EvalView Catches
 
-| Regression Type | What It Means | Status |
-|-----------------|---------------|--------|
-| **REGRESSION** | Score dropped — agent got worse | Fix before deploy |
-| **TOOLS_CHANGED** | Agent uses different tools now | Review before deploy |
-| **OUTPUT_CHANGED** | Same tools, different response | Review before deploy |
+| Status | Meaning | Action |
+|--------|---------|--------|
+| **REGRESSION** | Score dropped | Fix before deploy |
+| **TOOLS_CHANGED** | Different tools called | Review before deploy |
+| **OUTPUT_CHANGED** | Same tools, different output | Review before deploy |
 | **PASSED** | Matches baseline | Ship it |
 
 ---
@@ -61,19 +63,16 @@ evalview run --diff                                # Future runs compare against
 ```bash
 pip install evalview
 
-# Set your OpenAI API key (for LLM-as-judge evaluation)
-export OPENAI_API_KEY='your-key-here'
-
-# Scaffold a test for YOUR agent
-evalview quickstart
+export OPENAI_API_KEY='your-key'   # For LLM-as-judge
+evalview quickstart                 # Creates test + runs it
 ```
 
-**Free local evaluation:** Don't want to pay for API calls? Use Ollama:
+**Want free local evaluation?**
 ```bash
 evalview run --judge-provider ollama --judge-model llama3.2
 ```
 
-[Full Getting Started Guide →](docs/GETTING_STARTED.md)
+[Full getting started guide →](docs/GETTING_STARTED.md)
 
 ---
 
@@ -96,96 +95,84 @@ jobs:
           fail-on: 'REGRESSION'
 ```
 
-Tests run on every PR, block merges on regression. [Full CI/CD docs →](docs/CI_CD.md)
+PRs with regressions get blocked. [Full CI/CD setup →](docs/CI_CD.md)
 
 ---
 
-## Key Features
+## Features
 
-- **Golden traces** — Save baselines, detect regressions with `--diff`. [Learn more →](docs/GOLDEN_TRACES.md)
-- **Tool categories** — Flexible matching by intent, not exact names. [Learn more →](docs/TOOL_CATEGORIES.md)
-- **Statistical mode** — Handle flaky LLMs with pass@k metrics. [Learn more →](docs/STATISTICAL_MODE.md)
-- **Chat mode** — AI assistant with `/run`, `/test`, `/compare`. [Learn more →](docs/CHAT_MODE.md)
-- **Skills testing** — Validate Claude Code / OpenAI Codex skills. [Learn more →](docs/SKILLS_TESTING.md)
-- **Test generation** — Generate 1000 tests from 1. [Learn more →](docs/TEST_GENERATION.md)
-- **Suite types** — Separate capability tests from regression tests. [Learn more →](docs/SUITE_TYPES.md)
-- **Behavior coverage** — Track tasks, tools, and paths covered. [Learn more →](docs/BEHAVIOR_COVERAGE.md)
-- **LLM-as-judge** — Automated output quality assessment
-- **Cost & latency tracking** — Automatic threshold enforcement
-- **Parallel execution** — 8x faster by default
-- **HTML reports** — Interactive Plotly charts
+| Feature | Description | Docs |
+|---------|-------------|------|
+| **Golden Traces** | Save baselines, detect regressions with `--diff` | [→](docs/GOLDEN_TRACES.md) |
+| **Tool Categories** | Match by intent, not exact tool names | [→](docs/TOOL_CATEGORIES.md) |
+| **Statistical Mode** | Handle flaky LLMs with pass@k metrics | [→](docs/STATISTICAL_MODE.md) |
+| **Chat Mode** | AI assistant: `/run`, `/test`, `/compare` | [→](docs/CHAT_MODE.md) |
+| **Skills Testing** | Validate Claude Code / OpenAI Codex skills | [→](docs/SKILLS_TESTING.md) |
+| **Test Generation** | Generate 1000 tests from 1 | [→](docs/TEST_GENERATION.md) |
+| **Suite Types** | Separate capability vs regression tests | [→](docs/SUITE_TYPES.md) |
+| **Behavior Coverage** | Track tasks, tools, paths tested | [→](docs/BEHAVIOR_COVERAGE.md) |
+| **Cost & Latency** | Automatic threshold enforcement | [→](docs/EVALUATION_METRICS.md) |
+| **HTML Reports** | Interactive Plotly charts | [→](docs/CLI_REFERENCE.md) |
 
 ---
 
-## Who Is It For?
+## Who Uses EvalView?
 
-- **LangGraph / CrewAI teams** shipping agents to production
-- **Solo devs** tired of "it worked yesterday" conversations
-- **Platform teams** who need CI gates before agent deploys
-
-Already using LangSmith or Langfuse? Good. Use them to *see* what happened. Use EvalView to **block it from shipping.**
+- **Teams shipping LangGraph / CrewAI agents** who need CI gates
+- **Solo developers** tired of "it worked yesterday" bugs
+- **Platform teams** building internal agent tooling
 
 ---
 
 ## Supported Frameworks
 
-LangGraph • CrewAI • OpenAI Assistants • Anthropic Claude • AutoGen • Dify • Ollama • Custom APIs
+LangGraph • CrewAI • OpenAI Assistants • Anthropic Claude • AutoGen • Dify • Ollama • Any HTTP API
 
-[Framework compatibility details →](docs/FRAMEWORK_SUPPORT.md)
+[Compatibility details →](docs/FRAMEWORK_SUPPORT.md)
 
 ---
 
 ## Documentation
 
-| Guide | Description |
-|-------|-------------|
-| [Getting Started](docs/GETTING_STARTED.md) | 5-minute quickstart |
-| [CLI Reference](docs/CLI_REFERENCE.md) | All commands and options |
-| [Golden Traces](docs/GOLDEN_TRACES.md) | Regression detection setup |
-| [CI/CD Integration](docs/CI_CD.md) | GitHub Actions, GitLab, CircleCI |
-| [Tool Categories](docs/TOOL_CATEGORIES.md) | Flexible tool matching |
-| [Statistical Mode](docs/STATISTICAL_MODE.md) | Handling flaky tests |
-| [Skills Testing](docs/SKILLS_TESTING.md) | Claude Code / Codex skills |
-| [Evaluation Metrics](docs/EVALUATION_METRICS.md) | Scoring and weights |
-| [FAQ](docs/FAQ.md) | Common questions |
+| | |
+|---|---|
+| [Getting Started](docs/GETTING_STARTED.md) | [CLI Reference](docs/CLI_REFERENCE.md) |
+| [Golden Traces](docs/GOLDEN_TRACES.md) | [CI/CD Integration](docs/CI_CD.md) |
+| [Tool Categories](docs/TOOL_CATEGORIES.md) | [Statistical Mode](docs/STATISTICAL_MODE.md) |
+| [Skills Testing](docs/SKILLS_TESTING.md) | [Evaluation Metrics](docs/EVALUATION_METRICS.md) |
+| [FAQ](docs/FAQ.md) | [Debugging](docs/DEBUGGING.md) |
 
-### Guides
-
-| Guide | Description |
-|-------|-------------|
-| [Testing LangGraph Agents](guides/pytest-for-ai-agents-langgraph-ci.md) | Automated testing with GitHub Actions |
-| [Detecting Hallucinations](guides/detecting-llm-hallucinations-in-ci.md) | Catch made-up facts before users see them |
+**Guides:** [Testing LangGraph in CI](guides/pytest-for-ai-agents-langgraph-ci.md) • [Detecting Hallucinations](guides/detecting-llm-hallucinations-in-ci.md)
 
 ---
 
 ## Examples
 
-- [LangGraph Integration](examples/langgraph/) — Test LangGraph agents
-- [CrewAI Integration](examples/crewai/) — Test CrewAI agents
-- [Anthropic Claude](examples/anthropic/) — Test Claude API
-- [Dify Workflows](examples/dify/) — Test Dify AI workflows
-- [Ollama (Local)](examples/ollama/) — Free local testing
+| Framework | Link |
+|-----------|------|
+| LangGraph | [examples/langgraph/](examples/langgraph/) |
+| CrewAI | [examples/crewai/](examples/crewai/) |
+| Anthropic Claude | [examples/anthropic/](examples/anthropic/) |
+| Dify | [examples/dify/](examples/dify/) |
+| Ollama (Local) | [examples/ollama/](examples/ollama/) |
 
-**Using Node.js?** See [@evalview/node](sdks/node/) for drop-in middleware.
+**Node.js?** See [@evalview/node](sdks/node/)
 
 ---
 
-## Early Adopter Program
+## Get Help
 
-**First 10 teams get white-glove setup.** Free.
-
-I'll personally configure your YAML tests + CI integration.
-
-- [Claim a spot →](https://github.com/hidai25/eval-view/discussions)
-- Email: hidai@evalview.com
+- **Questions?** [GitHub Discussions](https://github.com/hidai25/eval-view/discussions)
+- **Bugs?** [GitHub Issues](https://github.com/hidai25/eval-view/issues)
+- **Want setup help?** Email hidai@evalview.com — happy to help configure your first tests
 
 ---
 
 ## Roadmap
 
-**Shipped:** Golden traces, tool categories, flakiness detection, skills testing, MCP server testing, HTML diff reports
+**Shipped:** Golden traces • Tool categories • Statistical mode • Skills testing • MCP servers • HTML reports
 
-**Coming Soon:** Multi-turn conversations, grounded hallucination checking, error compounding metrics
+**Coming:** Multi-turn conversations • Grounded hallucination detection • Error compounding metrics
 
 [Vote on features →](https://github.com/hidai25/eval-view/discussions)
 
@@ -195,18 +182,14 @@ I'll personally configure your YAML tests + CI integration.
 
 Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## License
-
-Apache 2.0 — [LICENSE](LICENSE)
-
-## Support
-
-- [GitHub Issues](https://github.com/hidai25/eval-view/issues)
-- [Discussions](https://github.com/hidai25/eval-view/discussions)
+**License:** Apache 2.0
 
 ---
 
-**Ship AI agents with confidence.** [Star us →](https://github.com/hidai25/eval-view)
+<p align="center">
+  <b>Stop shipping regressions.</b><br>
+  <a href="#quick-start">Get started in 60 seconds →</a>
+</p>
 
 ---
 
