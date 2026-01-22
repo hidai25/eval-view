@@ -1,6 +1,8 @@
-# EvalView — Regression Testing for AI Agents
+# EvalView — Pytest for AI Agents
 
-**Catch agent regressions before they hit production.**
+> Your agent worked yesterday. Today it's broken. EvalView catches why.
+
+**CI/CD for agent behavior.** Detect tool changes, output drift, cost spikes, and latency regressions — before users complain.
 
 <p align="center">
   <img src="assets/demo.gif" alt="EvalView Demo" width="700">
@@ -17,9 +19,7 @@ pip install evalview && evalview demo   # No API key needed
 
 ---
 
-**Your agent worked yesterday. Today it's broken. What changed?**
-
-You updated a prompt, swapped models, or changed a tool. Now your agent calls different tools, returns wrong outputs, costs 3x more, or takes 10x longer. You find out when users complain.
+**You changed a prompt.** Now your agent calls wrong tools, hallucinates, costs 3x more, or times out. You find out when users complain.
 
 **EvalView catches this in CI — before you deploy.**
 
