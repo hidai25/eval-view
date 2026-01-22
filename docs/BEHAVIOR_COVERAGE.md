@@ -1,0 +1,147 @@
+# Behavior Coverage (Not Line Coverage)
+
+Line coverage doesn't work for LLMs. Instead, EvalView focuses on **behavior coverage**:
+
+| Dimension | What it measures |
+|-----------|------------------|
+| **Tasks covered** | Which real-world scenarios have tests? |
+| **Tools exercised** | Are all your agent's tools being tested? |
+| **Paths hit** | Are multi-step workflows tested end-to-end? |
+| **Eval dimensions** | Are you checking correctness, safety, cost, latency? |
+
+---
+
+## The Loop
+
+weird prod session → turn it into a regression test → it shows up in your coverage.
+
+---
+
+## Summary View
+
+```bash
+# Compact summary with deltas vs last run + regression detection
+evalview run --summary
+```
+
+```
+━━━ EvalView Summary ━━━
+Suite: analytics_agent
+Tests: 7 passed, 2 failed
+
+Failures:
+  ✗ cohort: large result set     cost +240%
+  ✗ doc QA: long context         missing tool: chunking
+
+Deltas vs last run:
+  Tokens:  +188%  ↑
+  Latency: +95ms  ↑
+  Cost:    +$0.12 ↑
+
+⚠️  Regressions detected
+```
+
+---
+
+## Coverage Report
+
+```bash
+# Behavior coverage report
+evalview run --coverage
+```
+
+```
+━━━ Behavior Coverage ━━━
+Suite: analytics_agent
+
+Tasks:      9/9 scenarios (100%)
+Tools:      6/8 exercised (75%)
+            missing: chunking, summarize
+Paths:      3/3 multi-step workflows (100%)
+Dimensions: correctness ✓, output ✓, cost ✗, latency ✓, safety ✓
+
+Overall:    92% behavior coverage
+```
+
+---
+
+## Coverage Dimensions
+
+### Tasks Covered
+
+How many real-world scenarios have tests?
+
+- Customer support queries
+- Data analysis requests
+- Error handling situations
+- Edge cases
+
+### Tools Exercised
+
+Are all your agent's tools being tested?
+
+```
+Tools:      6/8 exercised (75%)
+            missing: chunking, summarize
+```
+
+If tools aren't covered, add tests that require them.
+
+### Paths Hit
+
+Are multi-step workflows tested end-to-end?
+
+For example:
+1. User asks question → Agent searches → Agent analyzes → Agent responds
+2. User uploads file → Agent parses → Agent validates → Agent processes
+
+### Eval Dimensions
+
+Are you checking all the important aspects?
+
+- **Correctness** - Does the output answer the question?
+- **Output quality** - Is the response well-formed?
+- **Cost** - Is it within budget?
+- **Latency** - Is it fast enough?
+- **Safety** - Does it avoid harmful outputs?
+
+---
+
+## Improving Coverage
+
+### Add tests for missing tools
+
+```yaml
+name: "Test chunking tool"
+input:
+  query: "Process this very long document"
+expected:
+  tools:
+    - chunking
+```
+
+### Add tests for missing dimensions
+
+```yaml
+name: "Cost-sensitive test"
+thresholds:
+  max_cost: 0.01  # Ensure cost dimension is checked
+```
+
+### Add tests for edge cases
+
+```yaml
+name: "Empty input handling"
+input:
+  query: ""
+expected:
+  # Should handle gracefully, not crash
+```
+
+---
+
+## Related Documentation
+
+- [Evaluation Metrics](EVALUATION_METRICS.md)
+- [Suite Types](SUITE_TYPES.md)
+- [CLI Reference](CLI_REFERENCE.md)
