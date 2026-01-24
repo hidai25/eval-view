@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-01-25
+
 ### Added
 
 #### CLI Statistical Mode Flags
@@ -235,7 +237,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fixed**: Bug fixes
 - **Security**: Security fixes and improvements
 
-[Unreleased]: https://github.com/hidai25/eval-view/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/hidai25/eval-view/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/hidai25/eval-view/compare/v0.2.0...v0.2.3
 [0.2.0]: https://github.com/hidai25/eval-view/compare/v0.1.5...v0.2.0
 [0.1.5]: https://github.com/hidai25/eval-view/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/hidai25/eval-view/compare/v0.1.3...v0.1.4
