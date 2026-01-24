@@ -381,6 +381,34 @@ evalview golden save .evalview/results/xxx.json
 ```
 Save a run as baseline for regression detection.
 
+## CI/CD INTEGRATION
+EvalView integrates with GitHub Actions to block PRs with regressions.
+
+```command
+evalview ci comment
+```
+Post test results as a PR comment. Shows pass/fail, score, cost, latency, and changes from baseline.
+
+```command
+evalview ci comment --dry-run
+```
+Preview the PR comment without posting.
+
+**Add to GitHub Actions workflow:**
+```yaml
+- name: Post PR comment
+  if: github.event_name == 'pull_request'
+  run: evalview ci comment
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+The comment shows:
+- Overall status (PASSED / REGRESSION / TOOLS_CHANGED / OUTPUT_CHANGED)
+- Summary metrics (tests, pass rate, cost, latency)
+- Top changes when using --diff mode
+- Failed tests with scores
+
 ## INTERACTIVE COMMANDS (use these directly in chat)
 The user can run these slash commands directly without leaving chat:
 
