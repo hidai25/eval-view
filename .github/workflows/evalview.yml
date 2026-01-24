@@ -66,6 +66,14 @@ jobs:
             report.html
           retention-days: 30
 
+      # Optional: Post results as PR comment
+      - name: Post PR comment
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: uv run evalview ci comment
+
       - name: Check for failures
         if: always()
         run: |
