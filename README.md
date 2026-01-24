@@ -95,7 +95,43 @@ jobs:
           fail-on: 'REGRESSION'
 ```
 
-PRs with regressions get blocked. [Full CI/CD setup →](docs/CI_CD.md)
+PRs with regressions get blocked. Add a PR comment showing exactly what changed:
+
+```yaml
+      - run: evalview ci comment  # Posts diff to PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+[Full CI/CD setup →](docs/CI_CD.md)
+
+---
+
+## Interactive Chat Mode
+
+Talk to your tests. Debug failures. Compare runs.
+
+```bash
+evalview chat
+```
+
+```
+You: run the calculator test
+🤖 Running calculator test...
+✅ Passed (score: 92.5)
+
+You: what tools did it use?
+🤖 The agent used: calculator, search
+
+You: compare to yesterday
+🤖 Score: 92.5 → 87.2 (-5.3)
+   Tools: +1 added (validator)
+   Cost: $0.003 → $0.005 (+67%)
+```
+
+Slash commands: `/run`, `/test`, `/compare`, `/traces`, `/adapters`
+
+[Chat mode docs →](docs/CHAT_MODE.md)
 
 ---
 
