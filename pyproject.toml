@@ -50,11 +50,16 @@ reports = [
 watch = [
     "watchdog>=3.0",
 ]
+# Telemetry (opt-out anonymous usage analytics)
+telemetry = [
+    "posthog>=3.0.0",
+]
 # All optional features
 all = [
     "jinja2>=3.0",
     "plotly>=5.0",
     "watchdog>=3.0",
+    "posthog>=3.0.0",
 ]
 # Development dependencies
 dev = [
@@ -130,4 +135,8 @@ ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = "evalview.adapters.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "evalview.telemetry.*"
 ignore_errors = true

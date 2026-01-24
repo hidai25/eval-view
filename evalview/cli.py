@@ -32,6 +32,17 @@ from evalview.evaluators.evaluator import Evaluator
 from evalview.reporters.json_reporter import JSONReporter
 from evalview.reporters.console_reporter import ConsoleReporter
 
+# Telemetry (lazy imports for optional dependency)
+from evalview.telemetry.config import (
+    is_telemetry_enabled,
+    should_show_first_run_notice,
+    mark_first_run_notice_shown,
+    set_telemetry_enabled,
+    load_config as load_telemetry_config,
+    TELEMETRY_DISABLED_ENV,
+)
+from evalview.telemetry.decorators import track_command, track_run_command
+
 # Load environment variables (.env is the OSS standard, .env.local for overrides)
 load_dotenv()  # Loads .env by default
 load_dotenv(dotenv_path=".env.local", override=True)  # Override with .env.local if exists
@@ -41,7 +52,8 @@ console = Console()
 
 @click.group(context_settings={"allow_interspersed_args": False})
 @click.version_option(version="0.1.7")
-def main():
+@click.pass_context
+def main(ctx):
     """EvalView - Catch agent regressions before you ship.
 
     Detects tool changes, output changes, cost spikes, and latency spikes
@@ -52,7 +64,18 @@ def main():
       evalview run --diff              # Compare against golden baseline
       evalview golden save result.json # Save a working run as baseline
     """
-    pass
+    # Show first-run telemetry notice (once only)
+    if should_show_first_run_notice():
+        # Don't show for telemetry subcommands themselves
+        if ctx.invoked_subcommand not in ("telemetry",):
+            console.print()
+            console.print("[dim]╭──────────────────────────────────────────────────────────────╮[/dim]")
+            console.print("[dim]│[/dim] EvalView collects anonymous usage data to improve the tool. [dim]│[/dim]")
+            console.print("[dim]│[/dim] No personal info or test content is collected.              [dim]│[/dim]")
+            console.print("[dim]│[/dim] Disable with: [cyan]evalview telemetry off[/cyan]                      [dim]│[/dim]")
+            console.print("[dim]╰──────────────────────────────────────────────────────────────╯[/dim]")
+            console.print()
+            mark_first_run_notice_shown()
 
 
 @main.command()
@@ -71,6 +94,7 @@ def main():
     is_flag=True,
     help="[EXPERIMENTAL] Run auto-detection wizard to find and configure agents",
 )
+@track_command("init")
 def init(dir: str, interactive: bool, wizard: bool):
     """Initialize EvalView in the current directory."""
     if wizard:
@@ -397,6 +421,7 @@ pydantic>=2.0.0
 
 
 @main.command()
+@track_command("quickstart")
 def quickstart():
     """🚀 Quick start: Set up and run a demo in under 2 minutes."""
     import subprocess
@@ -2786,6 +2811,23 @@ async def _run_async(
         else:
             console.print("[dim]⭐ Enjoying EvalView? Star us on GitHub:[/dim]")
             console.print("[dim]   [link=https://github.com/hidai25/eval-view]https://github.com/hidai25/eval-view[/link][/dim]\n")
+
+    # Track run command telemetry (non-blocking, in background)
+    try:
+        import time as time_module
+        duration_ms = (time_module.time() - start_time) * 1000 if "start_time" in dir() else None
+        track_run_command(
+            adapter_type=adapter_type,
+            test_count=len(test_cases),
+            pass_count=passed,
+            fail_count=failed,
+            duration_ms=duration_ms,
+            diff_mode=diff,
+            watch_mode=watch,
+            parallel=not sequential,
+        )
+    except Exception:
+        pass  # Telemetry errors should never break functionality
 
     # Watch mode: re-run tests on file changes
     if watch:
@@ -5302,6 +5344,7 @@ def golden():
 @click.argument("result_file", type=click.Path(exists=True))
 @click.option("--notes", "-n", help="Notes about why this is the golden baseline")
 @click.option("--test", "-t", help="Save only specific test (by name)")
+@track_command("golden_save")
 def golden_save(result_file: str, notes: str, test: str):
     """Save a test result as the golden baseline.
 
@@ -5864,6 +5907,91 @@ def traces_export(trace_id: str, as_json: bool, output_path: Optional[str]):
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         sys.exit(1)
+
+
+# ============================================================================
+# Telemetry Commands
+# ============================================================================
+
+
+@main.group()
+def telemetry():
+    """Manage anonymous usage telemetry.
+
+    EvalView collects anonymous usage data to improve the tool.
+    No personal info, API keys, or test content is collected.
+
+    \b
+    Examples:
+        evalview telemetry status   # Check current status
+        evalview telemetry off      # Disable telemetry
+        evalview telemetry on       # Enable telemetry
+    """
+    pass
+
+
+@telemetry.command("status")
+def telemetry_status():
+    """Show current telemetry status."""
+    import os
+
+    env_disabled = os.environ.get(TELEMETRY_DISABLED_ENV, "").lower() in ("1", "true", "yes")
+    config = load_telemetry_config()
+
+    console.print("\n[cyan]━━━ Telemetry Status ━━━[/cyan]\n")
+
+    if env_disabled:
+        console.print("[yellow]Status:[/yellow] [red]Disabled[/red] (via environment variable)")
+        console.print(f"[dim]${TELEMETRY_DISABLED_ENV} is set[/dim]")
+    elif config.enabled:
+        console.print("[yellow]Status:[/yellow] [green]Enabled[/green]")
+    else:
+        console.print("[yellow]Status:[/yellow] [red]Disabled[/red]")
+
+    console.print(f"[yellow]Install ID:[/yellow] [dim]{config.install_id}[/dim]")
+    console.print()
+    console.print("[dim]What we collect:[/dim]")
+    console.print("  • Command name (run, init, etc.)")
+    console.print("  • Adapter type (langgraph, crewai, etc.)")
+    console.print("  • Test count, pass/fail count")
+    console.print("  • OS + Python version")
+    console.print()
+    console.print("[dim]What we DON'T collect:[/dim]")
+    console.print("  • API keys or credentials")
+    console.print("  • Test content or queries")
+    console.print("  • File paths or IP addresses")
+    console.print("  • Error messages (only error class name)")
+    console.print()
+
+
+@telemetry.command("on")
+def telemetry_on():
+    """Enable anonymous telemetry."""
+    import os
+
+    env_disabled = os.environ.get(TELEMETRY_DISABLED_ENV, "").lower() in ("1", "true", "yes")
+
+    if env_disabled:
+        console.print(
+            f"[yellow]Warning:[/yellow] ${TELEMETRY_DISABLED_ENV} is set. "
+            "Unset it to enable telemetry."
+        )
+        console.print()
+        return
+
+    set_telemetry_enabled(True)
+    console.print("[green]✓ Telemetry enabled[/green]")
+    console.print("[dim]Thank you for helping improve EvalView![/dim]")
+    console.print()
+
+
+@telemetry.command("off")
+def telemetry_off():
+    """Disable anonymous telemetry."""
+    set_telemetry_enabled(False)
+    console.print("[green]✓ Telemetry disabled[/green]")
+    console.print("[dim]You can re-enable anytime with: evalview telemetry on[/dim]")
+    console.print()
 
 
 if __name__ == "__main__":
