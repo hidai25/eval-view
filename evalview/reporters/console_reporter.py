@@ -153,12 +153,16 @@ class ConsoleReporter:
 
         # Check if any results have suite_type set
         has_suite_types = any(r.suite_type for r in results)
+        # Check if any results have difficulty set
+        has_difficulty = any(r.difficulty for r in results)
 
         # Summary table
         table = Table(title="📊 Evaluation Summary", show_header=True)
         table.add_column("Test Case", style="cyan")
         if has_suite_types:
             table.add_column("Type", style="dim", width=10)
+        if has_difficulty:
+            table.add_column("Difficulty", style="dim", width=8)
         table.add_column("Backend", style="magenta")
         table.add_column("Score", justify="right")
         table.add_column("Status")
@@ -189,9 +193,24 @@ class ConsoleReporter:
             elif result.suite_type == "regression":
                 suite_display = "[magenta]regression[/magenta]"
 
+            # Difficulty display with color coding
+            difficulty_display = ""
+            if result.difficulty:
+                difficulty_colors = {
+                    "trivial": "dim",
+                    "easy": "green",
+                    "medium": "yellow",
+                    "hard": "red",
+                    "expert": "bold red",
+                }
+                color = difficulty_colors.get(result.difficulty, "white")
+                difficulty_display = f"[{color}]{result.difficulty}[/{color}]"
+
             row = [result.test_case]
             if has_suite_types:
                 row.append(suite_display)
+            if has_difficulty:
+                row.append(difficulty_display)
             row.extend([
                 adapter_display,
                 f"[{score_color}]{result.score:.1f}[/{score_color}]",
@@ -248,6 +267,26 @@ class ConsoleReporter:
                 other_passed = sum(1 for r in other_results if r.passed)
                 stats_content += f"\n  [dim]Other:[/dim]        {other_passed}/{len(other_results)}"
 
+        # Add difficulty breakdown if applicable
+        if has_difficulty:
+            stats_content += "\n\n  [bold]By Difficulty:[/bold]"
+            difficulty_levels = ["trivial", "easy", "medium", "hard", "expert"]
+            difficulty_colors = {
+                "trivial": "dim",
+                "easy": "green",
+                "medium": "yellow",
+                "hard": "red",
+                "expert": "bold red",
+            }
+            for level in difficulty_levels:
+                level_results = [r for r in results if r.difficulty == level]
+                if level_results:
+                    level_passed = sum(1 for r in level_results if r.passed)
+                    level_rate = (level_passed / len(level_results) * 100)
+                    rate_color = "green" if level_rate >= 80 else "yellow" if level_rate >= 50 else "red"
+                    color = difficulty_colors[level]
+                    stats_content += f"\n  [{color}]{level.capitalize():8}[/{color}] [{rate_color}]{level_passed}/{len(level_results)}[/{rate_color}] ({level_rate:.0f}%)"
+
         stats_panel = Panel(
             stats_content,
             title="[bold]Overall Statistics[/bold]",
@@ -295,9 +334,13 @@ class ConsoleReporter:
             output_status = "✓" if output_eval.score >= 70 else "✗"
             self.console.print(f"  Output Quality:   {output_eval.score:.0f}/100 {output_status}")
 
-            # Sequence correctness
+            # Sequence correctness with progress score
             seq_status = "✓" if seq_eval.correct else "✗"
-            self.console.print(f"  Sequence:         {'Correct' if seq_eval.correct else 'Incorrect'} {seq_status}")
+            if seq_eval.correct:
+                self.console.print(f"  Sequence:         Correct {seq_status}")
+            else:
+                progress_pct = seq_eval.progress_score * 100
+                self.console.print(f"  Sequence:         {progress_pct:.0f}% complete {seq_status}")
 
             # Hallucination check
             if result.evaluations.hallucination:
@@ -417,9 +460,13 @@ class ConsoleReporter:
         for hint in tool_eval.hints:
             self.console.print(f"  [yellow]💡 {hint}[/yellow]")
 
-        # Sequence correctness
+        # Sequence correctness with progress score
         seq_eval = result.evaluations.sequence_correctness
-        seq_status = "[green]✓ Correct[/green]" if seq_eval.correct else "[red]✗ Incorrect[/red]"
+        if seq_eval.correct:
+            seq_status = "[green]✓ Correct[/green]"
+        else:
+            progress_pct = seq_eval.progress_score * 100
+            seq_status = f"[red]✗ {progress_pct:.0f}% complete[/red]"
         self.console.print(f"\n[bold]Sequence:[/bold] {seq_status}")
         if seq_eval.expected_sequence:
             self.console.print(f"  Expected: {' → '.join(seq_eval.expected_sequence)}")

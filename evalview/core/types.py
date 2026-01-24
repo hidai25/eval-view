@@ -6,6 +6,15 @@ from enum import Enum
 from typing import Any, Optional, List, Dict, Union, Literal
 from pydantic import BaseModel, Field, field_validator, ValidationInfo
 
+
+# ============================================================================
+# Enums and Literal Types
+# ============================================================================
+
+# Difficulty levels for test cases - enables filtering, reporting, and benchmarking
+# Follows industry standard 5-tier difficulty classification
+Difficulty = Literal["trivial", "easy", "medium", "hard", "expert"]
+
 logger = logging.getLogger(__name__)
 
 
@@ -146,6 +155,17 @@ class TestCase(BaseModel):
     suite_type: Optional[str] = Field(
         default=None,
         description="Test suite type: 'capability' (hill-climbing) or 'regression' (safety net)"
+    )
+
+    # Optional: Difficulty level for benchmarking and filtering
+    # - "trivial": Sanity checks, basic functionality
+    # - "easy": Simple tasks most agents should handle
+    # - "medium": Standard complexity, requires proper tool use
+    # - "hard": Complex multi-step reasoning or edge cases
+    # - "expert": Near human-expert level tasks
+    difficulty: Optional[Difficulty] = Field(
+        default=None,
+        description="Task difficulty: 'trivial', 'easy', 'medium', 'hard', or 'expert'"
     )
 
 
@@ -424,6 +444,16 @@ class SequenceEvaluation(BaseModel):
     expected_sequence: List[str]
     actual_sequence: List[str]
     violations: List[str] = Field(default_factory=list)
+    # Progress score for partial credit (0.0 to 1.0)
+    # - 1.0 = perfect sequence match
+    # - 0.0 = no expected tools found in order
+    # - 0.6 = found 3 of 5 expected tools in order
+    progress_score: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="Partial credit score: proportion of expected sequence completed"
+    )
 
 
 class ContainsChecks(BaseModel):
@@ -527,6 +557,9 @@ class EvaluationResult(BaseModel):
 
     # Suite type for categorization (capability vs regression)
     suite_type: Optional[str] = None  # "capability" or "regression"
+
+    # Difficulty level for benchmarking
+    difficulty: Optional[Difficulty] = None
 
 
 # ============================================================================

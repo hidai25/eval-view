@@ -120,8 +120,8 @@ class TestEvaluator:
         evaluations = Evaluations(
             tool_accuracy=ToolEvaluation(accuracy=0.5),  # 50% accuracy
             sequence_correctness=SequenceEvaluation(
-                correct=False, expected_sequence=[], actual_sequence=[]
-            ),  # 0% for sequence
+                correct=False, expected_sequence=[], actual_sequence=[], progress_score=0.0
+            ),  # 0% for sequence (explicit progress_score=0.0)
             output_quality=OutputEvaluation(
                 score=80.0,  # 80% output quality
                 rationale="Good",
@@ -154,7 +154,7 @@ class TestEvaluator:
         evaluations = Evaluations(
             tool_accuracy=ToolEvaluation(accuracy=0.0),
             sequence_correctness=SequenceEvaluation(
-                correct=False, expected_sequence=[], actual_sequence=[]
+                correct=False, expected_sequence=[], actual_sequence=[], progress_score=0.0
             ),
             output_quality=OutputEvaluation(
                 score=0.0,
@@ -175,6 +175,7 @@ class TestEvaluator:
 
         score = evaluator._compute_overall_score(evaluations, test_case)
 
+        # With progress_score=0.0 explicitly set, sequence contributes 0 points
         assert score == 0.0
 
     @patch("evalview.core.llm_provider.select_provider")
@@ -549,8 +550,8 @@ class TestEvaluator:
         evaluations = Evaluations(
             tool_accuracy=ToolEvaluation(accuracy=0.0),  # 0%
             sequence_correctness=SequenceEvaluation(
-                correct=False, expected_sequence=[], actual_sequence=[]
-            ),  # 0%
+                correct=False, expected_sequence=[], actual_sequence=[], progress_score=0.0
+            ),  # 0% (explicit progress_score=0.0)
             output_quality=OutputEvaluation(
                 score=100.0,  # 100%
                 rationale="Perfect output",

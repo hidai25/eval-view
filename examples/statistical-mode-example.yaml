@@ -10,6 +10,15 @@
 name: "Statistical Research Agent Test"
 description: "Test research agent with variance analysis for non-deterministic outputs"
 
+# Difficulty level for benchmarking and filtering
+# Options: trivial, easy, medium, hard, expert
+# Use: evalview run --difficulty medium
+difficulty: medium
+
+# Suite type for categorization
+# Options: capability (hill-climbing) or regression (safety net)
+suite_type: capability
+
 # Configure adapter
 adapter: langgraph
 endpoint: http://localhost:2024

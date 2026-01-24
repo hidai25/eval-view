@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### CLI Statistical Mode Flags
+- **`--runs N` flag**: Run each test N times for statistical evaluation (2-100)
+  - Enables pass@k reliability metrics without modifying YAML files
+  - Overrides per-test variance configuration
+- **`--pass-rate` flag**: Set required pass rate for `--runs` mode (default: 0.8)
+- **`--difficulty` filter**: Filter tests by difficulty level (`trivial`, `easy`, `medium`, `hard`, `expert`)
+
+#### Difficulty Levels for Test Cases
+- **New `difficulty` field** on test cases: `trivial`, `easy`, `medium`, `hard`, `expert`
+- Enables benchmark stratification and capability profiling
+- Console reporter shows difficulty column and breakdown by difficulty level
+- Filter tests by difficulty: `evalview run --difficulty hard`
+
+#### Partial Credit for Sequence Evaluation
+- **`progress_score` field** on SequenceEvaluation (0.0 to 1.0)
+- Sequence scoring now uses partial credit instead of binary pass/fail
+- Example: If expected sequence is `[a, b, c, d, e]` and agent completed `[a, b, c]`, progress_score = 0.6
+- Contributes 60% of the sequence weight to overall score instead of 0%
+- Console output shows progress percentage for incomplete sequences
+
+### Fixed
+- **`--runs` CLI flag**: Now properly implemented (was documented but missing in v0.1.5)
+
 ## [0.2.0] - 2026-01-10
 
 ### Added

@@ -124,6 +124,7 @@ class Evaluator:
             input_query=test_case.input.query,
             actual_output=trace.final_output,
             suite_type=test_case.suite_type,
+            difficulty=test_case.difficulty,
         )
 
     def _get_weights_for_test(self, test_case: TestCase) -> Dict[str, float]:
@@ -169,14 +170,21 @@ class Evaluator:
         - Tool accuracy: 30%
         - Output quality: 50%
         - Sequence correctness: 20%
+
+        Note: Sequence scoring uses progress_score for partial credit.
+        Example: If expected sequence is [a, b, c, d, e] and agent completed [a, b, c],
+        progress_score = 0.6, contributing 60% of the sequence weight (12/20 points).
         """
         weights = self._get_weights_for_test(test_case)
+
+        # Use progress_score for partial credit on sequence evaluation
+        # progress_score is 0.0-1.0, multiply by 100 to get 0-100 scale
+        sequence_score = evaluations.sequence_correctness.progress_score * 100
 
         score = (
             evaluations.tool_accuracy.accuracy * 100 * weights["tool_accuracy"]
             + evaluations.output_quality.score * weights["output_quality"]
-            + (100 if evaluations.sequence_correctness.correct else 0)
-            * weights["sequence_correctness"]
+            + sequence_score * weights["sequence_correctness"]
         )
 
         return round(score, 2)

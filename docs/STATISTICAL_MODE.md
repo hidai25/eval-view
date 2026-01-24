@@ -4,7 +4,26 @@ LLMs are non-deterministic. A test that passes once might fail the next run. Sta
 
 ---
 
-## Enable Statistical Mode
+## Quick Start: CLI Flag
+
+The easiest way to enable statistical mode is with the `--runs` flag:
+
+```bash
+# Run each test 10 times
+evalview run --runs 10
+
+# Run with custom pass rate (70% must pass)
+evalview run --runs 10 --pass-rate 0.7
+
+# Filter by difficulty and run statistically
+evalview run --difficulty hard --runs 5
+```
+
+This overrides any per-test variance configuration.
+
+---
+
+## Per-Test Configuration (YAML)
 
 Add `variance` config to your test case:
 

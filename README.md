@@ -141,11 +141,12 @@ Slash commands: `/run`, `/test`, `/compare`, `/traces`, `/adapters`
 |---------|-------------|------|
 | **Golden Traces** | Save baselines, detect regressions with `--diff` | [→](docs/GOLDEN_TRACES.md) |
 | **Tool Categories** | Match by intent, not exact tool names | [→](docs/TOOL_CATEGORIES.md) |
-| **Statistical Mode** | Handle flaky LLMs with pass@k metrics | [→](docs/STATISTICAL_MODE.md) |
+| **Statistical Mode** | Handle flaky LLMs with `--runs N` and pass@k | [→](docs/STATISTICAL_MODE.md) |
 | **Chat Mode** | AI assistant: `/run`, `/test`, `/compare` | [→](docs/CHAT_MODE.md) |
 | **Skills Testing** | Validate Claude Code / OpenAI Codex skills | [→](docs/SKILLS_TESTING.md) |
 | **Test Generation** | Generate 1000 tests from 1 | [→](docs/TEST_GENERATION.md) |
 | **Suite Types** | Separate capability vs regression tests | [→](docs/SUITE_TYPES.md) |
+| **Difficulty Levels** | Filter by `--difficulty hard`, benchmark by tier | [→](docs/STATISTICAL_MODE.md) |
 | **Behavior Coverage** | Track tasks, tools, paths tested | [→](docs/BEHAVIOR_COVERAGE.md) |
 | **Cost & Latency** | Automatic threshold enforcement | [→](docs/EVALUATION_METRICS.md) |
 | **HTML Reports** | Interactive Plotly charts | [→](docs/CLI_REFERENCE.md) |
@@ -206,7 +207,7 @@ LangGraph • CrewAI • OpenAI Assistants • Anthropic Claude • AutoGen • 
 
 ## Roadmap
 
-**Shipped:** Golden traces • Tool categories • Statistical mode • Skills testing • MCP servers • HTML reports
+**Shipped:** Golden traces • Tool categories • Statistical mode • Difficulty levels • Partial sequence credit • Skills testing • MCP servers • HTML reports
 
 **Coming:** Multi-turn conversations • Grounded hallucination detection • Error compounding metrics
 

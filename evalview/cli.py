@@ -1383,6 +1383,24 @@ thresholds:
     type=click.Path(),
     help="Export trace to JSONL file for debugging or sharing.",
 )
+@click.option(
+    "--runs",
+    type=int,
+    default=None,
+    help="Run each test N times for statistical evaluation (enables pass@k metrics). Overrides per-test variance config.",
+)
+@click.option(
+    "--pass-rate",
+    type=float,
+    default=0.8,
+    help="Required pass rate for statistical mode (0.0-1.0, default: 0.8). Only used with --runs.",
+)
+@click.option(
+    "--difficulty",
+    type=click.Choice(["trivial", "easy", "medium", "hard", "expert"]),
+    default=None,
+    help="Filter tests by difficulty level.",
+)
 def run(
     path: Optional[str],
     pattern: str,
@@ -1411,6 +1429,9 @@ def run(
     strict: bool,
     trace: bool,
     trace_out: Optional[str],
+    runs: Optional[int],
+    pass_rate: float,
+    difficulty: Optional[str],
 ):
     """Run test cases against the agent.
 
@@ -1434,7 +1455,8 @@ def run(
         path, pattern, test, filter, output, verbose, track, compare_baseline, debug,
         sequential, max_workers, max_retries, retry_delay, watch, html_report, summary, coverage,
         adapter_override=adapter, diff=diff, diff_report=diff_report,
-        fail_on=fail_on, warn_on=warn_on, trace=trace, trace_out=trace_out
+        fail_on=fail_on, warn_on=warn_on, trace=trace, trace_out=trace_out,
+        runs=runs, pass_rate=pass_rate, difficulty_filter=difficulty
     ))
 
 
@@ -1463,6 +1485,9 @@ async def _run_async(
     warn_on: Optional[str] = None,
     trace: bool = False,
     trace_out: Optional[str] = None,
+    runs: Optional[int] = None,
+    pass_rate: float = 0.8,
+    difficulty_filter: Optional[str] = None,
 ):
     """Async implementation of run command."""
     import fnmatch
@@ -1877,6 +1902,37 @@ async def _run_async(
         console.print()
         console.print("[dim]Example: evalview record → evalview expand recorded-001.yaml --count 50[/dim]")
         return
+
+    # Filter by difficulty if specified
+    if difficulty_filter:
+        original_count = len(test_cases)
+        test_cases = [tc for tc in test_cases if tc.difficulty == difficulty_filter]
+        if not test_cases:
+            console.print(f"[yellow]⚠️  No test cases with difficulty '{difficulty_filter}' found[/yellow]")
+            console.print(f"[dim]Original count: {original_count} tests[/dim]")
+            return
+        if verbose:
+            console.print(f"[dim]🎯 Filtered to {len(test_cases)}/{original_count} tests with difficulty: {difficulty_filter}[/dim]\n")
+
+    # Inject variance config for --runs flag (enables statistical/pass@k mode)
+    if runs is not None:
+        if runs < 2:
+            console.print("[red]❌ --runs must be at least 2 for statistical mode[/red]")
+            return
+        if runs > 100:
+            console.print("[red]❌ --runs cannot exceed 100[/red]")
+            return
+
+        from evalview.core.types import VarianceConfig
+        cli_variance_config = VarianceConfig(
+            runs=runs,
+            pass_rate=pass_rate,
+        )
+        # Inject variance config into each test case (overrides per-test config)
+        for tc in test_cases:
+            tc.thresholds.variance = cli_variance_config
+
+        console.print(f"[cyan]📊 Statistical mode: Running each test {runs} times (pass rate: {pass_rate:.0%})[/cyan]\n")
 
     # Interactive test selection menu - show when no explicit filter provided
     # and pattern is the default "*.yaml"

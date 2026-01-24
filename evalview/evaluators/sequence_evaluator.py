@@ -52,13 +52,14 @@ class SequenceEvaluator:
         expected_sequence = test_case.expected.tool_sequence or test_case.expected.sequence or []
         actual_sequence = [step.tool_name for step in trace.steps]
 
-        # If no expected sequence, pass by default
+        # If no expected sequence, pass by default with perfect progress
         if not expected_sequence:
             return SequenceEvaluation(
                 correct=True,
                 expected_sequence=expected_sequence,
                 actual_sequence=actual_sequence,
                 violations=[],
+                progress_score=1.0,
             )
 
         # Dispatch to appropriate matching strategy
@@ -87,9 +88,12 @@ class SequenceEvaluator:
 
         This is the legacy behavior - use with caution as it penalizes agents
         for finding valid alternative paths.
+
+        Progress score: counts matching positions / total expected.
         """
         violations: List[str] = []
         correct = True
+        matching_positions = 0
 
         if len(expected) != len(actual):
             correct = False
@@ -97,17 +101,27 @@ class SequenceEvaluator:
                 f"Length mismatch: expected {len(expected)} steps, "
                 f"got {len(actual)}"
             )
+            # For length mismatch, count matches up to min length
+            for i in range(min(len(expected), len(actual))):
+                if expected[i] == actual[i]:
+                    matching_positions += 1
         else:
             for i, (exp, act) in enumerate(zip(expected, actual)):
-                if exp != act:
+                if exp == act:
+                    matching_positions += 1
+                else:
                     correct = False
                     violations.append(f"Step {i + 1}: expected '{exp}', got '{act}'")
+
+        # Calculate progress score: proportion of expected steps matched in position
+        progress_score = matching_positions / len(expected) if expected else 1.0
 
         return SequenceEvaluation(
             correct=correct,
             expected_sequence=expected,
             actual_sequence=actual,
             violations=violations,
+            progress_score=round(progress_score, 4),
         )
 
     def _evaluate_subsequence(
@@ -123,6 +137,9 @@ class SequenceEvaluator:
             expected: [search, analyze, respond]
             actual: [search, think, analyze, verify, respond]
             Result: PASS (expected tools appear in order)
+
+        Progress score: found_in_order / total_expected
+        Example: found 3/5 expected tools in order = 0.6
         """
         violations: List[str] = []
 
@@ -136,6 +153,9 @@ class SequenceEvaluator:
 
         # Check if all expected tools were found in order
         correct = expected_idx == len(expected)
+
+        # Calculate progress score: proportion of expected sequence completed
+        progress_score = expected_idx / len(expected) if expected else 1.0
 
         if not correct:
             missing = expected[expected_idx:]
@@ -153,6 +173,7 @@ class SequenceEvaluator:
             expected_sequence=expected,
             actual_sequence=actual,
             violations=violations,
+            progress_score=round(progress_score, 4),
         )
 
     def _evaluate_unordered(
@@ -168,6 +189,9 @@ class SequenceEvaluator:
             expected: [search, analyze]
             actual: [analyze, think, search]
             Result: PASS (both expected tools were called)
+
+        Progress score: satisfied_tool_requirements / total_expected_requirements
+        Handles duplicates: if expected=[a, a, b] and actual=[a, b], score = 2/3
         """
         violations: List[str] = []
 
@@ -181,13 +205,24 @@ class SequenceEvaluator:
             actual_counts[tool] = actual_counts.get(tool, 0) + 1
 
         # Check that all expected tools were called (at least) the expected number of times
+        # Also track satisfied count for progress score
         missing = []
-        for tool, count in expected_counts.items():
+        total_expected = len(expected)  # Total expected tool calls (with duplicates)
+        satisfied_count = 0
+
+        for tool, expected_count in expected_counts.items():
             actual_count = actual_counts.get(tool, 0)
-            if actual_count < count:
-                missing.append(f"{tool} (expected {count}, got {actual_count})")
+            # Count how many of this tool's requirements were satisfied
+            satisfied_for_tool = min(actual_count, expected_count)
+            satisfied_count += satisfied_for_tool
+
+            if actual_count < expected_count:
+                missing.append(f"{tool} (expected {expected_count}, got {actual_count})")
 
         correct = len(missing) == 0
+
+        # Calculate progress score: proportion of expected tool calls satisfied
+        progress_score = satisfied_count / total_expected if total_expected > 0 else 1.0
 
         if not correct:
             violations.append(f"Missing or insufficient tool calls: {missing}")
@@ -197,4 +232,5 @@ class SequenceEvaluator:
             expected_sequence=expected,
             actual_sequence=actual,
             violations=violations,
+            progress_score=round(progress_score, 4),
         )

@@ -279,6 +279,21 @@ EvalView catches agent regressions before you ship:
 - Cost spikes (tokens/$ increased)
 - Latency spikes (response time increased)
 
+## SCORING SYSTEM
+Tests are scored 0-100 using weighted components:
+- **Tool Accuracy** (30%): Did agent use expected tools?
+- **Output Quality** (50%): LLM-as-judge evaluates response quality
+- **Sequence Correctness** (20%): Did tools run in expected order?
+
+**Partial Credit for Sequences**: If expected sequence is [a,b,c,d,e] and agent completed [a,b,c], score = 60% (3/5 steps).
+
+## STATISTICAL MODE (pass@k)
+LLMs are non-deterministic. Statistical mode runs tests multiple times:
+- `--runs N`: Run each test N times
+- `--pass-rate 0.8`: 80% of runs must pass
+- **pass@k**: Probability of at least one success in k tries
+- **pass^k**: Probability of ALL k tries succeeding
+
 ## AVAILABLE ADAPTERS
 | Adapter | Description | Needs Endpoint |
 |---------|-------------|----------------|
@@ -318,6 +333,12 @@ name: "Test Name"
 adapter: goose  # or http, langgraph, crewai, etc.
 endpoint: http://localhost:8000  # if adapter needs it
 
+# Optional: difficulty level for benchmarking (trivial/easy/medium/hard/expert)
+difficulty: medium
+
+# Optional: suite type (capability for hill-climbing, regression for safety net)
+suite_type: capability
+
 input:
   query: "Your question here"
   context:
@@ -330,6 +351,9 @@ expected:
   tool_categories:
     - file_read
     - shell
+  tool_sequence:  # Expected order of tool calls
+    - search
+    - calculator
   output:
     contains: ["expected", "words"]
     not_contains: ["error"]
@@ -338,6 +362,10 @@ thresholds:
   min_score: 70
   max_cost: 0.10
   max_latency: 5000
+  # Optional: statistical mode (run test multiple times)
+  variance:
+    runs: 10        # Run 10 times
+    pass_rate: 0.8  # 80% must pass
 ```
 
 ## KEY COMMANDS
@@ -370,6 +398,21 @@ Compare against golden baseline (detect regressions).
 evalview run --verbose
 ```
 Show detailed output.
+
+```command
+evalview run --runs 10
+```
+Statistical mode: run each test 10 times, get pass@k metrics.
+
+```command
+evalview run --runs 10 --pass-rate 0.7
+```
+Statistical mode with custom pass rate (70% must pass).
+
+```command
+evalview run --difficulty hard
+```
+Filter tests by difficulty level (trivial/easy/medium/hard/expert).
 
 ```command
 evalview adapters
