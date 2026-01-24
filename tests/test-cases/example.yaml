@@ -1,0 +1,19 @@
+name: "Hello World - Calculator"
+description: "Simple test to verify EvalView is working"
+
+input:
+  query: "What is 2 plus 3?"
+
+expected:
+  tools:
+    - calculator
+  output:
+    contains:
+      - "5"
+    not_contains:
+      - "error"
+
+thresholds:
+  min_score: 70
+  max_cost: 0.10
+  max_latency: 5000
