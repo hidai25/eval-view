@@ -64,10 +64,10 @@ def load_config() -> TelemetryConfig:
         return config
 
     try:
-        with open(CONFIG_FILE, "r") as f:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
         return TelemetryConfig.from_dict(data)
-    except (json.JSONDecodeError, IOError):
+    except (json.JSONDecodeError, OSError):
         # Corrupted file, create new config
         config = TelemetryConfig()
         save_config(config)
@@ -78,9 +78,9 @@ def save_config(config: TelemetryConfig) -> None:
     """Save telemetry config to disk."""
     try:
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        with open(CONFIG_FILE, "w") as f:
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(config.to_dict(), f, indent=2)
-    except IOError:
+    except OSError:
         # Silently fail - telemetry errors should never break functionality
         pass
 
