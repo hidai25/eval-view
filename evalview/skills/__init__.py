@@ -2,6 +2,9 @@
 
 This module provides tools for parsing, validating, and testing
 Claude Code skills and MCP servers.
+
+Includes both legacy (system-prompt) testing and new agent-based testing
+that executes skills through real AI agents like Claude Code.
 """
 
 from evalview.skills.types import (
@@ -18,8 +21,30 @@ from evalview.skills.parser import SkillParser
 from evalview.skills.validator import SkillValidator
 from evalview.skills.runner import SkillRunner
 
+# Agent-based testing types
+from evalview.skills.agent_types import (
+    AgentType,
+    TestCategory,
+    AgentConfig,
+    DeterministicExpected,
+    RubricConfig,
+    SkillAgentTest,
+    SkillAgentTestSuite,
+    TraceEventType,
+    TraceEvent,
+    SkillAgentTrace,
+    DeterministicCheckResult,
+    DeterministicEvaluation,
+    RubricEvaluation,
+    SkillAgentTestResult,
+    SkillAgentTestSuiteResult,
+)
+
+# Agent-based runner
+from evalview.skills.agent_runner import SkillAgentRunner, run_agent_tests
+
 __all__ = [
-    # Types
+    # Legacy Types
     "Skill",
     "SkillMetadata",
     "SkillValidationResult",
@@ -32,6 +57,25 @@ __all__ = [
     "SkillParser",
     # Validator
     "SkillValidator",
-    # Runner
+    # Legacy Runner
     "SkillRunner",
+    # Agent Types
+    "AgentType",
+    "TestCategory",
+    "AgentConfig",
+    "DeterministicExpected",
+    "RubricConfig",
+    "SkillAgentTest",
+    "SkillAgentTestSuite",
+    "TraceEventType",
+    "TraceEvent",
+    "SkillAgentTrace",
+    "DeterministicCheckResult",
+    "DeterministicEvaluation",
+    "RubricEvaluation",
+    "SkillAgentTestResult",
+    "SkillAgentTestSuiteResult",
+    # Agent Runner
+    "SkillAgentRunner",
+    "run_agent_tests",
 ]

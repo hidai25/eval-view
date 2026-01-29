@@ -534,6 +534,91 @@ When users ask about debugging, test failures, or understanding what happened:
 4. Explain what traces show (LLM calls, tokens, costs)
 5. Help interpret trace output if they share it
 
+## SKILL TESTING (Agent-Based)
+EvalView can test Claude Code skills through real AI agents (not just system prompts).
+
+### Available Agent Types
+| Agent | Description |
+|-------|-------------|
+| system-prompt | Legacy mode - injects skill as system prompt (default) |
+| claude-code | Execute through Claude Code CLI |
+| codex | OpenAI Codex CLI |
+| custom | User-provided script |
+
+### Two-Phase Evaluation
+1. **Phase 1 (Deterministic)**: Fast checks - tool calls, file operations, commands, output matching
+2. **Phase 2 (Rubric)**: LLM-as-judge evaluates quality using custom rubric
+
+### Test Categories
+- **explicit**: Direct skill invocation ("Use the code-review skill")
+- **implicit**: Natural language that implies skill use ("Review this code for bugs")
+- **contextual**: Real-world noisy prompts
+- **negative**: Prompts that should NOT trigger the skill
+
+### Skill Test YAML Schema (Agent Mode)
+```yaml
+name: test-my-skill
+skill: ./skills/my-skill/SKILL.md
+agent:
+  type: claude-code
+  max_turns: 10
+  timeout: 300
+tests:
+  - name: creates-expected-file
+    input: "Create a new component called Button"
+    category: explicit
+    expected:
+      tool_calls_contain: ["Write"]
+      files_created: ["Button.tsx"]
+      output_contains: ["created", "component"]
+    rubric:
+      prompt: "Evaluate if the component follows React best practices"
+      min_score: 70
+```
+
+### Skill Test Commands
+```command
+evalview skill test tests/my-skill.yaml
+```
+Legacy mode (system prompt + string matching).
+
+```command
+evalview skill test tests/my-skill.yaml --agent claude-code
+```
+Agent mode - executes skill through Claude Code CLI.
+
+```command
+evalview skill test tests/my-skill.yaml -a claude-code -t ./traces/
+```
+Save JSONL traces for debugging.
+
+```command
+evalview skill test tests/my-skill.yaml -a claude-code --no-rubric
+```
+Skip Phase 2 rubric evaluation (deterministic checks only).
+
+### Other Skill Commands
+```command
+evalview skill validate ./SKILL.md
+```
+Validate a skill file for correct structure.
+
+```command
+evalview skill list ~/.claude/skills/
+```
+List all skills in a directory.
+
+```command
+evalview skill doctor ~/.claude/skills/
+```
+Diagnose skill issues (token budget, duplicates, etc.).
+
+### When Users Ask About Skill Testing
+1. "Test my skill" or "Validate my SKILL.md" → Suggest `evalview skill validate` or `evalview skill test`
+2. "Test with real agent" → Suggest `evalview skill test --agent claude-code`
+3. "Why did my skill fail?" → Check Phase 1 deterministic checks first, then rubric results
+4. "Debug skill execution" → Suggest using `--trace ./traces/` to capture JSONL traces
+
 ## RULES
 1. Put commands in ```command blocks so they can be executed
 2. Answer questions using the knowledge above - don't hallucinate

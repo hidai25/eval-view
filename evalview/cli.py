@@ -5106,17 +5106,375 @@ def skill_doctor(path: str, recursive: bool):
     console.print(f"\n[dim]Time: {elapsed_ms:.0f}ms[/dim]\n")
 
 
+def _run_agent_skill_test(
+    test_file: str,
+    agent: str,
+    trace_dir: str,
+    no_rubric: bool,
+    cwd: str,
+    max_turns: int,
+    verbose: bool,
+    output_json: bool,
+    model: str,
+):
+    """Run agent-based skill tests (internal helper).
+
+    This is called when --agent is specified or when the YAML
+    contains an agent config with type != system-prompt.
+    """
+    import asyncio
+    import json
+    import time
+    import threading
+    from typing import Optional
+    from rich.live import Live
+    from rich.table import Table
+    from rich.panel import Panel
+
+    from evalview.skills.agent_types import AgentType
+    from evalview.skills.agent_runner import SkillAgentRunner
+
+    # Convert agent type string to enum
+    agent_type_enum: Optional[AgentType] = None
+    if agent:
+        try:
+            agent_type_enum = AgentType(agent)
+        except ValueError:
+            console.print(f"[red]Error: Unknown agent type: {agent}[/red]")
+            console.print(f"[dim]Available types: {', '.join(a.value for a in AgentType)}[/dim]")
+            raise SystemExit(1)
+
+    # Create runner
+    try:
+        runner = SkillAgentRunner(
+            verbose=verbose,
+            skip_rubric=no_rubric,
+            trace_dir=trace_dir,
+            rubric_model=model,
+        )
+        suite = runner.load_test_suite(
+            yaml_path=test_file,
+            agent_type_override=agent_type_enum,
+            cwd_override=cwd,
+            max_turns_override=max_turns,
+        )
+    except Exception as e:
+        console.print(f"[red]Error loading test suite: {e}[/red]")
+        raise SystemExit(1)
+
+    # EvalView banner
+    console.print()
+    console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗██╗   ██╗ █████╗ ██╗    ██╗   ██╗██╗███████╗██╗    ██╗[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔════╝██║   ██║██╔══██╗██║    ██║   ██║██║██╔════╝██║    ██║[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]█████╗  ██║   ██║███████║██║    ██║   ██║██║█████╗  ██║ █╗ ██║[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔══╝  ╚██╗ ██╔╝██╔══██║██║    ╚██╗ ██╔╝██║██╔══╝  ██║███╗██║[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗ ╚████╔╝ ██║  ██║███████╗╚████╔╝ ██║███████╗╚███╔███╔╝[/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]  [bold green]╚══════╝  ╚═══╝  ╚═╝  ╚═╝╚══════╝ ╚═══╝  ╚═╝╚══════╝ ╚══╝╚══╝ [/bold green]  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]        [dim]Agent-Based Skill Testing[/dim]                             [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
+    console.print()
+    console.print(f"  [bold]Suite:[/bold]  {suite.name}")
+    console.print(f"  [bold]Skill:[/bold]  [cyan]{suite.skill}[/cyan]")
+    console.print(f"  [bold]Agent:[/bold]  [magenta]{suite.agent.type.value}[/magenta]")
+    console.print(f"  [bold]Tests:[/bold]  {len(suite.tests)}")
+    if trace_dir:
+        console.print(f"  [bold]Traces:[/bold] [dim]{trace_dir}[/dim]")
+    console.print()
+
+    # Run the suite with live elapsed timer
+    start_time = time.time()
+    result = None
+    run_error = None
+
+    def format_elapsed():
+        elapsed = time.time() - start_time
+        mins, secs = divmod(elapsed, 60)
+        secs_int = int(secs)
+        ms = int((secs - secs_int) * 1000)
+        return f"{int(mins):02d}:{secs_int:02d}.{ms:03d}"
+
+    spinner_frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+    spinner_idx = [0]
+
+    def get_display():
+        spinner = spinner_frames[spinner_idx[0] % len(spinner_frames)]
+        spinner_idx[0] += 1
+        return f"{spinner} Running agent tests... [yellow]{format_elapsed()}[/yellow]"
+
+    async def run_tests_async():
+        nonlocal result, run_error
+        try:
+            result = await runner.run_suite(suite)
+        except Exception as e:
+            run_error = e
+
+    def run_tests():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(run_tests_async())
+        finally:
+            loop.close()
+
+    # Start test runner in background thread
+    test_thread = threading.Thread(target=run_tests)
+    test_thread.start()
+
+    # Show live timer while tests run
+    with Live(get_display(), console=console, refresh_per_second=10) as live:
+        while test_thread.is_alive():
+            live.update(get_display())
+            time.sleep(0.1)
+
+    test_thread.join()
+
+    if run_error:
+        console.print(f"[red]Error running tests: {run_error}[/red]")
+        raise SystemExit(1)
+
+    elapsed_ms = (time.time() - start_time) * 1000
+
+    # Output results
+    if output_json:
+        json_output = {
+            "suite_name": result.suite_name,
+            "skill_name": result.skill_name,
+            "agent_type": result.agent_type.value,
+            "passed": result.passed,
+            "total_tests": result.total_tests,
+            "passed_tests": result.passed_tests,
+            "failed_tests": result.failed_tests,
+            "pass_rate": result.pass_rate,
+            "by_category": {k.value: v for k, v in result.by_category.items()},
+            "total_latency_ms": result.total_latency_ms,
+            "avg_latency_ms": result.avg_latency_ms,
+            "total_tokens": result.total_tokens,
+            "results": [
+                {
+                    "test_name": r.test_name,
+                    "category": r.category.value,
+                    "passed": r.passed,
+                    "score": r.score,
+                    "input": r.input_query,
+                    "output": r.final_output[:500] + "..." if len(r.final_output) > 500 else r.final_output,
+                    "deterministic": {
+                        "passed": r.deterministic.passed,
+                        "score": r.deterministic.score,
+                        "passed_count": r.deterministic.passed_count,
+                        "total_count": r.deterministic.total_count,
+                        "failed_checks": [
+                            {"name": c.check_name, "message": c.message}
+                            for c in r.deterministic.failed_checks
+                        ],
+                    } if r.deterministic else None,
+                    "rubric": {
+                        "passed": r.rubric.passed,
+                        "score": r.rubric.score,
+                        "rationale": r.rubric.rationale,
+                    } if r.rubric else None,
+                    "trace_path": r.trace_path,
+                    "latency_ms": r.latency_ms,
+                    "error": r.error,
+                }
+                for r in result.results
+            ],
+        }
+        console.print(json.dumps(json_output, indent=2))
+        return
+
+    # Results table
+    table = Table(title="Agent Test Results", show_header=True, header_style="bold cyan")
+    table.add_column("Status", justify="center", width=8)
+    table.add_column("Test", style="cyan")
+    table.add_column("Category", width=10)
+    table.add_column("Score", justify="right", width=8)
+    table.add_column("Phase 1", justify="center", width=8)
+    table.add_column("Phase 2", justify="center", width=8)
+    table.add_column("Latency", justify="right", width=10)
+
+    for r in result.results:
+        status = "[green]PASS[/green]" if r.passed else "[red]FAIL[/red]"
+        score_color = "green" if r.score >= 80 else "yellow" if r.score >= 60 else "red"
+
+        # Phase 1 (deterministic)
+        if r.deterministic:
+            p1_icon = "[green]✓[/green]" if r.deterministic.passed else "[red]✗[/red]"
+        else:
+            p1_icon = "[dim]-[/dim]"
+
+        # Phase 2 (rubric)
+        if r.rubric:
+            p2_icon = "[green]✓[/green]" if r.rubric.passed else "[red]✗[/red]"
+        else:
+            p2_icon = "[dim]-[/dim]"
+
+        table.add_row(
+            status,
+            r.test_name,
+            r.category.value,
+            f"[{score_color}]{r.score:.0f}%[/{score_color}]",
+            p1_icon,
+            p2_icon,
+            f"{r.latency_ms:.0f}ms",
+        )
+
+    console.print(table)
+    console.print()
+
+    # Detailed results for failed tests (or all if verbose)
+    failed_results = [r for r in result.results if not r.passed]
+    show_results = result.results if verbose else failed_results
+
+    if show_results:
+        for r in show_results:
+            status_icon = "✓" if r.passed else "✗"
+            status_color = "green" if r.passed else "red"
+
+            console.print(f"[bold {status_color}]{status_icon} {r.test_name}[/bold {status_color}] [{r.category.value}]")
+
+            # Show query
+            console.print("\n[bold]Input:[/bold]")
+            query = r.input_query[:200] + "..." if len(r.input_query) > 200 else r.input_query
+            for line in query.split('\n'):
+                console.print(f"  [dim]{line}[/dim]")
+
+            # Show response preview
+            if verbose or not r.passed:
+                console.print("\n[bold]Response:[/bold]")
+                output = r.final_output[:400] + "..." if len(r.final_output) > 400 else r.final_output
+                for line in output.split('\n')[:8]:
+                    console.print(f"  {line}")
+                if len(r.final_output.split('\n')) > 8:
+                    console.print("  [dim]...[/dim]")
+
+            # Show Phase 1 results
+            if r.deterministic:
+                console.print("\n[bold]Phase 1 (Deterministic):[/bold]")
+                p1_status = "[green]PASSED[/green]" if r.deterministic.passed else "[red]FAILED[/red]"
+                console.print(f"  Status: {p1_status} ({r.deterministic.passed_count}/{r.deterministic.total_count} checks)")
+
+                for check in r.deterministic.checks:
+                    check_icon = "[green]✓[/green]" if check.passed else "[red]✗[/red]"
+                    console.print(f"  {check_icon} {check.check_name}: {check.message}")
+
+            # Show Phase 2 results
+            if r.rubric:
+                console.print("\n[bold]Phase 2 (Rubric):[/bold]")
+                p2_status = "[green]PASSED[/green]" if r.rubric.passed else "[red]FAILED[/red]"
+                console.print(f"  Status: {p2_status} (score: {r.rubric.score:.0f}/{r.rubric.min_score:.0f})")
+                console.print(f"  [dim]{r.rubric.rationale[:200]}...[/dim]" if len(r.rubric.rationale) > 200 else f"  [dim]{r.rubric.rationale}[/dim]")
+
+            # Show trace path
+            if r.trace_path:
+                console.print(f"\n[dim]Trace: {r.trace_path}[/dim]")
+
+            # Error if any
+            if r.error:
+                console.print(f"\n[bold red]Error:[/bold red] {r.error}")
+
+            console.print()
+
+    # Summary panel
+    pass_rate_color = "green" if result.pass_rate >= 0.8 else "yellow" if result.pass_rate >= 0.5 else "red"
+    status_text = "[green]● All Tests Passed[/green]" if result.passed else "[bold red]● Some Tests Failed[/bold red]"
+    border_color = "green" if result.passed else "red"
+
+    # Category breakdown
+    category_lines = []
+    for cat, stats in result.by_category.items():
+        cat_pass_rate = stats["passed"] / stats["total"] if stats["total"] > 0 else 0
+        cat_color = "green" if cat_pass_rate >= 0.8 else "yellow" if cat_pass_rate >= 0.5 else "red"
+        category_lines.append(
+            f"  [bold]{cat.value}:[/bold] [{cat_color}]{stats['passed']}/{stats['total']}[/{cat_color}]"
+        )
+    category_str = "\n".join(category_lines) if category_lines else "  [dim]No categories[/dim]"
+
+    summary_content = (
+        f"  {status_text}\n"
+        f"\n"
+        f"  [bold]✓ Passed:[/bold]       [green]{result.passed_tests}[/green]\n"
+        f"  [bold]✗ Failed:[/bold]       [red]{result.failed_tests}[/red]\n"
+        f"  [bold]Pass Rate:[/bold]    [{pass_rate_color}]{result.pass_rate:.0%}[/{pass_rate_color}]\n"
+        f"\n"
+        f"  [bold]By Category:[/bold]\n{category_str}\n"
+        f"\n"
+        f"  [bold]Avg Latency:[/bold] {result.avg_latency_ms:.0f}ms\n"
+        f"  [bold]Total Tokens:[/bold] {result.total_tokens:,}\n"
+        f"  [bold]Total Time:[/bold]  {elapsed_ms:.0f}ms"
+    )
+
+    console.print(Panel(summary_content, title="[bold]Agent Test Results[/bold]", border_style=border_color))
+
+    if not result.passed:
+        console.print()
+        console.print("[bold yellow]Agent Skill Test Failed[/bold yellow]")
+        console.print()
+        console.print("[bold]Next Steps:[/bold]")
+        console.print("  1. Review failed checks in Phase 1 (Deterministic)")
+        console.print("  2. Check trace files for detailed execution logs")
+        console.print("  3. Update skill instructions in SKILL.md")
+        console.print("  4. Re-run: [dim]evalview skill test " + test_file + " --agent " + suite.agent.type.value + "[/dim]")
+        console.print()
+        raise SystemExit(1)
+    else:
+        console.print()
+        console.print("[bold green]✓ Agent skill tests passed[/bold green]")
+        console.print()
+
+
 @skill.command("test")
 @click.argument("test_file", type=click.Path(exists=True))
 @click.option("--model", "-m", default="claude-sonnet-4-20250514", help="Model to use")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed output")
 @click.option("--json", "output_json", is_flag=True, help="Output as JSON")
-def skill_test(test_file: str, model: str, verbose: bool, output_json: bool):
+@click.option(
+    "--agent", "-a",
+    type=click.Choice(["system-prompt", "claude-code", "codex", "langgraph",
+                       "crewai", "openai-assistants", "custom"]),
+    default=None,
+    help="Agent type (overrides YAML). Default: system-prompt (legacy mode)"
+)
+@click.option(
+    "--trace", "-t",
+    type=click.Path(),
+    default=None,
+    help="Directory to save JSONL traces for debugging"
+)
+@click.option(
+    "--no-rubric",
+    is_flag=True,
+    help="Skip Phase 2 rubric evaluation (deterministic only)"
+)
+@click.option(
+    "--cwd",
+    type=click.Path(exists=True),
+    default=None,
+    help="Working directory for agent execution"
+)
+@click.option(
+    "--max-turns",
+    type=int,
+    default=None,
+    help="Maximum conversation turns (default: 10)"
+)
+def skill_test(
+    test_file: str,
+    model: str,
+    verbose: bool,
+    output_json: bool,
+    agent: str,
+    trace: str,
+    no_rubric: bool,
+    cwd: str,
+    max_turns: int,
+):
     """Run behavior tests against a skill.
 
     TEST_FILE is a YAML file defining test cases for a skill.
 
-    Example test file:
+    Example test file (legacy mode):
         name: test-code-reviewer
         skill: ./skills/code-reviewer/SKILL.md
         tests:
@@ -5125,13 +5483,67 @@ def skill_test(test_file: str, model: str, verbose: bool, output_json: bool):
             expected:
               output_contains: ["SQL injection", "parameterized"]
 
+    Example test file (agent mode):
+        name: test-code-reviewer
+        skill: ./skills/code-reviewer/SKILL.md
+        agent:
+          type: claude-code
+          max_turns: 10
+        tests:
+          - name: writes-review-file
+            input: "Review the code and save to review.md"
+            expected:
+              files_created: ["review.md"]
+              tool_calls_contain: ["Write"]
+
     Examples:
+        # Legacy mode (system prompt + string matching)
         evalview skill test tests/code-reviewer.yaml
-        evalview skill test tests/my-skill.yaml --model claude-sonnet-4-20250514
-        evalview skill test tests/my-skill.yaml --json
+
+        # Agent mode with Claude Code
+        evalview skill test tests/my-skill.yaml --agent claude-code
+
+        # Save traces for debugging
+        evalview skill test tests/my-skill.yaml -a claude-code -t ./traces/
+
+        # Deterministic checks only (skip rubric)
+        evalview skill test tests/my-skill.yaml -a claude-code --no-rubric
     """
-    import json
+    import json as json_module
     import os
+    import asyncio
+
+    # Determine whether to use agent mode
+    # Load YAML to check for agent config
+    import yaml as yaml_module
+    with open(test_file) as f:
+        yaml_data = yaml_module.safe_load(f)
+
+    yaml_agent_type = None
+    if "agent" in yaml_data and yaml_data["agent"]:
+        yaml_agent_type = yaml_data["agent"].get("type")
+
+    use_agent_mode = (
+        (agent is not None and agent != "system-prompt")
+        or (yaml_agent_type is not None and yaml_agent_type != "system-prompt")
+    )
+
+    if use_agent_mode:
+        # Use new agent-based runner
+        _run_agent_skill_test(
+            test_file=test_file,
+            agent=agent,
+            trace_dir=trace,
+            no_rubric=no_rubric,
+            cwd=cwd,
+            max_turns=max_turns,
+            verbose=verbose,
+            output_json=output_json,
+            model=model,
+        )
+        return
+
+    # Legacy mode - use original SkillRunner
     from evalview.skills import SkillRunner
 
     # Check for API key
