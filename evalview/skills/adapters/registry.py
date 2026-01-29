@@ -109,8 +109,13 @@ class SkillAdapterRegistry:
 
     @classmethod
     def _register_builtin_adapters(cls) -> None:
-        """Register built-in adapters with graceful fallback."""
-        # Claude Code adapter
+        """Register built-in adapters with graceful fallback.
+
+        Adapters are registered in order of expected usage frequency.
+        Each adapter import is wrapped in try/except to handle
+        missing optional dependencies gracefully.
+        """
+        # Claude Code adapter - primary adapter for Claude Code CLI
         try:
             from evalview.skills.adapters.claude_code_adapter import ClaudeCodeAdapter
 
@@ -118,21 +123,47 @@ class SkillAdapterRegistry:
         except ImportError as e:
             logger.debug(f"ClaudeCodeAdapter not available: {e}")
 
-        # Custom adapter (script-based)
-        try:
-            from evalview.skills.adapters.custom_adapter import CustomAdapter
-
-            cls.register(AgentType.CUSTOM.value, CustomAdapter)
-        except ImportError as e:
-            logger.debug(f"CustomAdapter not available: {e}")
-
-        # Codex adapter (placeholder for future)
+        # Codex adapter - OpenAI Codex CLI
         try:
             from evalview.skills.adapters.codex_adapter import CodexAdapter
 
             cls.register(AgentType.CODEX.value, CodexAdapter)
         except ImportError as e:
             logger.debug(f"CodexAdapter not available: {e}")
+
+        # LangGraph adapter - LangGraph SDK/Cloud
+        try:
+            from evalview.skills.adapters.langgraph_adapter import LangGraphSkillAdapter
+
+            cls.register(AgentType.LANGGRAPH.value, LangGraphSkillAdapter)
+        except ImportError as e:
+            logger.debug(f"LangGraphSkillAdapter not available: {e}")
+
+        # CrewAI adapter - CrewAI multi-agent framework
+        try:
+            from evalview.skills.adapters.crewai_adapter import CrewAISkillAdapter
+
+            cls.register(AgentType.CREWAI.value, CrewAISkillAdapter)
+        except ImportError as e:
+            logger.debug(f"CrewAISkillAdapter not available: {e}")
+
+        # OpenAI Assistants adapter - OpenAI Assistants API
+        try:
+            from evalview.skills.adapters.openai_assistants_adapter import (
+                OpenAIAssistantsSkillAdapter,
+            )
+
+            cls.register(AgentType.OPENAI_ASSISTANTS.value, OpenAIAssistantsSkillAdapter)
+        except ImportError as e:
+            logger.debug(f"OpenAIAssistantsSkillAdapter not available: {e}")
+
+        # Custom adapter - user-provided scripts (always last as fallback)
+        try:
+            from evalview.skills.adapters.custom_adapter import CustomAdapter
+
+            cls.register(AgentType.CUSTOM.value, CustomAdapter)
+        except ImportError as e:
+            logger.debug(f"CustomAdapter not available: {e}")
 
     @classmethod
     def reset(cls) -> None:
