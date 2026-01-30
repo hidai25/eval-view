@@ -281,7 +281,9 @@ class TestHTTPAdapter:
         trace = adapter._parse_response(response, start_time, end_time)
 
         assert trace.session_id.startswith("session-")
-        assert "1735732800" in trace.session_id  # Unix timestamp
+        # Check that session_id contains a timestamp derived from start_time
+        expected_timestamp = str(int(start_time.timestamp()))
+        assert expected_timestamp in trace.session_id
 
     @pytest.mark.asyncio
     async def test_parse_response_latency_calculation(self):
