@@ -695,3 +695,241 @@ class TestPathNormalization:
         result = evaluator.evaluate(expected, trace, cwd=str(tmp_path))
 
         assert result.passed is True
+
+
+class TestTokenBudgetChecks:
+    """Tests for token budget enforcement."""
+
+    @pytest.fixture
+    def evaluator(self) -> DeterministicEvaluator:
+        return DeterministicEvaluator()
+
+    @pytest.fixture
+    def trace_with_tokens(self) -> SkillAgentTrace:
+        """Trace with token usage."""
+        now = datetime.now()
+        return SkillAgentTrace(
+            session_id="t",
+            skill_name="s",
+            test_name="t",
+            start_time=now,
+            end_time=now,
+            total_input_tokens=1000,
+            total_output_tokens=500,
+            final_output="",
+        )
+
+    def test_max_input_tokens_within_limit(self, evaluator, trace_with_tokens):
+        """Pass when input tokens within budget."""
+        expected = DeterministicExpected(max_input_tokens=2000)
+        result = evaluator.evaluate(expected, trace_with_tokens)
+
+        assert result.passed is True
+        assert "1000 <= 2000" in result.checks[0].message
+
+    def test_max_input_tokens_exceeded(self, evaluator, trace_with_tokens):
+        """Fail when input tokens exceed budget."""
+        expected = DeterministicExpected(max_input_tokens=500)
+        result = evaluator.evaluate(expected, trace_with_tokens)
+
+        assert result.passed is False
+        assert "exceeded" in result.checks[0].message.lower()
+
+    def test_max_output_tokens_within_limit(self, evaluator, trace_with_tokens):
+        """Pass when output tokens within budget."""
+        expected = DeterministicExpected(max_output_tokens=1000)
+        result = evaluator.evaluate(expected, trace_with_tokens)
+
+        assert result.passed is True
+
+    def test_max_total_tokens_exceeded(self, evaluator, trace_with_tokens):
+        """Fail when total tokens exceed budget."""
+        expected = DeterministicExpected(max_total_tokens=1000)  # 1000 + 500 = 1500
+        result = evaluator.evaluate(expected, trace_with_tokens)
+
+        assert result.passed is False
+
+
+class TestBuildVerification:
+    """Tests for build command verification."""
+
+    @pytest.fixture
+    def evaluator(self) -> DeterministicEvaluator:
+        return DeterministicEvaluator()
+
+    @pytest.fixture
+    def minimal_trace(self) -> SkillAgentTrace:
+        now = datetime.now()
+        return SkillAgentTrace(
+            session_id="t",
+            skill_name="s",
+            test_name="t",
+            start_time=now,
+            end_time=now,
+            final_output="",
+        )
+
+    def test_build_success(self, evaluator, minimal_trace):
+        """Pass when build command succeeds."""
+        expected = DeterministicExpected(
+            build_must_pass=["echo 'success'"]
+        )
+        result = evaluator.evaluate(expected, minimal_trace)
+
+        assert result.passed is True
+        assert "succeeded" in result.checks[0].message.lower()
+
+    def test_build_failure(self, evaluator, minimal_trace):
+        """Fail when build command fails."""
+        expected = DeterministicExpected(
+            build_must_pass=["exit 1"]
+        )
+        result = evaluator.evaluate(expected, minimal_trace)
+
+        assert result.passed is False
+        assert "failed" in result.checks[0].message.lower()
+
+
+class TestGitClean:
+    """Tests for repository cleanliness check."""
+
+    @pytest.fixture
+    def evaluator(self) -> DeterministicEvaluator:
+        return DeterministicEvaluator()
+
+    @pytest.fixture
+    def minimal_trace(self) -> SkillAgentTrace:
+        now = datetime.now()
+        return SkillAgentTrace(
+            session_id="t",
+            skill_name="s",
+            test_name="t",
+            start_time=now,
+            end_time=now,
+            final_output="",
+        )
+
+    def test_git_clean_in_clean_repo(self, evaluator, minimal_trace, tmp_path):
+        """Pass when git repo is clean."""
+        import subprocess
+
+        # Initialize a git repo
+        subprocess.run(["git", "init"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"],
+            cwd=tmp_path,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test"],
+            cwd=tmp_path,
+            capture_output=True,
+        )
+
+        expected = DeterministicExpected(git_clean=True)
+        result = evaluator.evaluate(expected, minimal_trace, cwd=str(tmp_path))
+
+        assert result.passed is True
+
+    def test_git_dirty_with_uncommitted(self, evaluator, minimal_trace, tmp_path):
+        """Fail when git repo has uncommitted changes."""
+        import subprocess
+
+        # Initialize a git repo
+        subprocess.run(["git", "init"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"],
+            cwd=tmp_path,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test"],
+            cwd=tmp_path,
+            capture_output=True,
+        )
+
+        # Create an uncommitted file
+        (tmp_path / "dirty.txt").write_text("uncommitted")
+
+        expected = DeterministicExpected(git_clean=True)
+        result = evaluator.evaluate(expected, minimal_trace, cwd=str(tmp_path))
+
+        assert result.passed is False
+        assert "not clean" in result.checks[0].message.lower()
+
+
+class TestSecurityChecks:
+    """Tests for permission/security checks."""
+
+    @pytest.fixture
+    def evaluator(self) -> DeterministicEvaluator:
+        return DeterministicEvaluator()
+
+    @pytest.fixture
+    def trace_factory(self):
+        """Factory for creating traces with specific commands."""
+        def _create(commands):
+            now = datetime.now()
+            return SkillAgentTrace(
+                session_id="t",
+                skill_name="s",
+                test_name="t",
+                start_time=now,
+                end_time=now,
+                commands_ran=commands,
+                final_output="",
+            )
+        return _create
+
+    def test_no_sudo_pass(self, evaluator, trace_factory):
+        """Pass when no sudo commands used."""
+        trace = trace_factory(["npm install", "npm run build"])
+        expected = DeterministicExpected(no_sudo=True)
+        result = evaluator.evaluate(expected, trace)
+
+        assert result.passed is True
+
+    def test_no_sudo_fail(self, evaluator, trace_factory):
+        """Fail when sudo command detected."""
+        trace = trace_factory(["sudo apt install something"])
+        expected = DeterministicExpected(no_sudo=True)
+        result = evaluator.evaluate(expected, trace)
+
+        assert result.passed is False
+        assert "privilege escalation" in result.checks[0].message.lower()
+
+    def test_forbidden_patterns_pass(self, evaluator, trace_factory):
+        """Pass when no forbidden patterns found."""
+        trace = trace_factory(["npm install", "npm test"])
+        expected = DeterministicExpected(
+            forbidden_patterns=[r"rm\s+-rf", r"sudo"]
+        )
+        result = evaluator.evaluate(expected, trace)
+
+        assert result.passed is True
+
+    def test_forbidden_patterns_fail(self, evaluator, trace_factory):
+        """Fail when forbidden pattern detected."""
+        trace = trace_factory(["rm -rf /tmp/test"])
+        expected = DeterministicExpected(
+            forbidden_patterns=[r"rm\s+-rf"]
+        )
+        result = evaluator.evaluate(expected, trace)
+
+        assert result.passed is False
+
+    def test_no_external_network_pass(self, evaluator, trace_factory):
+        """Pass when only localhost network calls."""
+        trace = trace_factory(["curl http://localhost:3000/health"])
+        expected = DeterministicExpected(no_network_external=True)
+        result = evaluator.evaluate(expected, trace)
+
+        assert result.passed is True
+
+    def test_no_external_network_fail(self, evaluator, trace_factory):
+        """Fail when external network call detected."""
+        trace = trace_factory(["curl https://api.example.com/data"])
+        expected = DeterministicExpected(no_network_external=True)
+        result = evaluator.evaluate(expected, trace)
+
+        assert result.passed is False

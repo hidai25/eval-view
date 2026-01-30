@@ -96,6 +96,37 @@ class AgentConfig(BaseModel):
         return v
 
 
+class SmokeTest(BaseModel):
+    """Configuration for a runtime smoke test.
+
+    Smoke tests verify that the generated application actually works
+    by running commands and checking their behavior.
+
+    Attributes:
+        command: Command to run (e.g., "npm run dev")
+        background: Run in background (for servers)
+        wait_for: String to wait for in output (for background processes)
+        timeout: Timeout in seconds
+        health_check: URL to curl for health verification
+        expected_status: Expected HTTP status code (default: 200)
+        cleanup: Command to run after test (e.g., kill server)
+    """
+
+    command: str = Field(description="Command to execute")
+    background: bool = Field(default=False, description="Run in background")
+    wait_for: Optional[str] = Field(
+        default=None, description="Wait for this string in output"
+    )
+    timeout: float = Field(default=30.0, ge=1.0, le=300.0)
+    health_check: Optional[str] = Field(
+        default=None, description="URL to check (e.g., http://localhost:3000)"
+    )
+    expected_status: int = Field(default=200, ge=100, le=599)
+    cleanup: Optional[str] = Field(
+        default=None, description="Cleanup command after test"
+    )
+
+
 class DeterministicExpected(BaseModel):
     """Expected behaviors for Phase 1 deterministic checks.
 
@@ -122,6 +153,25 @@ class DeterministicExpected(BaseModel):
     Output checks:
         output_contains: Strings in agent's final output
         output_not_contains: Strings NOT in agent's final output
+
+    Token budget checks:
+        max_input_tokens: Maximum input tokens allowed
+        max_output_tokens: Maximum output tokens allowed
+        max_total_tokens: Maximum total tokens (input + output)
+
+    Build verification:
+        build_must_pass: List of build commands that must exit with code 0
+
+    Runtime smoke tests:
+        smoke_tests: List of smoke test configurations
+
+    Repository cleanliness:
+        git_clean: If True, working directory must be clean (no uncommitted changes)
+
+    Permission/security checks:
+        forbidden_patterns: Command patterns that must NOT appear (e.g., "sudo", "rm -rf /")
+        no_sudo: If True, no sudo commands allowed
+        no_network_external: If True, no external network calls allowed
     """
 
     # Tool checks
@@ -144,6 +194,43 @@ class DeterministicExpected(BaseModel):
     # Output checks (compatible with legacy SkillExpectedBehavior)
     output_contains: Optional[List[str]] = Field(default=None)
     output_not_contains: Optional[List[str]] = Field(default=None)
+
+    # Token budget checks
+    max_input_tokens: Optional[int] = Field(default=None, ge=0)
+    max_output_tokens: Optional[int] = Field(default=None, ge=0)
+    max_total_tokens: Optional[int] = Field(default=None, ge=0)
+
+    # Build verification
+    build_must_pass: Optional[List[str]] = Field(
+        default=None,
+        description="Build commands that must succeed (exit code 0)",
+    )
+
+    # Runtime smoke tests
+    smoke_tests: Optional[List[SmokeTest]] = Field(
+        default=None,
+        description="Runtime smoke tests to verify application works",
+    )
+
+    # Repository cleanliness
+    git_clean: Optional[bool] = Field(
+        default=None,
+        description="If True, git working directory must be clean",
+    )
+
+    # Permission/security checks
+    forbidden_patterns: Optional[List[str]] = Field(
+        default=None,
+        description="Command patterns that are forbidden (security)",
+    )
+    no_sudo: Optional[bool] = Field(
+        default=None,
+        description="If True, no sudo commands allowed",
+    )
+    no_network_external: Optional[bool] = Field(
+        default=None,
+        description="If True, block external network calls",
+    )
 
 
 class RubricConfig(BaseModel):
