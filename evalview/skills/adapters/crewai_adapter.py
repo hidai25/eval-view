@@ -557,7 +557,7 @@ You must follow these skill instructions precisely when completing tasks.
         Returns:
             List of tool instances.
         """
-        tools = []
+        tools: List[Any] = []
 
         try:
             import crewai_tools

@@ -62,8 +62,12 @@ from typing import (
     TypeVar,
     Union,
     runtime_checkable,
+    TYPE_CHECKING,
 )
 import logging
+
+if TYPE_CHECKING:
+    from aiohttp import ClientSession
 
 from evalview.skills.adapters.base import (
     SkillAgentAdapter,
@@ -178,7 +182,7 @@ class LangGraphHTTPClient:
             config: LangGraph connection configuration.
         """
         self.config = config
-        self._session = None
+        self._session: Optional["ClientSession"] = None
 
     async def _get_session(self):
         """Get or create aiohttp session with lazy initialization."""

@@ -60,8 +60,11 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Final, List, Optional, Tuple, Union
+from typing import Any, Dict, Final, List, Optional, Tuple, Union, TYPE_CHECKING
 import logging
+
+if TYPE_CHECKING:
+    from openai import AsyncOpenAI
 
 from evalview.skills.adapters.base import (
     SkillAgentAdapter,
@@ -175,7 +178,7 @@ class OpenAIAssistantsSkillAdapter(SkillAgentAdapter):
         """
         super().__init__(config)
         self.assistant_config = AssistantConfig.from_agent_config(config)
-        self._client = None
+        self._client: Optional["AsyncOpenAI"] = None
         self._created_assistants: List[str] = []
 
     @property
