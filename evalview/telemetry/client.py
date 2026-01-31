@@ -10,7 +10,9 @@ from typing import Optional, Dict, Any
 from evalview.telemetry.config import is_telemetry_enabled, get_install_id
 from evalview.telemetry.events import BaseEvent
 
-# PostHog configuration - read lazily to allow .env.local to load first
+# PostHog configuration
+# NOTE: This is a write-only public key, safe to embed (cannot read data)
+POSTHOG_API_KEY_DEFAULT = "phc_REPLACE_WITH_YOUR_REAL_KEY"
 POSTHOG_HOST_DEFAULT = "https://us.i.posthog.com"
 
 # Singleton client
@@ -28,12 +30,12 @@ class TelemetryClient:
         if self._posthog is not None:
             return True
 
-        # Read env vars lazily (after .env.local is loaded by CLI)
-        api_key = os.environ.get("POSTHOG_API_KEY", "")
+        # Read env vars lazily - fall back to embedded default key
+        api_key = os.environ.get("POSTHOG_API_KEY", POSTHOG_API_KEY_DEFAULT)
         host = os.environ.get("POSTHOG_HOST", POSTHOG_HOST_DEFAULT)
 
-        # Skip if no API key configured
-        if not api_key:
+        # Skip if no API key configured (shouldn't happen with default)
+        if not api_key or api_key == "phc_REPLACE_WITH_YOUR_REAL_KEY":
             return False
 
         try:
