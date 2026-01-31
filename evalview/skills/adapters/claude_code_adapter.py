@@ -240,6 +240,7 @@ Follow the skill instructions above when responding to user queries.
             skill_prompt,
             "--output-format",
             "json",
+            "--dangerously-skip-permissions",  # Required for non-interactive testing
         ]
 
         # Add allowed tools if specified
