@@ -360,6 +360,56 @@ def mock_subprocess_not_found():
 
 
 @pytest.fixture
+def mock_async_subprocess():
+    """Mock asyncio.create_subprocess_exec for async adapter tests."""
+    import asyncio
+
+    async def create_mock_process(*args, **kwargs):
+        mock_process = AsyncMock()
+        mock_process.returncode = 0
+        mock_process.communicate = AsyncMock(
+            return_value=(
+                b'{"result": "SUCCESS", "messages": [{"role": "assistant", "content": "Task completed."}], "usage": {"input_tokens": 100, "output_tokens": 50}}',
+                b"",
+            )
+        )
+        mock_process.kill = MagicMock()
+        mock_process.wait = AsyncMock()
+        return mock_process
+
+    with patch("asyncio.create_subprocess_exec", side_effect=create_mock_process) as mock:
+        yield mock
+
+
+@pytest.fixture
+def mock_async_subprocess_timeout():
+    """Mock asyncio.create_subprocess_exec to simulate timeout."""
+    import asyncio
+
+    async def create_mock_process(*args, **kwargs):
+        mock_process = AsyncMock()
+        mock_process.returncode = None
+
+        async def mock_communicate():
+            raise asyncio.TimeoutError()
+
+        mock_process.communicate = mock_communicate
+        mock_process.kill = MagicMock()
+        mock_process.wait = AsyncMock()
+        return mock_process
+
+    with patch("asyncio.create_subprocess_exec", side_effect=create_mock_process) as mock:
+        yield mock
+
+
+@pytest.fixture
+def mock_async_subprocess_not_found():
+    """Mock asyncio.create_subprocess_exec to raise file not found."""
+    with patch("asyncio.create_subprocess_exec", side_effect=FileNotFoundError("claude not found")) as mock:
+        yield mock
+
+
+@pytest.fixture
 def mock_aiohttp_session():
     """Mock aiohttp.ClientSession for HTTP adapter tests."""
     with patch("aiohttp.ClientSession") as mock_class:

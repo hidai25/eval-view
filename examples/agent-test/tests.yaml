@@ -1,0 +1,38 @@
+name: test-hello-world
+description: Test the hello-world skill with agent-based testing
+skill: ./SKILL.md
+
+agent:
+  type: claude-code
+  max_turns: 5
+  timeout: 60.0
+
+min_pass_rate: 0.8
+
+tests:
+  # Explicit invocation
+  - name: explicit-greeting
+    category: explicit
+    input: "Use the hello-world skill to create a greeting"
+    should_trigger: true
+    expected:
+      files_created: ["hello.txt"]
+      tool_calls_contain: ["Write"]
+      command_count_max: 5
+
+  # Implicit invocation
+  - name: implicit-greeting
+    category: implicit
+    input: "Create a friendly hello message and save it"
+    should_trigger: true
+    expected:
+      files_created: ["hello.txt"]
+      output_contains: ["hello", "created"]
+
+  # Negative control - should NOT create the file
+  - name: negative-no-file
+    category: negative
+    input: "What time is it?"
+    should_trigger: false
+    expected:
+      tool_calls_not_contain: ["Write"]

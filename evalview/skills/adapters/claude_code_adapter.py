@@ -92,16 +92,19 @@ class ClaudeCodeAdapter(SkillAgentAdapter):
             True if claude CLI is accessible
         """
         try:
-            result = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: subprocess.run(
-                    [self.claude_path, "--version"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                ),
+            process = await asyncio.create_subprocess_exec(
+                self.claude_path,
+                "--version",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
-            return result.returncode == 0
+            try:
+                await asyncio.wait_for(process.communicate(), timeout=10)
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
+                return False
+            return process.returncode == 0
         except Exception as e:
             logger.warning(f"Claude Code health check failed: {e}")
             return False
@@ -144,27 +147,37 @@ class ClaudeCodeAdapter(SkillAgentAdapter):
             env.update(self.config.env)
 
         try:
-            # Run claude CLI
-            result = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    cwd=cwd,
-                    env=env,
-                    timeout=self.config.timeout,
-                ),
+            # Run claude CLI using asyncio subprocess (more reliable in threads)
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd,
+                env=env,
             )
 
+            try:
+                stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                    process.communicate(),
+                    timeout=self.config.timeout,
+                )
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
+                raise AgentTimeoutError(self.name, self.config.timeout)
+
+            stdout = stdout_bytes.decode("utf-8", errors="replace")
+            stderr = stderr_bytes.decode("utf-8", errors="replace")
+            returncode = process.returncode
+
             end_time = datetime.now()
-            self._last_raw_output = result.stdout + result.stderr
+            self._last_raw_output = stdout + stderr
 
             # Parse output
             trace = self._parse_output(
-                result.stdout,
-                result.stderr,
-                result.returncode,
+                stdout,
+                stderr,
+                returncode,
                 session_id=session_id,
                 skill_name=skill.metadata.name,
                 test_name=test_name,
@@ -174,19 +187,20 @@ class ClaudeCodeAdapter(SkillAgentAdapter):
 
             return trace
 
-        except subprocess.TimeoutExpired:
-            end_time = datetime.now()
-            raise AgentTimeoutError(self.name, self.config.timeout)
-
-        except FileNotFoundError:
+        except FileNotFoundError as e:
+            logger.error(f"FileNotFoundError: {e}")
             raise AgentNotFoundError(
                 self.name,
                 "Install Claude Code: npm install -g @anthropic-ai/claude-code",
             )
 
+        except AgentTimeoutError:
+            raise
+
         except Exception as e:
+            logger.error(f"Exception type: {type(e).__name__}, message: {e}")
             raise SkillAgentAdapterError(
-                f"Execution failed: {e}",
+                f"Execution failed: {type(e).__name__}: {e}",
                 adapter_name=self.name,
                 recoverable=False,
             )
@@ -222,12 +236,10 @@ Follow the skill instructions above when responding to user queries.
             "--print",
             "-p",
             query,
-            "--system-prompt",
+            "--append-system-prompt",
             skill_prompt,
             "--output-format",
             "json",
-            "--max-turns",
-            str(self.config.max_turns),
         ]
 
         # Add allowed tools if specified

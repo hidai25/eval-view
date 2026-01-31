@@ -328,11 +328,9 @@ class TestClaudeCodeAdapter:
 
     @pytest.mark.asyncio
     async def test_execute_calls_claude_cli(
-        self, config, skill, mock_subprocess_run, mock_successful_result
+        self, config, skill, mock_async_subprocess
     ):
         """Execute should call claude CLI with correct arguments."""
-        mock_subprocess_run.return_value = mock_successful_result
-
         from evalview.skills.adapters.claude_code_adapter import ClaudeCodeAdapter
 
         # Mock shutil.which to return a fake path
@@ -340,15 +338,13 @@ class TestClaudeCodeAdapter:
             adapter = ClaudeCodeAdapter(config)
             trace = await adapter.execute(skill, "Test query")
 
-        mock_subprocess_run.assert_called_once()
+        mock_async_subprocess.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_execute_returns_trace(
-        self, config, skill, mock_subprocess_run, mock_successful_result
+        self, config, skill, mock_async_subprocess
     ):
         """Execute should return a valid SkillAgentTrace."""
-        mock_subprocess_run.return_value = mock_successful_result
-
         from evalview.skills.adapters.claude_code_adapter import ClaudeCodeAdapter
 
         with patch("shutil.which", return_value="/usr/bin/claude"):
@@ -360,7 +356,7 @@ class TestClaudeCodeAdapter:
         assert trace.final_output == "Task completed."
 
     @pytest.mark.asyncio
-    async def test_execute_handles_timeout(self, config, skill, mock_subprocess_timeout):
+    async def test_execute_handles_timeout(self, config, skill, mock_async_subprocess_timeout):
         """Timeout should raise AgentTimeoutError."""
         from evalview.skills.adapters.claude_code_adapter import ClaudeCodeAdapter
 
@@ -374,7 +370,7 @@ class TestClaudeCodeAdapter:
 
     @pytest.mark.asyncio
     async def test_execute_handles_not_found(
-        self, config, skill, mock_subprocess_not_found
+        self, config, skill, mock_async_subprocess_not_found
     ):
         """FileNotFoundError should raise AgentNotFoundError."""
         from evalview.skills.adapters.claude_code_adapter import ClaudeCodeAdapter
@@ -388,13 +384,8 @@ class TestClaudeCodeAdapter:
             assert "not found" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
-    async def test_health_check_with_version(self, config, mock_subprocess_run):
+    async def test_health_check_with_version(self, config, mock_async_subprocess):
         """Health check should verify claude is available."""
-        mock_subprocess_run.return_value = MagicMock(
-            stdout="Claude Code v1.0.0",
-            returncode=0,
-        )
-
         from evalview.skills.adapters.claude_code_adapter import ClaudeCodeAdapter
 
         with patch("shutil.which", return_value="/usr/bin/claude"):
