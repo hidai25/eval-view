@@ -505,7 +505,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </html>
 """
 
-# Diff report template
+# Diff report template - Designed for viral screenshots
 DIFF_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -513,141 +513,732 @@ DIFF_TEMPLATE = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title }}</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background: #0d1117; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-        .container { max-width: 1400px; }
-        .card { background: #161b22; border: 1px solid #30363d; border-radius: 6px; margin-bottom: 1rem; }
-        .card-header { background: #21262d; border-bottom: 1px solid #30363d; padding: 12px 16px; }
-        .status-regression { border-left: 4px solid #f85149; }
-        .status-tools_changed { border-left: 4px solid #d29922; }
-        .status-output_changed { border-left: 4px solid #8b949e; }
-        .status-passed { border-left: 4px solid #3fb950; }
-        .badge-regression { background: #f85149; }
-        .badge-tools_changed { background: #d29922; }
-        .badge-output_changed { background: #8b949e; }
-        .badge-passed { background: #3fb950; }
-        .diff-container { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-        .diff-panel { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 1rem; }
-        .diff-panel h6 { color: #8b949e; margin-bottom: 0.5rem; }
-        .tool-sequence { font-family: monospace; }
-        .tool-added { color: #3fb950; }
-        .tool-removed { color: #f85149; text-decoration: line-through; }
-        .tool-changed { color: #d29922; }
-        .output-preview { background: #0d1117; padding: 1rem; border-radius: 4px; font-family: monospace; font-size: 12px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
-        .metric { display: inline-block; margin-right: 1rem; padding: 4px 8px; background: #21262d; border-radius: 4px; }
-        .metric-label { color: #8b949e; font-size: 11px; }
-        .metric-value { font-weight: 600; }
-        .score-up { color: #3fb950; }
-        .score-down { color: #f85149; }
-        .summary-card { background: linear-gradient(135deg, #21262d 0%, #161b22 100%); }
-        h1, h2, h3, h4, h5 { color: #c9d1d9; }
-        a { color: #58a6ff; }
+        *, *::before, *::after { box-sizing: border-box; }
+
+        :root {
+            --bg-deep: #0a0e14;
+            --bg-card: #12171f;
+            --bg-elevated: #1a2029;
+            --border: #2d3748;
+            --text-primary: #e2e8f0;
+            --text-secondary: #8892a6;
+            --green-glow: #10b981;
+            --green-bg: rgba(16, 185, 129, 0.15);
+            --green-border: rgba(16, 185, 129, 0.4);
+            --red-glow: #ef4444;
+            --red-bg: rgba(239, 68, 68, 0.15);
+            --red-border: rgba(239, 68, 68, 0.4);
+            --orange-glow: #f59e0b;
+            --orange-bg: rgba(245, 158, 11, 0.15);
+            --blue-accent: #3b82f6;
+        }
+
+        body {
+            background: var(--bg-deep);
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
+            margin: 0;
+            padding: 2rem;
+            min-height: 100vh;
+        }
+
+        .container { max-width: 1200px; margin: 0 auto; }
+
+        /* ===== HERO SECTION - THE SCREENSHOT MOMENT ===== */
+        .hero {
+            text-align: center;
+            padding: 3rem 2rem;
+            margin-bottom: 2rem;
+            background: linear-gradient(180deg, var(--bg-elevated) 0%, var(--bg-deep) 100%);
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60%;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--green-glow), transparent);
+        }
+
+        .hero.has-regressions::before {
+            background: linear-gradient(90deg, transparent, var(--red-glow), transparent);
+        }
+
+        .hero-title {
+            font-size: 1rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.5rem;
+        }
+
+        .hero-subtitle {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+        }
+
+        /* Progress Ring */
+        .progress-ring-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .progress-ring {
+            position: relative;
+            width: 180px;
+            height: 180px;
+        }
+
+        .progress-ring svg {
+            transform: rotate(-90deg);
+            width: 180px;
+            height: 180px;
+        }
+
+        .progress-ring circle {
+            fill: none;
+            stroke-width: 8;
+            stroke-linecap: round;
+        }
+
+        .progress-ring .bg {
+            stroke: var(--bg-card);
+        }
+
+        .progress-ring .progress {
+            stroke: var(--green-glow);
+            stroke-dasharray: 502;
+            stroke-dashoffset: calc(502 - (502 * var(--percent)) / 100);
+            transition: stroke-dashoffset 1s ease-out;
+            filter: drop-shadow(0 0 8px var(--green-glow));
+        }
+
+        .progress-ring.has-regressions .progress {
+            stroke: var(--red-glow);
+            filter: drop-shadow(0 0 8px var(--red-glow));
+        }
+
+        .progress-ring .center-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+
+        .progress-percent {
+            font-size: 3rem;
+            font-weight: 700;
+            line-height: 1;
+            color: var(--text-primary);
+        }
+
+        .progress-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        .stat-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.25rem 1rem;
+            text-align: center;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+
+        .stat-box:hover {
+            transform: translateY(-2px);
+        }
+
+        .stat-box.passed {
+            border-color: var(--green-border);
+            background: var(--green-bg);
+        }
+
+        .stat-box.regression {
+            border-color: var(--red-border);
+            background: var(--red-bg);
+        }
+
+        .stat-box.changed {
+            border-color: rgba(245, 158, 11, 0.3);
+            background: var(--orange-bg);
+        }
+
+        .stat-number {
+            font-size: 2.25rem;
+            font-weight: 700;
+            line-height: 1;
+            margin-bottom: 0.25rem;
+        }
+
+        .stat-box.passed .stat-number { color: var(--green-glow); }
+        .stat-box.regression .stat-number { color: var(--red-glow); }
+        .stat-box.changed .stat-number { color: var(--orange-glow); }
+        .stat-box.total .stat-number { color: var(--text-primary); }
+
+        .stat-label {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* ===== STATUS BANNER ===== */
+        .status-banner {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            padding: 1rem 2rem;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 1.1rem;
+            max-width: fit-content;
+            margin: 2rem auto 0;
+        }
+
+        .status-banner.all-passed {
+            background: var(--green-bg);
+            border: 1px solid var(--green-border);
+            color: var(--green-glow);
+            box-shadow: 0 0 30px rgba(16, 185, 129, 0.2);
+        }
+
+        .status-banner.has-issues {
+            background: var(--red-bg);
+            border: 1px solid var(--red-border);
+            color: var(--red-glow);
+            box-shadow: 0 0 30px rgba(239, 68, 68, 0.2);
+        }
+
+        .status-icon {
+            font-size: 1.25rem;
+        }
+
+        /* ===== DIFF CARDS ===== */
+        .section-title {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin: 2.5rem 0 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .diff-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            margin-bottom: 1rem;
+            overflow: hidden;
+            transition: border-color 0.2s;
+        }
+
+        .diff-card:hover {
+            border-color: #4a5568;
+        }
+
+        .diff-card.status-passed { border-left: 4px solid var(--green-glow); }
+        .diff-card.status-regression { border-left: 4px solid var(--red-glow); }
+        .diff-card.status-tools_changed { border-left: 4px solid var(--orange-glow); }
+        .diff-card.status-output_changed { border-left: 4px solid var(--text-secondary); }
+
+        .diff-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.25rem;
+            background: var(--bg-elevated);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .diff-header-left {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 50px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        .status-badge.passed { background: var(--green-bg); color: var(--green-glow); }
+        .status-badge.regression { background: var(--red-bg); color: var(--red-glow); }
+        .status-badge.tools_changed { background: var(--orange-bg); color: var(--orange-glow); }
+        .status-badge.output_changed { background: rgba(139, 148, 158, 0.15); color: var(--text-secondary); }
+
+        .test-name {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .diff-metrics {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .metric {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            padding: 0.35rem 0.75rem;
+            background: var(--bg-card);
+            border-radius: 6px;
+        }
+
+        .metric-label {
+            font-size: 0.65rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        .metric-value {
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        .metric-value.positive { color: var(--green-glow); }
+        .metric-value.negative { color: var(--red-glow); }
+
+        .diff-body {
+            padding: 1.25rem;
+        }
+
+        .diff-section-title {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.75rem;
+        }
+
+        /* ===== TOOL SEQUENCE - BEFORE/AFTER ===== */
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 1rem;
+            align-items: start;
+            margin-bottom: 1.5rem;
+        }
+
+        .comparison-panel {
+            background: var(--bg-deep);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+        }
+
+        .comparison-panel.golden {
+            border-color: rgba(139, 148, 158, 0.3);
+        }
+
+        .comparison-panel.actual {
+            border-color: var(--blue-accent);
+        }
+
+        .panel-label {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.7rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.75rem;
+        }
+
+        .panel-label .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .comparison-panel.golden .dot { background: var(--text-secondary); }
+        .comparison-panel.actual .dot { background: var(--blue-accent); }
+
+        .arrow-divider {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            padding-top: 2rem;
+        }
+
+        .tool-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .tool-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.35rem 0.65rem;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+            font-size: 0.75rem;
+            color: var(--text-primary);
+        }
+
+        .tool-badge.added {
+            background: var(--green-bg);
+            border-color: var(--green-border);
+            color: var(--green-glow);
+        }
+
+        .tool-badge.removed {
+            background: var(--red-bg);
+            border-color: var(--red-border);
+            color: var(--red-glow);
+            text-decoration: line-through;
+        }
+
+        .tool-badge.changed {
+            background: var(--orange-bg);
+            border-color: rgba(245, 158, 11, 0.4);
+            color: var(--orange-glow);
+        }
+
+        /* ===== TOOL CHANGES INLINE DIFF ===== */
+        .changes-list {
+            background: var(--bg-deep);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1.5rem;
+            font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+            font-size: 0.8rem;
+        }
+
+        .change-line {
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            margin-bottom: 0.25rem;
+        }
+
+        .change-line:last-child { margin-bottom: 0; }
+
+        .change-line.added {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--green-glow);
+        }
+
+        .change-line.removed {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--red-glow);
+        }
+
+        .change-line.changed {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--orange-glow);
+        }
+
+        .change-arrow {
+            color: var(--text-secondary);
+            margin: 0 0.5rem;
+        }
+
+        /* ===== OUTPUT COMPARISON ===== */
+        .output-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .output-panel {
+            background: var(--bg-deep);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .output-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.6rem 0.85rem;
+            background: var(--bg-elevated);
+            border-bottom: 1px solid var(--border);
+            font-size: 0.7rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .output-content {
+            padding: 1rem;
+            font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+            font-size: 0.75rem;
+            line-height: 1.6;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: var(--text-primary);
+        }
+
+        /* ===== FOOTER ===== */
+        .footer {
+            text-align: center;
+            padding: 2rem 0;
+            margin-top: 2rem;
+            border-top: 1px solid var(--border);
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .footer a {
+            color: var(--blue-accent);
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* ===== ANIMATIONS ===== */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .hero { animation: fadeInUp 0.5s ease-out; }
+        .diff-card { animation: fadeInUp 0.4s ease-out backwards; }
+        .diff-card:nth-child(1) { animation-delay: 0.1s; }
+        .diff-card:nth-child(2) { animation-delay: 0.15s; }
+        .diff-card:nth-child(3) { animation-delay: 0.2s; }
+        .diff-card:nth-child(4) { animation-delay: 0.25s; }
+        .diff-card:nth-child(5) { animation-delay: 0.3s; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .status-banner.all-passed {
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 768px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .comparison-grid { grid-template-columns: 1fr; }
+            .arrow-divider { transform: rotate(90deg); padding: 0.5rem 0; }
+            .output-grid { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
-    <div class="container py-4">
-        <h1 class="mb-4">Golden Diff Report</h1>
-        <p class="text-muted">Generated: {{ timestamp }}</p>
+    <div class="container">
+        <!-- HERO SECTION - The Screenshot Moment -->
+        <div class="hero {% if summary.regressions > 0 %}has-regressions{% endif %}">
+            <div class="hero-title">Trace Diff Report</div>
+            <div class="hero-subtitle">{{ timestamp }}</div>
 
-        <!-- Summary -->
-        <div class="card summary-card mb-4">
-            <div class="card-body">
-                <div class="row text-center">
-                    <div class="col-md-3">
-                        <h3>{{ summary.total }}</h3>
-                        <small class="text-muted">Tests Compared</small>
-                    </div>
-                    <div class="col-md-3">
-                        <h3 class="text-danger">{{ summary.regressions }}</h3>
-                        <small class="text-muted">Regressions</small>
-                    </div>
-                    <div class="col-md-3">
-                        <h3 class="text-warning">{{ summary.tools_changed + summary.output_changed }}</h3>
-                        <small class="text-muted">Changed</small>
-                    </div>
-                    <div class="col-md-3">
-                        <h3 class="text-success">{{ summary.passed }}</h3>
-                        <small class="text-muted">Passed</small>
+            <!-- Progress Ring -->
+            <div class="progress-ring-container">
+                <div class="progress-ring {% if summary.regressions > 0 %}has-regressions{% endif %}" style="--percent: {{ ((summary.passed / summary.total) * 100) | round(0) if summary.total > 0 else 0 }}">
+                    <svg viewBox="0 0 180 180">
+                        <circle class="bg" cx="90" cy="90" r="80"/>
+                        <circle class="progress" cx="90" cy="90" r="80"/>
+                    </svg>
+                    <div class="center-text">
+                        <div class="progress-percent">{{ ((summary.passed / summary.total) * 100) | round(0) if summary.total > 0 else 0 }}%</div>
+                        <div class="progress-label">Pass Rate</div>
                     </div>
                 </div>
             </div>
+
+            <!-- Stats Grid -->
+            <div class="stats-grid">
+                <div class="stat-box total">
+                    <div class="stat-number">{{ summary.total }}</div>
+                    <div class="stat-label">Total Tests</div>
+                </div>
+                <div class="stat-box passed">
+                    <div class="stat-number">{{ summary.passed }}</div>
+                    <div class="stat-label">Passed</div>
+                </div>
+                <div class="stat-box changed">
+                    <div class="stat-number">{{ summary.tools_changed + summary.output_changed }}</div>
+                    <div class="stat-label">Changed</div>
+                </div>
+                <div class="stat-box regression">
+                    <div class="stat-number">{{ summary.regressions }}</div>
+                    <div class="stat-label">Regressions</div>
+                </div>
+            </div>
+
+            <!-- Status Banner -->
+            {% if summary.regressions == 0 and summary.tools_changed == 0 and summary.output_changed == 0 %}
+            <div class="status-banner all-passed">
+                <span class="status-icon">&#10003;</span>
+                All tests match golden baseline
+            </div>
+            {% elif summary.regressions > 0 %}
+            <div class="status-banner has-issues">
+                <span class="status-icon">!</span>
+                {{ summary.regressions }} regression{{ 's' if summary.regressions > 1 else '' }} detected
+            </div>
+            {% else %}
+            <div class="status-banner has-issues" style="background: var(--orange-bg); border-color: rgba(245, 158, 11, 0.4); color: var(--orange-glow); box-shadow: 0 0 30px rgba(245, 158, 11, 0.2);">
+                <span class="status-icon">~</span>
+                {{ summary.tools_changed + summary.output_changed }} test{{ 's' if (summary.tools_changed + summary.output_changed) > 1 else '' }} changed
+            </div>
+            {% endif %}
         </div>
 
         <!-- Diff Cards -->
+        {% if diffs %}
+        <div class="section-title">Test Results</div>
+
         {% for diff in diffs %}
-        <div class="card status-{{ diff.status }}">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <div>
-                    <span class="badge badge-{{ diff.status }} me-2">{{ diff.status | upper }}</span>
-                    <strong>{{ diff.test_name }}</strong>
-                </div>
-                <div>
-                    <span class="metric">
-                        <span class="metric-label">Score</span>
-                        <span class="metric-value {% if diff.score_diff > 0 %}score-up{% elif diff.score_diff < 0 %}score-down{% endif %}">
-                            {{ diff.actual_score | round(1) }}
-                            {% if diff.score_diff != 0 %}({{ '%+.1f' | format(diff.score_diff) }}){% endif %}
-                        </span>
+        <div class="diff-card status-{{ diff.status }}">
+            <div class="diff-header">
+                <div class="diff-header-left">
+                    <span class="status-badge {{ diff.status }}">
+                        {% if diff.status == 'passed' %}&#10003;{% elif diff.status == 'regression' %}&#10007;{% else %}~{% endif %}
+                        {{ diff.status | replace('_', ' ') }}
                     </span>
-                    <span class="metric">
+                    <span class="test-name">{{ diff.test_name }}</span>
+                </div>
+                <div class="diff-metrics">
+                    <div class="metric">
+                        <span class="metric-label">Score</span>
+                        <span class="metric-value {% if diff.score_diff > 0 %}positive{% elif diff.score_diff < 0 %}negative{% endif %}">
+                            {{ diff.actual_score | round(1) }}{% if diff.score_diff != 0 %} ({{ '%+.1f' | format(diff.score_diff) }}){% endif %}
+                        </span>
+                    </div>
+                    <div class="metric">
                         <span class="metric-label">Similarity</span>
                         <span class="metric-value">{{ (diff.similarity * 100) | round(0) }}%</span>
-                    </span>
+                    </div>
                 </div>
             </div>
-            <div class="card-body">
-                <!-- Tool Comparison -->
-                <h6>Tool Sequence</h6>
-                <div class="diff-container mb-3">
-                    <div class="diff-panel">
-                        <h6>Golden (Baseline)</h6>
-                        <div class="tool-sequence">
+
+            <div class="diff-body">
+                <!-- Tool Sequence Comparison -->
+                <div class="diff-section-title">Tool Sequence</div>
+                <div class="comparison-grid">
+                    <div class="comparison-panel golden">
+                        <div class="panel-label">
+                            <span class="dot"></span>
+                            Golden (Baseline)
+                        </div>
+                        <div class="tool-list">
                             {% for tool in diff.golden_tools %}
-                            <span class="badge bg-secondary me-1">{{ tool }}</span>
+                            <span class="tool-badge">{{ tool }}</span>
                             {% endfor %}
+                            {% if not diff.golden_tools %}
+                            <span style="color: var(--text-secondary); font-size: 0.8rem; font-style: italic;">No tools</span>
+                            {% endif %}
                         </div>
                     </div>
-                    <div class="diff-panel">
-                        <h6>Actual (Current)</h6>
-                        <div class="tool-sequence">
+
+                    <div class="arrow-divider">&rarr;</div>
+
+                    <div class="comparison-panel actual">
+                        <div class="panel-label">
+                            <span class="dot"></span>
+                            Actual (Current)
+                        </div>
+                        <div class="tool-list">
                             {% for tool in diff.actual_tools %}
-                            <span class="badge bg-primary me-1">{{ tool }}</span>
+                            <span class="tool-badge">{{ tool }}</span>
                             {% endfor %}
+                            {% if not diff.actual_tools %}
+                            <span style="color: var(--text-secondary); font-size: 0.8rem; font-style: italic;">No tools</span>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
 
                 {% if diff.tool_changes %}
-                <div class="mb-3">
-                    <h6>Tool Changes</h6>
+                <div class="diff-section-title">Changes</div>
+                <div class="changes-list">
                     {% for change in diff.tool_changes %}
-                    <div class="tool-{{ change.type }}">
+                    <div class="change-line {{ change.type }}">
                         {% if change.type == 'added' %}+ {{ change.tool }}{% endif %}
-                        {% if change.type == 'removed' %}- {{ change.tool }}{% endif %}
-                        {% if change.type == 'changed' %}~ {{ change.from }} → {{ change.to }}{% endif %}
+                        {% if change.type == 'removed' %}&minus; {{ change.tool }}{% endif %}
+                        {% if change.type == 'changed' %}~ {{ change.from }}<span class="change-arrow">&rarr;</span>{{ change.to }}{% endif %}
                     </div>
                     {% endfor %}
                 </div>
                 {% endif %}
 
                 <!-- Output Comparison -->
-                <h6>Output Comparison</h6>
-                <div class="diff-container">
-                    <div class="diff-panel">
-                        <h6>Golden Output</h6>
-                        <div class="output-preview">{{ diff.golden_output }}</div>
+                <div class="diff-section-title">Output</div>
+                <div class="output-grid">
+                    <div class="output-panel">
+                        <div class="output-header">
+                            <span class="dot" style="width: 6px; height: 6px; border-radius: 50%; background: var(--text-secondary);"></span>
+                            Golden
+                        </div>
+                        <div class="output-content">{{ diff.golden_output or '(empty)' }}</div>
                     </div>
-                    <div class="diff-panel">
-                        <h6>Actual Output</h6>
-                        <div class="output-preview">{{ diff.actual_output }}</div>
+                    <div class="output-panel">
+                        <div class="output-header">
+                            <span class="dot" style="width: 6px; height: 6px; border-radius: 50%; background: var(--blue-accent);"></span>
+                            Actual
+                        </div>
+                        <div class="output-content">{{ diff.actual_output or '(empty)' }}</div>
                     </div>
                 </div>
             </div>
         </div>
         {% endfor %}
+        {% endif %}
 
-        <footer class="text-center text-muted py-4">
+        <footer class="footer">
             Generated by <a href="https://github.com/hidai25/eval-view">EvalView</a>
         </footer>
     </div>
