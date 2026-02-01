@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-02-01
+
+### Added
+
+#### Agent-Based Skill Testing
+- **Real agent execution**: Test skills through Claude Code CLI instead of just system prompts
+- **Six agent adapters**: claude-code (primary), codex, langgraph, crewai, openai-assistants, custom
+- **Two-phase evaluation**: Deterministic checks (Phase 1) + LLM rubric scoring (Phase 2)
+- **Test categories**: explicit, implicit, contextual, negative (following OpenAI eval guidelines)
+
+#### Phase 1 Deterministic Checks
+- Tool checks: `tool_calls_contain`, `tool_calls_not_contain`, `tool_sequence`
+- File checks: `files_created`, `files_modified`, `file_contains`, `file_not_contains`
+- Command checks: `commands_ran`, `commands_not_ran`, `command_count_max`
+- Output checks: `output_contains`, `output_not_contains`
+- Token budget: `max_input_tokens`, `max_output_tokens`, `max_total_tokens`
+- Build verification: `build_must_pass` - commands that must exit with code 0
+- Smoke tests: `smoke_tests` with command/url/expected_output support
+- Repository cleanliness: `git_clean` - verify no uncommitted changes
+- Security checks: `no_sudo`, `forbidden_patterns`, `no_network_external`
+
+#### CLI Enhancements
+- `evalview skill test tests.yaml --agent claude-code` - run with real agents
+- `--trace ./traces/` - capture JSONL traces for debugging
+- `--no-rubric` - skip Phase 2 rubric evaluation
+- `--cwd` and `--max-turns` options
+
+#### Chat Mode Integration
+- `/skill` slash command for interactive skill testing
+- `/skill test`, `/skill validate`, `/skill list`, `/skill doctor` subcommands
+- Comprehensive skill testing documentation in chat assistant
+
+### Fixed
+- Stream-JSON parsing for Claude Code CLI output
+- Negative test evaluation logic for `should_trigger: false` tests
+- Type safety in adapter and runner (mypy compliance)
+
 ## [0.2.3] - 2026-01-25
 
 ### Added
