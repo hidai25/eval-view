@@ -36,6 +36,7 @@ from prompt_toolkit.filters import Condition
 SLASH_COMMANDS = [
     ("/run", "Run a test case against its adapter"),
     ("/test", "Quick ad-hoc test against an adapter"),
+    ("/skill", "Test Claude Code skills with real agents"),
     ("/compare", "Compare two test runs side by side"),
     ("/adapters", "List available adapters"),
     ("/trace", "Trace LLM calls in a Python script"),
@@ -536,44 +537,136 @@ When users ask about debugging, test failures, or understanding what happened:
 
 ## SKILL TESTING (Agent-Based)
 EvalView can test Claude Code skills through real AI agents (not just system prompts).
+Use `/skill` command in chat to run skill tests directly.
 
 ### Available Agent Types
-| Agent | Description |
-|-------|-------------|
-| system-prompt | Legacy mode - injects skill as system prompt (default) |
-| claude-code | Execute through Claude Code CLI |
-| codex | OpenAI Codex CLI |
-| custom | User-provided script |
+| Agent | Description | Status |
+|-------|-------------|--------|
+| system-prompt | Legacy mode - injects skill as system prompt | Default |
+| claude-code | Execute through Claude Code CLI | Primary, fully tested |
+| codex | OpenAI Codex CLI | Implemented |
+| langgraph | LangGraph SDK integration | Implemented |
+| crewai | CrewAI framework | Implemented |
+| openai-assistants | OpenAI Assistants API | Implemented |
+| custom | User-provided runner script | Implemented |
 
 ### Two-Phase Evaluation
-1. **Phase 1 (Deterministic)**: Fast checks - tool calls, file operations, commands, output matching
-2. **Phase 2 (Rubric)**: LLM-as-judge evaluates quality using custom rubric
+1. **Phase 1 (Deterministic)**: Fast, debuggable checks
+2. **Phase 2 (Rubric)**: LLM-as-judge evaluates quality (only runs if Phase 1 passes)
 
-### Test Categories
+### Phase 1: All Deterministic Checks Available
+**Tool Checks:**
+- `tool_calls_contain`: ["Write", "Bash"] - tools that MUST be called
+- `tool_calls_not_contain`: ["Edit"] - tools that must NOT be called
+- `tool_sequence`: ["Read", "Write"] - tools must appear in this order
+
+**File Checks:**
+- `files_created`: ["package.json", "src/App.tsx"] - files that must be created
+- `files_modified`: ["README.md"] - files that must be modified
+- `files_not_modified`: ["config.json"] - files that must NOT be modified
+- `file_contains`: {path: [strings]} - strings that must appear in file
+- `file_not_contains`: {path: [strings]} - strings that must NOT appear
+
+**Command Checks:**
+- `commands_ran`: ["npm install"] - commands that must be executed (substring match)
+- `commands_not_ran`: ["rm -rf"] - commands that must NOT run
+- `command_count_max`: 15 - catch thrashing/looping behavior
+
+**Output Checks:**
+- `output_contains`: ["success", "created"] - strings in final output
+- `output_not_contains`: ["error", "failed"] - strings NOT in output
+
+**Token Budget Checks:**
+- `max_input_tokens`: 5000 - maximum input tokens allowed
+- `max_output_tokens`: 2000 - maximum output tokens allowed
+- `max_total_tokens`: 7000 - maximum total tokens
+
+**Build Verification:**
+- `build_must_pass`: ["npm run build", "npm test"] - commands that must exit with code 0
+
+**Runtime Smoke Tests:**
+```yaml
+smoke_tests:
+  - command: "curl http://localhost:3000"
+    expected_output: "Hello"
+    timeout: 30
+  - url: "http://localhost:3000/api/health"
+    expected_status: 200
+```
+
+**Repository Cleanliness:**
+- `git_clean`: true - working directory must have no uncommitted changes
+
+**Permission/Security Checks:**
+- `no_sudo`: true - no sudo commands allowed
+- `forbidden_patterns`: ["rm -rf /", "sudo rm"] - command patterns that are forbidden
+- `no_network_external`: true - block external network calls
+
+### Test Categories (OpenAI Eval Guidelines)
 - **explicit**: Direct skill invocation ("Use the code-review skill")
 - **implicit**: Natural language that implies skill use ("Review this code for bugs")
-- **contextual**: Real-world noisy prompts
-- **negative**: Prompts that should NOT trigger the skill
+- **contextual**: Real-world noisy prompts with irrelevant context
+- **negative**: Prompts that should NOT trigger the skill (with should_trigger: false)
 
-### Skill Test YAML Schema (Agent Mode)
+### Skill Test YAML Schema (Full Example)
 ```yaml
 name: test-my-skill
+description: Comprehensive skill test suite
 skill: ./skills/my-skill/SKILL.md
+
 agent:
   type: claude-code
   max_turns: 10
   timeout: 300
+  capture_trace: true
+
+min_pass_rate: 0.8
+
 tests:
-  - name: creates-expected-file
-    input: "Create a new component called Button"
+  # Explicit invocation
+  - name: explicit-trigger
     category: explicit
+    input: "Use the setup-demo-app skill to create a React app"
+    should_trigger: true
     expected:
-      tool_calls_contain: ["Write"]
-      files_created: ["Button.tsx"]
-      output_contains: ["created", "component"]
+      tool_calls_contain: ["Write", "Bash"]
+      files_created: ["package.json", "src/App.tsx"]
+      commands_ran: ["npm install"]
+      command_count_max: 15
+      build_must_pass: ["npm run build"]
+
+  # Implicit invocation
+  - name: implicit-trigger
+    category: implicit
+    input: "Set up a minimal React demo app with Tailwind"
+    expected:
+      files_created: ["package.json", "tailwind.config.js"]
+      file_contains:
+        src/index.css: ["tailwindcss"]
+      output_contains: ["created", "tailwind"]
+
+  # Negative control
+  - name: should-not-trigger
+    category: negative
+    input: "What time is it?"
+    should_trigger: false
+    expected:
+      tool_calls_not_contain: ["Write"]
+      files_created: []
+
+  # With rubric evaluation
+  - name: style-check
+    input: "Create demo app"
+    expected:
+      files_created: ["package.json"]
     rubric:
-      prompt: "Evaluate if the component follows React best practices"
+      prompt: |
+        Evaluate the code against these requirements:
+        - Uses TypeScript
+        - Has proper error handling
+        - Follows React best practices
       min_score: 70
+      model: gpt-4o-mini  # optional model override
 ```
 
 ### Skill Test Commands
@@ -597,6 +690,16 @@ evalview skill test tests/my-skill.yaml -a claude-code --no-rubric
 ```
 Skip Phase 2 rubric evaluation (deterministic checks only).
 
+```command
+evalview skill test tests/my-skill.yaml --cwd /path/to/workspace
+```
+Run in specific working directory.
+
+```command
+evalview skill test tests/my-skill.yaml --max-turns 20
+```
+Override max conversation turns.
+
 ### Other Skill Commands
 ```command
 evalview skill validate ./SKILL.md
@@ -613,11 +716,25 @@ evalview skill doctor ~/.claude/skills/
 ```
 Diagnose skill issues (token budget, duplicates, etc.).
 
+### Chat /skill Command
+Use `/skill` in chat to run skill tests interactively:
+- `/skill test tests.yaml` - run skill tests in legacy mode
+- `/skill test tests.yaml --agent claude-code` - run with Claude Code agent
+- `/skill test tests.yaml -a claude-code -t ./traces/` - with trace capture
+- `/skill validate ./SKILL.md` - validate a skill file
+- `/skill list ./skills/` - list skills in directory
+- `/skill doctor ./skills/` - diagnose skill issues
+
 ### When Users Ask About Skill Testing
-1. "Test my skill" or "Validate my SKILL.md" → Suggest `evalview skill validate` or `evalview skill test`
-2. "Test with real agent" → Suggest `evalview skill test --agent claude-code`
-3. "Why did my skill fail?" → Check Phase 1 deterministic checks first, then rubric results
-4. "Debug skill execution" → Suggest using `--trace ./traces/` to capture JSONL traces
+1. "Test my skill" → Suggest `/skill test` or `evalview skill test`
+2. "Test with real agent" → `/skill test tests.yaml --agent claude-code`
+3. "Why did my skill fail?" → Check Phase 1 deterministic checks first, then rubric
+4. "Debug skill execution" → Use `-t ./traces/` to capture JSONL traces
+5. "Check token usage" → Add `max_input_tokens`, `max_output_tokens` to expected
+6. "Verify build works" → Add `build_must_pass: ["npm run build"]`
+7. "Test server starts" → Use `smoke_tests` with command or url checks
+8. "Ensure no breaking changes" → Add `git_clean: true`
+9. "Block dangerous commands" → Use `no_sudo: true` or `forbidden_patterns`
 
 ## RULES
 1. Put commands in ```command blocks so they can be executed
@@ -1800,6 +1917,99 @@ async def run_chat(
 
                 except Exception as e:
                     console.print(f"[red]Error comparing: {e}[/red]")
+                    import traceback
+                    console.print(f"[dim]{traceback.format_exc()}[/dim]")
+                continue
+
+            # /skill command - test Claude Code skills with real agents
+            if user_input.lower().startswith("/skill"):
+                parts = user_input.split(maxsplit=1)
+                subcommand = parts[1].strip() if len(parts) > 1 else None
+
+                if not subcommand:
+                    # Show skill command help
+                    console.print("\n[bold]Skill Testing Commands:[/bold]")
+                    console.print()
+                    console.print("  [cyan]/skill test <file.yaml>[/cyan]")
+                    console.print("    Run skill tests in legacy mode (system prompt + string matching)")
+                    console.print()
+                    console.print("  [cyan]/skill test <file.yaml> --agent claude-code[/cyan]")
+                    console.print("    Run skill tests through Claude Code CLI (recommended)")
+                    console.print()
+                    console.print("  [cyan]/skill test <file.yaml> -a claude-code -t ./traces/[/cyan]")
+                    console.print("    Run with JSONL trace capture for debugging")
+                    console.print()
+                    console.print("  [cyan]/skill test <file.yaml> --no-rubric[/cyan]")
+                    console.print("    Skip Phase 2 rubric evaluation (deterministic only)")
+                    console.print()
+                    console.print("  [cyan]/skill validate <SKILL.md>[/cyan]")
+                    console.print("    Validate a skill file for correct structure")
+                    console.print()
+                    console.print("  [cyan]/skill list <directory>[/cyan]")
+                    console.print("    List all skills in a directory")
+                    console.print()
+                    console.print("  [cyan]/skill doctor <directory>[/cyan]")
+                    console.print("    Diagnose skill issues (token budget, duplicates)")
+                    console.print()
+                    console.print("[bold]Available Agents:[/bold]")
+                    console.print("  claude-code (primary), codex, langgraph, crewai, openai-assistants, custom")
+                    console.print()
+                    console.print("[bold]Phase 1 Checks:[/bold]")
+                    console.print("  tool_calls_contain, files_created, commands_ran, output_contains,")
+                    console.print("  max_tokens, build_must_pass, smoke_tests, git_clean, no_sudo")
+                    console.print()
+                    continue
+
+                try:
+                    # Parse the subcommand
+                    sub_parts = subcommand.split()
+                    sub_cmd = sub_parts[0].lower()
+
+                    if sub_cmd == "test":
+                        # Build the evalview command
+                        skill_cmd = ["evalview", "skill", "test"] + sub_parts[1:]
+                        console.print(f"\n[dim]Running: {' '.join(skill_cmd)}[/dim]\n")
+
+                        import subprocess
+                        skill_result = subprocess.run(
+                            skill_cmd,
+                            capture_output=False,
+                            text=True,
+                        )
+
+                        if skill_result.returncode != 0:
+                            console.print(f"\n[yellow]Command exited with code {skill_result.returncode}[/yellow]")
+
+                    elif sub_cmd == "validate":
+                        if len(sub_parts) < 2:
+                            console.print("[yellow]Usage: /skill validate <SKILL.md>[/yellow]")
+                        else:
+                            skill_cmd = ["evalview", "skill", "validate"] + sub_parts[1:]
+                            console.print(f"\n[dim]Running: {' '.join(skill_cmd)}[/dim]\n")
+                            subprocess.run(skill_cmd, capture_output=False, text=True)
+
+                    elif sub_cmd == "list":
+                        if len(sub_parts) < 2:
+                            console.print("[yellow]Usage: /skill list <directory>[/yellow]")
+                        else:
+                            skill_cmd = ["evalview", "skill", "list"] + sub_parts[1:]
+                            console.print(f"\n[dim]Running: {' '.join(skill_cmd)}[/dim]\n")
+                            subprocess.run(skill_cmd, capture_output=False, text=True)
+
+                    elif sub_cmd == "doctor":
+                        if len(sub_parts) < 2:
+                            console.print("[yellow]Usage: /skill doctor <directory>[/yellow]")
+                        else:
+                            skill_cmd = ["evalview", "skill", "doctor"] + sub_parts[1:]
+                            console.print(f"\n[dim]Running: {' '.join(skill_cmd)}[/dim]\n")
+                            subprocess.run(skill_cmd, capture_output=False, text=True)
+
+                    else:
+                        console.print(f"[yellow]Unknown skill subcommand: {sub_cmd}[/yellow]")
+                        console.print("[dim]Available: test, validate, list, doctor[/dim]")
+
+                except Exception as e:
+                    console.print(f"[red]Error running skill command: {e}[/red]")
                     import traceback
                     console.print(f"[dim]{traceback.format_exc()}[/dim]")
                 continue
