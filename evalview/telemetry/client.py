@@ -4,14 +4,14 @@ Sends events to PostHog for anonymous usage analytics.
 All failures are silently ignored - telemetry should never break functionality.
 """
 
-import os
-from typing import Optional, Dict, Any
+from typing import Optional
 
 from evalview.telemetry.config import is_telemetry_enabled, get_install_id
 from evalview.telemetry.events import BaseEvent
 
-# PostHog configuration - read lazily to allow .env.local to load first
-POSTHOG_HOST_DEFAULT = "https://us.i.posthog.com"
+# PostHog configuration (project API key is write-only, safe to expose)
+POSTHOG_API_KEY = "phc_jvMrFFBXisMCJHKZlLshtrrCj1XoWWs321Yuy2ARlYx"
+POSTHOG_HOST = "https://us.i.posthog.com"
 
 # Singleton client
 _client: Optional["TelemetryClient"] = None
@@ -28,18 +28,10 @@ class TelemetryClient:
         if self._posthog is not None:
             return True
 
-        # Read env vars lazily (after .env.local is loaded by CLI)
-        api_key = os.environ.get("POSTHOG_API_KEY", "")
-        host = os.environ.get("POSTHOG_HOST", POSTHOG_HOST_DEFAULT)
-
-        # Skip if no API key configured
-        if not api_key:
-            return False
-
         try:
             from posthog import Posthog
 
-            self._posthog = Posthog(project_api_key=api_key, host=host)
+            self._posthog = Posthog(project_api_key=POSTHOG_API_KEY, host=POSTHOG_HOST)
             return True
         except ImportError:
             # PostHog not installed - that's fine
