@@ -239,7 +239,8 @@ Follow the skill instructions above when responding to user queries.
             "--append-system-prompt",
             skill_prompt,
             "--output-format",
-            "json",
+            "stream-json",  # Stream format includes tool calls
+            "--verbose",  # Required for stream-json with --print
             "--dangerously-skip-permissions",  # Required for non-interactive testing
         ]
 
@@ -293,14 +294,60 @@ Follow the skill instructions above when responding to user queries.
             if stderr:
                 errors.append(stderr[:1000])
 
-        # Try to parse JSON output
-        try:
-            data = json.loads(stdout)
-            final_output, events, tool_calls, files_created, files_modified, commands_ran, total_input_tokens, total_output_tokens = self._parse_json_output(data)
-        except json.JSONDecodeError:
-            # Fall back to text output parsing
-            final_output = stdout
-            logger.debug("Could not parse JSON output, using raw text")
+        # Parse stream-json format (one JSON per line)
+        for line in stdout.strip().split("\n"):
+            if not line.strip():
+                continue
+            try:
+                data = json.loads(line)
+                msg_type = data.get("type", "")
+
+                # Extract final result
+                if msg_type == "result":
+                    final_output = data.get("result", "")
+                    usage = data.get("usage", {})
+                    total_input_tokens = usage.get("input_tokens", 0)
+                    total_output_tokens = usage.get("output_tokens", 0)
+
+                # Extract tool calls from assistant messages
+                elif msg_type == "assistant":
+                    message = data.get("message", {})
+                    content = message.get("content", [])
+                    for item in content:
+                        # Skip string items (plain text responses)
+                        if not isinstance(item, dict):
+                            continue
+                        if item.get("type") == "tool_use":
+                            tool_name = item.get("name", "")
+                            tool_input = item.get("input", {})
+                            if tool_name:
+                                tool_calls.append(tool_name)
+                                self._track_file_operations(
+                                    tool_name, tool_input,
+                                    files_created, files_modified, commands_ran
+                                )
+                                events.append(TraceEvent(
+                                    type=TraceEventType.TOOL_CALL,
+                                    tool_name=tool_name,
+                                    tool_input=tool_input,
+                                ))
+
+                # Extract file operations from tool results
+                elif msg_type == "user":
+                    tool_result = data.get("tool_use_result", {})
+                    if tool_result and isinstance(tool_result, dict):
+                        result_type = tool_result.get("type", "")
+                        file_path = tool_result.get("filePath", "")
+                        if result_type == "create" and file_path:
+                            if file_path not in files_created:
+                                files_created.append(file_path)
+                        elif result_type in ("edit", "modify") and file_path:
+                            if file_path not in files_modified:
+                                files_modified.append(file_path)
+
+            except json.JSONDecodeError:
+                # Skip malformed lines
+                logger.debug(f"Could not parse JSON line: {line[:100]}")
 
         return SkillAgentTrace(
             session_id=session_id,
@@ -349,6 +396,9 @@ Follow the skill instructions above when responding to user queries.
             messages = [data]
 
         for msg in messages:
+            # Skip non-dict messages
+            if not isinstance(msg, dict):
+                continue
             # Extract text content
             if msg.get("role") == "assistant":
                 content = msg.get("content", [])
@@ -382,7 +432,7 @@ Follow the skill instructions above when responding to user queries.
                                 )
 
             # Extract usage info
-            if "usage" in msg:
+            if "usage" in msg and isinstance(msg.get("usage"), dict):
                 usage = msg["usage"]
                 total_input_tokens += usage.get("input_tokens", 0)
                 total_output_tokens += usage.get("output_tokens", 0)

@@ -361,17 +361,19 @@ def mock_subprocess_not_found():
 
 @pytest.fixture
 def mock_async_subprocess():
-    """Mock asyncio.create_subprocess_exec for async adapter tests."""
+    """Mock asyncio.create_subprocess_exec for async adapter tests.
+
+    Returns stream-json format (JSONL) that matches Claude Code CLI output.
+    """
     import asyncio
 
     async def create_mock_process(*args, **kwargs):
         mock_process = AsyncMock()
         mock_process.returncode = 0
+        # Stream-json format: one JSON per line
+        stream_json_output = b'{"type": "assistant", "message": {"content": [{"type": "text", "text": "Task completed."}]}}\n{"type": "result", "result": "Task completed.", "usage": {"input_tokens": 100, "output_tokens": 50}}'
         mock_process.communicate = AsyncMock(
-            return_value=(
-                b'{"result": "SUCCESS", "messages": [{"role": "assistant", "content": "Task completed."}], "usage": {"input_tokens": 100, "output_tokens": 50}}',
-                b"",
-            )
+            return_value=(stream_json_output, b"")
         )
         mock_process.kill = MagicMock()
         mock_process.wait = AsyncMock()

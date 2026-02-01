@@ -11,6 +11,8 @@ Orchestrates agent-based skill testing:
 import json
 import os
 import logging
+import tempfile
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -147,20 +149,39 @@ class SkillAgentRunner:
         # Setup trace directory
         trace_dir = self._setup_trace_dir(suite.name)
 
+        # Create temp working directory for file isolation
+        # Use suite.agent.cwd if specified, otherwise create temp dir
+        use_temp_dir = suite.agent.cwd is None
+        if use_temp_dir:
+            work_dir = tempfile.mkdtemp(prefix=f"evalview-{suite.name}-")
+            logger.info(f"Created temp working directory: {work_dir}")
+            # Update the config with the temp directory
+            suite.agent = suite.agent.model_copy(update={"cwd": work_dir})
+        else:
+            work_dir = suite.agent.cwd
+
         # Run each test
         results: List[SkillAgentTestResult] = []
-        for test in suite.tests:
-            if self.verbose:
-                logger.info(f"Running test: {test.name}")
+        try:
+            for test in suite.tests:
+                if self.verbose:
+                    logger.info(f"Running test: {test.name}")
 
-            result = await self._run_test(
-                adapter=adapter,
-                skill=skill,
-                test=test,
-                config=suite.agent,
-                trace_dir=trace_dir,
-            )
-            results.append(result)
+                result = await self._run_test(
+                    adapter=adapter,
+                    skill=skill,
+                    test=test,
+                    config=suite.agent,
+                    trace_dir=trace_dir,
+                )
+                results.append(result)
+
+        finally:
+            # Cleanup temp directory if we created one
+            if use_temp_dir and work_dir and os.path.exists(work_dir):
+                if self.verbose:
+                    logger.info(f"Cleaning up temp directory: {work_dir}")
+                shutil.rmtree(work_dir, ignore_errors=True)
 
         # Calculate stats
         passed_tests = sum(1 for r in results if r.passed)

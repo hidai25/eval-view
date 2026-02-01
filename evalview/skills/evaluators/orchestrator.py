@@ -181,9 +181,10 @@ class SkillTestOrchestrator:
     ) -> tuple:
         """Evaluate a negative test (should NOT trigger skill).
 
-        For negative tests, we expect:
-        - If should_trigger=False: skill should NOT produce skill-related output
-        - Deterministic checks might be inverted
+        For negative tests with should_trigger=False:
+        - The test defines what should NOT happen using 'not_contain' checks
+        - If those checks pass, it means the skill correctly did not trigger
+        - The deterministic checks directly express the expected behavior
 
         Args:
             test: The negative test case
@@ -194,15 +195,9 @@ class SkillTestOrchestrator:
             Tuple of (final_score, passed)
         """
         if not test.should_trigger:
-            # The skill should NOT have triggered
-            # A "failure" in deterministic checks is actually success
-            # because it means the skill didn't do what it normally does
-            if deterministic.passed:
-                # Skill triggered when it shouldn't have
-                return 0.0, False
-            else:
-                # Skill correctly did NOT trigger
-                return 100.0, True
+            # For negative tests, the expected checks (like tool_calls_not_contain)
+            # already express what should NOT happen. If they pass, the test passes.
+            return deterministic.score, deterministic.passed
         else:
             # Normal negative test with should_trigger=True
             # (unusual but supported)
