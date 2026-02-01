@@ -168,7 +168,7 @@ class ClaudeCodeAdapter(SkillAgentAdapter):
 
             stdout = stdout_bytes.decode("utf-8", errors="replace")
             stderr = stderr_bytes.decode("utf-8", errors="replace")
-            returncode = process.returncode
+            returncode = process.returncode or 0  # Default to 0 if None
 
             end_time = datetime.now()
             self._last_raw_output = stdout + stderr

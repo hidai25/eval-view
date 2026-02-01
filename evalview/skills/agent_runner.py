@@ -152,6 +152,7 @@ class SkillAgentRunner:
         # Create temp working directory for file isolation
         # Use suite.agent.cwd if specified, otherwise create temp dir
         use_temp_dir = suite.agent.cwd is None
+        work_dir: Optional[str] = None
         if use_temp_dir:
             work_dir = tempfile.mkdtemp(prefix=f"evalview-{suite.name}-")
             logger.info(f"Created temp working directory: {work_dir}")
