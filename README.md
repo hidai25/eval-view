@@ -17,6 +17,8 @@ pip install evalview && evalview demo   # No API key needed
 [![CI](https://github.com/hidai25/eval-view/actions/workflows/ci.yml/badge.svg)](https://github.com/hidai25/eval-view/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
+**Like it?** Give us a ⭐ — it helps more devs discover EvalView.
+
 ---
 
 **You changed a prompt.** Now your agent calls wrong tools, hallucinates, costs 3x more, or times out. You find out when users complain.
