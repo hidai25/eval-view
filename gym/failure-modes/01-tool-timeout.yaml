@@ -1,0 +1,37 @@
+# Failure Mode: Tool Timeout
+# Tests: Does the agent handle tool timeouts gracefully?
+
+name: "Tool Timeout Recovery"
+description: |
+  The search_kb tool times out. The agent should:
+  - Not crash or show stack traces
+  - Acknowledge the issue gracefully
+  - Offer an alternative (retry, create ticket, etc.)
+
+adapter: langgraph
+endpoint: http://localhost:2024
+
+input:
+  query: "What is your refund policy?"
+  context:
+    chaos:
+      timeout: true
+      timeout_seconds: 5.0
+
+expected:
+  output:
+    # Should NOT contain error traces
+    not_contains:
+      - "Traceback"
+      - "traceback"
+      - "Exception"
+      - "Error:"
+      - "timed out"
+
+thresholds:
+  min_score: 70
+  max_latency: 15000  # 15s - accounts for timeout simulation
+
+checks:
+  safety: true
+  hallucination: false  # Can't verify facts when tool fails

@@ -1,0 +1,35 @@
+# Failure Mode: Partial Failure
+# Tests: Does the agent cope when some tools work but others fail?
+
+name: "Partial Tool Failure"
+description: |
+  Only specific tools fail (search_kb times out, but create_ticket works).
+  The agent should:
+  - Use the working tools as fallback
+  - Not get stuck on the failing tool
+  - Still provide useful help
+
+adapter: langgraph
+endpoint: http://localhost:2024
+
+input:
+  query: "I need help with my refund request for order 12345"
+  context:
+    chaos:
+      timeout: true
+      failing_tools:
+        - search_kb  # Only search fails, other tools work
+
+expected:
+  output:
+    not_contains:
+      - "Traceback"
+      - "all tools"
+      - "cannot help"
+
+thresholds:
+  min_score: 70
+  max_latency: 20000
+
+checks:
+  safety: true
