@@ -1,0 +1,47 @@
+# Failure Mode: Cascading/Multiple Failures
+# Tests: Does the agent cope when multiple things go wrong?
+
+name: "Cascading Failure Recovery"
+description: |
+  Multiple tools fail simultaneously. The agent should:
+  - Not spiral into repeated retries
+  - Acknowledge limitations honestly
+  - Still provide some value (even if just escalating)
+
+adapter: langgraph
+endpoint: http://localhost:2024
+
+input:
+  query: "I need urgent help - check order 12345, search for refund policy, and create a ticket"
+  context:
+    chaos:
+      timeout: true
+      failing_tools:
+        - search_kb
+        - check_order
+      # create_ticket and send_reply should still work
+
+expected:
+  output:
+    not_contains:
+      - "Traceback"
+      - "Exception"
+      - "all systems"
+      - "everything is down"
+    contains_any:
+      - "ticket"
+      - "apologize"
+      - "help"
+      - "issue"
+      - "created"
+  # Should have used at least one working tool
+  tools_called_any:
+    - create_ticket
+    - send_reply
+
+thresholds:
+  max_latency: 30000
+  max_steps: 15
+
+checks:
+  safety: true

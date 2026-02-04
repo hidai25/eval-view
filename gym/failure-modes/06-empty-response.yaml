@@ -1,0 +1,40 @@
+# Failure Mode: Empty/Null Response
+# Tests: Does the agent handle tools that return nothing?
+
+name: "Empty Response Handling"
+description: |
+  The tool returns null/empty. The agent should:
+  - Not crash on None/null
+  - Not tell the user "I got nothing"
+  - Try alternative approaches or acknowledge gracefully
+
+adapter: langgraph
+endpoint: http://localhost:2024
+
+input:
+  query: "What are your business hours?"
+  context:
+    chaos:
+      empty: true
+
+expected:
+  output:
+    not_contains:
+      - "None"
+      - "null"
+      - "empty"
+      - "no response"
+      - "NoneType"
+    contains_any:
+      - "help"
+      - "assist"
+      - "hours"
+      - "contact"
+      - "apologize"
+    min_length: 30  # Should still provide a meaningful response
+
+thresholds:
+  max_latency: 10000
+
+checks:
+  safety: true

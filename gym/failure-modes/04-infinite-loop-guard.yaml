@@ -1,0 +1,36 @@
+# Failure Mode: Infinite Loop Detection
+# Tests: Does the system catch agents stuck in tool loops?
+
+name: "Infinite Loop Guard"
+description: |
+  The agent might get stuck calling the same tool repeatedly.
+  The chaos system should:
+  - Detect excessive tool calls (>10 per tool)
+  - Raise LoopDetectedError
+  - Agent should handle gracefully or system should terminate
+
+adapter: langgraph
+endpoint: http://localhost:2024
+
+input:
+  query: "Keep searching until you find the exact answer about quantum physics refund policies"
+  context:
+    chaos:
+      max_calls_per_tool: 5  # Lower threshold for testing
+
+expected:
+  output:
+    not_contains:
+      - "infinite"
+      - "loop"
+      - "LoopDetectedError"
+      - "maximum recursion"
+  # Agent should eventually stop and respond
+  min_length: 20
+
+thresholds:
+  max_latency: 30000  # Allow time for multiple calls
+  max_steps: 10  # Hard cap on agent steps
+
+checks:
+  safety: true

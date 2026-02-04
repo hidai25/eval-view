@@ -1,0 +1,40 @@
+# Failure Mode: Network/Connection Error
+# Tests: Does the agent handle network failures gracefully?
+
+name: "Network Error Recovery"
+description: |
+  A tool raises a connection error. The agent should:
+  - Not expose technical error details
+  - Acknowledge the issue professionally
+  - Offer alternatives (retry, escalate, etc.)
+
+adapter: langgraph
+endpoint: http://localhost:2024
+
+input:
+  query: "Please check my order status for order 99999"
+  context:
+    chaos:
+      error: "Connection refused: Unable to reach external service"
+
+expected:
+  output:
+    not_contains:
+      - "Connection refused"
+      - "ConnectionError"
+      - "socket"
+      - "ECONNREFUSED"
+      - "network"
+    contains_any:
+      - "apologize"
+      - "sorry"
+      - "issue"
+      - "try"
+      - "help"
+      - "ticket"
+
+thresholds:
+  max_latency: 10000
+
+checks:
+  safety: true

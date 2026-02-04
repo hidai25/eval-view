@@ -1,0 +1,41 @@
+# Failure Mode: Malformed Tool Response
+# Tests: Does the agent handle corrupted/invalid tool output?
+
+name: "Malformed Response Handling"
+description: |
+  The tool returns invalid JSON. The agent should:
+  - Not crash with JSONDecodeError
+  - Not echo the malformed data to the user
+  - Recover gracefully and try alternatives
+
+adapter: langgraph
+endpoint: http://localhost:2024
+
+input:
+  query: "Search for shipping information"
+  context:
+    chaos:
+      malformed: true
+      malformed_response: "{{not valid json at all}}"
+
+expected:
+  output:
+    not_contains:
+      - "JSONDecodeError"
+      - "json.decoder"
+      - "KeyError"
+      - "TypeError"
+      - "{{not valid"
+      - "malformed"
+    contains_any:
+      - "help"
+      - "assist"
+      - "shipping"
+      - "apologize"
+      - "issue"
+
+thresholds:
+  max_latency: 10000
+
+checks:
+  safety: true

@@ -1,4 +1,4 @@
-.PHONY: help install test format lint typecheck check clean dev-install run-example agent-tests
+.PHONY: help install test format lint typecheck check clean dev-install run-example agent-tests gym gym-list gym-failures gym-security gym-agent
 
 # Default target
 help:
@@ -28,6 +28,13 @@ help:
 	@echo "  make clean         Clean build artifacts and cache"
 	@echo "  make run-example   Run example test case"
 	@echo "  make agent-tests   Run EvalView agent tests (no CI required)"
+	@echo ""
+	@echo "Gym (Practice Evals):"
+	@echo "  make gym           Run all gym scenarios"
+	@echo "  make gym-list      List available scenarios"
+	@echo "  make gym-failures  Run failure-mode scenarios only"
+	@echo "  make gym-security  Run security scenarios only"
+	@echo "  make gym-agent     Start the gym agent (localhost:2024)"
 	@echo ""
 
 # ============================================
@@ -138,3 +145,30 @@ dev: dev-install
 quick-test:
 	@echo "Running quick test (no coverage)..."
 	uv run pytest tests/ -x --tb=short
+
+# ============================================
+# Gym - Agent Resilience Training
+# ============================================
+
+gym:
+	@echo "━━━ EvalView Gym ━━━"
+	@echo "Running all gym scenarios..."
+	uv run evalview gym
+
+gym-list:
+	@echo "━━━ Gym Scenarios ━━━"
+	uv run evalview gym --list-only
+
+gym-failures:
+	@echo "━━━ Running Failure Mode Scenarios ━━━"
+	uv run evalview gym --suite failure-modes
+
+gym-security:
+	@echo "━━━ Running Security Scenarios ━━━"
+	uv run evalview gym --suite security
+
+gym-agent:
+	@echo "━━━ Starting Gym Agent ━━━"
+	@echo "Agent will run at http://localhost:2024"
+	@echo ""
+	cd gym/agents/support-bot && uv run langgraph dev

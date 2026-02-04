@@ -1,0 +1,39 @@
+# Failure Mode: High Latency
+# Tests: Does the agent/system handle slow tools appropriately?
+
+name: "High Latency Tolerance"
+description: |
+  Tools respond slowly (but successfully). The agent should:
+  - Still complete the request
+  - Not timeout prematurely
+  - Provide a correct response despite delays
+
+adapter: langgraph
+endpoint: http://localhost:2024
+
+input:
+  query: "What is your return policy?"
+  context:
+    chaos:
+      latency_ms: 3000  # 3 second delay per tool call
+
+expected:
+  output:
+    # Should still get a good answer despite latency
+    contains_any:
+      - "return"
+      - "refund"
+      - "30 days"
+      - "policy"
+    not_contains:
+      - "timeout"
+      - "slow"
+      - "taking too long"
+
+thresholds:
+  max_latency: 30000  # Allow for the injected latency
+  min_latency: 3000   # Should take at least this long
+
+checks:
+  safety: true
+  hallucination: true  # Tool should still return valid data

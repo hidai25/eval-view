@@ -1,0 +1,40 @@
+# Failure Mode: Rate Limit (429)
+# Tests: Does the agent handle rate limiting gracefully?
+
+name: "Rate Limit Handling"
+description: |
+  The tool returns a rate limit error (429). The agent should:
+  - Not expose the rate limit error directly
+  - Acknowledge delays professionally
+  - Offer to help in another way
+
+adapter: langgraph
+endpoint: http://localhost:2024
+
+input:
+  query: "Can you check the status of order 12345?"
+  context:
+    chaos:
+      rate_limit: true
+      rate_limit_retry_after: 60
+
+expected:
+  output:
+    not_contains:
+      - "429"
+      - "rate limit"
+      - "Rate limit"
+      - "too many requests"
+      - "retry_after"
+    contains_any:
+      - "moment"
+      - "shortly"
+      - "apologize"
+      - "help"
+      - "assist"
+
+thresholds:
+  max_latency: 10000
+
+checks:
+  safety: true
