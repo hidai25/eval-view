@@ -131,9 +131,60 @@ You: compare to yesterday
    Cost: $0.003 → $0.005 (+67%)
 ```
 
-Slash commands: `/run`, `/test`, `/compare`, `/traces`, `/adapters`
+Slash commands: `/run`, `/test`, `/compare`, `/traces`, `/skill`, `/adapters`
 
 [Chat mode docs →](docs/CHAT_MODE.md)
+
+---
+
+## End-to-End Skills Testing
+
+Test that your agent's code actually works — not just that the output looks right.
+
+```yaml
+tests:
+  - name: creates-working-api
+    input: "Create an express server with /health endpoint"
+    expected:
+      # Verify artifacts
+      files_created: ["index.js", "package.json"]
+
+      # Verify it compiles
+      build_must_pass:
+        - "npm install"
+        - "npm run lint"
+
+      # Verify it runs
+      smoke_tests:
+        - command: "node index.js"
+          background: true
+          health_check: "http://localhost:3000/health"
+          expected_status: 200
+          timeout: 10
+
+      # Safety checks
+      no_sudo: true
+      git_clean: true
+```
+
+```bash
+# Run with real Claude Code agent
+evalview skill test tests.yaml --agent claude-code
+
+# Other supported agents
+evalview skill test tests.yaml --agent codex
+evalview skill test tests.yaml --agent langgraph
+```
+
+| Check | What it catches |
+|-------|-----------------|
+| `build_must_pass` | Code that doesn't compile, missing dependencies |
+| `smoke_tests` | Runtime crashes, wrong ports, failed health checks |
+| `git_clean` | Uncommitted files, dirty working directory |
+| `no_sudo` | Privilege escalation attempts |
+| `max_tokens` | Cost blowouts, verbose outputs |
+
+[Skills testing docs →](docs/SKILLS_TESTING.md)
 
 ---
 
@@ -163,9 +214,18 @@ Slash commands: `/run`, `/test`, `/compare`, `/traces`, `/adapters`
 
 ---
 
-## Supported Frameworks
+## Supported Agents & Frameworks
 
-LangGraph • CrewAI • OpenAI Assistants • Anthropic Claude • AutoGen • Dify • Ollama • Any HTTP API
+| Agent | E2E Testing | Trace Capture |
+|-------|:-----------:|:-------------:|
+| **Claude Code** | ✅ | ✅ |
+| **OpenAI Codex** | ✅ | ✅ |
+| **LangGraph** | ✅ | ✅ |
+| **CrewAI** | ✅ | ✅ |
+| **OpenAI Assistants** | ✅ | ✅ |
+| **Custom (any CLI/API)** | ✅ | ✅ |
+
+Also works with: AutoGen • Dify • Ollama • Any HTTP API
 
 [Compatibility details →](docs/FRAMEWORK_SUPPORT.md)
 
@@ -189,6 +249,7 @@ LangGraph • CrewAI • OpenAI Assistants • Anthropic Claude • AutoGen • 
 
 | Framework | Link |
 |-----------|------|
+| Claude Code (E2E) | [examples/agent-test/](examples/agent-test/) |
 | LangGraph | [examples/langgraph/](examples/langgraph/) |
 | CrewAI | [examples/crewai/](examples/crewai/) |
 | Anthropic Claude | [examples/anthropic/](examples/anthropic/) |
@@ -209,9 +270,9 @@ LangGraph • CrewAI • OpenAI Assistants • Anthropic Claude • AutoGen • 
 
 ## Roadmap
 
-**Shipped:** Golden traces • Tool categories • Statistical mode • Difficulty levels • Partial sequence credit • Skills testing • MCP servers • HTML reports
+**Shipped:** Golden traces • Tool categories • Statistical mode • Difficulty levels • Partial sequence credit • Skills validation • E2E agent testing • Build & smoke tests • Health checks • Safety guards (`no_sudo`, `git_clean`) • Claude Code & Codex adapters • MCP servers • HTML reports
 
-**Coming:** Multi-turn conversations • Grounded hallucination detection • Error compounding metrics
+**Coming:** Multi-turn conversations • Grounded hallucination detection • Error compounding metrics • Container isolation
 
 [Vote on features →](https://github.com/hidai25/eval-view/discussions)
 
