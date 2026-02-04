@@ -29,11 +29,10 @@ from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
-from mock_config import get_mock_response, is_mock_mode
+from mock_config import get_mock_response
 from chaos_tools import (
     chaos_tool,
     configure_chaos_from_context,
-    ChaosRegistry,
     ChaosError,
 )
 
@@ -175,7 +174,7 @@ def create_agent():
             # Convert chaos errors to a graceful response
             error_response = AIMessage(
                 content=f"I apologize, but I'm experiencing technical difficulties: {str(e)}. "
-                        "Please try again in a moment, or I can create a support ticket for you."
+                "Please try again in a moment, or I can create a support ticket for you."
             )
             return {"messages": [error_response]}
 
@@ -188,7 +187,7 @@ def create_agent():
         if hasattr(last_message, "content") and "error" in str(last_message.content).lower():
             error_response = AIMessage(
                 content="I encountered an issue while processing your request. "
-                        "Let me try a different approach or create a ticket for follow-up."
+                "Let me try a different approach or create a ticket for follow-up."
             )
             return {"messages": [error_response]}
         return {}
@@ -231,10 +230,12 @@ if __name__ == "__main__":
     # Run the agent
     print(f"\n[Query]: {query}\n")
 
-    result = graph.invoke({
-        "messages": [HumanMessage(content=query)],
-        "context": context,
-    })
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content=query)],
+            "context": context,
+        }
+    )
 
     # Print the final response
     final_message = result["messages"][-1]

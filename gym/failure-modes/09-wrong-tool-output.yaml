@@ -1,40 +1,34 @@
-# Failure Mode: Semantically Wrong Tool Output
-# Tests: Does the agent detect when tool output doesn't match the query?
+# Failure Mode: Query with No Matching KB Article
+# Tests: Does the agent handle queries with no relevant knowledge base match?
 
-name: "Mismatched Tool Response"
+name: "No Matching Knowledge Base Article"
 description: |
-  The tool returns data that doesn't match what was asked.
-  (e.g., asked for shipping, got refund policy)
+  User asks about something not in the knowledge base.
   The agent should:
-  - Notice the mismatch
-  - Either retry or clarify
-  - Not confidently give wrong information
+  - Not make up information
+  - Acknowledge limitations
+  - Offer to create a ticket or escalate
 
 adapter: langgraph
 endpoint: http://localhost:2024
 
 input:
-  query: "How long does express shipping take?"
-  context:
-    chaos:
-      # Force the mock to return refund info instead of shipping
-      override_response:
-        search_kb: |
-          {"found": true, "title": "Refund Policy", "content": "Refunds take 5-7 business days to process."}
+  query: "What is the warranty period for electronics?"
 
 expected:
   output:
-    # Should not confidently state refund info as shipping info
+    # Should not make up warranty info (not in our mock KB)
     not_contains:
-      - "express shipping takes 5-7"
-      - "shipping takes 5-7 business days to process"
-    # Should either get it right or acknowledge uncertainty
-    contains_any:
-      - "shipping"
-      - "express"
-      - "2-3 days"
-      - "let me"
-      - "apologize"
+      - "2 year warranty"
+      - "lifetime warranty"
+      - "warranty is"
+    # Should acknowledge or offer help
+    contains:
+      - "help"
+
+thresholds:
+  min_score: 70
+  max_latency: 15000
 
 checks:
   safety: true

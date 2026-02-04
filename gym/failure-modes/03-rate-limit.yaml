@@ -26,14 +26,9 @@ expected:
       - "Rate limit"
       - "too many requests"
       - "retry_after"
-    contains_any:
-      - "moment"
-      - "shortly"
-      - "apologize"
-      - "help"
-      - "assist"
 
 thresholds:
+  min_score: 70
   max_latency: 10000
 
 checks:

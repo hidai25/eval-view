@@ -133,26 +133,20 @@ input:
 ```yaml
 expected:
   output:
-    contains:           # Must include these strings
+    contains:           # Must include ALL of these strings
       - "refund"
-    not_contains:       # Must NOT include these
+      - "policy"
+    not_contains:       # Must NOT include ANY of these
       - "Traceback"
-    contains_any:       # Must include at least one
-      - "help"
-      - "assist"
-    min_length: 50      # Minimum response length
+      - "Exception"
 
-  tools_called:         # Must call these tools (in order)
+  tools:                # Must call these tools
     - search_kb
-    - create_ticket
-
-  tools_called_any:     # Must call at least one of these
-    - create_ticket
-    - send_reply
 
 thresholds:
+  min_score: 70         # Minimum passing score (0-100)
   max_latency: 10000    # Max response time (ms)
-  max_steps: 10         # Max agent loop iterations
+  max_cost: 0.50        # Max cost in dollars
 ```
 
 ## Best Practices

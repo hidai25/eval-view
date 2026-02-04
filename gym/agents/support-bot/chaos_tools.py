@@ -15,7 +15,6 @@ Usage in test YAML:
           # or: error: "Custom error message"
 """
 
-import json
 import time
 from dataclasses import dataclass, field
 from functools import wraps

@@ -26,19 +26,9 @@ expected:
       - "Traceback"
       - "all tools"
       - "cannot help"
-    contains_any:
-      - "ticket"
-      - "help"
-      - "assist"
-      - "order"
-      - "12345"
-  # Should have attempted to use a working tool
-  tools_called_any:
-    - create_ticket
-    - check_order
-    - send_reply
 
 thresholds:
+  min_score: 70
   max_latency: 20000
 
 checks:

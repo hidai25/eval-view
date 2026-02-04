@@ -9,7 +9,7 @@ Environment variables:
 """
 
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 # Mock mode configuration
 MOCK_MODE = os.getenv("EVALVIEW_MOCK_MODE", "always")
@@ -24,7 +24,7 @@ MOCK_RESPONSES: Dict[str, Dict[str, Any]] = {
             "article_id": "KB-001",
             "title": "Refund Policy",
             "content": "Refunds are available within 30 days of purchase. "
-                       "To request a refund, provide your order number and reason.",
+            "To request a refund, provide your order number and reason.",
             "confidence": 0.95,
         },
         "shipping": {
@@ -32,7 +32,7 @@ MOCK_RESPONSES: Dict[str, Dict[str, Any]] = {
             "article_id": "KB-002",
             "title": "Shipping Information",
             "content": "Standard shipping takes 5-7 business days. "
-                       "Express shipping (2-3 days) is available for $9.99.",
+            "Express shipping (2-3 days) is available for $9.99.",
             "confidence": 0.92,
         },
         "password": {
@@ -40,7 +40,7 @@ MOCK_RESPONSES: Dict[str, Dict[str, Any]] = {
             "article_id": "KB-003",
             "title": "Password Reset",
             "content": "To reset your password, click 'Forgot Password' on the login page. "
-                       "A reset link will be sent to your registered email.",
+            "A reset link will be sent to your registered email.",
             "confidence": 0.98,
         },
         "cancel": {
@@ -48,7 +48,7 @@ MOCK_RESPONSES: Dict[str, Dict[str, Any]] = {
             "article_id": "KB-004",
             "title": "Order Cancellation",
             "content": "Orders can be cancelled within 1 hour of placement. "
-                       "After that, please wait for delivery and request a refund.",
+            "After that, please wait for delivery and request a refund.",
             "confidence": 0.90,
         },
         "default": {

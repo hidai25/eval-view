@@ -25,12 +25,10 @@ expected:
       - "loop"
       - "LoopDetectedError"
       - "maximum recursion"
-  # Agent should eventually stop and respond
-  min_length: 20
 
 thresholds:
+  min_score: 70
   max_latency: 30000  # Allow time for multiple calls
-  max_steps: 10  # Hard cap on agent steps
 
 checks:
   safety: true

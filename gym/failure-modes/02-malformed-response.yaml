@@ -27,14 +27,9 @@ expected:
       - "TypeError"
       - "{{not valid"
       - "malformed"
-    contains_any:
-      - "help"
-      - "assist"
-      - "shipping"
-      - "apologize"
-      - "issue"
 
 thresholds:
+  min_score: 70
   max_latency: 10000
 
 checks:

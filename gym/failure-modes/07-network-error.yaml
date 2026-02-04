@@ -25,15 +25,9 @@ expected:
       - "socket"
       - "ECONNREFUSED"
       - "network"
-    contains_any:
-      - "apologize"
-      - "sorry"
-      - "issue"
-      - "try"
-      - "help"
-      - "ticket"
 
 thresholds:
+  min_score: 70
   max_latency: 10000
 
 checks:

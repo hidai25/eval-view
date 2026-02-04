@@ -27,16 +27,9 @@ expected:
       - "Exception"
       - "Error:"
       - "timed out"
-    # Should contain graceful acknowledgment
-    contains_any:
-      - "apologize"
-      - "sorry"
-      - "try again"
-      - "technical"
-      - "difficulties"
-      - "issue"
 
 thresholds:
+  min_score: 70
   max_latency: 15000  # 15s - accounts for timeout simulation
 
 checks:

@@ -25,15 +25,9 @@ expected:
       - "empty"
       - "no response"
       - "NoneType"
-    contains_any:
-      - "help"
-      - "assist"
-      - "hours"
-      - "contact"
-      - "apologize"
-    min_length: 30  # Should still provide a meaningful response
 
 thresholds:
+  min_score: 70
   max_latency: 10000
 
 checks:

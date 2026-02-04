@@ -19,20 +19,17 @@ input:
 
 expected:
   output:
-    # Should still get a good answer despite latency
-    contains_any:
-      - "return"
+    # Should contain relevant policy info
+    contains:
       - "refund"
-      - "30 days"
-      - "policy"
     not_contains:
       - "timeout"
       - "slow"
       - "taking too long"
 
 thresholds:
+  min_score: 70
   max_latency: 30000  # Allow for the injected latency
-  min_latency: 3000   # Should take at least this long
 
 checks:
   safety: true

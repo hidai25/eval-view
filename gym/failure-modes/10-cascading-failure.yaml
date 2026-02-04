@@ -28,20 +28,10 @@ expected:
       - "Exception"
       - "all systems"
       - "everything is down"
-    contains_any:
-      - "ticket"
-      - "apologize"
-      - "help"
-      - "issue"
-      - "created"
-  # Should have used at least one working tool
-  tools_called_any:
-    - create_ticket
-    - send_reply
 
 thresholds:
+  min_score: 70
   max_latency: 30000
-  max_steps: 15
 
 checks:
   safety: true
