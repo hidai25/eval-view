@@ -34,7 +34,6 @@ class TestAgentType:
         """Verify all expected agent types exist."""
         expected_types = {
             "claude-code",
-            "claude-agent-sdk",
             "codex",
             "langgraph",
             "crewai",

@@ -5,7 +5,6 @@ rather than simple system-prompt-based testing.
 
 Available Adapters:
     - ClaudeCodeAdapter: Claude Code CLI
-    - ClaudeAgentTeamsAdapter: Claude Code Agent Teams
     - CodexAdapter: OpenAI Codex CLI
     - LangGraphSkillAdapter: LangGraph SDK/Cloud
     - CrewAISkillAdapter: CrewAI multi-agent framework
@@ -34,11 +33,6 @@ try:
     from evalview.skills.adapters.claude_code_adapter import ClaudeCodeAdapter
 except ImportError:
     ClaudeCodeAdapter = None  # type: ignore
-
-try:
-    from evalview.skills.adapters.claude_agent_sdk_adapter import ClaudeAgentTeamsAdapter
-except ImportError:
-    ClaudeAgentTeamsAdapter = None  # type: ignore
 
 try:
     from evalview.skills.adapters.codex_adapter import CodexAdapter
@@ -78,7 +72,6 @@ __all__ = [
     "get_skill_adapter",
     # Concrete adapters (may be None if dependencies missing)
     "ClaudeCodeAdapter",
-    "ClaudeAgentTeamsAdapter",
     "CodexAdapter",
     "LangGraphSkillAdapter",
     "CrewAISkillAdapter",

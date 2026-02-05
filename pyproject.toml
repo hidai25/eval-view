@@ -5,14 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "evalview"
 version = "0.2.5"
-description = "Pytest-style testing framework for AI agents — LangGraph, CrewAI, Claude Agent Teams, OpenAI, Anthropic"
+description = "Pytest-style testing framework for AI agents — LangGraph, CrewAI, OpenAI, Anthropic, Claude"
 readme = "README.md"
 license = "Apache-2.0"
 authors = [{name = "EvalView Team", email = "hidai@evalview.com"}]
 requires-python = ">=3.9"
 keywords = [
     "ai", "agents", "testing", "evaluation", "llm", "langchain", "langgraph", "crewai", "openai",
-    "anthropic", "claude", "claude-opus", "opus-4-6", "agent-teams", "claude-agent-teams",
+    "anthropic", "claude", "claude-opus", "opus-4-6",
     "multi-agent", "pytest-ai", "ai-agent-testing", "llm-testing", "agent-evaluation",
     "regression-testing", "ci-cd-testing", "yaml-testing", "tool-calling"
 ]
