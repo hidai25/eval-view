@@ -221,7 +221,7 @@ class ClaudeAgentSDKAdapter(SkillAgentAdapter):
         import tempfile
 
         fd, script_path = tempfile.mkstemp(
-            prefix="evalview_agent_sdk_", suffix=".py", dir=cwd
+            prefix="evalview_agent_sdk_", suffix=".py",
         )
         os.close(fd)
 
