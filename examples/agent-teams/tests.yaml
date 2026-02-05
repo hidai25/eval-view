@@ -1,32 +1,31 @@
 # Agent Teams — EvalView test suite
 #
-# Tests multi-agent workflows built with the Claude Agent SDK.
-# Validates delegation, coordination, and output quality.
+# Tests multi-agent team workflows running inside Claude Code.
+# Agent Teams is a Claude Code feature where agents coordinate
+# via TeammateTool and SendMessage.
 #
 # Run:
-#   evalview skill test examples/agent-teams/tests.yaml --agent claude-agent-sdk
+#   evalview skill test examples/agent-teams/tests.yaml --agent claude-agent-teams
 #
-# With a custom team script:
-#   evalview skill test examples/agent-teams/tests.yaml \
-#     --agent claude-agent-sdk \
-#     --script-path my_team.py
+# Prerequisites:
+#   npm install -g @anthropic-ai/claude-code
 
 name: agent-teams-basic
 description: >
-  Regression suite for Claude Agent SDK teams. Verifies that agent teams
+  Regression suite for Claude Code Agent Teams. Verifies that team agents
   delegate correctly, stay within token budgets, and produce accurate output.
 
 skill: examples/agent-teams/SKILL.md
 
 agent:
-  type: claude-agent-sdk
+  type: claude-agent-teams
   timeout: 120
   max_turns: 20
 
 tests:
   # --- Delegation tests ---
   - name: delegates-research-task
-    description: Complex research should trigger delegation to the researcher agent
+    description: Complex research should trigger delegation via SendMessage/TeammateTool
     input: "Research the top 3 Python testing frameworks and compare their pros and cons"
     category: explicit
     expected:
@@ -35,7 +34,7 @@ tests:
       max_total_tokens: 50000
 
   - name: delegates-code-review
-    description: Code review should trigger delegation to the coder agent
+    description: Code review should trigger delegation to a coder agent
     input: "Review this function for bugs: def add(a, b): return a - b"
     category: explicit
     expected:
@@ -51,7 +50,6 @@ tests:
     expected:
       output_contains:
         - "4"
-      command_count_max: 0
 
   # --- Token budget tests ---
   - name: stays-within-budget

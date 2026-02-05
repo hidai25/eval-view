@@ -19,7 +19,7 @@ pip install evalview && evalview demo   # No API key needed
 
 **Like it?** Give us a ⭐ — it helps more devs discover EvalView.
 
-> **New in v0.2.5** — First-class **Claude Opus 4.6** cost tracking and a new **Claude Agent SDK (Agent Teams)** adapter. Test multi-agent team workflows end-to-end and catch regressions before deploy. [See the agent teams example →](examples/agent-teams/)
+> **New in v0.2.5** — **Claude Opus 4.6** cost tracking and **Agent Teams** testing. Catch regressions in multi-agent Claude Code workflows before deploy. [See the agent teams example →](examples/agent-teams/)
 
 ---
 
@@ -210,7 +210,7 @@ evalview skill test tests.yaml --agent langgraph
 
 ## Who Uses EvalView?
 
-- **Teams building with Claude Agent SDK** who need regression gates on multi-agent workflows
+- **Teams using Claude Code Agent Teams** who need regression gates on multi-agent workflows
 - **Teams shipping LangGraph / CrewAI agents** who need CI gates
 - **Solo developers** tired of "it worked yesterday" bugs
 - **Platform teams** building internal agent tooling
@@ -222,7 +222,7 @@ evalview skill test tests.yaml --agent langgraph
 | Agent | E2E Testing | Trace Capture |
 |-------|:-----------:|:-------------:|
 | **Claude Code** | ✅ | ✅ |
-| **Claude Agent SDK (Teams)** | ✅ | ✅ |
+| **Claude Code Agent Teams** | ✅ | ✅ |
 | **OpenAI Codex** | ✅ | ✅ |
 | **LangGraph** | ✅ | ✅ |
 | **CrewAI** | ✅ | ✅ |
@@ -275,7 +275,7 @@ Also works with: AutoGen • Dify • Ollama • Any HTTP API
 
 ## Roadmap
 
-**Shipped:** Golden traces • Tool categories • Statistical mode • Difficulty levels • Partial sequence credit • Skills validation • E2E agent testing • Build & smoke tests • Health checks • Safety guards (`no_sudo`, `git_clean`) • Claude Code & Codex adapters • **Claude Agent SDK (Teams) adapter** • **Opus 4.6 cost tracking** • MCP servers • HTML reports
+**Shipped:** Golden traces • Tool categories • Statistical mode • Difficulty levels • Partial sequence credit • Skills validation • E2E agent testing • Build & smoke tests • Health checks • Safety guards (`no_sudo`, `git_clean`) • Claude Code & Codex adapters • **Agent Teams adapter** • **Opus 4.6 cost tracking** • MCP servers • HTML reports
 
 **Coming:** Multi-turn conversations • Grounded hallucination detection • Error compounding metrics • Container isolation
 

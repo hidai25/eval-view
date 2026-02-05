@@ -123,13 +123,13 @@ class SkillAdapterRegistry:
         except ImportError as e:
             logger.debug(f"ClaudeCodeAdapter not available: {e}")
 
-        # Claude Agent SDK adapter - multi-agent teams
+        # Claude Agent Teams adapter - multi-agent teams via Claude Code
         try:
-            from evalview.skills.adapters.claude_agent_sdk_adapter import ClaudeAgentSDKAdapter
+            from evalview.skills.adapters.claude_agent_sdk_adapter import ClaudeAgentTeamsAdapter
 
-            cls.register(AgentType.CLAUDE_AGENT_SDK.value, ClaudeAgentSDKAdapter)
+            cls.register(AgentType.CLAUDE_AGENT_TEAMS.value, ClaudeAgentTeamsAdapter)
         except ImportError as e:
-            logger.debug(f"ClaudeAgentSDKAdapter not available: {e}")
+            logger.debug(f"ClaudeAgentTeamsAdapter not available: {e}")
 
         # Codex adapter - OpenAI Codex CLI
         try:

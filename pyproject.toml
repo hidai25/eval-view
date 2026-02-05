@@ -12,7 +12,7 @@ authors = [{name = "EvalView Team", email = "hidai@evalview.com"}]
 requires-python = ">=3.9"
 keywords = [
     "ai", "agents", "testing", "evaluation", "llm", "langchain", "langgraph", "crewai", "openai",
-    "anthropic", "claude", "claude-opus", "opus-4-6", "agent-teams", "claude-agent-sdk",
+    "anthropic", "claude", "claude-opus", "opus-4-6", "agent-teams", "claude-agent-teams",
     "multi-agent", "pytest-ai", "ai-agent-testing", "llm-testing", "agent-evaluation",
     "regression-testing", "ci-cd-testing", "yaml-testing", "tool-calling"
 ]

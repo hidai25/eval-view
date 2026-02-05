@@ -28,7 +28,7 @@ class AgentType(str, Enum):
     """
 
     CLAUDE_CODE = "claude-code"
-    CLAUDE_AGENT_SDK = "claude-agent-sdk"
+    CLAUDE_AGENT_TEAMS = "claude-agent-teams"
     CODEX = "codex"
     LANGGRAPH = "langgraph"
     CREWAI = "crewai"
