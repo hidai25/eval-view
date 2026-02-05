@@ -2,7 +2,7 @@
 
 from typing import Dict, Tuple
 
-# Pricing per 1 million tokens (as of January 2025)
+# Pricing per 1 million tokens (as of February 2026)
 # Format: (input_price, output_price, cached_input_price)
 
 MODEL_PRICING: Dict[str, Tuple[float, float, float]] = {
@@ -18,6 +18,11 @@ MODEL_PRICING: Dict[str, Tuple[float, float, float]] = {
     "gpt-4": (30.0, 60.0, 3.0),
     # GPT-3.5 Turbo (legacy)
     "gpt-3.5-turbo": (0.50, 1.50, 0.05),
+    # Claude (Anthropic)
+    "claude-opus-4-6": (5.00, 25.00, 0.50),
+    "claude-opus-4-5": (5.00, 25.00, 0.50),
+    "claude-sonnet-4-5": (3.00, 15.00, 0.30),
+    "claude-haiku-4-5": (0.25, 1.25, 0.025),
     # Default fallback (gpt-5-mini pricing)
     "default": (0.25, 2.0, 0.025),
 }
