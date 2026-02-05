@@ -106,10 +106,12 @@ MODEL_ALIASES: Dict[str, str] = {
     # Anthropic Claude
     "sonnet": "claude-sonnet-4-5-20250929",
     "claude-sonnet": "claude-sonnet-4-5-20250929",
-    "opus": "claude-opus-4-5-20251101",
-    "claude-opus": "claude-opus-4-5-20251101",
-    "haiku": "claude-3-5-haiku-latest",
-    "claude-haiku": "claude-3-5-haiku-latest",
+    "opus": "claude-opus-4-6",
+    "claude-opus": "claude-opus-4-6",
+    "opus-4.6": "claude-opus-4-6",
+    "opus-4.5": "claude-opus-4-5-20251101",
+    "haiku": "claude-haiku-4-5-20251001",
+    "claude-haiku": "claude-haiku-4-5-20251001",
     # HuggingFace Llama
     "llama": "meta-llama/Llama-3.1-8B-Instruct",
     "llama-8b": "meta-llama/Llama-3.1-8B-Instruct",
@@ -265,9 +267,11 @@ class JudgeCostTracker:
             "gpt-4-turbo": (10.00, 30.00),
         },
         "anthropic": {
+            "claude-opus-4-6": (5.00, 25.00),
+            "claude-opus-4-5-20251101": (5.00, 25.00),
             "claude-sonnet-4-5-20250929": (3.00, 15.00),
+            "claude-haiku-4-5-20251001": (0.25, 1.25),
             "claude-3-5-haiku-latest": (0.25, 1.25),
-            "claude-opus-4-5-20251101": (15.00, 75.00),
         },
         "gemini": {
             "gemini-2.0-flash": (0.10, 0.40),
