@@ -1030,8 +1030,17 @@ def print_separator(console: Console) -> None:
 async def run_chat(
     provider: Optional[str] = None,
     model: Optional[str] = None,
+    judge_model: Optional[str] = None,
+    judge_provider: Optional[str] = None,
 ) -> None:
     """Run the interactive chat interface."""
+    # Set judge model/provider via env vars if specified (CLI overrides env)
+    if judge_provider:
+        os.environ["EVAL_PROVIDER"] = judge_provider
+    if judge_model:
+        from evalview.core.llm_provider import resolve_model_alias
+        os.environ["EVAL_MODEL"] = resolve_model_alias(judge_model)
+
     console = Console()
 
     # Select provider
@@ -1340,12 +1349,30 @@ async def run_chat(
                 # Parse flags
                 enable_live_trace = False
                 test_filter = None
+                run_judge_model = None
+                run_judge_provider = None
 
-                for part in parts[1:]:
+                i = 1
+                while i < len(parts):
+                    part = parts[i]
                     if part in ("--trace", "-t"):
                         enable_live_trace = True
+                    elif part == "--judge-model" and i + 1 < len(parts):
+                        i += 1
+                        run_judge_model = parts[i]
+                    elif part == "--judge-provider" and i + 1 < len(parts):
+                        i += 1
+                        run_judge_provider = parts[i]
                     elif not part.startswith("-"):
                         test_filter = part
+                    i += 1
+
+                # Apply per-run judge overrides to env vars
+                if run_judge_provider:
+                    os.environ["EVAL_PROVIDER"] = run_judge_provider
+                if run_judge_model:
+                    from evalview.core.llm_provider import resolve_model_alias
+                    os.environ["EVAL_MODEL"] = resolve_model_alias(run_judge_model)
 
                 # Find test cases
                 test_dirs = ["tests/test-cases", "tests", "test-cases", ".evalview/tests", "."]

@@ -5988,11 +5988,21 @@ def golden_show(test_name: str):
     default=None,
     help="Model to use (default: provider's default)",
 )
+@click.option(
+    "--judge-model",
+    type=str,
+    help="Model for LLM-as-judge (e.g., gpt-5, sonnet, llama-70b, gpt-4o). Aliases auto-resolve to full names.",
+)
+@click.option(
+    "--judge-provider",
+    type=click.Choice(["openai", "anthropic", "huggingface", "gemini", "grok", "ollama"]),
+    help="Provider for LLM-as-judge evaluation (ollama = free local)",
+)
 @click.option("--demo_1", is_flag=True, help="Run '3am panic' demo")
 @click.option("--demo_2", is_flag=True, help="Run 'instant action' demo")
 @click.option("--demo_3", is_flag=True, help="Run 'cost explosion' demo")
 @click.option("--demo_chat", is_flag=True, help="Run 'interactive chat' demo")
-def chat(provider: str, model: str, demo_1: bool, demo_2: bool, demo_3: bool, demo_chat: bool):
+def chat(provider: str, model: str, judge_model: str, judge_provider: str, demo_1: bool, demo_2: bool, demo_3: bool, demo_chat: bool):
     """Interactive chat interface for EvalView.
 
     Ask questions about testing your AI agents in natural language.
@@ -6028,7 +6038,7 @@ def chat(provider: str, model: str, demo_1: bool, demo_2: bool, demo_3: bool, de
     elif demo_chat:
         asyncio.run(run_demo(provider=provider, model=model, style=4))
     else:
-        asyncio.run(run_chat(provider=provider, model=model))
+        asyncio.run(run_chat(provider=provider, model=model, judge_model=judge_model, judge_provider=judge_provider))
 
 
 @main.command("trace")
