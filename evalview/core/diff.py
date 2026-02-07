@@ -36,6 +36,7 @@ class DiffStatus(Enum):
     TOOLS_CHANGED = "tools_changed"  # Tool sequence differs from golden
     OUTPUT_CHANGED = "output_changed"  # Output differs beyond similarity threshold
     REGRESSION = "regression"        # Score dropped >5 points from golden
+    CONTRACT_DRIFT = "contract_drift"  # External MCP server interface changed
 
 
 # Alias for backwards compatibility

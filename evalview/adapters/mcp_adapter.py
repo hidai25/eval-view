@@ -449,6 +449,94 @@ class MCPAdapter(AgentAdapter):
             trace_context=tracer.build_trace_context(),
         )
 
+    async def discover_tools(self) -> List[Dict[str, Any]]:
+        """Discover available tools from an MCP server.
+
+        Connects to the server, initializes the session, and calls tools/list
+        to retrieve all available tool definitions (name, description, inputSchema).
+
+        Returns:
+            List of tool definition dicts from the MCP server.
+
+        Raises:
+            Exception: If connection or discovery fails.
+        """
+        transport, target = self._parse_endpoint()
+
+        if transport == "stdio":
+            return await self._discover_tools_stdio(target)
+        else:
+            return await self._discover_tools_http(target)
+
+    async def _discover_tools_stdio(self, command: str) -> List[Dict[str, Any]]:
+        """Discover tools via stdio transport."""
+        import shlex
+
+        cmd_parts = shlex.split(command)
+        process = await asyncio.create_subprocess_exec(
+            *cmd_parts,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+
+        try:
+            await self._send_request(
+                process,
+                "initialize",
+                {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "evalview", "version": "0.1.7"},
+                },
+            )
+            await self._send_notification(process, "notifications/initialized", {})
+
+            result = await self._send_request(process, "tools/list", {})
+            return result.get("tools", [])
+        finally:
+            process.terminate()
+            await process.wait()
+
+    async def _discover_tools_http(self, url: str) -> List[Dict[str, Any]]:
+        """Discover tools via HTTP transport."""
+        import httpx
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            # Initialize session
+            self._request_id += 1
+            await client.post(
+                url,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": self._request_id,
+                    "method": "initialize",
+                    "params": {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {},
+                        "clientInfo": {"name": "evalview", "version": "0.1.7"},
+                    },
+                },
+            )
+
+            # Request tool list
+            self._request_id += 1
+            response = await client.post(
+                url,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": self._request_id,
+                    "method": "tools/list",
+                    "params": {},
+                },
+            )
+            result = response.json()
+
+            if "error" in result:
+                raise Exception(f"MCP tools/list error: {result['error']}")
+
+            return result.get("result", {}).get("tools", [])
+
     async def health_check(self) -> bool:
         """Check if MCP server is reachable."""
         transport, target = self._parse_endpoint()
