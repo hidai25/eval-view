@@ -37,9 +37,13 @@ inputs:
     required: false
     default: 'false'
   fail-on:
-    description: 'Comma-separated statuses that fail CI (REGRESSION, TOOLS_CHANGED, OUTPUT_CHANGED)'
+    description: 'Comma-separated statuses that fail CI (REGRESSION, TOOLS_CHANGED, OUTPUT_CHANGED, CONTRACT_DRIFT)'
     required: false
     default: 'REGRESSION'
+  contracts:
+    description: 'Check MCP contracts for interface drift before running tests'
+    required: false
+    default: 'false'
   generate-report:
     description: 'Generate HTML report'
     required: false
@@ -102,7 +106,17 @@ runs:
 
         # Regression detection mode
         if [ "${{ inputs.diff }}" = "true" ]; then
-          CMD="$CMD --diff --fail-on ${{ inputs.fail-on }}"
+          CMD="$CMD --diff"
+        fi
+
+        # MCP contract drift detection
+        if [ "${{ inputs.contracts }}" = "true" ]; then
+          CMD="$CMD --contracts"
+        fi
+
+        # Set fail-on (applies to both diff and contract statuses)
+        if [ "${{ inputs.diff }}" = "true" ] || [ "${{ inputs.contracts }}" = "true" ]; then
+          CMD="$CMD --fail-on ${{ inputs.fail-on }}"
         fi
 
         if [ "${{ inputs.generate-report }}" = "true" ]; then

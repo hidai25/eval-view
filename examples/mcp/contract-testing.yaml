@@ -1,0 +1,42 @@
+# MCP Contract Testing Example
+#
+# This demonstrates evaluating an agent that uses an external MCP server
+# you don't control (Scenario 2). The workflow:
+#
+#   1. Snapshot the server:
+#      evalview mcp snapshot "npx:@modelcontextprotocol/server-filesystem /tmp" --name fs-server
+#
+#   2. Run this test with contract checking:
+#      evalview run examples/mcp/contract-testing.yaml --contracts --fail-on "REGRESSION,CONTRACT_DRIFT"
+#
+#   3. If the server's tools change, the run fails before this test even executes.
+#
+# This test validates that an AI agent correctly uses filesystem tools.
+# The contract ensures those tools still exist with the expected interface.
+
+name: "Agent uses filesystem MCP tools"
+description: "Test that the agent calls the right MCP tools for a file read task"
+
+adapter: mcp
+endpoint: "npx:@modelcontextprotocol/server-filesystem /tmp"
+
+# Reference the contract for this server (checked by --contracts flag)
+# If the contract drifted, this test won't even run — saving time and
+# giving a clear error message instead of a confusing tool-not-found failure.
+
+input:
+  query: "read_file"
+  context:
+    arguments:
+      path: "/tmp/evalview-contract-test.txt"
+
+expected:
+  tools:
+    - "read_file"
+  output:
+    contains:
+      - "hello"
+
+thresholds:
+  min_score: 50
+  max_latency: 10000
