@@ -3,7 +3,6 @@
 import json
 import pytest
 from datetime import datetime
-from pathlib import Path
 
 from evalview.core.mcp_contract import (
     ContractStore,
@@ -345,12 +344,33 @@ class TestContractDiff:
         result = diff_contract(saved_contract, SAMPLE_TOOLS)
         assert result.summary() == "No changes"
 
-    def test_summary_with_changes(self, saved_contract):
-        """Summary includes counts."""
+    def test_summary_with_breaking_only(self, saved_contract):
+        """Summary with breaking changes only."""
         current = [t for t in SAMPLE_TOOLS if t["name"] != "read_file"]
         result = diff_contract(saved_contract, current)
+        assert result.summary() == "1 breaking change(s)"
+
+    def test_summary_with_mixed_changes(self, saved_contract):
+        """Summary with both breaking and informational changes."""
+        current = json.loads(json.dumps(SAMPLE_TOOLS))
+        # Remove a tool (breaking) and add one (informational)
+        current = [t for t in current if t["name"] != "read_file"]
+        current.append({
+            "name": "new_tool",
+            "description": "A new tool",
+            "inputSchema": {"type": "object", "properties": {}},
+        })
+        result = diff_contract(saved_contract, current)
         summary = result.summary()
-        assert "breaking" in summary
+        assert "1 breaking change(s)" in summary
+        assert "1 informational change(s)" in summary
+
+    def test_duplicate_tool_names_in_current(self, saved_contract):
+        """Duplicate tool names in current tools are deduplicated silently."""
+        current = SAMPLE_TOOLS + [SAMPLE_TOOLS[0]]  # Duplicate create_issue
+        result = diff_contract(saved_contract, current)
+        # Dict comprehension deduplicates - should still pass
+        assert result.status == ContractDriftStatus.PASSED
 
     def test_empty_snapshot_vs_tools(self):
         """Empty snapshot vs populated tools shows all as added."""

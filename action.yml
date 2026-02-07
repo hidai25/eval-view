@@ -106,12 +106,17 @@ runs:
 
         # Regression detection mode
         if [ "${{ inputs.diff }}" = "true" ]; then
-          CMD="$CMD --diff --fail-on ${{ inputs.fail-on }}"
+          CMD="$CMD --diff"
         fi
 
         # MCP contract drift detection
         if [ "${{ inputs.contracts }}" = "true" ]; then
-          CMD="$CMD --contracts --fail-on ${{ inputs.fail-on }}"
+          CMD="$CMD --contracts"
+        fi
+
+        # Set fail-on (applies to both diff and contract statuses)
+        if [ "${{ inputs.diff }}" = "true" ] || [ "${{ inputs.contracts }}" = "true" ]; then
+          CMD="$CMD --fail-on ${{ inputs.fail-on }}"
         fi
 
         if [ "${{ inputs.generate-report }}" = "true" ]; then

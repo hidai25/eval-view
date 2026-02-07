@@ -523,7 +523,6 @@ class MCPAdapter(AgentAdapter):
                 raise Exception(f"MCP initialize error: {init_result['error']}")
 
             # Send initialized notification (required by MCP protocol)
-            self._request_id += 1
             await client.post(
                 url,
                 json={
