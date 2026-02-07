@@ -1619,53 +1619,6 @@ async def _run_async(
             console.print("[yellow]⚠️  Watch mode requires watchdog. Install with: pip install watchdog[/yellow]")
             watch = False
 
-    # --- MCP Contract Check (runs before tests, fail fast) ---
-    contract_drifts = []
-    if contracts:
-        from evalview.core.mcp_contract import ContractStore
-        from evalview.core.contract_diff import diff_contract, ContractDriftStatus
-        from evalview.adapters.mcp_adapter import MCPAdapter
-
-        contract_store = ContractStore()
-        all_contracts = contract_store.list_contracts()
-
-        if all_contracts:
-            console.print("[cyan]━━━ MCP Contract Check ━━━[/cyan]\n")
-
-            for meta in all_contracts:
-                contract = contract_store.load_contract(meta.server_name)
-                if not contract:
-                    continue
-
-                adapter = MCPAdapter(endpoint=contract.metadata.endpoint, timeout=30.0)
-                try:
-                    current_tools = await asyncio.get_event_loop().run_in_executor(
-                        None, lambda: asyncio.run(adapter.discover_tools())
-                    )
-                except Exception as e:
-                    console.print(f"  [yellow]WARN: {meta.server_name}[/yellow] - could not connect: {e}")
-                    continue
-
-                result = diff_contract(contract, current_tools)
-
-                if result.status == ContractDriftStatus.CONTRACT_DRIFT:
-                    contract_drifts.append(result)
-                    console.print(f"  [red]CONTRACT_DRIFT: {meta.server_name}[/red] - {result.summary()}")
-                    for change in result.breaking_changes:
-                        console.print(f"    [red]{change.kind.value}: {change.tool_name}[/red] - {change.detail}")
-                else:
-                    console.print(f"  [green]PASSED: {meta.server_name}[/green]")
-
-            console.print()
-
-            # Check if we should fail fast
-            if contract_drifts and fail_on and "CONTRACT_DRIFT" in (fail_on or "").upper():
-                console.print("[bold red]Aborting: MCP contract drift detected. Fix contracts before running tests.[/bold red]")
-                console.print("[dim]Accept changes: evalview mcp snapshot <endpoint> --name <name>[/dim]\n")
-                raise SystemExit(1)
-        else:
-            console.print("[dim]--contracts: No contracts found. Create one: evalview mcp snapshot <endpoint> --name <name>[/dim]\n")
-
     console.print("[blue]Running test cases...[/blue]\n")
 
     # Load config - check path directory first, then current directory
@@ -1709,6 +1662,52 @@ async def _run_async(
             warn_on = ",".join(config_warn_on)
         else:
             warn_on = str(config_warn_on)
+
+    # --- MCP Contract Check (runs before tests, fail fast) ---
+    # Placed after fail_on/warn_on resolution so config.yaml defaults are available.
+    contract_drifts = []
+    if contracts:
+        from evalview.core.mcp_contract import ContractStore
+        from evalview.core.contract_diff import diff_contract, ContractDriftStatus
+        from evalview.adapters.mcp_adapter import MCPAdapter as MCPContractAdapter
+
+        contract_store = ContractStore()
+        all_contracts = contract_store.list_contracts()
+
+        if all_contracts:
+            console.print("[cyan]━━━ MCP Contract Check ━━━[/cyan]\n")
+
+            for meta in all_contracts:
+                contract = contract_store.load_contract(meta.server_name)
+                if not contract:
+                    continue
+
+                mcp_adapter = MCPContractAdapter(endpoint=contract.metadata.endpoint, timeout=30.0)
+                try:
+                    current_tools = await mcp_adapter.discover_tools()
+                except Exception as e:
+                    console.print(f"  [yellow]WARN: {meta.server_name}[/yellow] - could not connect: {e}")
+                    continue
+
+                contract_result = diff_contract(contract, current_tools)
+
+                if contract_result.status == ContractDriftStatus.CONTRACT_DRIFT:
+                    contract_drifts.append(contract_result)
+                    console.print(f"  [red]CONTRACT_DRIFT: {meta.server_name}[/red] - {contract_result.summary()}")
+                    for change in contract_result.breaking_changes:
+                        console.print(f"    [red]{change.kind.value}: {change.tool_name}[/red] - {change.detail}")
+                else:
+                    console.print(f"  [green]PASSED: {meta.server_name}[/green]")
+
+            console.print()
+
+            # Fail fast if contract drift detected and fail_on includes it
+            if contract_drifts and "CONTRACT_DRIFT" in fail_on.upper():
+                console.print("[bold red]Aborting: MCP contract drift detected. Fix contracts before running tests.[/bold red]")
+                console.print("[dim]Accept changes: evalview mcp snapshot <endpoint> --name <name>[/dim]\n")
+                raise SystemExit(1)
+        else:
+            console.print("[dim]--contracts: No contracts found. Create one: evalview mcp snapshot <endpoint> --name <name>[/dim]\n")
 
     # Extract model config (can be string or dict)
     model_config = config.get("model", {})
@@ -6151,7 +6150,6 @@ def mcp_check(name: str, endpoint: str, timeout: float):
     console.print(f"  Endpoint: {target_endpoint}")
 
     # Show snapshot age
-    from datetime import datetime
     age = datetime.now() - contract.metadata.snapshot_at
     age_days = age.days
     if age_days > 30:
@@ -6204,7 +6202,6 @@ def mcp_list():
     Shows all saved contracts with metadata.
     """
     from evalview.core.mcp_contract import ContractStore
-    from datetime import datetime
 
     store = ContractStore()
     contracts = store.list_contracts()
@@ -6265,7 +6262,6 @@ def mcp_show(name: str):
     """
     from evalview.core.mcp_contract import ContractStore
     from rich.panel import Panel
-    from datetime import datetime
 
     store = ContractStore()
     contract = store.load_contract(name)

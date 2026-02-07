@@ -13,7 +13,7 @@ contract_diff.py compares server interface schemas.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Any, Set
 import logging
 
 from evalview.core.mcp_contract import MCPContract, ToolSchema

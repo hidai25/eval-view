@@ -505,7 +505,7 @@ class MCPAdapter(AgentAdapter):
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             # Initialize session
             self._request_id += 1
-            await client.post(
+            init_response = await client.post(
                 url,
                 json={
                     "jsonrpc": "2.0",
@@ -516,6 +516,20 @@ class MCPAdapter(AgentAdapter):
                         "capabilities": {},
                         "clientInfo": {"name": "evalview", "version": "0.1.7"},
                     },
+                },
+            )
+            init_result = init_response.json()
+            if "error" in init_result:
+                raise Exception(f"MCP initialize error: {init_result['error']}")
+
+            # Send initialized notification (required by MCP protocol)
+            self._request_id += 1
+            await client.post(
+                url,
+                json={
+                    "jsonrpc": "2.0",
+                    "method": "notifications/initialized",
+                    "params": {},
                 },
             )
 

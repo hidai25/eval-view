@@ -25,11 +25,12 @@ class DiffStatus(Enum):
     A test may have additional pass/fail criteria (cost limits, latency thresholds)
     beyond the diff status.
 
-    Four states with clear developer-friendly terminology:
+    Five states with clear developer-friendly terminology:
     - PASSED: Output and tools match within tolerance - safe to ship
     - TOOLS_CHANGED: Tool sequence differs - agent behavior shifted, review before deploy
     - OUTPUT_CHANGED: Same tools but output differs beyond threshold - review before deploy
     - REGRESSION: Score dropped significantly - likely a bug, fix before deploy
+    - CONTRACT_DRIFT: External MCP server interface changed - fix integration before deploy
     """
 
     PASSED = "passed"                # Output and tools match within tolerance
