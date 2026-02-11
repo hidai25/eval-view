@@ -253,11 +253,11 @@ evalview demo
 
 ---
 
-## `evalview skill`
+## `evalview skill` (Advanced)
 
-Skills testing commands for Claude Code and OpenAI Codex.
+Skills testing commands for Claude Code and OpenAI Codex SKILL.md workflows.
 
-See [Skills Testing](SKILLS_TESTING.md) for complete documentation.
+See [Advanced: Skills Testing](SKILLS_TESTING.md) for complete documentation.
 
 ```bash
 evalview skill validate PATH      # Validate skill structure

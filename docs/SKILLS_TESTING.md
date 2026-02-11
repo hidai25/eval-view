@@ -1,4 +1,7 @@
-# Skills Testing (Claude Code & OpenAI Codex)
+# Advanced: Skills Testing (Claude Code & OpenAI Codex)
+
+> **This is an advanced feature.** For standard agent regression testing, see [Getting Started](GETTING_STARTED.md).
+> Use skills testing if you maintain SKILL.md workflows for Claude Code or Codex.
 
 > **Your Claude Code skills might be broken.** Claude silently ignores skills that exceed its [15k char budget](https://blog.fsck.com/2025/12/17/claude-code-skills-not-triggering/). EvalView catches this.
 

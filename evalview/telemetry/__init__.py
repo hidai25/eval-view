@@ -12,6 +12,7 @@ from evalview.telemetry.config import (
 from evalview.telemetry.events import (
     CommandEvent,
     RunEvent,
+    ChatEvent,
     ErrorEvent,
 )
 from evalview.telemetry.client import TelemetryClient, get_client
@@ -29,6 +30,7 @@ __all__ = [
     # Events
     "CommandEvent",
     "RunEvent",
+    "ChatEvent",
     "ErrorEvent",
     # Client
     "TelemetryClient",

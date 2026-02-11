@@ -54,15 +54,44 @@ console = Console()
 @click.version_option(version="0.1.7")
 @click.pass_context
 def main(ctx):
-    """EvalView - Catch agent regressions before you ship.
+    """EvalView — Proof that your agent still works.
 
-    Detects tool changes, output changes, cost spikes, and latency spikes
-    by comparing against golden baselines.
+    \b
+    Check Your Agent:
+      run                     Check agent health
+      run --diff              Compare against golden baseline
+      run --save-golden       Save passing results as baseline
+      demo                    See regression detection in action
+      quickstart              Set up a working example in 2 minutes
 
-    Quick start:
-      evalview quickstart              # Try it in 2 minutes
-      evalview run --diff              # Compare against golden baseline
-      evalview golden save result.json # Save a working run as baseline
+    \b
+    Golden Traces:
+      golden save <file>      Save a known-good baseline
+      golden list             List saved baselines
+      golden show <name>      View baseline details
+
+    \b
+    Explore & Learn:
+      chat                    Interactive AI assistant for eval guidance
+      gym                     Practice agent eval patterns
+
+    \b
+    Reports:
+      report <file>           Generate report from results
+      view                    View specific test results
+      trends                  Performance trends over time
+
+    \b
+    CI/CD:
+      ci comment              Post results to a GitHub PR
+      init --ci               Generate GitHub Actions workflow
+
+    \b
+    Advanced:
+      skill                   Test Claude Code skills
+      trace                   Trace LLM calls in scripts
+      traces                  Query stored trace data
+      expand                  Generate test variations with LLM
     """
     # Show first-run telemetry notice (once only)
     if should_show_first_run_notice():
@@ -94,14 +123,74 @@ def main(ctx):
     is_flag=True,
     help="[EXPERIMENTAL] Run auto-detection wizard to find and configure agents",
 )
-@track_command("init")
-def init(dir: str, interactive: bool, wizard: bool):
+@click.option(
+    "--ci",
+    is_flag=True,
+    help="Generate a GitHub Actions workflow for running EvalView in CI.",
+)
+@track_command("init", lambda **kw: {"ci": kw.get("ci", False)})
+def init(dir: str, interactive: bool, wizard: bool, ci: bool):
     """Initialize EvalView in the current directory."""
+    if ci:
+        _init_ci_workflow(dir)
+        return
+
     if wizard:
         asyncio.run(_init_wizard_async(dir))
         return
 
     _init_standard(dir, interactive)
+
+
+def _init_ci_workflow(dir: str):
+    """Generate a GitHub Actions workflow for EvalView."""
+    base_path = Path(dir)
+    workflow_dir = base_path / ".github" / "workflows"
+    workflow_file = workflow_dir / "evalview.yml"
+
+    if workflow_file.exists():
+        console.print(f"[yellow]Workflow already exists: {workflow_file}[/yellow]")
+        console.print("[dim]Delete it first if you want to regenerate.[/dim]\n")
+        return
+
+    workflow_dir.mkdir(parents=True, exist_ok=True)
+
+    workflow_content = """name: Agent Health Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  evalview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install EvalView
+        run: pip install evalview
+
+      - name: Check agent health
+        run: evalview run --diff --save-golden
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+"""
+
+    workflow_file.write_text(workflow_content)
+
+    console.print("[green]✓ GitHub Actions workflow created[/green]")
+    console.print(f"  {workflow_file}\n")
+    console.print("[dim]Next steps:[/dim]")
+    console.print("[dim]  1. Add OPENAI_API_KEY to your repo secrets (optional — works without it)[/dim]")
+    console.print("[dim]  2. Commit and push to trigger the workflow[/dim]")
+    console.print("[dim]  3. EvalView will check agent health on every PR[/dim]\n")
 
 
 def _init_standard(dir: str, interactive: bool):
@@ -738,9 +827,9 @@ model:
             console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
             console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
             if failed == 0:
-                console.print(f"[bold cyan]║[/bold cyan]  [bold green]✓ ALL TESTS PASSED[/bold green]                                            [bold cyan]║[/bold cyan]")
+                console.print(f"[bold cyan]║[/bold cyan]  [bold green]✓ AGENT HEALTHY[/bold green]                                               [bold cyan]║[/bold cyan]")
             else:
-                console.print(f"[bold cyan]║[/bold cyan]  [bold yellow]⚠ TESTS COMPLETED WITH FAILURES[/bold yellow]                              [bold cyan]║[/bold cyan]")
+                console.print(f"[bold cyan]║[/bold cyan]  [bold red]✗ REGRESSION DETECTED[/bold red]                                        [bold cyan]║[/bold cyan]")
             console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
             console.print(f"[bold cyan]║[/bold cyan]  [green]✓ Passed:[/green] {passed:<4}  [red]✗ Failed:[/red] {failed:<4}  [dim]Time:[/dim] {final_elapsed}               [bold cyan]║[/bold cyan]")
             console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
@@ -778,13 +867,8 @@ model:
         console.print("  [cyan]evalview expand your-test.yaml --count 100[/cyan]  # Generate variations")
         console.print("  [cyan]evalview record --interactive[/cyan]              # Record live sessions")
 
-        # GitHub star CTA
         console.print()
-        if passed == len(results):
-            console.print("[green]✨ All tests passed![/green] If EvalView saved you time, a star helps others find it:")
-        else:
-            console.print("[dim]⭐ Like EvalView? Star us on GitHub:[/dim]")
-        console.print("   [link=https://github.com/hidai25/eval-view]github.com/hidai25/eval-view[/link]\n")
+        console.print("[dim]⭐ EvalView helped? Star us: [link=https://github.com/hidai25/eval-view]github.com/hidai25/eval-view[/link][/dim]\n")
 
     except Exception as e:
         console.print(f"[red]❌ Tests failed: {e}[/red]")
@@ -1406,6 +1490,12 @@ thresholds:
     is_flag=True,
     help="Check MCP contracts for interface drift before running tests. Fails fast if external servers changed.",
 )
+@click.option(
+    "--save-golden",
+    is_flag=True,
+    default=False,
+    help="Save results as golden baseline if all tests pass.",
+)
 def run(
     path: Optional[str],
     pattern: str,
@@ -1438,6 +1528,7 @@ def run(
     pass_rate: float,
     difficulty: Optional[str],
     contracts: bool,
+    save_golden: bool,
 ):
     """Run test cases against the agent.
 
@@ -2545,9 +2636,9 @@ async def _run_async(
             if execution_errors > 0:
                 console.print(f"[bold cyan]║[/bold cyan]  [bold red]⚠ EXECUTION ERRORS OCCURRED[/bold red]                                  [bold cyan]║[/bold cyan]")
             elif failed == 0:
-                console.print(f"[bold cyan]║[/bold cyan]  [bold green]✓ ALL TESTS PASSED[/bold green]                                            [bold cyan]║[/bold cyan]")
+                console.print(f"[bold cyan]║[/bold cyan]  [bold green]✓ AGENT HEALTHY[/bold green]                                               [bold cyan]║[/bold cyan]")
             else:
-                console.print(f"[bold cyan]║[/bold cyan]  [bold yellow]⚠ TESTS COMPLETED WITH FAILURES[/bold yellow]                              [bold cyan]║[/bold cyan]")
+                console.print(f"[bold cyan]║[/bold cyan]  [bold red]✗ REGRESSION DETECTED[/bold red]                                        [bold cyan]║[/bold cyan]")
             console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
             if execution_errors > 0:
                 console.print(f"[bold cyan]║[/bold cyan]  [green]✓ Passed:[/green] {passed:<4}  [red]✗ Failed:[/red] {failed:<4}  [red]⚠ Errors:[/red] {execution_errors:<4}         [bold cyan]║[/bold cyan]")
@@ -2684,6 +2775,22 @@ async def _run_async(
 
     console.print(f"\n[dim]Results saved to: {results_file}[/dim]\n")
 
+    # Auto-save golden baseline if --save-golden and all tests passed cleanly
+    if save_golden and failed == 0 and execution_errors == 0 and results:
+        try:
+            from evalview.core.golden import GoldenStore
+            store = GoldenStore()
+            saved_count = 0
+            for result in results:
+                if result and result.score > 0:
+                    store.save_golden(result, notes="Auto-saved via --save-golden", source_file=str(results_file))
+                    saved_count += 1
+            if saved_count > 0:
+                console.print(f"[green]Golden baseline saved for {saved_count} test{'s' if saved_count != 1 else ''}.[/green]")
+                console.print("[dim]Future runs with --diff will compare against this baseline.[/dim]\n")
+        except Exception as e:
+            console.print(f"[yellow]Could not save golden baseline: {e}[/yellow]\n")
+
     # Initialize for diff tracking (used by both diff display and diff report)
     diffs_found = []
 
@@ -2812,36 +2919,13 @@ async def _run_async(
         console.print("[dim]💡 Tip: Generate an interactive HTML report:[/dim]")
         console.print("[dim]   evalview run --html-report report.html[/dim]\n")
 
-    # Tip about quick view modes (only if not in summary/coverage mode)
-    if not watch and not summary and not coverage:
-        console.print("[dim]💡 Quick views:[/dim]")
-        console.print("[dim]   evalview run --summary   (deltas + regressions)[/dim]")
-        console.print("[dim]   evalview run --coverage  (behavior coverage)[/dim]\n")
-
-    # Tip about creating test cases
+    # Quick tips (compact, one-line each)
     if not watch and results:
-        console.print("[dim]📝 Create your own test case:[/dim]")
-        console.print("[dim]   1. Create a YAML file (e.g., my-test.yaml):[/dim]")
-        console.print("[dim]   ┌────────────────────────────────────────┐[/dim]")
-        console.print("[dim]   │ name: My Test                         │[/dim]")
-        console.print("[dim]   │ input:                                │[/dim]")
-        console.print("[dim]   │   query: \"Your question here\"        │[/dim]")
-        console.print("[dim]   │ expected:                             │[/dim]")
-        console.print("[dim]   │   output:                             │[/dim]")
-        console.print("[dim]   │     contains: [\"expected\", \"words\"]   │[/dim]")
-        console.print("[dim]   └────────────────────────────────────────┘[/dim]")
-        console.print("[dim]   2. Run it: evalview run my-test.yaml[/dim]")
-        console.print("[dim]   Docs: [link=https://github.com/hidai25/eval-view/blob/main/docs/YAML_SCHEMA.md]docs/YAML_SCHEMA.md[/link][/dim]\n")
-
-    # Tip about test expansion (show after any test run)
-    if not watch and results and test_cases:
-        # Find a test file to use as example
-        if path:
-            test_file = f"{path}/test-case.yaml" if not path.endswith('.yaml') else path
-        else:
-            test_file = "tests/test-cases/your-test.yaml"
-        console.print("[dim]🚀 Generate more tests automatically:[/dim]")
-        console.print(f"[dim]   evalview expand {test_file} --count 20[/dim]\n")
+        if not summary and not coverage:
+            console.print("[dim]Quick views:  evalview run --summary | evalview run --coverage[/dim]")
+        if diff:
+            console.print("[dim]Compare runs: evalview view --run-id <id>[/dim]")
+        console.print()
 
     # --- Exit Code Logic (for CI) ---
     # Exit 2 for execution errors (network, timeout, etc.)
@@ -2911,16 +2995,27 @@ async def _run_async(
             else:
                 console.print(f"\n[bold green]Exit: {exit_code}[/bold green] ({warn_count} warning(s) only)\n")
 
-    # GitHub star CTA (only show when not in watch mode)
+    # Trust-framing summary
     if not watch:
         console.print("[dim]━" * 50 + "[/dim]")
-        if failed == 0 and passed > 0:
-            # All tests passed - stronger CTA
-            console.print("[green]✨ All tests passed![/green] If EvalView saved you time, a star helps others find it:")
-            console.print("   [link=https://github.com/hidai25/eval-view]github.com/hidai25/eval-view[/link]\n")
-        else:
-            console.print("[dim]⭐ Enjoying EvalView? Star us on GitHub:[/dim]")
-            console.print("[dim]   [link=https://github.com/hidai25/eval-view]https://github.com/hidai25/eval-view[/link][/dim]\n")
+        if execution_errors > 0:
+            console.print(f"[bold yellow]{execution_errors} test{'s' if execution_errors != 1 else ''} could not run.[/bold yellow] Check network, timeouts, or agent availability.\n")
+        elif failed == 0 and passed > 0:
+            console.print(f"[bold green]Agent healthy.[/bold green] {passed}/{passed} checks passed. No regressions detected.\n")
+            # Check if golden baselines exist for these tests
+            try:
+                from evalview.core.golden import GoldenStore
+                store = GoldenStore()
+                has_any_golden = any(store.has_golden(r.test_case) for r in results if r)
+                if not has_any_golden:
+                    console.print("[dim]Tip: Save this as your baseline so future runs detect regressions:[/dim]")
+                    console.print(f"[dim]   evalview golden save {results_file}[/dim]\n")
+            except Exception:
+                pass
+        elif failed > 0:
+            console.print(f"[bold red]Regression detected in {failed} test{'s' if failed != 1 else ''}.[/bold red] Review changes before shipping.\n")
+        if passed > 0 or failed > 0:
+            console.print("[dim]⭐ EvalView helped? Star us: [link=https://github.com/hidai25/eval-view]github.com/hidai25/eval-view[/link][/dim]\n")
 
     # Track run command telemetry (non-blocking, in background)
     try:
@@ -3009,12 +3104,14 @@ async def _run_async(
     is_flag=True,
     help="Show detailed information for each test",
 )
+@track_command("list")
 def list(pattern: str, detailed: bool):
     """List all available test cases."""
     asyncio.run(_list_async(pattern, detailed))
 
 
 @main.command()
+@track_command("adapters")
 def adapters():
     """List all available adapters."""
     from rich.table import Table
@@ -3109,6 +3206,7 @@ async def _list_async(pattern: str, detailed: bool):
     type=click.Path(),
     help="Generate HTML report to specified path",
 )
+@track_command("report", lambda **kw: {"html": bool(kw.get("html"))})
 def report(results_file: str, detailed: bool, html: str):
     """Generate report from results file."""
     console.print(f"[blue]Loading results from {results_file}...[/blue]\n")
@@ -3187,6 +3285,7 @@ def report(results_file: str, detailed: bool, html: str):
     is_flag=True,
     help="Show LLM call summary with token/cost breakdown",
 )
+@track_command("view")
 def view(
     run_id: Optional[str],
     test: Optional[str],
@@ -3346,6 +3445,7 @@ def _find_results_file(run_id: str) -> Optional[Path]:
     "--endpoint",
     help="Agent endpoint URL to test (optional - will auto-detect common ones)",
 )
+@track_command("connect")
 def connect(endpoint: str):
     """Test connection to your agent API and auto-configure endpoint."""
     asyncio.run(_connect_async(endpoint))
@@ -3645,6 +3745,7 @@ async def _connect_async(endpoint: Optional[str]):
     type=float,
     help="Request timeout in seconds (default: 30)",
 )
+@track_command("validate_adapter", lambda **kw: {"adapter": kw.get("adapter")})
 def validate_adapter(endpoint: str, adapter: str, query: str, timeout: float):
     """Validate an adapter endpoint and show detailed response analysis."""
     asyncio.run(_validate_adapter_async(endpoint, adapter, query, timeout))
@@ -3778,6 +3879,7 @@ async def _validate_adapter_async(endpoint: str, adapter_type: str, query: str, 
     is_flag=True,
     help="Show detailed execution information",
 )
+@track_command("record")
 def record(query: str, output: str, interactive: bool, verbose: bool):
     """Record agent interactions and generate test cases."""
     asyncio.run(_record_async(query, output, interactive, verbose))
@@ -4026,6 +4128,7 @@ def baseline():
     is_flag=True,
     help="Set baseline from most recent test run",
 )
+@track_command("baseline_set")
 def baseline_set(test: str, from_latest: bool):
     """Set baseline from recent test results."""
     from evalview.tracking import RegressionTracker
@@ -4062,6 +4165,7 @@ def baseline_set(test: str, from_latest: bool):
     "--test",
     help="Specific test name to show baseline for",
 )
+@track_command("baseline_show")
 def baseline_show(test: str):
     """Show current baselines."""
     from evalview.tracking import RegressionTracker
@@ -4130,6 +4234,7 @@ def baseline_show(test: str):
     help="Specific test name to clear baseline for",
 )
 @click.confirmation_option(prompt="Are you sure you want to clear baselines?")
+@track_command("baseline_clear")
 def baseline_clear(test: str):
     """Clear baselines."""
     from evalview.tracking import RegressionTracker
@@ -4154,6 +4259,7 @@ def baseline_clear(test: str):
     "--test",
     help="Specific test name to show trends for",
 )
+@track_command("trends")
 def trends(days: int, test: str):
     """Show performance trends over time."""
     from evalview.tracking import RegressionTracker
@@ -4268,6 +4374,7 @@ def trends(days: int, test: str):
     is_flag=True,
     help="Preview generated tests without saving",
 )
+@track_command("expand", lambda **kw: {"count": kw.get("count"), "edge_cases": kw.get("edge_cases")})
 def expand(test_file: str, count: int, output_dir: str, edge_cases: bool, focus: str, dry_run: bool):
     """Expand a test case into variations using LLM.
 
@@ -4407,6 +4514,7 @@ async def _expand_async(
 
 
 @main.command()
+@track_command("demo")
 def demo():
     """🎬 See EvalView catch agent regressions (no API keys needed)."""
     import time as time_module
@@ -4611,6 +4719,7 @@ def demo():
 @click.option("--query", help="Query to use in the test")
 @click.option("--list", "list_patterns", is_flag=True, help="List available patterns")
 @click.option("--output", "-o", help="Output file path (default: tests/<pattern>.yaml)")
+@track_command("add")
 def add(pattern: Optional[str], tool: Optional[str], query: Optional[str], list_patterns: bool, output: Optional[str]):
     """Add a test pattern to your project.
 
@@ -4731,6 +4840,7 @@ def add(pattern: Optional[str], tool: Optional[str], query: Optional[str], list_
 @main.command()
 @click.argument("provider", required=False, type=click.Choice(["openai", "anthropic", "gemini", "grok", "ollama"]))
 @click.argument("model", required=False)
+@track_command("judge", lambda **kw: {"provider": kw.get("provider")})
 def judge(provider: Optional[str], model: Optional[str]):
     """Set the LLM-as-judge provider and model.
 
@@ -4808,6 +4918,7 @@ def skill():
 @click.option("--strict", is_flag=True, help="Treat warnings as errors")
 @click.option("--verbose", "-v", is_flag=True, help="Show INFO suggestions")
 @click.option("--json", "output_json", is_flag=True, help="Output as JSON")
+@track_command("skill_validate", lambda **kw: {"strict": kw.get("strict"), "recursive": kw.get("recursive")})
 def skill_validate(path: str, recursive: bool, strict: bool, verbose: bool, output_json: bool):
     """Validate Claude Code skill(s).
 
@@ -4951,6 +5062,7 @@ def skill_validate(path: str, recursive: bool, strict: bool, verbose: bool, outp
 @skill.command("list")
 @click.argument("path", type=click.Path(exists=True), default=".")
 @click.option("--recursive", "-r", is_flag=True, default=True, help="Search subdirectories")
+@track_command("skill_list")
 def skill_list(path: str, recursive: bool):
     """List all skills in a directory.
 
@@ -4991,6 +5103,7 @@ def skill_list(path: str, recursive: bool):
 @skill.command("doctor")
 @click.argument("path", type=click.Path(exists=True), default=".")
 @click.option("--recursive", "-r", is_flag=True, default=True, help="Search subdirectories")
+@track_command("skill_doctor")
 def skill_doctor(path: str, recursive: bool):
     """Diagnose skill issues that cause Claude Code problems.
 
@@ -5513,6 +5626,7 @@ def _run_agent_skill_test(
     default=None,
     help="Maximum conversation turns (default: 10)"
 )
+@track_command("skill_test", lambda **kw: {"agent": kw.get("agent"), "no_rubric": kw.get("no_rubric")})
 def skill_test(
     test_file: str,
     model: str,
@@ -5934,6 +6048,7 @@ def golden_save(result_file: str, notes: str, test: str):
 
 
 @golden.command("list")
+@track_command("golden_list")
 def golden_list():
     """List all golden traces.
 
@@ -5965,6 +6080,7 @@ def golden_list():
 @golden.command("delete")
 @click.argument("test_name")
 @click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+@track_command("golden_delete")
 def golden_delete(test_name: str, force: bool):
     """Delete a golden trace.
 
@@ -5989,6 +6105,7 @@ def golden_delete(test_name: str, force: bool):
 
 @golden.command("show")
 @click.argument("test_name")
+@track_command("golden_show")
 def golden_show(test_name: str):
     """Show details of a golden trace.
 
@@ -6325,6 +6442,7 @@ def mcp_show(name: str):
 @click.option("--demo_2", is_flag=True, help="Run 'instant action' demo")
 @click.option("--demo_3", is_flag=True, help="Run 'cost explosion' demo")
 @click.option("--demo_chat", is_flag=True, help="Run 'interactive chat' demo")
+@track_command("chat", lambda **kw: {"provider": kw.get("provider"), "is_demo": any([kw.get("demo_1"), kw.get("demo_2"), kw.get("demo_3"), kw.get("demo_chat")])})
 def chat(provider: str, model: str, judge_model: str, judge_provider: str, demo_1: bool, demo_2: bool, demo_3: bool, demo_chat: bool):
     """Interactive chat interface for EvalView.
 
@@ -6368,6 +6486,7 @@ def chat(provider: str, model: str, judge_model: str, judge_provider: str, demo_
 @click.option("--output", "-o", type=click.Path(), help="Save trace to file (JSONL format)")
 @click.argument("script", type=click.Path(exists=True))
 @click.argument("script_args", nargs=-1)
+@track_command("trace")
 def trace_cmd(output: Optional[str], script: str, script_args: tuple):
     """Trace LLM calls in any Python script.
 
@@ -6426,6 +6545,7 @@ def traces():
 @click.option("--last-7d", "last_7d", is_flag=True, help="Show traces from last 7 days")
 @click.option("--source", type=click.Choice(["eval", "trace_cmd"]), help="Filter by source")
 @click.option("--limit", "-n", default=20, help="Max traces to show (default: 20)")
+@track_command("traces_list")
 def traces_list(last_24h: bool, last_7d: bool, source: Optional[str], limit: int):
     """List recent traces."""
     from evalview.storage import TraceDB
@@ -6486,6 +6606,7 @@ def traces_list(last_24h: bool, last_7d: bool, source: Optional[str], limit: int
 @traces.command("show")
 @click.argument("trace_id")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+@track_command("traces_show")
 def traces_show(trace_id: str, as_json: bool):
     """Show details of a specific trace."""
     import json as json_module
@@ -6568,6 +6689,7 @@ def traces_show(trace_id: str, as_json: bool):
 @click.option("--last-7d", "last_7d", is_flag=True, default=True, help="Report for last 7 days (default)")
 @click.option("--last-30d", "last_30d", is_flag=True, help="Report for last 30 days")
 @click.option("--by-model", "by_model", is_flag=True, help="Show breakdown by model")
+@track_command("traces_cost_report")
 def traces_cost_report(last_7d: bool, last_30d: bool, by_model: bool):
     """Show cost report for recent traces."""
     from evalview.storage import TraceDB
@@ -6661,6 +6783,7 @@ def traces_cost_report(last_7d: bool, last_30d: bool, by_model: bool):
 @click.argument("trace_id")
 @click.option("--json", "as_json", is_flag=True, help="Export as JSON instead of HTML")
 @click.option("-o", "--output", "output_path", help="Output file path")
+@track_command("traces_export")
 def traces_export(trace_id: str, as_json: bool, output_path: Optional[str]):
     """Export a trace to HTML or JSON.
 
@@ -6752,16 +6875,21 @@ def telemetry_status():
     console.print(f"[yellow]Install ID:[/yellow] [dim]{config.install_id}[/dim]")
     console.print()
     console.print("[dim]What we collect:[/dim]")
-    console.print("  • Command name (run, init, etc.)")
+    console.print("  • Command name (run, init, chat, skill_test, etc.)")
     console.print("  • Adapter type (langgraph, crewai, etc.)")
     console.print("  • Test count, pass/fail count")
     console.print("  • OS + Python version")
+    console.print("  • CI environment (github_actions, gitlab_ci, or local)")
+    console.print("  • Chat session: provider, model name, message count, slash commands used")
+    console.print("  • Skill commands: agent type, validation mode")
+    console.print("  • Golden trace operations (save, list, delete)")
     console.print()
     console.print("[dim]What we DON'T collect:[/dim]")
     console.print("  • API keys or credentials")
-    console.print("  • Test content or queries")
+    console.print("  • Test content, queries, or outputs")
     console.print("  • File paths or IP addresses")
     console.print("  • Error messages (only error class name)")
+    console.print("  • Chat conversation content")
     console.print()
 
 
@@ -6831,6 +6959,7 @@ def ci():
     default=True,
     help="Update existing comment instead of creating new one (default: True)",
 )
+@track_command("ci_comment", lambda **kw: {"dry_run": kw.get("dry_run")})
 def ci_comment(results: Optional[str], dry_run: bool, update: bool):
     """Post test results as a PR comment.
 

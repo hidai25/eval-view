@@ -3,11 +3,39 @@
 All events are anonymous and contain no PII or sensitive data.
 """
 
+import os
 import platform
 import sys
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from typing import Optional, Dict, Any
+
+
+def _detect_ci_environment() -> str:
+    """Detect if running in CI and which provider.
+
+    Returns 'local' if not in CI, otherwise the CI provider name.
+    """
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        return "github_actions"
+    if os.environ.get("GITLAB_CI"):
+        return "gitlab_ci"
+    if os.environ.get("CIRCLECI"):
+        return "circleci"
+    if os.environ.get("JENKINS_URL"):
+        return "jenkins"
+    if os.environ.get("BUILDKITE"):
+        return "buildkite"
+    if os.environ.get("TRAVIS"):
+        return "travis"
+    if os.environ.get("BITBUCKET_BUILD_NUMBER"):
+        return "bitbucket"
+    if os.environ.get("AZURE_PIPELINES") or os.environ.get("TF_BUILD"):
+        return "azure_devops"
+    # Generic CI detection (many CI systems set CI=true)
+    if os.environ.get("CI", "").lower() in ("true", "1", "yes"):
+        return "unknown_ci"
+    return "local"
 
 
 def _get_os_info() -> str:
@@ -41,6 +69,7 @@ class BaseEvent:
     timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
     os_info: str = field(default_factory=_get_os_info)
     python_version: str = field(default_factory=_get_python_version)
+    ci_environment: str = field(default_factory=_detect_ci_environment)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for sending."""
@@ -75,6 +104,18 @@ class RunEvent(BaseEvent):
     diff_mode: bool = False
     watch_mode: bool = False
     parallel: bool = False
+
+
+@dataclass
+class ChatEvent(BaseEvent):
+    """Event for chat session tracking."""
+
+    event_type: str = "chat_session"
+    provider: str = ""  # e.g., "ollama", "openai", "anthropic"
+    model: str = ""  # e.g., "llama3.2", "gpt-4o" (model name only, no keys)
+    message_count: int = 0
+    slash_commands_used: Dict[str, int] = field(default_factory=dict)  # e.g., {"/run": 3, "/trace": 1}
+    duration_ms: Optional[float] = None
 
 
 @dataclass

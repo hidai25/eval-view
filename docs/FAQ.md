@@ -63,7 +63,7 @@ checks:
 ```
 
 ### Can I test Claude Code skills?
-Yes. Use `evalview skill validate` for structure checks and `evalview skill test` for behavior tests. See [Skills Testing](SKILLS_TESTING.md).
+Yes. Use `evalview skill validate` for structure checks and `evalview skill test` for behavior tests. See [Advanced: Skills Testing](SKILLS_TESTING.md).
 
 ### Does EvalView work with OpenAI Codex CLI skills?
 Yes. Codex CLI uses the same SKILL.md format as Claude Code. Your tests work for both.

@@ -12,6 +12,7 @@ import re
 import subprocess
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, AsyncGenerator
 
@@ -1117,6 +1118,32 @@ async def run_chat(
         })
     )
 
+    # Telemetry: track chat session metrics
+    _chat_message_count = 0
+    _chat_slash_commands: Counter = Counter()
+    _chat_start_time = time.perf_counter()
+
+    def _send_chat_telemetry():
+        """Send chat session telemetry event on exit."""
+        try:
+            from evalview.telemetry.config import is_telemetry_enabled
+            from evalview.telemetry.events import ChatEvent
+            from evalview.telemetry.client import get_client
+
+            if not is_telemetry_enabled():
+                return
+            duration_ms = (time.perf_counter() - _chat_start_time) * 1000
+            event = ChatEvent(
+                provider=llm_provider.value if llm_provider else "",
+                model=session.model or "",
+                message_count=_chat_message_count,
+                slash_commands_used=dict(_chat_slash_commands),
+                duration_ms=duration_ms,
+            )
+            get_client().track(event)
+        except Exception:
+            pass  # Telemetry errors should never break functionality
+
     while True:
         try:
             # Format current directory for the prompt
@@ -1214,6 +1241,12 @@ async def run_chat(
                     console.file.write("\033[F\033[K")
                 continue
 
+            # Telemetry: count messages and slash commands
+            _chat_message_count += 1
+            if user_input.strip().startswith("/"):
+                _cmd = user_input.strip().split()[0].lower()
+                _chat_slash_commands[_cmd] += 1
+
             # Clear the incomplete box
             lines_to_clear = 5 + user_input.count('\n')
             for _ in range(lines_to_clear):
@@ -1239,6 +1272,7 @@ async def run_chat(
 
             if user_input.lower() in ("exit", "quit", "q", "/exit", "/quit"):
                 console.print("\n[dim]Goodbye![/dim]")
+                _send_chat_telemetry()
                 break
             
             if user_input.lower() in ("help", "/help"):
@@ -2583,6 +2617,7 @@ async def run_chat(
             continue
         except EOFError:
             console.print("\n[dim]Goodbye![/dim]")
+            _send_chat_telemetry()
             break
         except Exception as e:
             console.print(f"[red]Error: {e}[/red]\n")
