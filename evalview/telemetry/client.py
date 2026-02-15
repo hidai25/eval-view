@@ -47,8 +47,14 @@ class TelemetryClient:
 
         try:
             install_id = get_install_id()
-            # Use command_name as event name if available, otherwise fall back to event_type
-            event_name = getattr(event, "command_name", None) or event.event_type
+            # Determine event name:
+            # - ErrorEvent always uses "error" to allow filtering all errors
+            # - Other events use command_name if available, otherwise event_type
+            if event.event_type == "error":
+                event_name = "error"
+            else:
+                event_name = getattr(event, "command_name", None) or event.event_type
+
             self._posthog.capture(
                 distinct_id=install_id,
                 event=event_name,

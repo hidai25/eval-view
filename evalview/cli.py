@@ -1,9 +1,12 @@
 """CLI entry point for EvalView."""
 
 import asyncio
+import json
 import os
 import re
 import sys
+import threading
+import time
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
@@ -12,6 +15,9 @@ import httpx
 import yaml
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.live import Live
+from rich.table import Table
+from rich.panel import Panel
 from dotenv import load_dotenv
 
 from evalview.core.loader import TestCaseLoader
@@ -42,6 +48,22 @@ from evalview.telemetry.config import (
     TELEMETRY_DISABLED_ENV,
 )
 from evalview.telemetry.decorators import track_command, track_run_command
+
+# Skills module imports
+from evalview.skills.constants import (
+    CLAUDE_CODE_CHAR_BUDGET,
+    AVG_CHARS_PER_SKILL,
+    SCORE_THRESHOLD_HIGH,
+    SCORE_THRESHOLD_MEDIUM,
+    TRUNCATE_OUTPUT_SHORT,
+    TRUNCATE_OUTPUT_MEDIUM,
+    TRUNCATE_OUTPUT_LONG,
+    CHAR_BUDGET_WARNING_PCT,
+    CHAR_BUDGET_CRITICAL_PCT,
+    MAX_DESCRIPTION_LENGTH,
+    MAX_PREVIEW_LINES,
+)
+from evalview.skills.ui_utils import print_evalview_banner, format_elapsed_time
 
 # Load environment variables (.env is the OSS standard, .env.local for overrides)
 load_dotenv()  # Loads .env by default
@@ -3052,6 +3074,7 @@ async def _run_async(
 
             # Re-run the full test suite (simplified re-execution)
             await _run_async(
+                path=path,
                 pattern=pattern,
                 test=test,
                 filter=filter,
@@ -4920,7 +4943,7 @@ def skill():
 @click.option("--verbose", "-v", is_flag=True, help="Show INFO suggestions")
 @click.option("--json", "output_json", is_flag=True, help="Output as JSON")
 @track_command("skill_validate", lambda **kw: {"strict": kw.get("strict"), "recursive": kw.get("recursive")})
-def skill_validate(path: str, recursive: bool, strict: bool, verbose: bool, output_json: bool):
+def skill_validate(path: str, recursive: bool, strict: bool, verbose: bool, output_json: bool) -> None:
     """Validate Claude Code skill(s).
 
     Validates SKILL.md files for:
@@ -4929,13 +4952,19 @@ def skill_validate(path: str, recursive: bool, strict: bool, verbose: bool, outp
     - Policy compliance
     - Best practices
 
+    Args:
+        path: Path to SKILL.md file or directory
+        recursive: Search subdirectories for SKILL.md files
+        strict: Treat warnings as errors
+        verbose: Show INFO-level suggestions
+        output_json: Output results as JSON
+
     Examples:
         evalview skill validate ./my-skill/SKILL.md
         evalview skill validate ./skills/ --recursive
         evalview skill validate ./SKILL.md --strict
         evalview skill validate ./skills/ -rv  # verbose with suggestions
     """
-    import json
     from pathlib import Path as PathLib
     from evalview.skills import SkillValidator, SkillParser
 
@@ -4956,7 +4985,6 @@ def skill_validate(path: str, recursive: bool, strict: bool, verbose: bool, outp
             return
 
     # Validate each file with timing
-    import time
     start_time = time.time()
 
     results = {}
@@ -4999,18 +5027,7 @@ def skill_validate(path: str, recursive: bool, strict: bool, verbose: bool, outp
         return
 
     # Rich console output with EvalView banner
-    console.print()
-    console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗██╗   ██╗ █████╗ ██╗    ██╗   ██╗██╗███████╗██╗    ██╗[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔════╝██║   ██║██╔══██╗██║    ██║   ██║██║██╔════╝██║    ██║[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]█████╗  ██║   ██║███████║██║    ██║   ██║██║█████╗  ██║ █╗ ██║[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔══╝  ╚██╗ ██╔╝██╔══██║██║    ╚██╗ ██╔╝██║██╔══╝  ██║███╗██║[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗ ╚████╔╝ ██║  ██║███████╗╚████╔╝ ██║███████╗╚███╔███╔╝[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]╚══════╝  ╚═══╝  ╚═╝  ╚═╝╚══════╝ ╚═══╝  ╚═╝╚══════╝ ╚══╝╚══╝ [/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]        [dim]Catch agent regressions before you ship[/dim]               [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
-    console.print()
+    print_evalview_banner(console, subtitle="[dim]Catch agent regressions before you ship[/dim]")
     console.print("[dim]Validating against official Anthropic spec...[/dim]")
     console.print()
 
@@ -5064,8 +5081,12 @@ def skill_validate(path: str, recursive: bool, strict: bool, verbose: bool, outp
 @click.argument("path", type=click.Path(exists=True), default=".")
 @click.option("--recursive", "-r", is_flag=True, default=True, help="Search subdirectories")
 @track_command("skill_list")
-def skill_list(path: str, recursive: bool):
+def skill_list(path: str, recursive: bool) -> None:
     """List all skills in a directory.
+
+    Args:
+        path: Directory path to search for skills
+        recursive: Search subdirectories
 
     Examples:
         evalview skill list
@@ -5089,7 +5110,12 @@ def skill_list(path: str, recursive: bool):
 
         if result.skill:
             console.print(f"  {status} [bold]{result.skill.metadata.name}[/bold]")
-            console.print(f"      [dim]{result.skill.metadata.description[:60]}...[/dim]" if len(result.skill.metadata.description) > 60 else f"      [dim]{result.skill.metadata.description}[/dim]")
+            # Use constant for max description length
+            desc = result.skill.metadata.description
+            if len(desc) > MAX_DESCRIPTION_LENGTH:
+                console.print(f"      [dim]{desc[:MAX_DESCRIPTION_LENGTH]}...[/dim]")
+            else:
+                console.print(f"      [dim]{desc}[/dim]")
             console.print(f"      [dim]{file_path}[/dim]")
         else:
             console.print(f"  {status} [red]{file_path}[/red]")
@@ -5105,7 +5131,7 @@ def skill_list(path: str, recursive: bool):
 @click.argument("path", type=click.Path(exists=True), default=".")
 @click.option("--recursive", "-r", is_flag=True, default=True, help="Search subdirectories")
 @track_command("skill_doctor")
-def skill_doctor(path: str, recursive: bool):
+def skill_doctor(path: str, recursive: bool) -> None:
     """Diagnose skill issues that cause Claude Code problems.
 
     Checks for common issues:
@@ -5114,18 +5140,19 @@ def skill_doctor(path: str, recursive: bool):
     - Invalid skills
     - Multi-line descriptions that break formatters
 
+    Args:
+        path: Directory path to search for skills
+        recursive: Search subdirectories
+
     Examples:
         evalview skill doctor ~/.claude/skills/
         evalview skill doctor .claude/skills/
         evalview skill doctor ./my-skills/ -r
     """
-    import time
     from pathlib import Path as PathLib
-    from rich.panel import Panel
     from evalview.skills import SkillParser, SkillValidator
 
     start_time = time.time()
-    CHAR_BUDGET = 15000  # Claude Code's default limit
 
     files = SkillParser.find_skills(path, recursive=recursive)
 
@@ -5195,29 +5222,18 @@ def skill_doctor(path: str, recursive: bool):
     duplicates = {name: paths for name, paths in names_seen.items() if len(paths) > 1}
 
     # Output report
-    console.print()
-    console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗██╗   ██╗ █████╗ ██╗    ██╗   ██╗██╗███████╗██╗    ██╗[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔════╝██║   ██║██╔══██╗██║    ██║   ██║██║██╔════╝██║    ██║[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]█████╗  ██║   ██║███████║██║    ██║   ██║██║█████╗  ██║ █╗ ██║[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔══╝  ╚██╗ ██╔╝██╔══██║██║    ╚██╗ ██╔╝██║██╔══╝  ██║███╗██║[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗ ╚████╔╝ ██║  ██║███████╗╚████╔╝ ██║███████╗╚███╔███╔╝[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]╚══════╝  ╚═══╝  ╚═╝  ╚═╝╚══════╝ ╚═══╝  ╚═╝╚══════╝ ╚══╝╚══╝ [/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]           [dim]Skill Doctor - Diagnose Claude Code Issues[/dim]           [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
-    console.print()
+    print_evalview_banner(console, subtitle="[dim]Skill Doctor - Diagnose Claude Code Issues[/dim]")
 
     # Character budget check
-    budget_pct = (total_desc_chars / CHAR_BUDGET) * 100
-    skills_over = max(0, int((total_desc_chars - CHAR_BUDGET) / 500))  # Estimate skills ignored
+    budget_pct = (total_desc_chars / CLAUDE_CODE_CHAR_BUDGET) * 100
+    skills_over = max(0, int((total_desc_chars - CLAUDE_CODE_CHAR_BUDGET) / AVG_CHARS_PER_SKILL))
 
-    if budget_pct > 100:
+    if budget_pct > CHAR_BUDGET_CRITICAL_PCT:
         console.print(f"[bold red]⚠️  Character Budget: {budget_pct:.0f}% OVER - Claude is ignoring ~{skills_over} of your {len(files)} skills[/bold red]")
-    elif budget_pct > 75:
+    elif budget_pct > CHAR_BUDGET_WARNING_PCT:
         console.print(f"[bold yellow]⚠️  Character Budget: {budget_pct:.0f}% - approaching limit[/bold yellow]")
     else:
-        console.print(f"[bold green]✓ Character Budget: {budget_pct:.0f}% ({total_desc_chars:,} / {CHAR_BUDGET:,} chars)[/bold green]")
+        console.print(f"[bold green]✓ Character Budget: {budget_pct:.0f}% ({total_desc_chars:,} / {CLAUDE_CODE_CHAR_BUDGET:,} chars)[/bold green]")
     console.print(f"[bold]Total Skills:[/bold]      {len(files)}")
     console.print(f"[bold]Valid:[/bold]             [green]{len(files) - invalid_count}[/green]")
     console.print(f"[bold]Invalid:[/bold]           [red]{invalid_count}[/red]")
@@ -5228,11 +5244,11 @@ def skill_doctor(path: str, recursive: bool):
     # Show issues
     has_issues = False
 
-    if budget_pct > 100:
+    if budget_pct > CHAR_BUDGET_CRITICAL_PCT:
         has_issues = True
         console.print("[bold red]ISSUE: Character budget exceeded[/bold red]")
         console.print("  Claude Code won't see all your skills.")
-        console.print("  [dim]Fix: Set SLASH_COMMAND_TOOL_CHAR_BUDGET=30000 or reduce descriptions[/dim]")
+        console.print(f"  [dim]Fix: Set SLASH_COMMAND_TOOL_CHAR_BUDGET={CLAUDE_CODE_CHAR_BUDGET * 2} or reduce descriptions[/dim]")
         console.print()
 
     if duplicates:
