@@ -198,7 +198,7 @@ def run_async_with_spinner(
     """
     start_time = time.time()
     spinner_idx = [0]  # Use list to allow modification in nested function
-    result_holder = {"result": None, "error": None}
+    result_holder: dict[str, Any] = {"result": None, "error": None}
 
     def format_elapsed() -> str:
         """Format elapsed time as MM:SS.mmm."""
