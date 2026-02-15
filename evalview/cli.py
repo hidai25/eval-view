@@ -1554,7 +1554,7 @@ def run(
         adapter_override=adapter, diff=diff, diff_report=diff_report,
         fail_on=fail_on, warn_on=warn_on, trace=trace, trace_out=trace_out,
         runs=runs, pass_rate=pass_rate, difficulty_filter=difficulty,
-        contracts=contracts,
+        contracts=contracts, save_golden=save_golden,
     ))
 
 
@@ -1587,6 +1587,7 @@ async def _run_async(
     pass_rate: float = 0.8,
     difficulty_filter: Optional[str] = None,
     contracts: bool = False,
+    save_golden: bool = False,
 ):
     """Async implementation of run command."""
     import fnmatch
