@@ -51,7 +51,7 @@ console = Console()
 
 
 @click.group(context_settings={"allow_interspersed_args": False})
-@click.version_option(version="0.1.7")
+@click.version_option(version="0.2.5")
 @click.pass_context
 def main(ctx):
     """EvalView — Proof that your agent still works.
