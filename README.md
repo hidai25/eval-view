@@ -7,20 +7,28 @@
   <img src="assets/demo.gif" alt="EvalView Demo" width="700">
 </p>
 
+<p align="center">
+
 ```bash
 pip install evalview && evalview demo   # No API key needed
 ```
 
-[![PyPI downloads](https://img.shields.io/pypi/dm/evalview.svg?label=downloads)](https://pypi.org/project/evalview/)
-[![GitHub stars](https://img.shields.io/github/stars/hidai25/eval-view?style=social)](https://github.com/hidai25/eval-view/stargazers)
-[![CI](https://github.com/hidai25/eval-view/actions/workflows/ci.yml/badge.svg)](https://github.com/hidai25/eval-view/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+</p>
 
-**Like it?** Give us a ⭐ — it helps more devs discover EvalView.
+<p align="center">
+  <a href="https://pypi.org/project/evalview/"><img src="https://img.shields.io/pypi/dm/evalview.svg?label=downloads" alt="PyPI downloads"></a>
+  <a href="https://github.com/hidai25/eval-view/stargazers"><img src="https://img.shields.io/github/stars/hidai25/eval-view?style=social" alt="GitHub stars"></a>
+  <a href="https://github.com/hidai25/eval-view/actions/workflows/ci.yml"><img src="https://github.com/hidai25/eval-view/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
+</p>
+
+<p align="center">
+  🌟 <strong>Like it?</strong> Give us a ⭐ — it helps more devs discover EvalView.
+</p>
 
 ---
 
-## What EvalView Catches
+## 🔍 What EvalView Catches
 
 | Status | What it means | What you do |
 |--------|--------------|-------------|
@@ -31,7 +39,7 @@ pip install evalview && evalview demo   # No API key needed
 
 ---
 
-## How It Works
+## 🤔 How It Works
 
 ```
 1. Your agent works correctly
@@ -50,34 +58,50 @@ That's it. **Deterministic proof, no LLM-as-judge required, no API keys needed.*
 
 ---
 
-## Quick Start
+## 🚀 Quick Start
 
-```bash
-pip install evalview
-evalview quickstart                 # Working example in 2 minutes
-```
+1. **Install EvalView**
 
-Or try the demo first (zero setup):
-```bash
-evalview demo                       # See regression detection in action
-```
+    ```bash
+    pip install evalview
+    ```
 
-**Want LLM-as-judge scoring too?**
-```bash
-export OPENAI_API_KEY='your-key'
-evalview run                        # Adds output quality scoring
-```
+2. **Try the demo** (zero setup, no API key)
 
-**Prefer local/free evaluation?**
-```bash
-evalview run --judge-provider ollama --judge-model llama3.2
-```
+    ```bash
+    evalview demo
+    ```
+
+3. **Set up a working example** in 2 minutes
+
+    ```bash
+    evalview quickstart
+    ```
+
+4. **Want LLM-as-judge scoring too?**
+
+    ```bash
+    export OPENAI_API_KEY='your-key'
+    evalview run
+    ```
+
+5. **Prefer local/free evaluation?**
+
+    ```bash
+    evalview run --judge-provider ollama --judge-model llama3.2
+    ```
 
 [Full getting started guide →](docs/GETTING_STARTED.md)
 
 ---
 
-## Why EvalView?
+## 💡 Why EvalView?
+
+- 🔄 **Automatic regression detection** — Know instantly when your agent breaks
+- 📸 **Golden baseline diffing** — Save known-good behavior, compare every change
+- 🔑 **Works without API keys** — Deterministic scoring, no LLM-as-judge needed
+- 💸 **Free & open source** — No vendor lock-in, no SaaS pricing
+- 🏠 **Works offline** — Use Ollama for fully local evaluation
 
 |  | Observability (LangSmith) | Benchmarks (Braintrust) | **EvalView** |
 |---|:---:|:---:|:---:|
@@ -92,9 +116,9 @@ evalview run --judge-provider ollama --judge-model llama3.2
 
 ---
 
-## Explore & Learn
+## 🧭 Explore & Learn
 
-### Interactive Chat
+### 💬 Interactive Chat
 
 Talk to your tests. Debug failures. Compare runs.
 
@@ -117,7 +141,7 @@ Slash commands: `/run`, `/test`, `/compare`, `/traces`, `/skill`, `/adapters`
 
 [Chat mode docs →](docs/CHAT_MODE.md)
 
-### EvalView Gym
+### 🏋️ EvalView Gym
 
 Practice agent eval patterns with guided exercises.
 
@@ -127,7 +151,24 @@ evalview gym
 
 ---
 
-## Automate It
+## ⚡ Supported Agents & Frameworks
+
+| Agent | E2E Testing | Trace Capture |
+|-------|:-----------:|:-------------:|
+| **Claude Code** | ✅ | ✅ |
+| **OpenAI Codex** | ✅ | ✅ |
+| **LangGraph** | ✅ | ✅ |
+| **CrewAI** | ✅ | ✅ |
+| **OpenAI Assistants** | ✅ | ✅ |
+| **Custom (any CLI/API)** | ✅ | ✅ |
+
+Also works with: AutoGen • Dify • Ollama • HuggingFace • Any HTTP API
+
+[Compatibility details →](docs/FRAMEWORK_SUPPORT.md)
+
+---
+
+## 🔧 Automate It
 
 ### GitHub Actions
 
@@ -166,41 +207,24 @@ PRs with regressions get blocked. Add a PR comment showing exactly what changed:
 
 ---
 
-## Supported Agents & Frameworks
-
-| Agent | E2E Testing | Trace Capture |
-|-------|:-----------:|:-------------:|
-| **Claude Code** | ✅ | ✅ |
-| **OpenAI Codex** | ✅ | ✅ |
-| **LangGraph** | ✅ | ✅ |
-| **CrewAI** | ✅ | ✅ |
-| **OpenAI Assistants** | ✅ | ✅ |
-| **Custom (any CLI/API)** | ✅ | ✅ |
-
-Also works with: AutoGen • Dify • Ollama • HuggingFace • Any HTTP API
-
-[Compatibility details →](docs/FRAMEWORK_SUPPORT.md)
-
----
-
-## Features
+## 📦 Features
 
 | Feature | Description | Docs |
 |---------|-------------|------|
-| **Golden Traces** | Save baselines, detect regressions with `--diff` | [→](docs/GOLDEN_TRACES.md) |
-| **Chat Mode** | AI assistant: `/run`, `/test`, `/compare` | [→](docs/CHAT_MODE.md) |
-| **Tool Categories** | Match by intent, not exact tool names | [→](docs/TOOL_CATEGORIES.md) |
-| **Statistical Mode** | Handle flaky LLMs with `--runs N` and pass@k | [→](docs/STATISTICAL_MODE.md) |
-| **Cost & Latency** | Automatic threshold enforcement | [→](docs/EVALUATION_METRICS.md) |
-| **HTML Reports** | Interactive Plotly charts | [→](docs/CLI_REFERENCE.md) |
-| **Test Generation** | Generate 1000 tests from 1 | [→](docs/TEST_GENERATION.md) |
-| **Suite Types** | Separate capability vs regression tests | [→](docs/SUITE_TYPES.md) |
-| **Difficulty Levels** | Filter by `--difficulty hard`, benchmark by tier | [→](docs/STATISTICAL_MODE.md) |
-| **Behavior Coverage** | Track tasks, tools, paths tested | [→](docs/BEHAVIOR_COVERAGE.md) |
+| 📸 **Golden Traces** | Save baselines, detect regressions with `--diff` | [→](docs/GOLDEN_TRACES.md) |
+| 💬 **Chat Mode** | AI assistant: `/run`, `/test`, `/compare` | [→](docs/CHAT_MODE.md) |
+| 🏷️ **Tool Categories** | Match by intent, not exact tool names | [→](docs/TOOL_CATEGORIES.md) |
+| 📊 **Statistical Mode** | Handle flaky LLMs with `--runs N` and pass@k | [→](docs/STATISTICAL_MODE.md) |
+| 💰 **Cost & Latency** | Automatic threshold enforcement | [→](docs/EVALUATION_METRICS.md) |
+| 📈 **HTML Reports** | Interactive Plotly charts | [→](docs/CLI_REFERENCE.md) |
+| 🧪 **Test Generation** | Generate 1000 tests from 1 | [→](docs/TEST_GENERATION.md) |
+| 🏗️ **Suite Types** | Separate capability vs regression tests | [→](docs/SUITE_TYPES.md) |
+| 🎯 **Difficulty Levels** | Filter by `--difficulty hard`, benchmark by tier | [→](docs/STATISTICAL_MODE.md) |
+| 🔬 **Behavior Coverage** | Track tasks, tools, paths tested | [→](docs/BEHAVIOR_COVERAGE.md) |
 
 ---
 
-## Advanced: Skills Testing
+## 🔬 Advanced: Skills Testing
 
 Test that your agent's code actually works — not just that the output looks right.
 Best for teams maintaining SKILL.md workflows for Claude Code or Codex.
@@ -242,7 +266,7 @@ evalview skill test tests.yaml --agent langgraph
 
 ---
 
-## Documentation
+## 📚 Documentation
 
 | | |
 |---|---|
@@ -257,7 +281,7 @@ evalview skill test tests.yaml --agent langgraph
 
 ---
 
-## Examples
+## 📂 Examples
 
 | Framework | Link |
 |-----------|------|
@@ -272,15 +296,7 @@ evalview skill test tests.yaml --agent langgraph
 
 ---
 
-## Get Help
-
-- **Questions?** [GitHub Discussions](https://github.com/hidai25/eval-view/discussions)
-- **Bugs?** [GitHub Issues](https://github.com/hidai25/eval-view/issues)
-- **Want setup help?** Email hidai@evalview.com — happy to help configure your first tests
-
----
-
-## Roadmap
+## 🗺️ Roadmap
 
 **Shipped:** Golden traces • Tool categories • Statistical mode • Difficulty levels • Partial sequence credit • Skills validation • E2E agent testing • Build & smoke tests • Health checks • Safety guards (`no_sudo`, `git_clean`) • Claude Code & Codex adapters • **Opus 4.6 cost tracking** • MCP servers • HTML reports • Interactive chat mode • EvalView Gym
 
@@ -290,17 +306,28 @@ evalview skill test tests.yaml --agent langgraph
 
 ---
 
-## Contributing
+## 🤝 Get Help & Contributing
 
-Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
+- **Questions?** [GitHub Discussions](https://github.com/hidai25/eval-view/discussions)
+- **Bugs?** [GitHub Issues](https://github.com/hidai25/eval-view/issues)
+- **Want setup help?** Email hidai@evalview.com — happy to help configure your first tests
+- **Contributing?** See [CONTRIBUTING.md](CONTRIBUTING.md)
 
 **License:** Apache 2.0
 
 ---
 
+### ⭐ Thank You for the Support!
+
+[![Star History Chart](https://api.star-history.com/svg?repos=hidai25/eval-view&type=Date)](https://star-history.com/#hidai25/eval-view&Date)
+
+🌟 **Don't miss out on future updates! Star the repo and be the first to know about new features.**
+
+---
+
 <p align="center">
   <b>Proof that your agent still works.</b><br>
-  <a href="#quick-start">Get started →</a>
+  <a href="#-quick-start">Get started →</a>
 </p>
 
 ---
