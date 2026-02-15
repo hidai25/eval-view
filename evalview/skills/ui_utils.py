@@ -3,8 +3,10 @@
 Provides reusable components for console output, progress display, and formatting.
 """
 
+import asyncio
+import threading
 import time
-from typing import Callable, Optional
+from typing import Callable, Optional, TypeVar, Any
 from rich.console import Console
 from rich.live import Live
 
@@ -12,7 +14,10 @@ from evalview.skills.constants import (
     SPINNER_FRAMES,
     SPINNER_REFRESH_RATE,
     SPINNER_SLEEP_INTERVAL,
+    THREAD_JOIN_TIMEOUT,
 )
+
+T = TypeVar('T')
 
 
 def print_evalview_banner(console: Console, subtitle: Optional[str] = None) -> None:
@@ -125,9 +130,9 @@ class ProgressSpinner:
 def run_with_spinner(
     console: Console,
     message: str,
-    operation: Callable[[], any],
+    operation: Callable[[], T],
     show_elapsed: bool = True,
-) -> any:
+) -> T:
     """Run a synchronous operation with a progress spinner.
 
     Args:
@@ -153,3 +158,92 @@ def run_with_spinner(
             # This is a simplified version - for real async,
             # use run_async_with_spinner instead
             return operation()
+
+
+def run_async_with_spinner(
+    console: Console,
+    message: str,
+    async_operation: Callable[[], Any],
+    show_elapsed: bool = True,
+) -> tuple[Any, Optional[Exception]]:
+    """Run an async operation in a background thread with a live spinner.
+
+    This handles the common pattern of:
+    1. Running an async operation in a background thread
+    2. Showing a live spinner while it runs
+    3. Capturing any exceptions
+    4. Returning the result
+
+    Args:
+        console: Rich console instance
+        message: Message to display with spinner
+        async_operation: Async callable to execute
+        show_elapsed: Whether to show elapsed time
+
+    Returns:
+        Tuple of (result, error) where error is None if successful
+
+    Example:
+        async def run_tests():
+            return await runner.run_suite(suite)
+
+        result, error = run_async_with_spinner(
+            console,
+            "Running tests...",
+            run_tests
+        )
+        if error:
+            console.print(f"[red]Error: {error}[/red]")
+            raise SystemExit(1)
+    """
+    start_time = time.time()
+    spinner_idx = [0]  # Use list to allow modification in nested function
+    result_holder = {"result": None, "error": None}
+
+    def format_elapsed() -> str:
+        """Format elapsed time as MM:SS.mmm."""
+        elapsed = time.time() - start_time
+        mins, secs = divmod(elapsed, 60)
+        secs_int = int(secs)
+        ms = int((secs - secs_int) * 1000)
+        return f"{int(mins):02d}:{secs_int:02d}.{ms:03d}"
+
+    def get_display() -> str:
+        """Get current spinner display string."""
+        spinner = SPINNER_FRAMES[spinner_idx[0] % len(SPINNER_FRAMES)]
+        spinner_idx[0] += 1
+        if show_elapsed:
+            return f"{spinner} {message} [yellow]{format_elapsed()}[/yellow]"
+        else:
+            return f"{spinner} {message}"
+
+    def run_in_thread() -> None:
+        """Run the async operation in a new event loop."""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            result_holder["result"] = loop.run_until_complete(async_operation())
+        except Exception as e:
+            result_holder["error"] = e
+        finally:
+            loop.close()
+
+    # Start operation in background thread
+    thread = threading.Thread(target=run_in_thread, daemon=True)
+    thread.start()
+
+    # Show live spinner while operation runs
+    with Live(get_display(), console=console, refresh_per_second=SPINNER_REFRESH_RATE) as live:
+        while thread.is_alive():
+            live.update(get_display())
+            time.sleep(SPINNER_SLEEP_INTERVAL)
+
+    # Wait for thread to complete (with timeout)
+    thread.join(timeout=THREAD_JOIN_TIMEOUT)
+
+    if thread.is_alive():
+        # Thread is still running after timeout - this is a critical error
+        error = TimeoutError(f"Operation timed out after {THREAD_JOIN_TIMEOUT}s")
+        return None, error
+
+    return result_holder["result"], result_holder["error"]

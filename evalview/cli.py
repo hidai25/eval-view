@@ -5300,11 +5300,22 @@ def _run_agent_skill_test(
     verbose: bool,
     output_json: bool,
     model: str,
-):
+) -> None:
     """Run agent-based skill tests (internal helper).
 
     This is called when --agent is specified or when the YAML
     contains an agent config with type != system-prompt.
+
+    Args:
+        test_file: Path to YAML test file
+        agent: Agent type to override (if any)
+        trace_dir: Directory to save traces
+        no_rubric: Skip rubric evaluation
+        cwd: Working directory override
+        max_turns: Max conversation turns
+        verbose: Show detailed output
+        output_json: Output as JSON
+        model: Model to use for rubric evaluation
     """
     import asyncio
     import json
@@ -5347,18 +5358,7 @@ def _run_agent_skill_test(
         raise SystemExit(1)
 
     # EvalView banner
-    console.print()
-    console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗██╗   ██╗ █████╗ ██╗    ██╗   ██╗██╗███████╗██╗    ██╗[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔════╝██║   ██║██╔══██╗██║    ██║   ██║██║██╔════╝██║    ██║[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]█████╗  ██║   ██║███████║██║    ██║   ██║██║█████╗  ██║ █╗ ██║[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔══╝  ╚██╗ ██╔╝██╔══██║██║    ╚██╗ ██╔╝██║██╔══╝  ██║███╗██║[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗ ╚████╔╝ ██║  ██║███████╗╚████╔╝ ██║███████╗╚███╔███╔╝[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]╚══════╝  ╚═══╝  ╚═╝  ╚═╝╚══════╝ ╚═══╝  ╚═╝╚══════╝ ╚══╝╚══╝ [/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]        [dim]Agent-Based Skill Testing[/dim]                             [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
-    console.print()
+    print_evalview_banner(console, subtitle="[dim]Agent-Based Skill Testing[/dim]")
     console.print(f"  [bold]Suite:[/bold]  {suite.name}")
     console.print(f"  [bold]Skill:[/bold]  [cyan]{suite.skill}[/cyan]")
     console.print(f"  [bold]Agent:[/bold]  [magenta]{suite.agent.type.value}[/magenta]")
@@ -5367,52 +5367,19 @@ def _run_agent_skill_test(
         console.print(f"  [bold]Traces:[/bold] [dim]{trace_dir}[/dim]")
     console.print()
 
-    # Run the suite with live elapsed timer
+    # Run the suite with live spinner
+    from evalview.skills.ui_utils import run_async_with_spinner
+
     start_time = time.time()
-    result = None
-    run_error = None
-
-    def format_elapsed():
-        elapsed = time.time() - start_time
-        mins, secs = divmod(elapsed, 60)
-        secs_int = int(secs)
-        ms = int((secs - secs_int) * 1000)
-        return f"{int(mins):02d}:{secs_int:02d}.{ms:03d}"
-
-    spinner_frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-    spinner_idx = [0]
-
-    def get_display():
-        spinner = spinner_frames[spinner_idx[0] % len(spinner_frames)]
-        spinner_idx[0] += 1
-        return f"{spinner} Running agent tests... [yellow]{format_elapsed()}[/yellow]"
 
     async def run_tests_async():
-        nonlocal result, run_error
-        try:
-            result = await runner.run_suite(suite)
-        except Exception as e:
-            run_error = e
+        return await runner.run_suite(suite)
 
-    def run_tests():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            loop.run_until_complete(run_tests_async())
-        finally:
-            loop.close()
-
-    # Start test runner in background thread
-    test_thread = threading.Thread(target=run_tests)
-    test_thread.start()
-
-    # Show live timer while tests run
-    with Live(get_display(), console=console, refresh_per_second=10) as live:
-        while test_thread.is_alive():
-            live.update(get_display())
-            time.sleep(0.1)
-
-    test_thread.join()
+    result, run_error = run_async_with_spinner(
+        console,
+        "Running agent tests...",
+        run_tests_async
+    )
 
     if run_error:
         console.print(f"[red]Error running tests: {run_error}[/red]")
@@ -5442,7 +5409,7 @@ def _run_agent_skill_test(
                     "passed": r.passed,
                     "score": r.score,
                     "input": r.input_query,
-                    "output": r.final_output[:500] + "..." if len(r.final_output) > 500 else r.final_output,
+                    "output": r.final_output[:TRUNCATE_OUTPUT_LONG] + "..." if len(r.final_output) > TRUNCATE_OUTPUT_LONG else r.final_output,
                     "deterministic": {
                         "passed": r.deterministic.passed,
                         "score": r.deterministic.score,
@@ -5480,7 +5447,7 @@ def _run_agent_skill_test(
 
     for r in result.results:
         status = "[green]PASS[/green]" if r.passed else "[red]FAIL[/red]"
-        score_color = "green" if r.score >= 80 else "yellow" if r.score >= 60 else "red"
+        score_color = "green" if r.score >= SCORE_THRESHOLD_HIGH else "yellow" if r.score >= SCORE_THRESHOLD_MEDIUM else "red"
 
         # Phase 1 (deterministic)
         if r.deterministic:
@@ -5520,14 +5487,14 @@ def _run_agent_skill_test(
 
             # Show query
             console.print("\n[bold]Input:[/bold]")
-            query = r.input_query[:200] + "..." if len(r.input_query) > 200 else r.input_query
+            query = r.input_query[:TRUNCATE_OUTPUT_SHORT] + "..." if len(r.input_query) > TRUNCATE_OUTPUT_SHORT else r.input_query
             for line in query.split('\n'):
                 console.print(f"  [dim]{line}[/dim]")
 
             # Show response preview
             if verbose or not r.passed:
                 console.print("\n[bold]Response:[/bold]")
-                output = r.final_output[:400] + "..." if len(r.final_output) > 400 else r.final_output
+                output = r.final_output[:TRUNCATE_OUTPUT_MEDIUM] + "..." if len(r.final_output) > TRUNCATE_OUTPUT_MEDIUM else r.final_output
                 for line in output.split('\n')[:8]:
                     console.print(f"  {line}")
                 if len(r.final_output.split('\n')) > 8:
@@ -5548,7 +5515,7 @@ def _run_agent_skill_test(
                 console.print("\n[bold]Phase 2 (Rubric):[/bold]")
                 p2_status = "[green]PASSED[/green]" if r.rubric.passed else "[red]FAILED[/red]"
                 console.print(f"  Status: {p2_status} (score: {r.rubric.score:.0f}/{r.rubric.min_score:.0f})")
-                console.print(f"  [dim]{r.rubric.rationale[:200]}...[/dim]" if len(r.rubric.rationale) > 200 else f"  [dim]{r.rubric.rationale}[/dim]")
+                console.print(f"  [dim]{r.rubric.rationale[:TRUNCATE_OUTPUT_SHORT]}...[/dim]" if len(r.rubric.rationale) > TRUNCATE_OUTPUT_SHORT else f"  [dim]{r.rubric.rationale}[/dim]")
 
             # Show trace path
             if r.trace_path:
@@ -5654,10 +5621,21 @@ def skill_test(
     no_rubric: bool,
     cwd: str,
     max_turns: int,
-):
+) -> None:
     """Run behavior tests against a skill.
 
     TEST_FILE is a YAML file defining test cases for a skill.
+
+    Args:
+        test_file: Path to YAML test file
+        model: Model to use for evaluation
+        verbose: Show detailed output
+        output_json: Output as JSON
+        agent: Agent type override
+        trace: Directory to save traces
+        no_rubric: Skip rubric evaluation
+        cwd: Working directory override
+        max_turns: Max conversation turns
 
     Example test file (legacy mode):
         name: test-code-reviewer
@@ -5744,70 +5722,28 @@ def skill_test(
         console.print(f"[red]Error loading test suite: {e}[/red]")
         raise SystemExit(1)
 
-    from rich.table import Table
-    from rich.panel import Panel
-
     # EvalView banner
-    console.print()
-    console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗██╗   ██╗ █████╗ ██╗    ██╗   ██╗██╗███████╗██╗    ██╗[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔════╝██║   ██║██╔══██╗██║    ██║   ██║██║██╔════╝██║    ██║[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]█████╗  ██║   ██║███████║██║    ██║   ██║██║█████╗  ██║ █╗ ██║[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔══╝  ╚██╗ ██╔╝██╔══██║██║    ╚██╗ ██╔╝██║██╔══╝  ██║███╗██║[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗ ╚████╔╝ ██║  ██║███████╗╚████╔╝ ██║███████╗╚███╔███╔╝[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]╚══════╝  ╚═══╝  ╚═╝  ╚═╝╚══════╝ ╚═══╝  ╚═╝╚══════╝ ╚══╝╚══╝ [/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]        [dim]Catch agent regressions before you ship[/dim]               [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
-    console.print()
+    print_evalview_banner(console, subtitle="[dim]Catch agent regressions before you ship[/dim]")
     console.print(f"  [bold]Suite:[/bold]  {suite.name}")
     console.print(f"  [bold]Skill:[/bold]  [cyan]{suite.skill}[/cyan]")
     console.print(f"  [bold]Model:[/bold]  {model}")
     console.print(f"  [bold]Tests:[/bold]  {len(suite.tests)}")
     console.print()
 
-    # Run the suite with live elapsed timer
-    import time
-    import threading
-    from rich.live import Live
+    # Run the suite with live spinner
+    from evalview.skills.ui_utils import run_async_with_spinner
 
     start_time = time.time()
-    result = None
-    run_error = None
 
-    def format_elapsed():
-        elapsed = time.time() - start_time
-        mins, secs = divmod(elapsed, 60)
-        secs_int = int(secs)
-        ms = int((secs - secs_int) * 1000)
-        return f"{int(mins):02d}:{secs_int:02d}.{ms:03d}"
+    async def run_tests_async():
+        # Wrap synchronous runner.run_suite in async
+        return runner.run_suite(suite)
 
-    spinner_frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-    spinner_idx = [0]
-
-    def get_display():
-        spinner = spinner_frames[spinner_idx[0] % len(spinner_frames)]
-        spinner_idx[0] += 1
-        return f"{spinner} Running tests... [yellow]{format_elapsed()}[/yellow]"
-
-    def run_tests():
-        nonlocal result, run_error
-        try:
-            result = runner.run_suite(suite)
-        except Exception as e:
-            run_error = e
-
-    # Start test runner in background thread
-    test_thread = threading.Thread(target=run_tests)
-    test_thread.start()
-
-    # Show live timer while tests run
-    with Live(get_display(), console=console, refresh_per_second=10) as live:
-        while test_thread.is_alive():
-            live.update(get_display())
-            time.sleep(0.1)
-
-    test_thread.join()
+    result, run_error = run_async_with_spinner(
+        console,
+        "Running tests...",
+        run_tests_async
+    )
 
     if run_error:
         console.print(f"[red]Error running tests: {run_error}[/red]")
@@ -5834,7 +5770,7 @@ def skill_test(
                     "passed": r.passed,
                     "score": r.score,
                     "input": r.input_query,
-                    "output": r.output[:500] + "..." if len(r.output) > 500 else r.output,
+                    "output": r.output[:TRUNCATE_OUTPUT_LONG] + "..." if len(r.output) > TRUNCATE_OUTPUT_LONG else r.output,
                     "contains_failed": r.contains_failed,
                     "not_contains_failed": r.not_contains_failed,
                     "latency_ms": r.latency_ms,
@@ -5856,7 +5792,7 @@ def skill_test(
 
     for r in result.results:
         status = "[green]✅ PASS[/green]" if r.passed else "[red]❌ FAIL[/red]"
-        score_color = "green" if r.score >= 80 else "yellow" if r.score >= 60 else "red"
+        score_color = "green" if r.score >= SCORE_THRESHOLD_HIGH else "yellow" if r.score >= SCORE_THRESHOLD_MEDIUM else "red"
         table.add_row(
             status,
             r.test_name,
@@ -5881,14 +5817,14 @@ def skill_test(
 
             # Show query
             console.print("\n[bold]Input:[/bold]")
-            query = r.input_query[:200] + "..." if len(r.input_query) > 200 else r.input_query
+            query = r.input_query[:TRUNCATE_OUTPUT_SHORT] + "..." if len(r.input_query) > TRUNCATE_OUTPUT_SHORT else r.input_query
             for line in query.split('\n'):
                 console.print(f"  [dim]{line}[/dim]")
 
             # Show response preview
             if verbose or not r.passed:
                 console.print("\n[bold]Response:[/bold]")
-                output = r.output[:400] + "..." if len(r.output) > 400 else r.output
+                output = r.output[:TRUNCATE_OUTPUT_MEDIUM] + "..." if len(r.output) > TRUNCATE_OUTPUT_MEDIUM else r.output
                 for line in output.split('\n')[:8]:
                     console.print(f"  {line}")
                 if len(r.output.split('\n')) > 8:
