@@ -5715,6 +5715,365 @@ def skill_test(
         console.print()
 
 
+@skill.command("generate-tests")
+@click.argument("skill_file", type=click.Path(exists=True))
+@click.option("--count", "-c", default=10, type=int, help="Number of tests to generate")
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(),
+    help="Output path for tests.yaml (default: ./tests.yaml)",
+)
+@click.option(
+    "--categories",
+    type=str,
+    help="Comma-separated test categories (explicit,implicit,contextual,negative)",
+)
+@click.option("--model", "-m", type=str, help="LLM model to use for generation (skips interactive selection)")
+@click.option(
+    "--auto",
+    is_flag=True,
+    help="Auto-select cheapest model (skip interactive selection)",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Preview generated tests without saving",
+)
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed generation process")
+@track_command("skill_generate_tests")
+def skill_generate_tests(
+    skill_file: str,
+    count: int,
+    output: Optional[str],
+    categories: Optional[str],
+    model: Optional[str],
+    auto: bool,
+    dry_run: bool,
+    verbose: bool,
+):
+    """Auto-generate comprehensive test suites from SKILL.md.
+
+    Uses LLM-powered few-shot learning to generate test cases across
+    all categories: explicit, implicit, contextual, and negative.
+
+    By default, shows an interactive model selector with cost estimates.
+    Use --auto to skip selection and use the cheapest available model.
+
+    Examples:
+        evalview skill generate-tests ./SKILL.md
+        evalview skill generate-tests ./SKILL.md --auto --count 15
+        evalview skill generate-tests ./SKILL.md --model gpt-4o --dry-run
+        evalview skill generate-tests ./SKILL.md -o my-tests.yaml
+    """
+    asyncio.run(
+        _skill_generate_tests_async(
+            skill_file,
+            count,
+            output,
+            categories,
+            model,
+            auto,
+            dry_run,
+            verbose,
+        )
+    )
+
+
+async def _skill_generate_tests_async(
+    skill_file: str,
+    count: int,
+    output: Optional[str],
+    categories: Optional[str],
+    model: Optional[str],
+    auto: bool,
+    dry_run: bool,
+    verbose: bool,
+):
+    """Async handler for skill generate-tests command."""
+    from evalview.skills.test_generator import SkillTestGenerator
+    from evalview.skills.parser import SkillParser
+    from evalview.skills.agent_types import TestCategory
+    from evalview.telemetry.client import track
+    from evalview.telemetry.events import (
+        SkillTestGenerationStartEvent,
+        SkillTestGenerationCompleteEvent,
+        SkillTestGenerationFailedEvent,
+        UserFeedbackEvent,
+    )
+
+    start_time = time.time()
+    print_evalview_banner(console, subtitle="[dim]Auto-generate comprehensive test suites[/dim]")
+
+    # Parse categories
+    category_list = None
+    if categories:
+        cat_names = [c.strip().lower() for c in categories.split(",")]
+        category_list = []
+        for cat_name in cat_names:
+            try:
+                category_list.append(TestCategory(cat_name))
+            except ValueError:
+                console.print(
+                    f"[red]❌ Invalid category: {cat_name}[/red]",
+                )
+                console.print(
+                    f"[dim]Valid categories: explicit, implicit, contextual, negative[/dim]"
+                )
+                raise SystemExit(1)
+
+    # Parse skill file
+    console.print("[bold]Parsing skill file...[/bold]")
+    try:
+        skill = SkillParser.parse_file(skill_file)
+    except Exception as e:
+        console.print(f"[red]❌ Failed to parse skill: {e}[/red]")
+        raise SystemExit(1)
+
+    console.print(f"[green]✓[/green] Loaded skill: [bold]{skill.metadata.name}[/bold]")
+    console.print()
+
+    # Initialize generator (with model selection if needed)
+    try:
+        # Check if running in non-interactive environment (CI/CD, Docker, etc.)
+        import sys
+        is_interactive = sys.stdin.isatty() and sys.stdout.isatty()
+
+        if model:
+            # User specified model explicitly
+            generator = SkillTestGenerator(model=model)
+            if verbose:
+                console.print(f"[dim]Using model: {model}[/dim]")
+                console.print()
+        elif auto or not is_interactive:
+            # Auto-select cheapest (explicit --auto or non-TTY environment)
+            if not is_interactive and not auto:
+                console.print(
+                    "[yellow]⚠️  Non-interactive environment detected (CI/CD, Docker, etc.)[/yellow]"
+                )
+                console.print("[dim]Auto-selecting cheapest model...[/dim]")
+                console.print()
+
+            generator = SkillTestGenerator()
+            console.print(
+                f"[dim]Auto-selected: {generator.client.config.display_name} / "
+                f"{generator.client.config.model}[/dim]"
+            )
+            console.print()
+        else:
+            # Interactive selection
+            provider, api_key, selected_model = SkillTestGenerator.select_model_interactive(console)
+            generator = SkillTestGenerator(model=selected_model)
+            console.print()
+
+    except ValueError as e:
+        console.print(f"[red]❌ {e}[/red]")
+        console.print()
+        console.print("[bold]To fix this:[/bold]")
+        console.print("  1. Set an API key:")
+        console.print("     export OPENAI_API_KEY=sk-...")
+        console.print("     export ANTHROPIC_API_KEY=sk-ant-...")
+        console.print("     export GEMINI_API_KEY=...")
+        console.print()
+        raise SystemExit(1)
+
+    # Track generation start
+    track(
+        SkillTestGenerationStartEvent(
+            skill_name=skill.metadata.name,
+            test_count=count,
+            categories=[c.value for c in (category_list or [])] if category_list else [],
+            model=generator.client.config.model,
+            has_example_suite=False,  # Golden example always bundled
+        )
+    )
+
+    # Generate tests with spinner
+    console.print(
+        f"[bold]Generating {count} tests for [cyan]{skill.metadata.name}[/cyan]...[/bold]"
+    )
+    console.print()
+
+    try:
+        with console.status("[bold green]Generating tests..."):
+            suite = await generator.generate_test_suite(
+                skill=skill,
+                count=count,
+                categories=category_list,
+            )
+
+        generation_time_ms = int((time.time() - start_time) * 1000)
+
+        # Validate generated suite
+        validation_errors = generator.validate_test_suite(suite)
+        if validation_errors:
+            console.print("[yellow]⚠️  Validation warnings:[/yellow]")
+            for error in validation_errors:
+                console.print(f"  - {error}")
+            console.print()
+
+        # Track success
+        track(
+            SkillTestGenerationCompleteEvent(
+                skill_name=skill.metadata.name,
+                tests_generated=len(suite.tests),
+                generation_latency_ms=generation_time_ms,
+                estimated_cost_usd=generator.get_generation_cost(),
+                model=generator.client.config.model,
+                validation_errors=len(validation_errors),
+                categories_distribution=generator.get_category_distribution(suite),
+            )
+        )
+
+    except Exception as e:
+        # Track failure
+        track(
+            SkillTestGenerationFailedEvent(
+                skill_name=skill.metadata.name,
+                error_type=type(e).__name__,
+                error_message=str(e)[:200],
+                model=generator.client.config.model,
+                attempt_number=1,
+            )
+        )
+        console.print(f"[red]❌ Generation failed: {e}[/red]")
+        raise SystemExit(1)
+
+    # Display preview
+    console.print("[bold green]✓ Generated test suite[/bold green]")
+    console.print()
+
+    # Show summary
+    console.print("[bold]Test Suite Summary[/bold]")
+    console.print(f"  Name: [cyan]{suite.name}[/cyan]")
+    console.print(f"  Tests: {len(suite.tests)}")
+    console.print(f"  Estimated Cost: [green]~${generator.get_generation_cost():.4f}[/green]")
+    console.print()
+
+    # Category breakdown
+    dist = generator.get_category_distribution(suite)
+    console.print("[bold]Category Distribution[/bold]")
+    for cat, cnt in dist.items():
+        console.print(f"  {cat}: {cnt}")
+    console.print()
+
+    # Show tests
+    console.print("[bold]Generated Tests[/bold]")
+    table = Table(show_header=True, header_style="bold magenta")
+    table.add_column("Name", style="cyan")
+    table.add_column("Category", style="yellow")
+    table.add_column("Should Trigger", style="green")
+    table.add_column("Assertions", justify="right")
+
+    for test in suite.tests:
+        assertion_count = 0
+        if test.expected:
+            # Count non-None assertion fields
+            assertion_count += bool(test.expected.tool_calls_contain)
+            assertion_count += bool(test.expected.files_created)
+            assertion_count += bool(test.expected.commands_ran)
+            assertion_count += bool(test.expected.output_contains)
+            assertion_count += bool(test.expected.output_not_contains)
+        if test.rubric:
+            assertion_count += 1
+
+        trigger_emoji = "✓" if test.should_trigger else "✗"
+        table.add_row(
+            test.name,
+            test.category.value,
+            trigger_emoji,
+            str(assertion_count),
+        )
+
+    console.print(table)
+    console.print()
+
+    # Dry-run mode
+    if dry_run:
+        console.print("[yellow]Dry-run mode: Not saving to disk[/yellow]")
+        console.print()
+        if verbose:
+            console.print("[bold]Full YAML preview:[/bold]")
+            # Show first test in detail
+            if suite.tests:
+                import yaml
+
+                preview = {
+                    "name": suite.name,
+                    "description": suite.description,
+                    "skill": suite.skill,
+                    "agent": {"type": suite.agent.type.value},
+                    "tests": [generator._serialize_test(suite.tests[0])],
+                }
+                console.print(Panel(yaml.dump(preview, default_flow_style=False)))
+                console.print(
+                    f"[dim]... and {len(suite.tests) - 1} more tests[/dim]"
+                )
+        return
+
+    # Determine output path
+    output_path = Path(output) if output else Path.cwd() / "tests.yaml"
+
+    # Check if file exists
+    if output_path.exists():
+        console.print(f"[yellow]⚠️  File already exists: {output_path}[/yellow]")
+        if not click.confirm("Overwrite?", default=False):
+            console.print("[yellow]Cancelled[/yellow]")
+            return
+
+    # Confirm save
+    console.print(f"Save to: [cyan]{output_path}[/cyan]")
+    if not click.confirm("Save generated tests?", default=True):
+        console.print("[yellow]Cancelled[/yellow]")
+        return
+
+    # Save
+    try:
+        generator.save_as_yaml(suite, output_path)
+        console.print()
+        console.print(f"[bold green]✓ Saved to {output_path}[/bold green]")
+        console.print()
+
+        # Suggest next steps
+        console.print("[bold]Next Steps:[/bold]")
+        console.print(f"  1. Review the generated tests: [dim]cat {output_path}[/dim]")
+        console.print(
+            f"  2. Run the tests: [dim]evalview skill test {output_path}[/dim]"
+        )
+        console.print(
+            f"  3. Iterate on failing tests by editing {output_path}"
+        )
+        console.print()
+
+        # Prompt for feedback
+        try:
+            rating = click.prompt(
+                "Rate this generation (1-5)",
+                type=click.IntRange(1, 5),
+                default=4,
+                show_default=True,
+            )
+            would_use_again = click.confirm(
+                "Would you use auto-generation again?", default=True
+            )
+
+            track(
+                UserFeedbackEvent(
+                    skill_name=skill.metadata.name,
+                    rating=rating,
+                    would_use_again=would_use_again,
+                    feedback_text=None,
+                )
+            )
+        except (KeyboardInterrupt, click.Abort):
+            # User skipped feedback
+            pass
+
+    except Exception as e:
+        console.print(f"[red]❌ Failed to save: {e}[/red]")
+        raise SystemExit(1)
+
+
 # ============================================================================
 # Golden Trace Commands
 # ============================================================================

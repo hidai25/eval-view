@@ -14,6 +14,11 @@ from evalview.telemetry.events import (
     RunEvent,
     ChatEvent,
     ErrorEvent,
+    SkillTestGenerationStartEvent,
+    SkillTestGenerationCompleteEvent,
+    SkillTestGenerationFailedEvent,
+    GeneratedTestQualityEvent,
+    UserFeedbackEvent,
 )
 from evalview.telemetry.client import TelemetryClient, get_client
 from evalview.telemetry.decorators import track_command
@@ -32,6 +37,11 @@ __all__ = [
     "RunEvent",
     "ChatEvent",
     "ErrorEvent",
+    "SkillTestGenerationStartEvent",
+    "SkillTestGenerationCompleteEvent",
+    "SkillTestGenerationFailedEvent",
+    "GeneratedTestQualityEvent",
+    "UserFeedbackEvent",
     # Client
     "TelemetryClient",
     "get_client",

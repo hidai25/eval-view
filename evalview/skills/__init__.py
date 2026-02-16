@@ -44,6 +44,9 @@ from evalview.skills.agent_types import (
 # Agent-based runner
 from evalview.skills.agent_runner import SkillAgentRunner, run_agent_tests
 
+# Test generator
+from evalview.skills.test_generator import SkillTestGenerator
+
 __all__ = [
     # Legacy Types
     "Skill",
@@ -80,4 +83,6 @@ __all__ = [
     # Agent Runner
     "SkillAgentRunner",
     "run_agent_tests",
+    # Test Generator
+    "SkillTestGenerator",
 ]

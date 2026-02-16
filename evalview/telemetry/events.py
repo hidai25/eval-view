@@ -126,3 +126,75 @@ class ErrorEvent(BaseEvent):
     command_name: str = ""
     error_class: str = ""  # e.g., "ValueError", "ConnectionError"
     # Never include error message content
+
+
+# ============================================================================
+# Skill Test Generation Events
+# ============================================================================
+
+
+@dataclass
+class SkillTestGenerationStartEvent(BaseEvent):
+    """Fired when test generation starts."""
+
+    event_type: str = "skill_test_generation_start"
+    command_name: str = "skill_generate_tests"
+    skill_name: str = ""
+    test_count: int = 0
+    categories: list = field(default_factory=list)  # List[str] category names
+    model: str = ""
+    has_example_suite: bool = False
+
+
+@dataclass
+class SkillTestGenerationCompleteEvent(BaseEvent):
+    """Fired when generation completes successfully."""
+
+    event_type: str = "skill_test_generation_complete"
+    command_name: str = "skill_generate_tests"
+    skill_name: str = ""
+    tests_generated: int = 0
+    generation_latency_ms: int = 0
+    estimated_cost_usd: float = 0.0
+    model: str = ""
+    validation_errors: int = 0
+    categories_distribution: Dict[str, int] = field(default_factory=dict)
+
+
+@dataclass
+class SkillTestGenerationFailedEvent(BaseEvent):
+    """Fired when generation fails."""
+
+    event_type: str = "skill_test_generation_failed"
+    command_name: str = "skill_generate_tests"
+    skill_name: str = ""
+    error_type: str = ""  # "parse_error", "llm_timeout", "validation_error", "json_decode_error"
+    error_message: str = ""  # First 200 chars only
+    model: str = ""
+    attempt_number: int = 1
+
+
+@dataclass
+class GeneratedTestQualityEvent(BaseEvent):
+    """Fired when user runs generated tests (deferred tracking)."""
+
+    event_type: str = "generated_test_quality"
+    command_name: str = "skill_test"
+    skill_name: str = ""
+    tests_passed: int = 0
+    tests_failed: int = 0
+    pass_rate: float = 0.0
+    generation_id: str = ""  # UUID linking back to generation event
+    time_since_generation_hours: int = 0
+
+
+@dataclass
+class UserFeedbackEvent(BaseEvent):
+    """Fired when user rates generation quality."""
+
+    event_type: str = "skill_generation_feedback"
+    command_name: str = "skill_generate_tests"
+    skill_name: str = ""
+    rating: int = 0  # 1-5
+    would_use_again: bool = True
+    feedback_text: Optional[str] = None

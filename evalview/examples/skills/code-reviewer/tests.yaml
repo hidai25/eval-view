@@ -1,0 +1,230 @@
+name: test-code-reviewer
+description: Test suite for the code review skill
+skill: ./SKILL.md
+
+agent:
+  type: claude-code
+  max_turns: 10
+  timeout: 120.0
+
+min_pass_rate: 0.8
+
+tests:
+  # Test 1: Explicit trigger with SQL injection detection
+  - name: detect-sql-injection
+    category: explicit
+    input: |
+      Review this Python code for security issues:
+
+      ```python
+      def get_user(user_id):
+          query = f"SELECT * FROM users WHERE id = {user_id}"
+          return db.execute(query)
+      ```
+    should_trigger: true
+    expected:
+      # Phase 1: Deterministic checks
+      files_created: ["code-review.md"]
+      tool_calls_contain: ["Write"]
+      output_contains:
+        - "SQL injection"
+        - "parameterized"
+      max_output_tokens: 3000
+
+    # Phase 2: Quality rubric
+    rubric:
+      prompt: |
+        Evaluate this code review for quality (0-100):
+
+        1. Security Analysis (40%):
+           - Did it identify the SQL injection vulnerability?
+           - Did it explain WHY it's dangerous?
+           - Did it provide a safe alternative?
+
+        2. Clarity (30%):
+           - Is the feedback easy to understand?
+           - Are examples provided?
+
+        3. Actionability (30%):
+           - Are next steps clear?
+           - Is the fix specific and concrete?
+
+        Return JSON: {"score": number, "reasoning": "..."}
+      min_score: 75.0
+
+  # Test 2: Implicit trigger (natural language)
+  - name: implicit-review-request
+    category: implicit
+    input: "Can you check this code for issues? def process(items): return [i for i in items if i > 0]"
+    should_trigger: true
+    expected:
+      files_created: ["code-review.md"]
+      tool_calls_contain: ["Write"]
+      output_contains: ["review"]
+
+  # Test 3: Git diff review
+  - name: review-git-changes
+    category: explicit
+    input: "Review my staged git changes"
+    should_trigger: true
+    expected:
+      tool_calls_contain: ["Bash", "Write"]
+      commands_ran: ["git diff"]
+      files_created: ["code-review.md"]
+      output_contains: ["review", "changes"]
+
+  # Test 4: Multiple security issues
+  - name: detect-multiple-vulnerabilities
+    category: explicit
+    input: |
+      Review this code:
+
+      ```python
+      import os
+
+      def execute_command(user_input):
+          # Run user command
+          os.system(user_input)
+
+      def connect_db(password):
+          # Store password
+          API_KEY = "sk-1234567890abcdef"
+          return connect(f"postgres://user:{password}@db")
+      ```
+    should_trigger: true
+    expected:
+      files_created: ["code-review.md"]
+      output_contains:
+        - "command injection"
+        - "hardcoded"
+        - "secret"
+      forbidden_patterns:
+        - "looks good"  # Should find issues!
+    rubric:
+      prompt: |
+        Rate this code review (0-100):
+
+        Must identify at least 2 critical issues:
+        1. Command injection via os.system(user_input)
+        2. Hardcoded API key
+
+        Bonus points for:
+        - Suggesting subprocess.run() instead
+        - Recommending environment variables
+        - Explaining impact of vulnerabilities
+      min_score: 80.0
+
+  # Test 5: Quality and best practices
+  - name: code-quality-review
+    category: explicit
+    input: |
+      Review this for code quality:
+
+      ```python
+      def f(x):
+          r = []
+          for i in x:
+              if i % 2 == 0:
+                  r.append(i * 2)
+          return r
+      ```
+    should_trigger: true
+    expected:
+      files_created: ["code-review.md"]
+      output_contains:
+        - "naming"
+        - "readable"
+    rubric:
+      prompt: |
+        Does this review suggest improvements like:
+        - Better variable names (f -> process_numbers)
+        - List comprehension
+        - Docstring
+
+        Rate 0-100 based on improvement quality.
+      min_score: 70.0
+
+  # Test 6: Negative test - should NOT trigger
+  - name: negative-unrelated-question
+    category: negative
+    input: "What's the weather today?"
+    should_trigger: false
+    expected:
+      tool_calls_not_contain: ["Write"]
+      files_created: []
+
+  # Test 7: Performance issue detection
+  - name: detect-performance-issue
+    category: explicit
+    input: |
+      Review this code for performance:
+
+      ```python
+      def find_duplicates(items):
+          duplicates = []
+          for i in range(len(items)):
+              for j in range(i + 1, len(items)):
+                  if items[i] == items[j]:
+                      duplicates.append(items[i])
+          return duplicates
+      ```
+    should_trigger: true
+    expected:
+      files_created: ["code-review.md"]
+      output_contains:
+        - "O(n"
+        - "performance"
+    rubric:
+      prompt: |
+        Does the review:
+        - Identify O(n²) complexity?
+        - Suggest using a set/dict for O(n)?
+        - Provide example code?
+
+        Rate 0-100.
+      min_score: 75.0
+
+  # Test 8: Comprehensive review structure
+  - name: review-structure-quality
+    category: contextual
+    input: |
+      I'm about to merge this PR. Can you give it a final review?
+
+      ```javascript
+      function loginUser(username, password) {
+        const user = users.find(u => u.name === username && u.pwd === password);
+        if (user) {
+          localStorage.setItem('token', btoa(username + ':' + password));
+          return true;
+        }
+        return false;
+      }
+      ```
+    should_trigger: true
+    expected:
+      files_created: ["code-review.md"]
+      file_contains:
+        code-review.md:
+          - "Critical Issues"
+          - "Security"
+    rubric:
+      prompt: |
+        Evaluate the review structure and completeness (0-100):
+
+        Must identify:
+        1. Passwords stored in localStorage (CRITICAL)
+        2. Plain text password comparison
+        3. No password hashing
+        4. Token security issues
+
+        Should have:
+        - Clear sections (Critical/Important/Suggestions)
+        - Specific fix recommendations
+        - Security-focused analysis
+
+        Quality scoring:
+        - 90-100: All issues found + excellent structure + code examples
+        - 80-89: Most issues found + good structure
+        - 70-79: Some issues found + basic structure
+        - <70: Missing critical issues
+      min_score: 80.0
