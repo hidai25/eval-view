@@ -9,7 +9,7 @@ import threading
 import time
 from pathlib import Path
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Dict, Any, Tuple
 import click
 import httpx
 import yaml
