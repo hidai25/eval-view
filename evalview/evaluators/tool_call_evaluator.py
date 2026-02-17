@@ -2,7 +2,7 @@
 
 import re
 from typing import List, Set, Tuple, Optional, Dict
-from evalview.core.types import TestCase, ExecutionTrace, ToolEvaluation, CategoryResult
+from evalview.core.types import TestCase, ExecutionTrace, ToolEvaluation, CategoryResult, ReasonCode
 from evalview.core.tool_categories import ToolCategoryMatcher, get_default_matcher
 
 
@@ -108,6 +108,12 @@ class ToolCallEvaluator:
             expected_categories, category_results
         )
 
+        # Generate structured reason codes
+        reason_codes = self._generate_reason_codes(
+            missing, unexpected, expected_tools, set(actual_tools),
+            expected_categories, category_results
+        )
+
         return ToolEvaluation(
             accuracy=accuracy,
             correct=correct,
@@ -117,6 +123,7 @@ class ToolCallEvaluator:
             category_results=category_results,
             categories_satisfied=categories_satisfied,
             categories_total=len(expected_categories),
+            reason_codes=reason_codes,
         )
 
     def _generate_hints(
@@ -198,3 +205,82 @@ class ToolCallEvaluator:
             )
 
         return hints
+
+    def _generate_reason_codes(
+        self,
+        missing: List[str],
+        unexpected: List[str],
+        expected: Set[str],
+        actual: Set[str],
+        expected_categories: List[str] = None,
+        category_results: List[CategoryResult] = None,
+    ) -> List[ReasonCode]:
+        """Generate structured reason codes for tool mismatches."""
+        reason_codes: List[ReasonCode] = []
+        expected_categories = expected_categories or []
+        category_results = category_results or []
+
+        # --- Category violations ---
+        unsatisfied_categories = [
+            cr for cr in category_results if not cr.satisfied
+        ]
+        for cr in unsatisfied_categories:
+            category_tools = self.category_matcher.get_tools_in_category(cr.category)
+            reason_codes.append(ReasonCode(
+                code="CATEGORY_NOT_SATISFIED",
+                severity="error",
+                message=f"Category '{cr.category}' not satisfied",
+                context={
+                    "category": cr.category,
+                    "expected_tools": category_tools[:10],
+                    "actual_tools": list(actual)
+                },
+                remediation=f"Ensure your agent has access to tools in the '{cr.category}' category and the query triggers their use."
+            ))
+
+        # --- Missing tools ---
+        similar_pairs = _find_similar_tools(missing, unexpected)
+        similar_dict = dict(similar_pairs)
+
+        for tool in missing:
+            if tool in similar_dict:
+                # Naming mismatch
+                actual_name = similar_dict[tool]
+                reason_codes.append(ReasonCode(
+                    code="TOOL_NAME_MISMATCH",
+                    severity="warning",
+                    message=f"Tool name mismatch: expected '{tool}' but got '{actual_name}'",
+                    context={
+                        "expected": tool,
+                        "actual": actual_name
+                    },
+                    remediation=f"Update your test case to use '{actual_name}' if this is the correct tool name."
+                ))
+            else:
+                # Tool not called
+                reason_codes.append(ReasonCode(
+                    code="TOOL_MISSING",
+                    severity="error",
+                    message=f"Expected tool '{tool}' was not called",
+                    context={
+                        "expected_tool": tool,
+                        "actual_tools": list(actual)
+                    },
+                    remediation=f"Ensure your agent has access to '{tool}' and the query triggers its use."
+                ))
+
+        # --- Unexpected tools ---
+        for tool in unexpected:
+            if tool not in similar_dict.values():  # Skip if it's a naming mismatch we already handled
+                reason_codes.append(ReasonCode(
+                    code="TOOL_UNEXPECTED",
+                    severity="info",
+                    message=f"Agent called unexpected tool '{tool}'",
+                    context={
+                        "unexpected_tool": tool,
+                        "expected_tools": list(expected)
+                    },
+                    remediation=f"If '{tool}' is correct, add it to expected_tools in your test case."
+                ))
+
+        return reason_codes

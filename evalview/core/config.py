@@ -68,6 +68,45 @@ class CIConfig(BaseModel):
     )
 
 
+class DiffConfig(BaseModel):
+    """Configuration for diff comparison thresholds.
+
+    Example in config.yaml:
+        diff:
+          tool_similarity_threshold: 0.85
+          output_similarity_threshold: 0.92
+          score_regression_threshold: 3.0
+          ignore_whitespace: true
+          ignore_case_in_output: false
+    """
+
+    tool_similarity_threshold: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Minimum similarity for tool sequences to be considered 'same'"
+    )
+    output_similarity_threshold: float = Field(
+        default=0.9,
+        ge=0.0,
+        le=1.0,
+        description="Minimum similarity for outputs to be considered 'same'"
+    )
+    score_regression_threshold: float = Field(
+        default=5.0,
+        ge=0.0,
+        description="Score drop threshold to trigger REGRESSION status"
+    )
+    ignore_whitespace: bool = Field(
+        default=True,
+        description="Ignore whitespace differences in output comparison"
+    )
+    ignore_case_in_output: bool = Field(
+        default=False,
+        description="Ignore case differences in output comparison"
+    )
+
+
 class EvalViewConfig(BaseModel):
     """Complete EvalView configuration (loaded from config.yaml)."""
 
@@ -82,6 +121,7 @@ class EvalViewConfig(BaseModel):
     scoring: Optional[ScoringConfig] = None
     retry: Optional[RetryConfig] = None
     ci: Optional[CIConfig] = None
+    diff: Optional[DiffConfig] = None
 
     def get_scoring_weights(self) -> ScoringWeights:
         """Get scoring weights with defaults."""
@@ -100,6 +140,12 @@ class EvalViewConfig(BaseModel):
         if self.ci:
             return self.ci
         return CIConfig()
+
+    def get_diff_config(self) -> DiffConfig:
+        """Get diff config with defaults."""
+        if self.diff:
+            return self.diff
+        return DiffConfig()
 
 
 # Default weights for backward compatibility

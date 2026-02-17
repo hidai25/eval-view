@@ -2869,7 +2869,33 @@ async def _run_async(
                         elif td.type == "removed":
                             console.print(f"      [red]- {td.golden_tool}[/red] (missing)")
                         elif td.type == "changed":
-                            console.print(f"      [yellow]~ {td.golden_tool} -> {td.actual_tool}[/yellow]")
+                            if td.golden_tool == td.actual_tool and td.parameter_diffs:
+                                # Same tool, different parameters
+                                console.print(f"      [yellow]~ {td.golden_tool}[/yellow] (parameters changed)")
+                            else:
+                                # Different tool
+                                console.print(f"      [yellow]~ {td.golden_tool} -> {td.actual_tool}[/yellow]")
+
+                        # Show parameter diffs if present
+                        if td.parameter_diffs:
+                            console.print("        [dim]Parameter differences:[/dim]")
+                            for pd in td.parameter_diffs[:10]:  # Limit to 10 params
+                                if pd.diff_type == "missing":
+                                    console.print(f"          [red]- {pd.param_name}[/red]: {pd.golden_value}")
+                                elif pd.diff_type == "added":
+                                    console.print(f"          [green]+ {pd.param_name}[/green]: {pd.actual_value}")
+                                elif pd.diff_type == "type_changed":
+                                    console.print(f"          [yellow]~ {pd.param_name}[/yellow]: type changed")
+                                    console.print(f"            golden: {type(pd.golden_value).__name__} = {pd.golden_value}")
+                                    console.print(f"            actual: {type(pd.actual_value).__name__} = {pd.actual_value}")
+                                elif pd.diff_type == "value_changed":
+                                    sim_str = ""
+                                    if pd.similarity is not None:
+                                        sim_pct = int(pd.similarity * 100)
+                                        sim_str = f" (similarity: {sim_pct}%)"
+                                    console.print(f"          [yellow]~ {pd.param_name}[/yellow]:{sim_str}")
+                                    console.print(f"            [dim]golden:[/dim] {pd.golden_value}")
+                                    console.print(f"            [dim]actual:[/dim] {pd.actual_value}")
 
                 # Score diff
                 if abs(trace_diff.score_diff) > 1:
@@ -2959,6 +2985,23 @@ async def _run_async(
         if diff:
             console.print("[dim]Compare runs: evalview view --run-id <id>[/dim]")
         console.print()
+
+    # Guided conversion to snapshot workflow (if appropriate)
+    if not watch and not diff and results:
+        from evalview.core.golden import GoldenStore
+        from evalview.core.project_state import ProjectStateStore
+        from evalview.core.celebrations import Celebrations
+
+        store = GoldenStore()
+        state_store = ProjectStateStore()
+
+        # Only show if no goldens exist, all tests passed, and haven't shown before
+        goldens = store.list_golden()
+        all_passed = all(r.passed for r in results)
+
+        if not goldens and all_passed and not state_store.load().conversion_suggestion_shown:
+            Celebrations.conversion_suggestion(len(results))
+            state_store.mark_conversion_shown()
 
     # --- Exit Code Logic (for CI) ---
     # Exit 2 for execution errors (network, timeout, etc.)
@@ -4735,6 +4778,9 @@ def demo():
     console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]║[/bold cyan]  [green]Get started:[/green]                                                 [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]║[/bold cyan]    $ evalview quickstart                                        [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]    $ evalview init                  [dim]# Set up your project[/dim]          [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]    $ evalview snapshot              [dim]# Capture baseline[/dim]            [bold cyan]║[/bold cyan]")
+    console.print("[bold cyan]║[/bold cyan]    $ evalview check                 [dim]# Catch regressions[/dim]           [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
     console.print()
@@ -6098,8 +6144,9 @@ def golden():
 @click.argument("result_file", type=click.Path(exists=True))
 @click.option("--notes", "-n", help="Notes about why this is the golden baseline")
 @click.option("--test", "-t", help="Save only specific test (by name)")
+@click.option("--variant", "-v", help="Save as named variant (for multi-reference goldens)")
 @track_command("golden_save")
-def golden_save(result_file: str, notes: str, test: str):
+def golden_save(result_file: str, notes: str, test: str, variant: str):
     """Save a test result as the golden baseline.
 
     RESULT_FILE is a JSON file from `evalview run` (e.g., .evalview/results/xxx.json)
@@ -6108,6 +6155,7 @@ def golden_save(result_file: str, notes: str, test: str):
         evalview golden save .evalview/results/latest.json
         evalview golden save results.json --notes "v1.0 release baseline"
         evalview golden save results.json --test "List Directory Contents"
+        evalview golden save results.json --variant "fast-path" --notes "Optimized path"
     """
     import json
     from evalview.core.golden import GoldenStore
@@ -6141,17 +6189,26 @@ def golden_save(result_file: str, notes: str, test: str):
         try:
             result = EvaluationResult.model_validate(result_data)
 
-            # Check if golden already exists
-            if store.has_golden(result.test_case):
+            # Check if golden already exists (for default or this specific variant)
+            variant_exists = store._get_golden_path(result.test_case, variant).exists()
+            if variant_exists:
+                variant_label = f"variant '{variant}'" if variant else "default golden"
                 if not click.confirm(
-                    f"Golden trace already exists for '{result.test_case}'. Overwrite?",
+                    f"{variant_label.capitalize()} already exists for '{result.test_case}'. Overwrite?",
                     default=False,
                 ):
                     console.print(f"[yellow]Skipped: {result.test_case}[/yellow]")
                     continue
 
-            path = store.save_golden(result, notes=notes, source_file=result_file)
-            console.print(f"[green]✓ Saved golden:[/green] {result.test_case}")
+            # Save golden (may raise ValueError if too many variants)
+            try:
+                path = store.save_golden(result, notes=notes, source_file=result_file, variant_name=variant)
+            except ValueError as e:
+                console.print(f"[red]❌ {e}[/red]")
+                continue
+
+            variant_label = f" (variant: {variant})" if variant else ""
+            console.print(f"[green]✓ Saved golden:[/green] {result.test_case}{variant_label}")
             console.print(f"  [dim]Score: {result.score:.1f}[/dim]")
             console.print(f"  [dim]Tools: {len(result.trace.steps)} steps[/dim]")
             console.print(f"  [dim]File: {path}[/dim]")
@@ -6170,29 +6227,33 @@ def golden_save(result_file: str, notes: str, test: str):
 def golden_list():
     """List all golden traces.
 
-    Shows all saved golden baselines with metadata.
+    Shows all saved golden baselines with metadata and variant counts.
     """
     from evalview.core.golden import GoldenStore
 
     store = GoldenStore()
-    goldens = store.list_golden()
+    goldens_with_variants = store.list_golden_with_variants()
 
-    if not goldens:
+    if not goldens_with_variants:
         console.print("\n[yellow]No golden traces found.[/yellow]")
         console.print("[dim]Save one with: evalview golden save <result.json>[/dim]\n")
         return
 
     console.print("\n[cyan]━━━ Golden Traces ━━━[/cyan]\n")
 
-    for g in sorted(goldens, key=lambda x: x.test_name):
-        console.print(f"  [bold]{g.test_name}[/bold]")
+    for item in sorted(goldens_with_variants, key=lambda x: x["metadata"].test_name):
+        g = item["metadata"]
+        variant_count = item["variant_count"]
+
+        variant_label = f" ({variant_count} variants)" if variant_count > 1 else ""
+        console.print(f"  [bold]{g.test_name}[/bold]{variant_label}")
         console.print(f"    [dim]Score: {g.score:.1f}[/dim]")
         console.print(f"    [dim]Blessed: {g.blessed_at.strftime('%Y-%m-%d %H:%M')}[/dim]")
         if g.notes:
             console.print(f"    [dim]Notes: {g.notes}[/dim]")
         console.print()
 
-    console.print(f"[dim]Total: {len(goldens)} golden trace(s)[/dim]\n")
+    console.print(f"[dim]Total: {len(goldens_with_variants)} test(s) with golden trace(s)[/dim]\n")
 
 
 @golden.command("delete")
@@ -6263,6 +6324,371 @@ def golden_show(test_name: str):
         preview += "..."
     console.print(Panel(preview, border_style="dim"))
     console.print()
+
+
+# ============================================================================
+# Snapshot/Check Commands (Simplified Workflow)
+# ============================================================================
+
+
+@main.command("snapshot")
+@click.argument("test_path", default="tests", type=click.Path(exists=True))
+@click.option("--notes", "-n", help="Notes about this snapshot")
+@click.option("--test", "-t", help="Snapshot only this specific test (by name)")
+@track_command("snapshot")
+def snapshot(test_path: str, notes: str, test: str):
+    """Run tests and snapshot passing results as baseline.
+
+    This is the simple workflow: snapshot → check → fix → snapshot.
+
+    TEST_PATH is the directory containing test cases (default: tests/).
+
+    Examples:
+        evalview snapshot                    # Snapshot all passing tests
+        evalview snapshot --test "my-test"   # Snapshot one test only
+        evalview snapshot --notes "v2.0"     # Add notes to snapshot
+    """
+    from evalview.core.golden import GoldenStore
+    from evalview.core.project_state import ProjectStateStore
+    from evalview.core.celebrations import Celebrations
+    from evalview.core.messages import get_random_checking_message
+
+    # Initialize stores
+    store = GoldenStore()
+    state_store = ProjectStateStore()
+
+    # Check if this is the first snapshot ever
+    is_first = state_store.is_first_snapshot()
+
+    console.print(f"\n[cyan]▶ {get_random_checking_message()}[/cyan]\n")
+
+    # Load test cases
+    loader = TestCaseLoader()
+    try:
+        test_cases = loader.load_from_directory(Path(test_path))
+    except Exception as e:
+        console.print(f"[red]❌ Failed to load test cases: {e}[/red]\n")
+        Celebrations.no_tests_found()
+        return
+
+    if not test_cases:
+        Celebrations.no_tests_found()
+        return
+
+    # Filter to specific test if requested
+    if test:
+        test_cases = [tc for tc in test_cases if tc.name == test]
+        if not test_cases:
+            console.print(f"[red]❌ No test found with name: {test}[/red]\n")
+            return
+
+    # Run tests (reuse existing run logic)
+    # For simplicity, we'll run tests synchronously
+    console.print(f"[cyan]Running {len(test_cases)} test(s)...[/cyan]\n")
+
+    # Import necessary components for running tests
+    from evalview.core.config import EvalViewConfig
+
+    # We need to run the tests - let's use a simplified approach
+    # Load config if exists
+    config = None
+    config_path = Path(".evalview/config.yaml")
+    if config_path.exists():
+        with open(config_path) as f:
+            config_data = yaml.safe_load(f)
+            config = EvalViewConfig.model_validate(config_data)
+
+    # Run each test case
+    results = []
+    for tc in test_cases:
+        try:
+            # Get adapter for this test case
+            adapter_type = tc.adapter or (config.adapter if config else None)
+            endpoint = tc.endpoint or (config.endpoint if config else None)
+
+            if not adapter_type or not endpoint:
+                console.print(f"[yellow]⚠ Skipping {tc.name}: No adapter/endpoint configured[/yellow]")
+                continue
+
+            # Create adapter
+            if adapter_type == "http":
+                adapter = HTTPAdapter(endpoint=endpoint, timeout=30.0)
+            elif adapter_type == "langgraph":
+                adapter = LangGraphAdapter(endpoint=endpoint, timeout=30.0)
+            elif adapter_type == "tapescope":
+                adapter = TapeScopeAdapter(endpoint=endpoint, timeout=30.0)
+            else:
+                console.print(f"[yellow]⚠ Skipping {tc.name}: Unknown adapter type '{adapter_type}'[/yellow]")
+                continue
+
+            # Run test
+            trace = asyncio.run(adapter.run(tc))
+
+            # Evaluate
+            evaluator = Evaluator()
+            result = evaluator.evaluate(tc, trace)
+
+            results.append(result)
+
+            # Show result
+            if result.passed:
+                console.print(f"[green]✓ {tc.name}:[/green] {result.score:.1f}/100")
+            else:
+                console.print(f"[red]✗ {tc.name}:[/red] {result.score:.1f}/100")
+
+        except Exception as e:
+            console.print(f"[red]✗ {tc.name}: Failed - {e}[/red]")
+            continue
+
+    # Filter to passing results
+    passing = [r for r in results if r.passed]
+
+    if not passing:
+        console.print("\n[yellow]No passing tests to snapshot.[/yellow]")
+        console.print("[dim]Fix failing tests first, then run evalview snapshot again.[/dim]\n")
+        return
+
+    # Save passing results as golden
+    console.print()
+    for result in passing:
+        try:
+            store.save_golden(result, notes=notes)
+            console.print(f"[green]✓ Snapshotted:[/green] {result.test_case}")
+        except Exception as e:
+            console.print(f"[red]❌ Failed to save {result.test_case}: {e}[/red]")
+
+    # Update project state
+    state_store.update_snapshot(test_count=len(passing))
+
+    # Celebrate!
+    if is_first:
+        Celebrations.first_snapshot(len(passing))
+    else:
+        console.print(f"\n[green]Baseline updated: {len(passing)} test(s)[/green]")
+        console.print("[dim]Run: evalview check[/dim]\n")
+
+
+@main.command("check")
+@click.argument("test_path", default="tests", type=click.Path(exists=True))
+@click.option("--test", "-t", help="Check only this specific test")
+@click.option("--json", "json_output", is_flag=True, help="Output JSON for CI")
+@click.option("--fail-on", help="Comma-separated statuses to fail on (default: REGRESSION)")
+@click.option("--strict", is_flag=True, help="Fail on any change (REGRESSION, TOOLS_CHANGED, OUTPUT_CHANGED)")
+@track_command("check")
+def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bool):
+    """Check current behavior against snapshot baseline.
+
+    This command runs tests and compares them against your saved baselines,
+    showing only what changed. Perfect for CI/CD and daily development.
+
+    TEST_PATH is the directory containing test cases (default: tests/).
+
+    Examples:
+        evalview check                                   # Check all tests
+        evalview check --test "my-test"                  # Check one test
+        evalview check --json                            # JSON output for CI
+        evalview check --fail-on REGRESSION,TOOLS_CHANGED
+        evalview check --strict                          # Fail on any change
+    """
+    from evalview.core.golden import GoldenStore
+    from evalview.core.diff import DiffEngine, DiffStatus
+    from evalview.core.project_state import ProjectStateStore
+    from evalview.core.celebrations import Celebrations
+    from evalview.core.messages import get_random_checking_message, get_random_clean_check_message
+
+    # Initialize stores
+    store = GoldenStore()
+    state_store = ProjectStateStore()
+    diff_engine = DiffEngine()
+
+    # Check if this is the first check
+    is_first_check = state_store.is_first_check()
+
+    # Show recap
+    if not is_first_check and not json_output:
+        days_since = state_store.days_since_last_check()
+        if days_since and days_since >= 7:
+            Celebrations.welcome_back(days_since)
+
+    # Verify snapshots exist
+    goldens = store.list_golden()
+    if not goldens:
+        if not json_output:
+            Celebrations.no_snapshot_found()
+        sys.exit(1)
+
+    # Show status message
+    if not json_output:
+        console.print(f"[cyan]▶ {get_random_checking_message()}[/cyan]\n")
+
+    # Load test cases
+    loader = TestCaseLoader()
+    try:
+        test_cases = loader.load_from_directory(Path(test_path))
+    except Exception as e:
+        console.print(f"[red]❌ Failed to load test cases: {e}[/red]\n")
+        sys.exit(1)
+
+    # Filter to specific test if requested
+    if test:
+        test_cases = [tc for tc in test_cases if tc.name == test]
+        if not test_cases:
+            console.print(f"[red]❌ No test found with name: {test}[/red]\n")
+            sys.exit(1)
+
+    # Run tests (similar to snapshot command)
+    from evalview.core.config import EvalViewConfig
+
+    config = None
+    config_path = Path(".evalview/config.yaml")
+    if config_path.exists():
+        with open(config_path) as f:
+            config_data = yaml.safe_load(f)
+            config = EvalViewConfig.model_validate(config_data)
+
+    results = []
+    diffs = []
+
+    for tc in test_cases:
+        try:
+            # Get adapter
+            adapter_type = tc.adapter or (config.adapter if config else None)
+            endpoint = tc.endpoint or (config.endpoint if config else None)
+
+            if not adapter_type or not endpoint:
+                continue
+
+            # Create adapter
+            if adapter_type == "http":
+                adapter = HTTPAdapter(endpoint=endpoint, timeout=30.0)
+            elif adapter_type == "langgraph":
+                adapter = LangGraphAdapter(endpoint=endpoint, timeout=30.0)
+            elif adapter_type == "tapescope":
+                adapter = TapeScopeAdapter(endpoint=endpoint, timeout=30.0)
+            else:
+                continue
+
+            # Run test
+            trace = asyncio.run(adapter.run(tc))
+
+            # Evaluate
+            evaluator = Evaluator()
+            result = evaluator.evaluate(tc, trace)
+            results.append(result)
+
+            # Compare against golden
+            golden = store.load_golden(tc.name)
+            if golden:
+                diff = diff_engine.compare(golden, trace, result.score)
+                diffs.append((tc.name, diff))
+
+        except Exception as e:
+            if not json_output:
+                console.print(f"[red]✗ {tc.name}: Failed - {e}[/red]")
+            continue
+
+    # Analyze diffs
+    has_regressions = any(d.overall_severity == DiffStatus.REGRESSION for _, d in diffs)
+    has_tools_changed = any(d.overall_severity == DiffStatus.TOOLS_CHANGED for _, d in diffs)
+    has_output_changed = any(d.overall_severity == DiffStatus.OUTPUT_CHANGED for _, d in diffs)
+    all_passed = not has_regressions and not has_tools_changed and not has_output_changed
+
+    # Update project state
+    state = state_store.update_check(
+        has_regressions=(has_regressions or has_tools_changed or has_output_changed),
+        status="passed" if all_passed else "regression"
+    )
+
+    # Display results
+    if json_output:
+        # JSON output for CI
+        output = {
+            "summary": {
+                "total_tests": len(diffs),
+                "unchanged": sum(1 for _, d in diffs if d.overall_severity == DiffStatus.PASSED),
+                "regressions": sum(1 for _, d in diffs if d.overall_severity == DiffStatus.REGRESSION),
+                "tools_changed": sum(1 for _, d in diffs if d.overall_severity == DiffStatus.TOOLS_CHANGED),
+                "output_changed": sum(1 for _, d in diffs if d.overall_severity == DiffStatus.OUTPUT_CHANGED),
+            },
+            "diffs": [
+                {
+                    "test_name": name,
+                    "status": diff.overall_severity.value,
+                    "score_delta": diff.score_diff,
+                    "has_tool_diffs": len(diff.tool_diffs) > 0,
+                    "output_similarity": diff.output_diff.similarity if diff.output_diff else 1.0,
+                }
+                for name, diff in diffs
+            ]
+        }
+        print(json.dumps(output, indent=2))
+    else:
+        # Console output with personality
+        if is_first_check:
+            Celebrations.first_check()
+
+        if all_passed:
+            # Clean check!
+            console.print(f"[green]{get_random_clean_check_message()}[/green]\n")
+
+            # Show streak celebration
+            if state.current_streak >= 3:
+                Celebrations.clean_check_streak(state)
+
+            # Show health summary periodically
+            if state.total_checks >= 5 and state.total_checks % 5 == 0:
+                Celebrations.health_summary(state)
+
+        else:
+            # Show diffs
+            console.print("\n[bold]Diff Summary[/bold]")
+            unchanged = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.PASSED)
+            console.print(f"  {unchanged}/{len(diffs)} unchanged")
+            if has_regressions:
+                count = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.REGRESSION)
+                console.print(f"  {count} regression(s)")
+            if has_tools_changed:
+                count = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.TOOLS_CHANGED)
+                console.print(f"  {count} tool change(s)")
+            if has_output_changed:
+                count = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.OUTPUT_CHANGED)
+                console.print(f"  {count} output change(s)")
+
+            console.print()
+
+            # Show details of changed tests
+            for name, diff in diffs:
+                if diff.overall_severity != DiffStatus.PASSED:
+                    severity_icon = {
+                        DiffStatus.REGRESSION: "[red]✗ REGRESSION[/red]",
+                        DiffStatus.TOOLS_CHANGED: "[yellow]⚠ TOOLS_CHANGED[/yellow]",
+                        DiffStatus.OUTPUT_CHANGED: "[dim]~ OUTPUT_CHANGED[/dim]",
+                    }.get(diff.overall_severity, "?")
+
+                    console.print(f"{severity_icon}: {name}")
+                    console.print(f"    {diff.summary()}")
+                    console.print()
+
+            # Show guidance
+            if has_regressions:
+                Celebrations.regression_guidance("See details above")
+
+    # Compute exit code
+    exit_code = 0
+    if strict:
+        fail_on = "REGRESSION,TOOLS_CHANGED,OUTPUT_CHANGED"
+
+    if not fail_on:
+        fail_on = "REGRESSION"  # Default
+
+    fail_statuses = set(s.strip().upper() for s in fail_on.split(","))
+
+    for _, diff in diffs:
+        if diff.overall_severity.value.upper() in fail_statuses:
+            exit_code = 1
+            break
+
+    sys.exit(exit_code)
 
 
 # ============================================================================

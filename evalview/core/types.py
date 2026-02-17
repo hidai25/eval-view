@@ -423,6 +423,19 @@ class CategoryResult(BaseModel):
     matched_tools: List[str] = Field(default_factory=list)
 
 
+class ReasonCode(BaseModel):
+    """Structured reason code for evaluation failures.
+
+    Provides actionable, machine-readable error codes with helpful guidance.
+    """
+
+    code: str = Field(description="Error code (e.g., 'TOOL_MISSING', 'PARAM_TYPE_MISMATCH')")
+    severity: Literal["error", "warning", "info"] = Field(description="Severity level")
+    message: str = Field(description="Human-readable description of the issue")
+    context: Dict[str, Any] = Field(default_factory=dict, description="Additional context data")
+    remediation: Optional[str] = Field(default=None, description="Suggested fix or next steps")
+
+
 class ToolEvaluation(BaseModel):
     """Tool call accuracy evaluation."""
 
@@ -435,6 +448,8 @@ class ToolEvaluation(BaseModel):
     category_results: List[CategoryResult] = Field(default_factory=list)
     categories_satisfied: int = 0
     categories_total: int = 0
+    # Structured reason codes (new)
+    reason_codes: List[ReasonCode] = Field(default_factory=list, description="Structured error reasons")
 
 
 class SequenceEvaluation(BaseModel):
@@ -454,6 +469,8 @@ class SequenceEvaluation(BaseModel):
         le=1.0,
         description="Partial credit score: proportion of expected sequence completed"
     )
+    # Structured reason codes (new)
+    reason_codes: List[ReasonCode] = Field(default_factory=list, description="Structured error reasons")
 
 
 class ContainsChecks(BaseModel):

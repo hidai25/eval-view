@@ -1,7 +1,7 @@
 """Tool sequence correctness evaluator."""
 
 from typing import List, Literal
-from evalview.core.types import TestCase, ExecutionTrace, SequenceEvaluation
+from evalview.core.types import TestCase, ExecutionTrace, SequenceEvaluation, ReasonCode
 
 
 # Sequence matching modes
@@ -122,6 +122,7 @@ class SequenceEvaluator:
             actual_sequence=actual,
             violations=violations,
             progress_score=round(progress_score, 4),
+            reason_codes=self._generate_reason_codes(violations, expected, actual, correct),
         )
 
     def _evaluate_subsequence(
@@ -174,6 +175,7 @@ class SequenceEvaluator:
             actual_sequence=actual,
             violations=violations,
             progress_score=round(progress_score, 4),
+            reason_codes=self._generate_reason_codes(violations, expected, actual, correct),
         )
 
     def _evaluate_unordered(
@@ -233,4 +235,82 @@ class SequenceEvaluator:
             actual_sequence=actual,
             violations=violations,
             progress_score=round(progress_score, 4),
+            reason_codes=self._generate_reason_codes(violations, expected, actual, correct),
         )
+
+    def _generate_reason_codes(
+        self,
+        violations: List[str],
+        expected: List[str],
+        actual: List[str],
+        correct: bool
+    ) -> List[ReasonCode]:
+        """Generate structured reason codes from violations."""
+        if correct or not violations:
+            return []
+
+        reason_codes: List[ReasonCode] = []
+
+        for violation in violations:
+            # Parse violation type and generate appropriate reason code
+            if "Length mismatch" in violation:
+                reason_codes.append(ReasonCode(
+                    code="SEQUENCE_LENGTH_MISMATCH",
+                    severity="error",
+                    message=violation,
+                    context={
+                        "expected_length": len(expected),
+                        "actual_length": len(actual),
+                        "expected": expected,
+                        "actual": actual
+                    },
+                    remediation="Check if your agent is calling too many or too few tools. Update your expected sequence if the actual behavior is correct."
+                ))
+            elif "Step" in violation and "expected" in violation:
+                # Extract step number and tool names
+                reason_codes.append(ReasonCode(
+                    code="SEQUENCE_ORDER_VIOLATION",
+                    severity="error",
+                    message=violation,
+                    context={
+                        "expected_sequence": expected,
+                        "actual_sequence": actual
+                    },
+                    remediation="Verify that your agent calls tools in the expected order. If the actual order is correct, update your test case."
+                ))
+            elif "Missing or insufficient" in violation:
+                reason_codes.append(ReasonCode(
+                    code="SEQUENCE_MISSING_TOOLS",
+                    severity="error",
+                    message=violation,
+                    context={
+                        "expected": expected,
+                        "actual": actual
+                    },
+                    remediation="Ensure all expected tools are called. Some may be missing or called fewer times than required."
+                ))
+            elif "Tool not found in actual sequence" in violation:
+                reason_codes.append(ReasonCode(
+                    code="SEQUENCE_TOOL_NOT_FOUND",
+                    severity="error",
+                    message=violation,
+                    context={
+                        "expected_sequence": expected,
+                        "actual_sequence": actual
+                    },
+                    remediation="The expected tool was not called at all. Check that your agent has access to this tool."
+                ))
+            else:
+                # General sequence violation
+                reason_codes.append(ReasonCode(
+                    code="SEQUENCE_VIOLATION",
+                    severity="warning",
+                    message=violation,
+                    context={
+                        "expected": expected,
+                        "actual": actual
+                    },
+                    remediation="Review the sequence of tool calls and adjust your test case or agent logic."
+                ))
+
+        return reason_codes

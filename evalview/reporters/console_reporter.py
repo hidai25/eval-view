@@ -14,6 +14,7 @@ from evalview.core.types import (
     StatisticalEvaluationResult,
     StatisticalMetrics,
     FlakinessScore,
+    ReasonCode,
 )
 
 
@@ -37,6 +38,47 @@ class ConsoleReporter:
         if len(text) > max_length:
             return text[: max_length - 3] + "..."
         return text
+
+    def _display_reason_codes(self, reason_codes: list[ReasonCode], indent: str = "  ") -> None:
+        """Display structured reason codes with icons and formatting.
+
+        Args:
+            reason_codes: List of ReasonCode objects to display
+            indent: Indentation prefix for each line
+        """
+        if not reason_codes:
+            return
+
+        self.console.print(f"\n{indent}[bold]Failure Reasons:[/bold]")
+        for rc in reason_codes:
+            # Icon based on severity
+            if rc.severity == "error":
+                icon = "[red]✗[/red]"
+                color = "red"
+            elif rc.severity == "warning":
+                icon = "[yellow]⚠[/yellow]"
+                color = "yellow"
+            else:
+                icon = "[blue]ℹ[/blue]"
+                color = "blue"
+
+            # Display code and message
+            self.console.print(f"{indent}{icon} [{color}]{rc.code}:[/{color}] {rc.message}")
+
+            # Display context if present (limit detail)
+            if rc.context:
+                # Only show key context items, not full dumps
+                if "expected_tool" in rc.context:
+                    self.console.print(f"{indent}  [dim]Expected: {rc.context['expected_tool']}[/dim]")
+                if "actual_tool" in rc.context:
+                    self.console.print(f"{indent}  [dim]Actual: {rc.context['actual_tool']}[/dim]")
+                if "expected" in rc.context and "actual" in rc.context and isinstance(rc.context["expected"], str):
+                    self.console.print(f"{indent}  [dim]Expected: {rc.context['expected']}[/dim]")
+                    self.console.print(f"{indent}  [dim]Actual: {rc.context['actual']}[/dim]")
+
+            # Display remediation with helpful icon
+            if rc.remediation:
+                self.console.print(f"{indent}  [cyan]→ Fix:[/cyan] [dim]{rc.remediation}[/dim]")
 
     def print_step_timeline(self, steps: List[StepTrace], title: str = "Agent Flow") -> None:
         """
@@ -460,6 +502,10 @@ class ConsoleReporter:
         for hint in tool_eval.hints:
             self.console.print(f"  [yellow]💡 {hint}[/yellow]")
 
+        # Display structured reason codes (enhanced error feedback)
+        if hasattr(tool_eval, 'reason_codes') and tool_eval.reason_codes:
+            self._display_reason_codes(tool_eval.reason_codes)
+
         # Sequence correctness with progress score
         seq_eval = result.evaluations.sequence_correctness
         if seq_eval.correct:
@@ -474,6 +520,10 @@ class ConsoleReporter:
             if seq_eval.violations:
                 for violation in seq_eval.violations:
                     self.console.print(f"  [yellow]⚠️  {violation}[/yellow]")
+
+            # Display structured reason codes for sequence violations
+            if hasattr(seq_eval, 'reason_codes') and seq_eval.reason_codes:
+                self._display_reason_codes(seq_eval.reason_codes)
 
         # Output quality
         output_eval = result.evaluations.output_quality
