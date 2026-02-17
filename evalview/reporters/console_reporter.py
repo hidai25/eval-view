@@ -39,7 +39,7 @@ class ConsoleReporter:
             return text[: max_length - 3] + "..."
         return text
 
-    def _display_reason_codes(self, reason_codes: list[ReasonCode], indent: str = "  ") -> None:
+    def _display_reason_codes(self, reason_codes: List[ReasonCode], indent: str = "  ") -> None:
         """Display structured reason codes with icons and formatting.
 
         Args:

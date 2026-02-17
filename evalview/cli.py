@@ -82,6 +82,36 @@ load_dotenv(dotenv_path=".env.local", override=True)  # Override with .env.local
 console = Console()
 
 
+# Helper Functions
+def _create_adapter(adapter_type: str, endpoint: str, timeout: float = 30.0):
+    """Factory function for creating adapters based on type.
+
+    Args:
+        adapter_type: Type of adapter ("http", "langgraph", "tapescope", "crewai", "openai")
+        endpoint: API endpoint URL
+        timeout: Request timeout in seconds
+
+    Returns:
+        Adapter instance
+
+    Raises:
+        ValueError: If adapter_type is unknown
+    """
+    adapter_map = {
+        "http": HTTPAdapter,
+        "langgraph": LangGraphAdapter,
+        "tapescope": TapeScopeAdapter,
+        "crewai": CrewAIAdapter,
+        "openai": OpenAIAssistantsAdapter,
+    }
+
+    adapter_class = adapter_map.get(adapter_type)
+    if not adapter_class:
+        raise ValueError(f"Unknown adapter type: {adapter_type}")
+
+    return adapter_class(endpoint=endpoint, timeout=timeout)
+
+
 @click.group(context_settings={"allow_interspersed_args": False})
 @click.version_option(version="0.2.5")
 @click.pass_context
@@ -6411,18 +6441,21 @@ def snapshot(test_path: str, notes: str, test: str):
                 continue
 
             # Create adapter
-            if adapter_type == "http":
-                adapter = HTTPAdapter(endpoint=endpoint, timeout=30.0)
-            elif adapter_type == "langgraph":
-                adapter = LangGraphAdapter(endpoint=endpoint, timeout=30.0)
-            elif adapter_type == "tapescope":
-                adapter = TapeScopeAdapter(endpoint=endpoint, timeout=30.0)
-            else:
-                console.print(f"[yellow]⚠ Skipping {tc.name}: Unknown adapter type '{adapter_type}'[/yellow]")
+            try:
+                adapter = _create_adapter(adapter_type, endpoint)
+            except ValueError as e:
+                console.print(f"[yellow]⚠ Skipping {tc.name}: {e}[/yellow]")
                 continue
 
             # Run test
-            trace = asyncio.run(adapter.run(tc))
+            try:
+                trace = asyncio.run(adapter.run(tc))
+            except (asyncio.TimeoutError, asyncio.CancelledError) as e:
+                console.print(f"[red]✗ {tc.name}: Async execution failed - {e}[/red]")
+                continue
+            except Exception:
+                # Re-raise to be caught by outer exception handler
+                raise
 
             # Evaluate
             evaluator = Evaluator()
@@ -6559,27 +6592,34 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
                 continue
 
             # Create adapter
-            if adapter_type == "http":
-                adapter = HTTPAdapter(endpoint=endpoint, timeout=30.0)
-            elif adapter_type == "langgraph":
-                adapter = LangGraphAdapter(endpoint=endpoint, timeout=30.0)
-            elif adapter_type == "tapescope":
-                adapter = TapeScopeAdapter(endpoint=endpoint, timeout=30.0)
-            else:
+            try:
+                adapter = _create_adapter(adapter_type, endpoint)
+            except ValueError:
+                if not json_output:
+                    console.print(f"[yellow]⚠ Skipping {tc.name}: Unknown adapter type '{adapter_type}'[/yellow]")
                 continue
 
-            # Run test
-            trace = asyncio.run(adapter.run(tc))
+            # Run test (wrap asyncio.run to catch async exceptions)
+            try:
+                trace = asyncio.run(adapter.run(tc))
+            except (asyncio.TimeoutError, asyncio.CancelledError) as e:
+                if not json_output:
+                    console.print(f"[red]✗ {tc.name}: Async execution failed - {e}[/red]")
+                continue
+            except Exception:
+                # Re-raise to be caught by outer exception handler
+                raise
 
             # Evaluate
             evaluator = Evaluator()
             result = evaluator.evaluate(tc, trace)
             results.append(result)
 
-            # Compare against golden
-            golden = store.load_golden(tc.name)
-            if golden:
-                diff = diff_engine.compare(golden, trace, result.score)
+            # Compare against golden (use multi-reference)
+            golden_variants = store.load_all_golden_variants(tc.name)
+            if golden_variants:
+                # Use multi-reference comparison for best match
+                diff = diff_engine.compare_multi_reference(golden_variants, trace, result.score)
                 diffs.append((tc.name, diff))
 
         except Exception as e:

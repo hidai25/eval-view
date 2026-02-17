@@ -68,12 +68,12 @@ class GoldenStore:
         Returns:
             Path to golden file
         """
-        # Sanitize test name for filesystem
-        safe_name = "".join(c if c.isalnum() or c in "._-" else "_" for c in test_name)
+        # Sanitize test name for filesystem (remove dots to prevent path traversal)
+        safe_name = "".join(c if c.isalnum() or c in "_-" else "_" for c in test_name)
 
         if variant_name:
-            # Sanitize variant name too
-            safe_variant = "".join(c if c.isalnum() or c in "._-" else "_" for c in variant_name)
+            # Sanitize variant name too (remove dots to prevent path traversal)
+            safe_variant = "".join(c if c.isalnum() or c in "_-" else "_" for c in variant_name)
             return self.golden_dir / f"{safe_name}.variant_{safe_variant}.golden.json"
         else:
             return self.golden_dir / f"{safe_name}.golden.json"
@@ -216,7 +216,7 @@ class GoldenStore:
         if not self.golden_dir.exists():
             return variants
 
-        safe_name = "".join(c if c.isalnum() or c in "._-" else "_" for c in test_name)
+        safe_name = "".join(c if c.isalnum() or c in "_-" else "_" for c in test_name)
         pattern = f"{safe_name}.variant_*.golden.json"
 
         for path in self.golden_dir.glob(pattern):

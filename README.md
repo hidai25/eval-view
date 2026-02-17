@@ -41,20 +41,62 @@ pip install evalview && evalview demo   # No API key needed
 
 ## 🤔 How It Works
 
+**Simple workflow (recommended):**
+
+```bash
+# 1. Your agent works correctly
+evalview snapshot                 # 📸 Save current behavior as baseline
+
+# 2. You change something (prompt, model, tools)
+evalview check                    # 🔍 Detect regressions automatically
+
+# 3. EvalView tells you exactly what changed
+#    → ✅ All clean! No regressions detected.
+#    → ⚠️ TOOLS_CHANGED: +web_search, -calculator
+#    → ❌ REGRESSION: score 85 → 71
 ```
-1. Your agent works correctly
-   → evalview run --save-golden          # Save it as your baseline
 
-2. You change something (prompt, model, tools)
-   → evalview run --diff                  # Compare against baseline
+**Advanced workflow (more control):**
 
-3. EvalView tells you exactly what changed
-   → REGRESSION: score 85 → 71
-   → TOOLS_CHANGED: +web_search, -calculator
-   → Agent healthy. No regressions detected.
+```bash
+evalview run --save-golden        # Save specific result as baseline
+evalview run --diff               # Compare with custom options
 ```
 
 That's it. **Deterministic proof, no LLM-as-judge required, no API keys needed.**
+
+### 🎯 New: Habit-Forming Regression Detection
+
+EvalView now tracks your progress and celebrates wins:
+
+```bash
+evalview check
+# 🔍 Comparing against your baseline...
+# ✨ All clean! No regressions detected.
+# 🎯 5 clean checks in a row! You're on a roll.
+```
+
+**Features:**
+- 🔥 **Streak tracking** — Celebrate consecutive clean checks (3, 5, 10, 25+ milestones)
+- 📊 **Health score** — See your project's stability at a glance
+- 🔔 **Smart recaps** — "Since last time" summaries to stay in context
+- 📈 **Progress visualization** — Track improvement over time
+
+### 🎨 Multi-Reference Goldens (for non-deterministic agents)
+
+Some agents produce valid variations. Save up to 5 golden variants per test:
+
+```bash
+# Save multiple acceptable behaviors
+evalview snapshot --variant variant1
+evalview snapshot --variant variant2
+
+# EvalView compares against ALL variants, passes if ANY match
+evalview check
+# ✅ Matched variant 2/3
+```
+
+Perfect for LLM-based agents with creative variation.
 
 ---
 
@@ -191,8 +233,17 @@ jobs:
       - uses: hidai25/eval-view@v0.2.5
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          diff: true
-          fail-on: 'REGRESSION'
+          command: check                   # Use new check command
+          fail-on: 'REGRESSION'            # Block PRs on regressions
+          json: true                       # Structured output for CI
+```
+
+**Or use the CLI directly:**
+
+```yaml
+      - run: evalview check --fail-on REGRESSION --json
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 ```
 
 PRs with regressions get blocked. Add a PR comment showing exactly what changed:
@@ -211,7 +262,9 @@ PRs with regressions get blocked. Add a PR comment showing exactly what changed:
 
 | Feature | Description | Docs |
 |---------|-------------|------|
-| 📸 **Golden Traces** | Save baselines, detect regressions with `--diff` | [→](docs/GOLDEN_TRACES.md) |
+| 📸 **Snapshot/Check Workflow** | Simple `snapshot` → `check` commands for regression detection | [→](docs/GOLDEN_TRACES.md) |
+| 🔥 **Streak Tracking** | Habit-forming celebrations for consecutive clean checks | [→](docs/GOLDEN_TRACES.md) |
+| 🎨 **Multi-Reference Goldens** | Save up to 5 variants per test for non-deterministic agents | [→](docs/GOLDEN_TRACES.md) |
 | 💬 **Chat Mode** | AI assistant: `/run`, `/test`, `/compare` | [→](docs/CHAT_MODE.md) |
 | 🏷️ **Tool Categories** | Match by intent, not exact tool names | [→](docs/TOOL_CATEGORIES.md) |
 | 📊 **Statistical Mode** | Handle flaky LLMs with `--runs N` and pass@k | [→](docs/STATISTICAL_MODE.md) |
@@ -298,7 +351,7 @@ evalview skill test tests.yaml --agent langgraph
 
 ## 🗺️ Roadmap
 
-**Shipped:** Golden traces • Tool categories • Statistical mode • Difficulty levels • Partial sequence credit • Skills validation • E2E agent testing • Build & smoke tests • Health checks • Safety guards (`no_sudo`, `git_clean`) • Claude Code & Codex adapters • **Opus 4.6 cost tracking** • MCP servers • HTML reports • Interactive chat mode • EvalView Gym
+**Shipped:** Golden traces • **Snapshot/check workflow** • **Streak tracking & celebrations** • **Multi-reference goldens** • Tool categories • Statistical mode • Difficulty levels • Partial sequence credit • Skills validation • E2E agent testing • Build & smoke tests • Health checks • Safety guards (`no_sudo`, `git_clean`) • Claude Code & Codex adapters • **Opus 4.6 cost tracking** • MCP servers • HTML reports • Interactive chat mode • EvalView Gym
 
 **Coming:** Agent Teams trace analysis • Multi-turn conversations • Grounded hallucination detection • Error compounding metrics • Container isolation
 

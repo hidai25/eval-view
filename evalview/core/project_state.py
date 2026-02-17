@@ -11,9 +11,15 @@ State is persisted in .evalview/state.json
 
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, Field
 import json
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Milestone thresholds for streak tracking
+MILESTONE_THRESHOLDS = [3, 5, 10, 25, 50, 100]
 
 
 class ProjectState(BaseModel):
@@ -37,7 +43,7 @@ class ProjectState(BaseModel):
     total_checks: int = 0
 
     # Milestones (for celebration tracking)
-    milestones_hit: list[str] = Field(default_factory=list)  # ["streak_5", "streak_10", etc.]
+    milestones_hit: List[str] = Field(default_factory=list)  # ["streak_5", "streak_10", etc.]
 
     # Onboarding
     conversion_suggestion_shown: bool = False
@@ -70,7 +76,7 @@ class ProjectStateStore:
             return ProjectState.model_validate(data)
         except (json.JSONDecodeError, ValueError) as e:
             # Corrupted state file, start fresh
-            print(f"Warning: Could not load state file ({e}), creating new state")
+            logger.warning(f"Could not load state file ({e}), creating new state")
             return ProjectState()
 
     def save(self, state: ProjectState) -> None:
@@ -79,9 +85,12 @@ class ProjectStateStore:
         Args:
             state: ProjectState to persist
         """
-        self.state_file.write_text(
-            state.model_dump_json(indent=2, exclude_none=False)
-        )
+        try:
+            with open(self.state_file, 'w') as f:
+                f.write(state.model_dump_json(indent=2, exclude_none=False))
+        except IOError as e:
+            logger.error(f"Failed to save project state: {e}")
+            raise
 
     def update_snapshot(self, test_count: int = 1) -> ProjectState:
         """Update state after snapshot operation.
@@ -126,7 +135,7 @@ class ProjectStateStore:
 
             # Track milestones
             milestone = f"streak_{state.current_streak}"
-            if state.current_streak in [3, 5, 10, 25, 50, 100] and milestone not in state.milestones_hit:
+            if state.current_streak in MILESTONE_THRESHOLDS and milestone not in state.milestones_hit:
                 state.milestones_hit.append(milestone)
 
         self.save(state)

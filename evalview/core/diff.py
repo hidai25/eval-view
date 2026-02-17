@@ -273,11 +273,14 @@ class DiffEngine:
                 best_rank = rank
                 best_variant_name = f"variant_{i}" if i > 0 else "default"
 
-        # Annotate with matched variant
-        if best_diff:
-            best_diff.matched_variant = best_variant_name
+        # Annotate with matched variant and return
+        # best_diff is guaranteed to be set because golden_variants is non-empty
+        if best_diff is None:
+            # This should never happen due to the empty check above, but satisfy type checker
+            raise RuntimeError("Failed to compare variants (this is a bug)")
 
-        return best_diff  # type: ignore  # We know it's not None due to non-empty list check
+        best_diff.matched_variant = best_variant_name
+        return best_diff
 
     def _compare_tools(
         self,
