@@ -6361,78 +6361,22 @@ def golden_show(test_name: str):
 # ============================================================================
 
 
-@main.command("snapshot")
-@click.argument("test_path", default="tests", type=click.Path(exists=True))
-@click.option("--notes", "-n", help="Notes about this snapshot")
-@click.option("--test", "-t", help="Snapshot only this specific test (by name)")
-@track_command("snapshot")
-def snapshot(test_path: str, notes: str, test: str):
-    """Run tests and snapshot passing results as baseline.
+def _execute_snapshot_tests(
+    test_cases: List["TestCase"],
+    config: Optional["EvalViewConfig"]
+) -> List["EvaluationResult"]:
+    """Execute tests and evaluate results for snapshot command.
 
-    This is the simple workflow: snapshot → check → fix → snapshot.
-
-    TEST_PATH is the directory containing test cases (default: tests/).
-
-    Examples:
-        evalview snapshot                    # Snapshot all passing tests
-        evalview snapshot --test "my-test"   # Snapshot one test only
-        evalview snapshot --notes "v2.0"     # Add notes to snapshot
+    Returns:
+        List of EvaluationResult objects
     """
-    from evalview.core.golden import GoldenStore
-    from evalview.core.project_state import ProjectStateStore
-    from evalview.core.celebrations import Celebrations
-    from evalview.core.messages import get_random_checking_message
+    from evalview.evaluators.main import Evaluator
 
-    # Initialize stores
-    store = GoldenStore()
-    state_store = ProjectStateStore()
-
-    # Check if this is the first snapshot ever
-    is_first = state_store.is_first_snapshot()
-
-    console.print(f"\n[cyan]▶ {get_random_checking_message()}[/cyan]\n")
-
-    # Load test cases
-    loader = TestCaseLoader()
-    try:
-        test_cases = loader.load_from_directory(Path(test_path))
-    except Exception as e:
-        console.print(f"[red]❌ Failed to load test cases: {e}[/red]\n")
-        Celebrations.no_tests_found()
-        return
-
-    if not test_cases:
-        Celebrations.no_tests_found()
-        return
-
-    # Filter to specific test if requested
-    if test:
-        test_cases = [tc for tc in test_cases if tc.name == test]
-        if not test_cases:
-            console.print(f"[red]❌ No test found with name: {test}[/red]\n")
-            return
-
-    # Run tests (reuse existing run logic)
-    # For simplicity, we'll run tests synchronously
-    console.print(f"[cyan]Running {len(test_cases)} test(s)...[/cyan]\n")
-
-    # Import necessary components for running tests
-    from evalview.core.config import EvalViewConfig
-
-    # We need to run the tests - let's use a simplified approach
-    # Load config if exists
-    config = None
-    config_path = Path(".evalview/config.yaml")
-    if config_path.exists():
-        with open(config_path) as f:
-            config_data = yaml.safe_load(f)
-            config = EvalViewConfig.model_validate(config_data)
-
-    # Run each test case
     results = []
+
     for tc in test_cases:
         try:
-            # Get adapter for this test case
+            # Get adapter config
             adapter_type = tc.adapter or (config.adapter if config else None)
             endpoint = tc.endpoint or (config.endpoint if config else None)
 
@@ -6473,32 +6417,328 @@ def snapshot(test_path: str, notes: str, test: str):
             console.print(f"[red]✗ {tc.name}: Failed - {e}[/red]")
             continue
 
+    return results
+
+
+def _save_snapshot_results(
+    results: List["EvaluationResult"],
+    notes: Optional[str]
+) -> int:
+    """Save passing test results as golden baselines.
+
+    Returns:
+        Number of tests successfully saved
+    """
+    from evalview.core.golden import GoldenStore
+
+    store = GoldenStore()
+
     # Filter to passing results
     passing = [r for r in results if r.passed]
 
     if not passing:
         console.print("\n[yellow]No passing tests to snapshot.[/yellow]")
         console.print("[dim]Fix failing tests first, then run evalview snapshot again.[/dim]\n")
-        return
+        return 0
 
     # Save passing results as golden
     console.print()
+    saved_count = 0
     for result in passing:
         try:
             store.save_golden(result, notes=notes)
             console.print(f"[green]✓ Snapshotted:[/green] {result.test_case}")
+            saved_count += 1
         except Exception as e:
             console.print(f"[red]❌ Failed to save {result.test_case}: {e}[/red]")
 
+    return saved_count
+
+
+@main.command("snapshot")
+@click.argument("test_path", default="tests", type=click.Path(exists=True))
+@click.option("--notes", "-n", help="Notes about this snapshot")
+@click.option("--test", "-t", help="Snapshot only this specific test (by name)")
+@track_command("snapshot")
+def snapshot(test_path: str, notes: str, test: str):
+    """Run tests and snapshot passing results as baseline.
+
+    This is the simple workflow: snapshot → check → fix → snapshot.
+
+    TEST_PATH is the directory containing test cases (default: tests/).
+
+    Examples:
+        evalview snapshot                    # Snapshot all passing tests
+        evalview snapshot --test "my-test"   # Snapshot one test only
+        evalview snapshot --notes "v2.0"     # Add notes to snapshot
+    """
+    from evalview.core.project_state import ProjectStateStore
+    from evalview.core.celebrations import Celebrations
+    from evalview.core.messages import get_random_checking_message
+
+    # Initialize stores
+    state_store = ProjectStateStore()
+
+    # Check if this is the first snapshot ever
+    is_first = state_store.is_first_snapshot()
+
+    console.print(f"\n[cyan]▶ {get_random_checking_message()}[/cyan]\n")
+
+    # Load test cases
+    loader = TestCaseLoader()
+    try:
+        test_cases = loader.load_from_directory(Path(test_path))
+    except Exception as e:
+        console.print(f"[red]❌ Failed to load test cases: {e}[/red]\n")
+        Celebrations.no_tests_found()
+        return
+
+    if not test_cases:
+        Celebrations.no_tests_found()
+        return
+
+    # Filter to specific test if requested
+    if test:
+        test_cases = [tc for tc in test_cases if tc.name == test]
+        if not test_cases:
+            console.print(f"[red]❌ No test found with name: {test}[/red]\n")
+            return
+
+    # Run tests
+    console.print(f"[cyan]Running {len(test_cases)} test(s)...[/cyan]\n")
+
+    # Load config
+    config = _load_config_if_exists()
+
+    # Execute tests
+    results = _execute_snapshot_tests(test_cases, config)
+
+    # Save passing results as golden
+    saved_count = _save_snapshot_results(results, notes)
+
+    if saved_count == 0:
+        return
+
     # Update project state
-    state_store.update_snapshot(test_count=len(passing))
+    state_store.update_snapshot(test_count=saved_count)
 
     # Celebrate!
     if is_first:
-        Celebrations.first_snapshot(len(passing))
+        Celebrations.first_snapshot(saved_count)
     else:
-        console.print(f"\n[green]Baseline updated: {len(passing)} test(s)[/green]")
+        console.print(f"\n[green]Baseline updated: {saved_count} test(s)[/green]")
         console.print("[dim]Run: evalview check[/dim]\n")
+
+
+def _load_config_if_exists() -> Optional["EvalViewConfig"]:
+    """Load config from .evalview/config.yaml if it exists."""
+    from evalview.core.config import EvalViewConfig
+
+    config_path = Path(".evalview/config.yaml")
+    if config_path.exists():
+        with open(config_path) as f:
+            config_data = yaml.safe_load(f)
+            return EvalViewConfig.model_validate(config_data)
+    return None
+
+
+def _execute_check_tests(
+    test_cases: List["TestCase"],
+    config: Optional["EvalViewConfig"],
+    json_output: bool
+) -> Tuple[List[Tuple[str, "TraceDiff"]], List["EvaluationResult"]]:
+    """Execute tests and compare against golden variants.
+
+    Returns:
+        Tuple of (diffs, results) where diffs is [(test_name, TraceDiff)]
+    """
+    from evalview.core.golden import GoldenStore
+    from evalview.core.diff import DiffEngine
+    from evalview.evaluators.main import Evaluator
+
+    store = GoldenStore()
+    diff_engine = DiffEngine()
+    evaluator = Evaluator()
+
+    results = []
+    diffs = []
+
+    for tc in test_cases:
+        try:
+            # Get adapter config
+            adapter_type = tc.adapter or (config.adapter if config else None)
+            endpoint = tc.endpoint or (config.endpoint if config else None)
+
+            if not adapter_type or not endpoint:
+                continue
+
+            # Create adapter
+            try:
+                adapter = _create_adapter(adapter_type, endpoint)
+            except ValueError:
+                if not json_output:
+                    console.print(f"[yellow]⚠ Skipping {tc.name}: Unknown adapter type '{adapter_type}'[/yellow]")
+                continue
+
+            # Run test (wrap asyncio.run to catch async exceptions)
+            try:
+                trace = asyncio.run(adapter.run(tc))
+            except (asyncio.TimeoutError, asyncio.CancelledError) as e:
+                if not json_output:
+                    console.print(f"[red]✗ {tc.name}: Async execution failed - {e}[/red]")
+                continue
+            except Exception:
+                # Re-raise to be caught by outer exception handler
+                raise
+
+            # Evaluate
+            result = evaluator.evaluate(tc, trace)
+            results.append(result)
+
+            # Compare against golden (use multi-reference)
+            golden_variants = store.load_all_golden_variants(tc.name)
+            if golden_variants:
+                # Use multi-reference comparison for best match
+                diff = diff_engine.compare_multi_reference(golden_variants, trace, result.score)
+                diffs.append((tc.name, diff))
+
+        except Exception as e:
+            if not json_output:
+                console.print(f"[red]✗ {tc.name}: Failed - {e}[/red]")
+            continue
+
+    return diffs, results
+
+
+def _analyze_check_diffs(diffs: List[Tuple[str, "TraceDiff"]]) -> Dict[str, Any]:
+    """Analyze diffs and return summary statistics.
+
+    Returns:
+        Dict with keys: has_regressions, has_tools_changed, has_output_changed, all_passed
+    """
+    from evalview.core.diff import DiffStatus
+
+    has_regressions = any(d.overall_severity == DiffStatus.REGRESSION for _, d in diffs)
+    has_tools_changed = any(d.overall_severity == DiffStatus.TOOLS_CHANGED for _, d in diffs)
+    has_output_changed = any(d.overall_severity == DiffStatus.OUTPUT_CHANGED for _, d in diffs)
+    all_passed = not has_regressions and not has_tools_changed and not has_output_changed
+
+    return {
+        "has_regressions": has_regressions,
+        "has_tools_changed": has_tools_changed,
+        "has_output_changed": has_output_changed,
+        "all_passed": all_passed,
+    }
+
+
+def _display_check_results(
+    diffs: List[Tuple[str, "TraceDiff"]],
+    analysis: Dict[str, Any],
+    state: "ProjectState",
+    is_first_check: bool,
+    json_output: bool
+) -> None:
+    """Display check results in JSON or console format."""
+    from evalview.core.diff import DiffStatus
+    from evalview.core.celebrations import Celebrations
+    from evalview.core.messages import get_random_clean_check_message
+
+    if json_output:
+        # JSON output for CI
+        output = {
+            "summary": {
+                "total_tests": len(diffs),
+                "unchanged": sum(1 for _, d in diffs if d.overall_severity == DiffStatus.PASSED),
+                "regressions": sum(1 for _, d in diffs if d.overall_severity == DiffStatus.REGRESSION),
+                "tools_changed": sum(1 for _, d in diffs if d.overall_severity == DiffStatus.TOOLS_CHANGED),
+                "output_changed": sum(1 for _, d in diffs if d.overall_severity == DiffStatus.OUTPUT_CHANGED),
+            },
+            "diffs": [
+                {
+                    "test_name": name,
+                    "status": diff.overall_severity.value,
+                    "score_delta": diff.score_diff,
+                    "has_tool_diffs": len(diff.tool_diffs) > 0,
+                    "output_similarity": diff.output_diff.similarity if diff.output_diff else 1.0,
+                }
+                for name, diff in diffs
+            ]
+        }
+        print(json.dumps(output, indent=2))
+    else:
+        # Console output with personality
+        if is_first_check:
+            Celebrations.first_check()
+
+        if analysis["all_passed"]:
+            # Clean check!
+            console.print(f"[green]{get_random_clean_check_message()}[/green]\n")
+
+            # Show streak celebration
+            if state.current_streak >= 3:
+                Celebrations.clean_check_streak(state)
+
+            # Show health summary periodically
+            if state.total_checks >= 5 and state.total_checks % 5 == 0:
+                Celebrations.health_summary(state)
+        else:
+            # Show diffs
+            console.print("\n[bold]Diff Summary[/bold]")
+            unchanged = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.PASSED)
+            console.print(f"  {unchanged}/{len(diffs)} unchanged")
+            if analysis["has_regressions"]:
+                count = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.REGRESSION)
+                console.print(f"  {count} regression(s)")
+            if analysis["has_tools_changed"]:
+                count = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.TOOLS_CHANGED)
+                console.print(f"  {count} tool change(s)")
+            if analysis["has_output_changed"]:
+                count = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.OUTPUT_CHANGED)
+                console.print(f"  {count} output change(s)")
+
+            console.print()
+
+            # Show details of changed tests
+            for name, diff in diffs:
+                if diff.overall_severity != DiffStatus.PASSED:
+                    severity_icon = {
+                        DiffStatus.REGRESSION: "[red]✗ REGRESSION[/red]",
+                        DiffStatus.TOOLS_CHANGED: "[yellow]⚠ TOOLS_CHANGED[/yellow]",
+                        DiffStatus.OUTPUT_CHANGED: "[dim]~ OUTPUT_CHANGED[/dim]",
+                    }.get(diff.overall_severity, "?")
+
+                    console.print(f"{severity_icon}: {name}")
+                    console.print(f"    {diff.summary()}")
+                    console.print()
+
+            # Show guidance
+            if analysis["has_regressions"]:
+                Celebrations.regression_guidance("See details above")
+
+
+def _compute_check_exit_code(
+    diffs: List[Tuple[str, "TraceDiff"]],
+    fail_on: Optional[str],
+    strict: bool
+) -> int:
+    """Compute exit code based on diff results and fail conditions.
+
+    Returns:
+        0 if no failures match fail conditions, 1 otherwise
+    """
+    if strict:
+        fail_on = "REGRESSION,TOOLS_CHANGED,OUTPUT_CHANGED"
+
+    if not fail_on:
+        fail_on = "REGRESSION"  # Default
+
+    fail_statuses = set(s.strip().upper() for s in fail_on.split(","))
+
+    for _, diff in diffs:
+        if diff.overall_severity.value.upper() in fail_statuses:
+            return 1
+
+    return 0
 
 
 @main.command("check")
@@ -6524,15 +6764,13 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
         evalview check --strict                          # Fail on any change
     """
     from evalview.core.golden import GoldenStore
-    from evalview.core.diff import DiffEngine, DiffStatus
     from evalview.core.project_state import ProjectStateStore
     from evalview.core.celebrations import Celebrations
-    from evalview.core.messages import get_random_checking_message, get_random_clean_check_message
+    from evalview.core.messages import get_random_checking_message
 
     # Initialize stores
     store = GoldenStore()
     state_store = ProjectStateStore()
-    diff_engine = DiffEngine()
 
     # Check if this is the first check
     is_first_check = state_store.is_first_check()
@@ -6569,165 +6807,26 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
             console.print(f"[red]❌ No test found with name: {test}[/red]\n")
             sys.exit(1)
 
-    # Run tests (similar to snapshot command)
-    from evalview.core.config import EvalViewConfig
+    # Load config
+    config = _load_config_if_exists()
 
-    config = None
-    config_path = Path(".evalview/config.yaml")
-    if config_path.exists():
-        with open(config_path) as f:
-            config_data = yaml.safe_load(f)
-            config = EvalViewConfig.model_validate(config_data)
-
-    results = []
-    diffs = []
-
-    for tc in test_cases:
-        try:
-            # Get adapter
-            adapter_type = tc.adapter or (config.adapter if config else None)
-            endpoint = tc.endpoint or (config.endpoint if config else None)
-
-            if not adapter_type or not endpoint:
-                continue
-
-            # Create adapter
-            try:
-                adapter = _create_adapter(adapter_type, endpoint)
-            except ValueError:
-                if not json_output:
-                    console.print(f"[yellow]⚠ Skipping {tc.name}: Unknown adapter type '{adapter_type}'[/yellow]")
-                continue
-
-            # Run test (wrap asyncio.run to catch async exceptions)
-            try:
-                trace = asyncio.run(adapter.run(tc))
-            except (asyncio.TimeoutError, asyncio.CancelledError) as e:
-                if not json_output:
-                    console.print(f"[red]✗ {tc.name}: Async execution failed - {e}[/red]")
-                continue
-            except Exception:
-                # Re-raise to be caught by outer exception handler
-                raise
-
-            # Evaluate
-            evaluator = Evaluator()
-            result = evaluator.evaluate(tc, trace)
-            results.append(result)
-
-            # Compare against golden (use multi-reference)
-            golden_variants = store.load_all_golden_variants(tc.name)
-            if golden_variants:
-                # Use multi-reference comparison for best match
-                diff = diff_engine.compare_multi_reference(golden_variants, trace, result.score)
-                diffs.append((tc.name, diff))
-
-        except Exception as e:
-            if not json_output:
-                console.print(f"[red]✗ {tc.name}: Failed - {e}[/red]")
-            continue
+    # Execute tests and compare against golden
+    diffs, results = _execute_check_tests(test_cases, config, json_output)
 
     # Analyze diffs
-    has_regressions = any(d.overall_severity == DiffStatus.REGRESSION for _, d in diffs)
-    has_tools_changed = any(d.overall_severity == DiffStatus.TOOLS_CHANGED for _, d in diffs)
-    has_output_changed = any(d.overall_severity == DiffStatus.OUTPUT_CHANGED for _, d in diffs)
-    all_passed = not has_regressions and not has_tools_changed and not has_output_changed
+    analysis = _analyze_check_diffs(diffs)
 
     # Update project state
     state = state_store.update_check(
-        has_regressions=(has_regressions or has_tools_changed or has_output_changed),
-        status="passed" if all_passed else "regression"
+        has_regressions=(not analysis["all_passed"]),
+        status="passed" if analysis["all_passed"] else "regression"
     )
 
     # Display results
-    if json_output:
-        # JSON output for CI
-        output = {
-            "summary": {
-                "total_tests": len(diffs),
-                "unchanged": sum(1 for _, d in diffs if d.overall_severity == DiffStatus.PASSED),
-                "regressions": sum(1 for _, d in diffs if d.overall_severity == DiffStatus.REGRESSION),
-                "tools_changed": sum(1 for _, d in diffs if d.overall_severity == DiffStatus.TOOLS_CHANGED),
-                "output_changed": sum(1 for _, d in diffs if d.overall_severity == DiffStatus.OUTPUT_CHANGED),
-            },
-            "diffs": [
-                {
-                    "test_name": name,
-                    "status": diff.overall_severity.value,
-                    "score_delta": diff.score_diff,
-                    "has_tool_diffs": len(diff.tool_diffs) > 0,
-                    "output_similarity": diff.output_diff.similarity if diff.output_diff else 1.0,
-                }
-                for name, diff in diffs
-            ]
-        }
-        print(json.dumps(output, indent=2))
-    else:
-        # Console output with personality
-        if is_first_check:
-            Celebrations.first_check()
+    _display_check_results(diffs, analysis, state, is_first_check, json_output)
 
-        if all_passed:
-            # Clean check!
-            console.print(f"[green]{get_random_clean_check_message()}[/green]\n")
-
-            # Show streak celebration
-            if state.current_streak >= 3:
-                Celebrations.clean_check_streak(state)
-
-            # Show health summary periodically
-            if state.total_checks >= 5 and state.total_checks % 5 == 0:
-                Celebrations.health_summary(state)
-
-        else:
-            # Show diffs
-            console.print("\n[bold]Diff Summary[/bold]")
-            unchanged = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.PASSED)
-            console.print(f"  {unchanged}/{len(diffs)} unchanged")
-            if has_regressions:
-                count = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.REGRESSION)
-                console.print(f"  {count} regression(s)")
-            if has_tools_changed:
-                count = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.TOOLS_CHANGED)
-                console.print(f"  {count} tool change(s)")
-            if has_output_changed:
-                count = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.OUTPUT_CHANGED)
-                console.print(f"  {count} output change(s)")
-
-            console.print()
-
-            # Show details of changed tests
-            for name, diff in diffs:
-                if diff.overall_severity != DiffStatus.PASSED:
-                    severity_icon = {
-                        DiffStatus.REGRESSION: "[red]✗ REGRESSION[/red]",
-                        DiffStatus.TOOLS_CHANGED: "[yellow]⚠ TOOLS_CHANGED[/yellow]",
-                        DiffStatus.OUTPUT_CHANGED: "[dim]~ OUTPUT_CHANGED[/dim]",
-                    }.get(diff.overall_severity, "?")
-
-                    console.print(f"{severity_icon}: {name}")
-                    console.print(f"    {diff.summary()}")
-                    console.print()
-
-            # Show guidance
-            if has_regressions:
-                Celebrations.regression_guidance("See details above")
-
-    # Compute exit code
-    exit_code = 0
-    if strict:
-        fail_on = "REGRESSION,TOOLS_CHANGED,OUTPUT_CHANGED"
-
-    if not fail_on:
-        fail_on = "REGRESSION"  # Default
-
-    fail_statuses = set(s.strip().upper() for s in fail_on.split(","))
-
-    for _, diff in diffs:
-        if diff.overall_severity.value.upper() in fail_statuses:
-            exit_code = 1
-            break
-
+    # Compute and exit with code
+    exit_code = _compute_check_exit_code(diffs, fail_on, strict)
     sys.exit(exit_code)
 
 
