@@ -6370,7 +6370,7 @@ def _execute_snapshot_tests(
     Returns:
         List of EvaluationResult objects
     """
-    from evalview.evaluators.main import Evaluator
+    from evalview.evaluators.evaluator import Evaluator
 
     results = []
 
@@ -6554,7 +6554,7 @@ def _execute_check_tests(
     """
     from evalview.core.golden import GoldenStore
     from evalview.core.diff import DiffEngine
-    from evalview.evaluators.main import Evaluator
+    from evalview.evaluators.evaluator import Evaluator
 
     store = GoldenStore()
     diff_engine = DiffEngine()
@@ -7097,6 +7097,30 @@ def mcp_show(name: str):
                 req_marker = " [red]*[/red]" if pname in required else ""
                 console.print(f"    [dim]- {pname}: {ptype}{req_marker}[/dim]")
         console.print()
+
+
+@mcp.command("serve")
+@click.option("--test-path", default="tests", help="Path to test directory")
+def mcp_serve(test_path: str) -> None:
+    """Start EvalView as an MCP server for Claude Code.
+
+    Exposes run_check, run_snapshot, and list_tests as MCP tools so you can
+    run regression checks inline without switching to a terminal.
+
+    \b
+    One-time setup:
+        claude mcp add --transport stdio evalview -- evalview mcp serve
+
+    \b
+    Verify:
+        claude mcp list
+
+    \b
+    Then ask Claude: "Did my refactor break the golden baseline?"
+    """
+    from evalview.mcp_server import MCPServer
+
+    MCPServer(test_path=test_path).serve()
 
 
 @main.command()
