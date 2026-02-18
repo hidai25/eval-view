@@ -258,11 +258,55 @@ PRs with regressions get blocked. Add a PR comment showing exactly what changed:
 
 ---
 
+## 🤖 Claude Code Integration (MCP)
+
+Run regression checks **without leaving your conversation**. EvalView exposes `check`, `snapshot`, and `list_tests` as MCP tools so Claude Code can answer "did my refactor break anything?" inline.
+
+### Setup (one-time)
+
+```bash
+claude mcp add --transport stdio evalview -- evalview mcp serve
+```
+
+Verify it's connected:
+
+```bash
+claude mcp list
+# evalview: evalview mcp serve
+```
+
+### Usage
+
+Just ask Claude Code naturally:
+
+```
+You: Did my refactor break the golden baseline?
+Claude: [calls run_check] ✨ All clean! No regressions detected.
+
+You: Save the current behavior as the new baseline.
+Claude: [calls run_snapshot] 📸 Baseline saved for 3 tests.
+
+You: What tests do I have baselines for?
+Claude: [calls list_tests] calculator, search-agent, summarizer
+```
+
+No terminal switching. No copy-pasting output. The diff appears right in the chat.
+
+### Manual server start (advanced)
+
+```bash
+evalview mcp serve                        # Uses tests/ by default
+evalview mcp serve --test-path my_tests/  # Custom test directory
+```
+
+---
+
 ## 📦 Features
 
 | Feature | Description | Docs |
 |---------|-------------|------|
 | 📸 **Snapshot/Check Workflow** | Simple `snapshot` → `check` commands for regression detection | [→](docs/GOLDEN_TRACES.md) |
+| 🤖 **Claude Code MCP** | Run checks inline in Claude Code — no terminal switching | [↑](#-claude-code-integration-mcp) |
 | 🔥 **Streak Tracking** | Habit-forming celebrations for consecutive clean checks | [→](docs/GOLDEN_TRACES.md) |
 | 🎨 **Multi-Reference Goldens** | Save up to 5 variants per test for non-deterministic agents | [→](docs/GOLDEN_TRACES.md) |
 | 💬 **Chat Mode** | AI assistant: `/run`, `/test`, `/compare` | [→](docs/CHAT_MODE.md) |
