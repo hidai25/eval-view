@@ -137,6 +137,18 @@ Perfect for LLM-based agents with creative variation.
 
 ---
 
+## 🆕 New in v0.2.9: Claude Code MCP Server
+
+If you're using Claude Code, this is the biggest upgrade in recent releases:
+
+- Run EvalView checks inline from Claude Code via MCP tools
+- Generate tests from natural language (`create_test`)
+- Capture baselines and detect regressions without leaving the editor/conversation
+
+👉 Jump to [Claude Code Integration (MCP)](#-claude-code-integration-mcp)
+
+---
+
 ## 💡 Why EvalView?
 
 - 🔄 **Automatic regression detection** — Know instantly when your agent breaks
