@@ -4682,8 +4682,14 @@ async def _expand_async(
 @main.command()
 @track_command("demo", lambda **kw: {"is_demo": True})
 def demo():
-    """🎬 See EvalView catch agent regressions (no API keys needed)."""
-    import time as time_module
+    """🎬 Live regression demo — spins up a real agent and catches a real regression."""
+    import socket
+    import shutil
+    import tempfile
+    import threading
+    import subprocess as _subprocess
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from rich.rule import Rule
 
     try:
         from evalview.telemetry.client import get_client as _tc
@@ -4693,200 +4699,185 @@ def demo():
         pass
 
     console.print()
-    # EvalView banner
-    console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗██╗   ██╗ █████╗ ██╗    ██╗   ██╗██╗███████╗██╗    ██╗[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔════╝██║   ██║██╔══██╗██║    ██║   ██║██║██╔════╝██║    ██║[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]█████╗  ██║   ██║███████║██║    ██║   ██║██║█████╗  ██║ █╗ ██║[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔══╝  ╚██╗ ██╔╝██╔══██║██║    ╚██╗ ██╔╝██║██╔══╝  ██║███╗██║[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗ ╚████╔╝ ██║  ██║███████╗╚████╔╝ ██║███████╗╚███╔███╔╝[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]╚══════╝  ╚═══╝  ╚═╝  ╚═╝╚══════╝ ╚═══╝  ╚═╝╚══════╝ ╚══╝╚══╝ [/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]           [bold yellow]🔍 Regression Detection Demo[/bold yellow]                         [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
+
+    # ── Intro ─────────────────────────────────────────────────────────────────
+    console.print(Rule(" EvalView — Live Regression Demo ", style="bold cyan"))
     console.print()
-    console.print("[dim]This demo shows how EvalView catches agent regressions.[/dim]")
-    console.print("[dim]Using pre-baked traces - no API keys or LLM needed.[/dim]")
+    console.print("  [bold]What you're about to see:[/bold]")
+    console.print("  [dim]1. A real agent runs and its behavior is snapshotted as baseline.[/dim]")
+    console.print("  [dim]2. A code change is made — the agent starts behaving differently.[/dim]")
+    console.print("  [dim]3. EvalView catches the regression before it ships.[/dim]")
     console.print()
-    time_module.sleep(1.5)
-
-    # Pre-baked test results simulating golden vs current comparison
-    test_results = [
-        {
-            "name": "auth-flow",
-            "status": "PASSED",
-            "golden_tools": ["get_user", "validate_token", "return_session"],
-            "actual_tools": ["get_user", "validate_token", "return_session"],
-            "golden_score": 95,
-            "actual_score": 96,
-            "detail": None,
-        },
-        {
-            "name": "search-query",
-            "status": "TOOLS_CHANGED",
-            "golden_tools": ["parse_query", "db_search"],
-            "actual_tools": ["parse_query", "web_search", "db_search"],
-            "golden_score": 90,
-            "actual_score": 88,
-            "detail": "+web_search (new)",
-        },
-        {
-            "name": "summarizer",
-            "status": "OUTPUT_CHANGED",
-            "golden_tools": ["fetch_doc", "summarize"],
-            "actual_tools": ["fetch_doc", "summarize"],
-            "golden_score": 92,
-            "actual_score": 89,
-            "detail": "similarity: 72%",
-        },
-        {
-            "name": "data-analyzer",
-            "status": "REGRESSION",
-            "golden_tools": ["load_data", "analyze", "format_output"],
-            "actual_tools": ["load_data", "analyze", "format_output"],
-            "golden_score": 85,
-            "actual_score": 71,
-            "detail": "score: 85 → 71 (-14)",
-        },
-    ]
-
-    # Cost and latency data
-    golden_cost = 0.12
-    actual_cost = 0.34
-    golden_latency = 1.2
-    actual_latency = 3.8
-
-    console.print("[yellow]▶ Comparing current run against golden baseline...[/yellow]")
-    console.print()
-    time_module.sleep(1)
-
-    # Animate running through tests
-    for test in test_results:
-        console.print(f"  [dim]Analyzing[/dim] {test['name']}...", end="")
-        time_module.sleep(0.4)
-        console.print(" [green]done[/green]")
-
-    console.print()
-    time_module.sleep(0.5)
-
-    # Display the regression report
-    console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold cyan]")
-    console.print("[bold cyan]                       Regression Report                           [/bold cyan]")
-    console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold cyan]")
+    console.print("  [dim]Everything below is live — a real HTTP server, real evaluation.[/dim]")
     console.print()
 
-    # Results table with aligned columns
-    status_width = 14  # Width for status column
-    for test in test_results:
-        status = test["status"]
-        name = test["name"]
-        detail = test["detail"] or ""
+    # ── Start embedded demo agent ─────────────────────────────────────────────
+    # Simple state flag toggled between phases
+    _state: Dict[str, bool] = {"broken": False}
 
-        if status == "PASSED":
-            icon = "[bold green]✓[/bold green]"
-            status_text = "[green]PASSED[/green]"
-        elif status == "TOOLS_CHANGED":
-            icon = "[bold yellow]⚠[/bold yellow]"
-            status_text = "[yellow]TOOLS_CHANGED[/yellow]"
-        elif status == "OUTPUT_CHANGED":
-            icon = "[bold blue]~[/bold blue]"
-            status_text = "[blue]OUTPUT_CHANGED[/blue]"
-        else:  # REGRESSION
-            icon = "[bold red]✗[/bold red]"
-            status_text = "[bold red]REGRESSION[/bold red]"
+    class _DemoHandler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(length))
+                query = body.get("query", "").lower()
+                resp = self._broken(query) if _state["broken"] else self._good(query)
+                data = json.dumps(resp).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            except Exception:
+                self.send_response(500)
+                self.end_headers()
 
-        # Calculate padding (account for rich markup not taking visual space)
-        padding = " " * (status_width - len(status))
-        detail_text = f"  [dim]{detail}[/dim]" if detail else ""
+        def log_message(self, format: str, *args: Any) -> None:  # type: ignore[override]
+            pass  # suppress server logs
 
-        # Add dramatic pause for regression
-        if status == "REGRESSION":
-            time_module.sleep(0.5)
-            console.print()
-            console.print(f"  [red]{'━' * 60}[/red]")
-            console.print(f"  {icon} {status_text}{padding} {name:<18}{detail_text}")
-            console.print(f"  [red]{'━' * 60}[/red]")
-            console.print()
-            time_module.sleep(0.5)
-        else:
-            console.print(f"  {icon} {status_text}{padding} {name:<18}{detail_text}")
-            time_module.sleep(0.3)
+        def _good(self, query: str) -> Dict[str, Any]:
+            if "calculate" in query or "10 + 5" in query or "add" in query:
+                return {
+                    "response": "The result of 10 + 5 is 15.",
+                    "steps": [
+                        {"tool": "calculator", "parameters": {"a": 10, "b": 5, "op": "add"}, "output": "15"}
+                    ],
+                }
+            if "weather" in query and "tokyo" in query:
+                return {
+                    "response": "The current weather in Tokyo is 22°C and sunny.",
+                    "steps": [
+                        {"tool": "get_weather", "parameters": {"city": "Tokyo"}, "output": "22°C, sunny"}
+                    ],
+                }
+            return {"response": "Query handled.", "steps": []}
 
-    console.print()
+        def _broken(self, query: str) -> Dict[str, Any]:
+            if "calculate" in query or "10 + 5" in query or "add" in query:
+                # TOOLS_CHANGED: unnecessary validator tool added after the commit
+                return {
+                    "response": "The result of 10 + 5 is 15.",
+                    "steps": [
+                        {"tool": "calculator", "parameters": {"a": 10, "b": 5, "op": "add"}, "output": "15"},
+                        {"tool": "validator", "parameters": {"result": "15"}, "output": "valid"},
+                    ],
+                }
+            if "weather" in query and "tokyo" in query:
+                # REGRESSION: broken response — score will drop significantly
+                return {
+                    "response": "I'm unable to retrieve weather information at this time. Please try again later.",
+                    "steps": [
+                        {"tool": "get_weather", "parameters": {"city": "Tokyo"}, "output": "error: service unavailable"}
+                    ],
+                }
+            return {"response": "Error.", "steps": []}
 
-    # Cost and latency deltas
-    cost_delta = ((actual_cost - golden_cost) / golden_cost) * 100
-    latency_delta = ((actual_latency - golden_latency) / golden_latency) * 100
+    # Pick a random free port
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as _s:
+        _s.bind(("", 0))
+        _port = _s.getsockname()[1]
 
-    cost_warning = "[yellow]⚠[/yellow]" if cost_delta > 50 else ""
-    latency_warning = "[yellow]⚠[/yellow]" if latency_delta > 50 else ""
+    _server = HTTPServer(("127.0.0.1", _port), _DemoHandler)
+    _server_thread = threading.Thread(target=_server.serve_forever)
+    _server_thread.daemon = True
+    _server_thread.start()
 
-    console.print(f"  [bold]Cost:[/bold]    ${golden_cost:.2f} → ${actual_cost:.2f}  [yellow](+{cost_delta:.0f}%)[/yellow]  {cost_warning}")
-    console.print(f"  [bold]Latency:[/bold] {golden_latency:.1f}s → {actual_latency:.1f}s   [yellow](+{latency_delta:.0f}%)[/yellow]  {latency_warning}")
-    console.print()
+    # ── Create isolated temp workspace ────────────────────────────────────────
+    _tmpdir = tempfile.mkdtemp(prefix="evalview-demo-")
+    _tmp = Path(_tmpdir)
 
-    time_module.sleep(0.5)
+    try:
+        (_tmp / "tests").mkdir()
+        (_tmp / ".evalview").mkdir()
 
-    # CI verdict
-    console.print("[bold red]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold red]")
-    console.print("[bold red]  ❌ This would fail CI[/bold red]")
-    console.print("[bold red]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold red]")
-    console.print()
+        (_tmp / "tests" / "calculator-test.yaml").write_text(
+            "name: calculator-test\n"
+            "description: Addition via calculator tool\n"
+            "input:\n"
+            "  query: calculate 10 + 5\n"
+            "expected:\n"
+            "  tools:\n"
+            "    - calculator\n"
+            "  output:\n"
+            "    contains:\n"
+            "      - '15'\n"
+            "thresholds:\n"
+            "  min_score: 70\n"
+        )
+        (_tmp / "tests" / "weather-test.yaml").write_text(
+            "name: weather-test\n"
+            "description: Weather lookup for Tokyo\n"
+            "input:\n"
+            "  query: What's the weather in Tokyo?\n"
+            "expected:\n"
+            "  tools:\n"
+            "    - get_weather\n"
+            "  output:\n"
+            "    contains:\n"
+            "      - '22'\n"
+            "thresholds:\n"
+            "  min_score: 70\n"
+        )
+        (_tmp / ".evalview" / "config.yaml").write_text(
+            f"adapter: http\n"
+            f"endpoint: http://127.0.0.1:{_port}/execute\n"
+            f"timeout: 15.0\n"
+            f"allow_private_urls: true\n"
+        )
 
-    time_module.sleep(0.5)
+        # ── Phase 1: Snapshot good behavior ──────────────────────────────────
+        console.print(Rule(" Phase 1 — Snapshot: capturing agent v1 baseline ", style="cyan"))
+        console.print()
+        console.print("  [dim]Agent v1 is live on port[/dim] [cyan]{port}[/cyan][dim]. Running tests...[/dim]".replace("{port}", str(_port)))
+        console.print()
 
-    # Show the tool diff detail for the TOOLS_CHANGED case
-    console.print("[bold cyan]Tool Diff: search-query[/bold cyan]")
-    console.print()
-    console.print("  [dim]Golden:[/dim]  parse_query → db_search")
-    console.print("  [dim]Actual:[/dim]  parse_query → [yellow]web_search[/yellow] → db_search")
-    console.print()
-    console.print("  [yellow]+ web_search[/yellow]  [dim]<< new tool inserted[/dim]")
-    console.print()
+        _subprocess.run(
+            ["evalview", "snapshot", "tests/"],
+            cwd=_tmpdir,
+            env={**os.environ},
+            stderr=_subprocess.DEVNULL,
+        )
 
-    time_module.sleep(0.5)
+        console.print()
 
-    # Show the output diff detail
-    console.print("[bold cyan]Output Diff: summarizer[/bold cyan]")
-    console.print()
-    console.print("  [dim]Golden output:[/dim]")
-    console.print('    [dim]"The quarterly report shows revenue increased by 15%..."[/dim]')
-    console.print()
-    console.print("  [dim]Actual output:[/dim]")
-    console.print('    [dim]"Revenue was up in Q3. The report indicates growth..."[/dim]')
-    console.print()
-    console.print("  [blue]Similarity: 72%[/blue]  [dim](threshold: 90%)[/dim]")
-    console.print()
+        # ── Phase 2: Break the agent, run check ──────────────────────────────
+        console.print(Rule(" Phase 2 — New commit deployed: agent v2 is live ", style="yellow"))
+        console.print()
+        console.print("  [bold]Someone pushed a change.[/bold]")
+        console.print("  [dim]The agent now behaves differently. Let's see if EvalView catches it...[/dim]")
+        console.print()
 
-    time_module.sleep(1)
+        _state["broken"] = True  # switch agent to broken mode
 
-    # Final CTA
-    console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold white]Catch regressions before your users do.[/bold white]                      [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [dim]What EvalView caught:[/dim]                                          [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]    • 1 regression (score dropped 14 points)                     [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]    • 1 tool change (new tool added to flow)                     [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]    • 1 output change (response differs from baseline)           [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]    • Cost spike: +183%                                          [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]    • Latency spike: +217%                                       [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [green]Get started:[/green]                                                 [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]    $ evalview quickstart                                        [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]    $ evalview init                  [dim]# Set up your project[/dim]          [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]    $ evalview snapshot              [dim]# Capture baseline[/dim]            [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]    $ evalview check                 [dim]# Catch regressions[/dim]           [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
-    console.print()
+        _subprocess.run(
+            ["evalview", "check"],
+            cwd=_tmpdir,
+            env={**os.environ},
+            stderr=_subprocess.DEVNULL,
+        )
 
-    # Star CTA - appears at the "aha" moment
-    console.print("[dim]┌─────────────────────────────────────────────────────────────────┐[/dim]")
-    console.print("[dim]│[/dim]  [yellow]⭐[/yellow] Like what you saw? Star helps others find it:                [dim]│[/dim]")
-    console.print("[dim]│[/dim]     [link=https://github.com/hidai25/eval-view]github.com/hidai25/eval-view[/link]                                   [dim]│[/dim]")
-    console.print("[dim]└─────────────────────────────────────────────────────────────────┘[/dim]")
-    console.print()
+        console.print()
+
+        # ── CTA ──────────────────────────────────────────────────────────────
+        console.print(Panel(
+            "[bold green]Now try it on your own agent:[/bold green]\n"
+            "\n"
+            "  [cyan]$ evalview init[/cyan]       [dim]# set up your project[/dim]\n"
+            "  [cyan]$ evalview snapshot[/cyan]   [dim]# save today's behavior as baseline[/dim]\n"
+            "  [cyan]$ evalview check[/cyan]      [dim]# run this before every deploy[/dim]",
+            border_style="green",
+            padding=(1, 3),
+        ))
+        console.print()
+        console.print(
+            "  [yellow]⭐[/yellow] [dim]Star the repo:[/dim]"
+            " [link=https://github.com/hidai25/eval-view]github.com/hidai25/eval-view[/link]"
+        )
+        console.print()
+
+    finally:
+        _server.shutdown()
+        shutil.rmtree(_tmpdir, ignore_errors=True)
 
     try:
         from evalview.telemetry.client import get_client as _tc
