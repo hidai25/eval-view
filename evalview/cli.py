@@ -6413,7 +6413,7 @@ def _execute_snapshot_tests(
 
             # Evaluate
             evaluator = Evaluator()
-            result = evaluator.evaluate(tc, trace)
+            result = asyncio.run(evaluator.evaluate(tc, trace))
 
             results.append(result)
 
@@ -6603,7 +6603,7 @@ def _execute_check_tests(
                 raise
 
             # Evaluate
-            result = evaluator.evaluate(tc, trace)
+            result = asyncio.run(evaluator.evaluate(tc, trace))
             results.append(result)
 
             # Compare against golden (use multi-reference)
