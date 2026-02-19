@@ -260,45 +260,50 @@ PRs with regressions get blocked. Add a PR comment showing exactly what changed:
 
 ## 🤖 Claude Code Integration (MCP)
 
-Run regression checks **without leaving your conversation**. EvalView exposes `check`, `snapshot`, and `list_tests` as MCP tools so Claude Code can answer "did my refactor break anything?" inline.
+**Test your agent without leaving the conversation.** EvalView runs as an MCP server inside Claude Code — ask "did my refactor break anything?" and get the answer inline.
 
-### Setup (one-time)
+### Setup (3 steps, one-time)
 
 ```bash
+# 1. Install
+pip install evalview
+
+# 2. Connect to Claude Code
 claude mcp add --transport stdio evalview -- evalview mcp serve
-```
 
-Verify it's connected:
-
-```bash
-claude mcp list
-# evalview: evalview mcp serve
-```
-
-### Usage
-
-Just ask Claude Code naturally:
-
-```
-You: Did my refactor break the golden baseline?
-Claude: [calls run_check] ✨ All clean! No regressions detected.
-
-You: Save the current behavior as the new baseline.
-Claude: [calls run_snapshot] 📸 Baseline saved for 3 tests.
-
-You: What tests do I have baselines for?
-Claude: [calls list_tests] calculator, search-agent, summarizer
-```
-
-No terminal switching. No copy-pasting output. The diff appears right in the chat.
-
-### Make Claude Code proactive (recommended)
-
-Copy the example CLAUDE.md to your project so Claude Code automatically runs checks after edits and creates tests on request — no prompting needed:
-
-```bash
+# 3. Make Claude Code proactive (auto-checks after every edit)
 cp CLAUDE.md.example CLAUDE.md
 ```
+
+### What you get
+
+4 tools Claude Code can call on your behalf:
+
+| Tool | What it does |
+|------|-------------|
+| `create_test` | Generate a test case from natural language — no YAML needed |
+| `run_snapshot` | Capture current agent behavior as the golden baseline |
+| `run_check` | Detect regressions vs baseline, returns structured JSON diff |
+| `list_tests` | Show all golden baselines with scores and timestamps |
+
+### How it works in practice
+
+```
+You: Add a test for my weather agent
+Claude: [create_test] ✅ Created tests/weather-lookup.yaml
+        [run_snapshot] 📸 Baseline captured — regression detection active.
+
+You: Refactor the weather tool to use async
+Claude: [makes code changes]
+        [run_check] ✨ All clean! No regressions detected.
+
+You: Switch to a different weather API
+Claude: [makes code changes]
+        [run_check] ⚠️ TOOLS_CHANGED: weather_api → open_meteo
+                   Output similarity: 94% — review the diff?
+```
+
+No YAML. No terminal switching. No context loss.
 
 ### Manual server start (advanced)
 
