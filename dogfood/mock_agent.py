@@ -151,6 +151,105 @@ def handle_wrong_tool(query: str) -> tuple[str, List[ToolCall]]:
     return "I checked the weather instead.", []
 
 
+def handle_weather(query: str) -> tuple[str, List[ToolCall]]:
+    """Handle weather queries - uses get_weather tool."""
+    # Extract city name from common patterns
+    city = "unknown"
+    for pattern in [r"weather in (\w+)", r"weather for (\w+)"]:
+        m = re.search(pattern, query.lower())
+        if m:
+            city = m.group(1).capitalize()
+            break
+
+    city_data = {
+        "Tokyo": ("22°C", "sunny"),
+        "London": ("15°C", "cloudy"),
+        "Paris": ("18°C", "partly cloudy"),
+    }
+    temp, cond = city_data.get(city, ("20°C", "clear"))
+
+    tool_calls = [
+        ToolCall(
+            name="get_weather",
+            arguments={"city": city},
+            result=f"{temp}, {cond}",
+        )
+    ]
+    return f"The current weather in {city} is {temp} and {cond}.", tool_calls
+
+
+def handle_weather_convert(query: str) -> tuple[str, List[ToolCall]]:
+    """Handle weather + unit conversion (multi-tool)."""
+    city = "London"
+    m = re.search(r"weather in (\w+)", query.lower())
+    if m:
+        city = m.group(1).capitalize()
+
+    city_data = {
+        "Tokyo": 22,
+        "London": 15,
+        "Paris": 18,
+    }
+    celsius = city_data.get(city, 20)
+    fahrenheit = round(celsius * 9 / 5 + 32)
+
+    tool_calls = [
+        ToolCall(
+            name="get_weather",
+            arguments={"city": city},
+            result=f"{celsius}°C, cloudy",
+        ),
+        ToolCall(
+            name="calculator",
+            arguments={"expression": f"{celsius} * 9/5 + 32"},
+            result=str(fahrenheit),
+        ),
+    ]
+    return (
+        f"The weather in {city} is {celsius}°C ({fahrenheit}°F) and cloudy.",
+        tool_calls,
+    )
+
+
+def handle_natural_math(query: str) -> tuple[str, List[ToolCall]]:
+    """Handle natural-language math: 'What is X times/divided by/plus/minus Y?'"""
+    q = query.lower()
+
+    # "X times Y" / "X multiplied by Y"
+    m = re.search(r"(\d+)\s+(?:times|multiplied by|x)\s+(\d+)", q)
+    if m:
+        a, b = int(m.group(1)), int(m.group(2))
+        result = a * b
+        tool_calls = [ToolCall(name="calculator", arguments={"expression": f"{a} * {b}"}, result=str(result))]
+        return f"The result of {a} times {b} is {result}.", tool_calls
+
+    # "X divided by Y"
+    m = re.search(r"(\d+)\s+divided by\s+(\d+)", q)
+    if m:
+        a, b = int(m.group(1)), int(m.group(2))
+        result = a // b if b != 0 else 0
+        tool_calls = [ToolCall(name="calculator", arguments={"expression": f"{a} / {b}"}, result=str(result))]
+        return f"The result of {a} divided by {b} is {result}.", tool_calls
+
+    # "X plus Y"
+    m = re.search(r"(\d+)\s+plus\s+(\d+)", q)
+    if m:
+        a, b = int(m.group(1)), int(m.group(2))
+        result = a + b
+        tool_calls = [ToolCall(name="calculator", arguments={"expression": f"{a} + {b}"}, result=str(result))]
+        return f"The result of {a} plus {b} is {result}.", tool_calls
+
+    # "X minus Y"
+    m = re.search(r"(\d+)\s+minus\s+(\d+)", q)
+    if m:
+        a, b = int(m.group(1)), int(m.group(2))
+        result = a - b
+        tool_calls = [ToolCall(name="calculator", arguments={"expression": f"{a} - {b}"}, result=str(result))]
+        return f"The result of {a} minus {b} is {result}.", tool_calls
+
+    return "I need a valid math expression.", []
+
+
 def handle_multi_step(query: str) -> tuple[str, List[ToolCall]]:
     """Handle multi-step query requiring search then summarize."""
     tool_calls = [
@@ -202,6 +301,10 @@ async def execute(request: ExecuteRequest):
         output, tool_calls = handle_calculate_wrong(query)
     elif "calculate" in query_lower:
         output, tool_calls = handle_calculate(query)
+    elif "weather" in query_lower and ("fahrenheit" in query_lower or "celsius" in query_lower):
+        output, tool_calls = handle_weather_convert(query)
+    elif "weather" in query_lower:
+        output, tool_calls = handle_weather(query)
     elif "search" in query_lower and "summarize" in query_lower:
         output, tool_calls = handle_multi_step(query)
     elif "search" in query_lower:
@@ -210,6 +313,8 @@ async def execute(request: ExecuteRequest):
         output, tool_calls = handle_hallucinate(query)
     elif "no tools" in query_lower:
         output, tool_calls = handle_no_tools(query)
+    elif re.search(r"\d+\s+(times|multiplied by|divided by|plus|minus)\s+\d+", query_lower):
+        output, tool_calls = handle_natural_math(query)
     else:
         output = f"I received your query: {query}"
         tool_calls = []
