@@ -9,6 +9,51 @@ from typing import Any, Dict, Optional
 
 TOOLS = [
     {
+        "name": "create_test",
+        "description": (
+            "Create a new EvalView test case YAML file for an agent. "
+            "Call this when the user asks to add a test, or when you want to capture "
+            "expected agent behavior. After creating a test, call run_snapshot to establish "
+            "the baseline. No YAML knowledge required — just describe the test."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "required": ["name", "query"],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Test name (e.g. 'calculator-division', 'weather-lookup')",
+                },
+                "query": {
+                    "type": "string",
+                    "description": "The input query to send to the agent",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Human-readable description of what this test covers",
+                },
+                "expected_tools": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Tool names the agent should call (e.g. ['calculator', 'search'])",
+                },
+                "expected_output_contains": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Strings that must appear in the agent's output",
+                },
+                "min_score": {
+                    "type": "number",
+                    "description": "Minimum passing score 0-100 (default: 70)",
+                },
+                "test_path": {
+                    "type": "string",
+                    "description": "Directory to save the test file (default: tests)",
+                },
+            },
+        },
+    },
+    {
         "name": "run_check",
         "description": (
             "Check for regressions against the golden baseline. "
@@ -139,7 +184,64 @@ class MCPServer:
 
         return None
 
+    def _create_test(self, args: Dict[str, Any]) -> str:
+        test_name = args.get("name", "").strip()
+        query = args.get("query", "").strip()
+        if not test_name or not query:
+            return "Error: 'name' and 'query' are required."
+
+        test_path = args.get("test_path", self.test_path)
+        slug = test_name.lower().replace(" ", "-").replace("_", "-")
+        filename = os.path.join(test_path, f"{slug}.yaml")
+
+        if os.path.exists(filename):
+            return f"Error: test already exists at {filename}. Delete it first or choose a different name."
+
+        os.makedirs(test_path, exist_ok=True)
+
+        lines = [f'name: "{test_name}"']
+
+        description = args.get("description", "")
+        if description:
+            lines.append(f'description: "{description}"')
+
+        lines += ["", "input:", f'  query: "{query}"', "", "expected:"]
+
+        expected_tools = args.get("expected_tools", [])
+        if expected_tools:
+            lines.append("  tools:")
+            for t in expected_tools:
+                lines.append(f"    - {t}")
+
+        expected_output = args.get("expected_output_contains", [])
+        if expected_output:
+            lines.append("  output:")
+            lines.append("    contains:")
+            for s in expected_output:
+                lines.append(f'      - "{s}"')
+
+        min_score = args.get("min_score", 70)
+        lines += ["", "thresholds:", f"  min_score: {int(min_score)}"]
+
+        with open(filename, "w") as f:
+            f.write("\n".join(lines) + "\n")
+
+        summary_parts = [f"query: {query}"]
+        if expected_tools:
+            summary_parts.append(f"tools: {', '.join(expected_tools)}")
+        if expected_output:
+            summary_parts.append(f"output contains: {', '.join(expected_output)}")
+
+        return (
+            f"Created {filename}\n"
+            + "\n".join(f"  {p}" for p in summary_parts)
+            + "\n\nRun run_snapshot to capture the baseline for this test."
+        )
+
     def _call_tool(self, name: str, args: Dict[str, Any]) -> str:
+        if name == "create_test":
+            return self._create_test(args)
+
         if not shutil.which("evalview"):
             return "Error: evalview not found in PATH. Run: pip install -e ."
 
