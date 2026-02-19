@@ -730,6 +730,17 @@ model:
         os.getenv("XAI_API_KEY"),
     ])
     use_deterministic_scoring = not has_api_key
+
+    try:
+        from evalview.telemetry.client import get_client as _tc
+        from evalview.telemetry.events import CommandEvent as _CE
+        _tc().track(_CE(
+            command_name="quickstart_setup_complete",
+            properties={"has_api_key": has_api_key},
+        ))
+    except Exception:
+        pass
+
     if use_deterministic_scoring:
         console.print("[yellow]⚠️  No LLM provider API key found[/yellow]")
         console.print("[dim]   Using deterministic scoring (string matching + tool assertions)[/dim]")
@@ -783,6 +794,16 @@ model:
         return
 
     console.print("[green]✅ Demo agent running[/green]\n")
+
+    try:
+        from evalview.telemetry.client import get_client as _tc
+        from evalview.telemetry.events import CommandEvent as _CE
+        _tc().track(_CE(
+            command_name="quickstart_agent_ready",
+            properties={"has_api_key": has_api_key},
+        ))
+    except Exception:
+        pass
 
     # Welcome banner
     console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
@@ -919,6 +940,24 @@ model:
         reporter.print_summary(results)
 
         passed = sum(1 for r in results if r.passed)
+
+        try:
+            from evalview.telemetry.client import get_client as _tc
+            from evalview.telemetry.events import CommandEvent as _CE
+            _tc().track(_CE(
+                command_name="quickstart_run_complete",
+                properties={
+                    "passed": passed,
+                    "failed": len(results) - passed,
+                    "total": len(results),
+                    "all_passed": passed == len(results),
+                    "deterministic_scoring": use_deterministic_scoring,
+                    "has_api_key": has_api_key,
+                },
+            ))
+        except Exception:
+            pass
+
         if passed == len(results):
             console.print("\n[green bold]🎉 All tests passed! Quickstart complete![/green bold]")
         else:
@@ -1567,6 +1606,7 @@ thresholds:
     default=False,
     help="Save results as golden baseline if all tests pass.",
 )
+@track_command("run", lambda **kw: {"adapter": kw.get("adapter") or "auto", "has_path": bool(kw.get("path"))})
 def run(
     path: Optional[str],
     pattern: str,
@@ -1707,6 +1747,16 @@ async def _run_async(
     # Interactive provider selection for LLM-as-judge
     result = get_or_select_provider(console)
     if result is None:
+        try:
+            from evalview.telemetry.client import get_client as _tc
+            from evalview.telemetry.events import CommandEvent as _CE
+            _tc().track(_CE(
+                command_name="run_failed_early",
+                success=False,
+                properties={"failure_reason": "no_provider_configured", "has_config": bool(early_config)},
+            ))
+        except Exception:
+            pass
         return
 
     selected_provider, selected_api_key = result
@@ -4630,10 +4680,17 @@ async def _expand_async(
 
 
 @main.command()
-@track_command("demo")
+@track_command("demo", lambda **kw: {"is_demo": True})
 def demo():
     """🎬 See EvalView catch agent regressions (no API keys needed)."""
     import time as time_module
+
+    try:
+        from evalview.telemetry.client import get_client as _tc
+        from evalview.telemetry.events import CommandEvent as _CE
+        _tc().track(_CE(command_name="demo_started", properties={"is_demo": True}))
+    except Exception:
+        pass
 
     console.print()
     # EvalView banner
@@ -4830,6 +4887,13 @@ def demo():
     console.print("[dim]│[/dim]     [link=https://github.com/hidai25/eval-view]github.com/hidai25/eval-view[/link]                                   [dim]│[/dim]")
     console.print("[dim]└─────────────────────────────────────────────────────────────────┘[/dim]")
     console.print()
+
+    try:
+        from evalview.telemetry.client import get_client as _tc
+        from evalview.telemetry.events import CommandEvent as _CE
+        _tc().track(_CE(command_name="demo_completed", properties={"is_demo": True}))
+    except Exception:
+        pass
 
 
 @main.command()
