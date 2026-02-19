@@ -23,7 +23,9 @@ TOOLS = [
             "Create a new EvalView test case YAML file for an agent. "
             "Call this when the user asks to add a test, or when you want to capture "
             "expected agent behavior. After creating a test, call run_snapshot to establish "
-            "the baseline. No YAML knowledge required — just describe the test."
+            "the baseline. No YAML knowledge required — just describe the test. "
+            "IMPORTANT: Automatically detect test_path by looking for a 'tests/evalview/' "
+            "directory in the current project. If found, use it. Otherwise use 'tests'."
         ),
         "inputSchema": {
             "type": "object",
@@ -57,7 +59,10 @@ TOOLS = [
                 },
                 "test_path": {
                     "type": "string",
-                    "description": "Directory to save the test file (default: tests)",
+                    "description": (
+                        "Directory to save the test file. "
+                        "Auto-detect: use 'tests/evalview/' if it exists in the project, otherwise 'tests'."
+                    ),
                 },
             },
         },
@@ -68,7 +73,10 @@ TOOLS = [
             "Check for regressions against the golden baseline. "
             "Returns diff output showing what changed vs the last snapshot. "
             "A regression means the agent's behavior changed unexpectedly. "
-            "Use this after refactoring agent code to confirm nothing broke."
+            "Use this after refactoring agent code to confirm nothing broke. "
+            "IMPORTANT: Automatically detect test_path by looking for a 'tests/evalview/' "
+            "directory in the current project. If it exists, pass it as test_path. "
+            "If the project has a custom test location, use that instead."
         ),
         "inputSchema": {
             "type": "object",
@@ -79,7 +87,10 @@ TOOLS = [
                 },
                 "test_path": {
                     "type": "string",
-                    "description": "Path to the test directory (default: tests)",
+                    "description": (
+                        "Path to the test directory. "
+                        "Auto-detect: use 'tests/evalview/' if it exists, otherwise 'tests'."
+                    ),
                 },
             },
         },
@@ -89,7 +100,9 @@ TOOLS = [
         "description": (
             "Run tests and save passing results as the new golden baseline. "
             "Use this to establish or update the expected behavior after an intentional change. "
-            "Future `run_check` calls will compare against this snapshot."
+            "Future `run_check` calls will compare against this snapshot. "
+            "IMPORTANT: Automatically detect test_path by looking for a 'tests/evalview/' "
+            "directory in the current project. If it exists, pass it as test_path."
         ),
         "inputSchema": {
             "type": "object",
@@ -104,7 +117,10 @@ TOOLS = [
                 },
                 "test_path": {
                     "type": "string",
-                    "description": "Path to the test directory (default: tests)",
+                    "description": (
+                        "Path to the test directory. "
+                        "Auto-detect: use 'tests/evalview/' if it exists, otherwise 'tests'."
+                    ),
                 },
             },
         },
