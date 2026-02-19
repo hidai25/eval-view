@@ -1,0 +1,33 @@
+# CLAUDE.md
+# Copy this file to CLAUDE.md and customize for your project:
+#   cp CLAUDE.md.example CLAUDE.md
+
+## Agent Testing with EvalView (MCP)
+
+EvalView is connected as an MCP server. Use these tools **proactively** — don't wait to be asked:
+
+| When | Do this |
+|------|---------|
+| After editing agent code | Call `run_check` to catch regressions immediately |
+| User says "it works" / "looks good" / confirms agent is correct | Offer to call `run_snapshot` to save as baseline |
+| User asks to "add a test" or "test that my agent does X" | Call `create_test`, then `run_snapshot` |
+| Starting work on an agent | Call `list_tests` to see what baselines already exist |
+
+**Rules:**
+- A regression (`run_check` returns REGRESSION/TOOLS_CHANGED) must be resolved before moving on — show the diff and offer to fix it
+- After `create_test`, always follow up with `run_snapshot` so the baseline is captured immediately
+- Never ask the user to run terminal commands for EvalView — do it via MCP tools instead
+
+**Example flows:**
+
+```
+User: "Refactor the search tool to use async"
+→ You make the change
+→ You call run_check automatically
+→ "✅ All clean — refactor didn't break anything."
+
+User: "Add a test for the weather lookup"
+→ You call create_test(name="weather-lookup", query="What's the weather in NYC?", expected_tools=["weather_api"])
+→ You call run_snapshot
+→ "Test created and baseline captured."
+```

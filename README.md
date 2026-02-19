@@ -292,6 +292,14 @@ Claude: [calls list_tests] calculator, search-agent, summarizer
 
 No terminal switching. No copy-pasting output. The diff appears right in the chat.
 
+### Make Claude Code proactive (recommended)
+
+Copy the example CLAUDE.md to your project so Claude Code automatically runs checks after edits and creates tests on request — no prompting needed:
+
+```bash
+cp CLAUDE.md.example CLAUDE.md
+```
+
 ### Manual server start (advanced)
 
 ```bash
