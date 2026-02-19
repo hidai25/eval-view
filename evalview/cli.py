@@ -7,9 +7,15 @@ import re
 import sys
 import threading
 import time
+from importlib.metadata import version as _pkg_version, PackageNotFoundError
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple
+
+try:
+    _EVALVIEW_VERSION = _pkg_version("evalview")
+except PackageNotFoundError:
+    _EVALVIEW_VERSION = "dev"
 import click
 import httpx
 import yaml
@@ -83,13 +89,14 @@ console = Console()
 
 
 # Helper Functions
-def _create_adapter(adapter_type: str, endpoint: str, timeout: float = 30.0):
+def _create_adapter(adapter_type: str, endpoint: str, timeout: float = 30.0, allow_private_urls: bool = True):
     """Factory function for creating adapters based on type.
 
     Args:
         adapter_type: Type of adapter ("http", "langgraph", "tapescope", "crewai", "openai")
         endpoint: API endpoint URL
         timeout: Request timeout in seconds
+        allow_private_urls: If True, allow requests to private/internal networks (default: True for local dev)
 
     Returns:
         Adapter instance
@@ -109,11 +116,13 @@ def _create_adapter(adapter_type: str, endpoint: str, timeout: float = 30.0):
     if not adapter_class:
         raise ValueError(f"Unknown adapter type: {adapter_type}")
 
+    if adapter_type == "http":
+        return adapter_class(endpoint=endpoint, timeout=timeout, allow_private_urls=allow_private_urls)
     return adapter_class(endpoint=endpoint, timeout=timeout)
 
 
 @click.group(context_settings={"allow_interspersed_args": False})
-@click.version_option(version="0.2.5")
+@click.version_option(version=_EVALVIEW_VERSION)
 @click.pass_context
 def main(ctx):
     """EvalView — Proof that your agent still works.
@@ -6385,15 +6394,16 @@ def _execute_snapshot_tests(
                 continue
 
             # Create adapter
+            allow_private = getattr(config, "allow_private_urls", True) if config else True
             try:
-                adapter = _create_adapter(adapter_type, endpoint)
+                adapter = _create_adapter(adapter_type, endpoint, allow_private_urls=allow_private)
             except ValueError as e:
                 console.print(f"[yellow]⚠ Skipping {tc.name}: {e}[/yellow]")
                 continue
 
             # Run test
             try:
-                trace = asyncio.run(adapter.run(tc))
+                trace = asyncio.run(adapter.execute(tc.input.query, tc.input.context))
             except (asyncio.TimeoutError, asyncio.CancelledError) as e:
                 console.print(f"[red]✗ {tc.name}: Async execution failed - {e}[/red]")
                 continue
@@ -6573,8 +6583,9 @@ def _execute_check_tests(
                 continue
 
             # Create adapter
+            allow_private = getattr(config, "allow_private_urls", True) if config else True
             try:
-                adapter = _create_adapter(adapter_type, endpoint)
+                adapter = _create_adapter(adapter_type, endpoint, allow_private_urls=allow_private)
             except ValueError:
                 if not json_output:
                     console.print(f"[yellow]⚠ Skipping {tc.name}: Unknown adapter type '{adapter_type}'[/yellow]")
@@ -6582,7 +6593,7 @@ def _execute_check_tests(
 
             # Run test (wrap asyncio.run to catch async exceptions)
             try:
-                trace = asyncio.run(adapter.run(tc))
+                trace = asyncio.run(adapter.execute(tc.input.query, tc.input.context))
             except (asyncio.TimeoutError, asyncio.CancelledError) as e:
                 if not json_output:
                     console.print(f"[red]✗ {tc.name}: Async execution failed - {e}[/red]")

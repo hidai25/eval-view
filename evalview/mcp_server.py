@@ -5,7 +5,13 @@ import os
 import shutil
 import subprocess
 import sys
+from importlib.metadata import version as _pkg_version, PackageNotFoundError
 from typing import Any, Dict, Optional
+
+try:
+    _EVALVIEW_VERSION = _pkg_version("evalview")
+except PackageNotFoundError:
+    _EVALVIEW_VERSION = "dev"
 
 TOOLS = [
     {
@@ -147,7 +153,7 @@ class MCPServer:
                 "result": {
                     "protocolVersion": "2024-11-05",
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "evalview", "version": "0.2.5"},
+                    "serverInfo": {"name": "evalview", "version": _EVALVIEW_VERSION},
                 },
             }
 
