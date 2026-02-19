@@ -1670,64 +1670,22 @@ def run(
 
 
 def _display_no_agent_guide(endpoint: Optional[str] = None) -> None:
-    """World-class onboarding screen shown when no agent is reachable."""
-    from rich.rule import Rule
-
+    """Minimal prompt shown when no agent is reachable."""
     console.print()
-    console.print(Rule(" Connect your agent first ", style="bold yellow"))
-    console.print()
-
     if endpoint:
-        console.print(f"  [bold yellow]⚠[/bold yellow]  Can't reach your agent at [bold]{endpoint}[/bold]")
-        console.print("  [dim]Make sure your agent server is running and try again.[/dim]")
+        console.print(f"  [yellow]No agent at[/yellow] [bold]{endpoint}[/bold] [yellow]— is it running?[/yellow]")
+        console.print()
+        console.print("  Start it, then re-run [cyan]evalview run[/cyan].")
     else:
-        console.print("  [bold]EvalView needs to know which agent to run tests against.[/bold]")
-        console.print("  [dim]Point it at your running agent with a config file.[/dim]")
-
+        console.print("  [yellow]No agent configured.[/yellow]")
+        console.print()
+        console.print("  Point EvalView at your agent in [cyan].evalview/config.yaml[/cyan]:")
+        console.print()
+        console.print("    [dim]adapter: http[/dim]")
+        console.print("    [dim]endpoint: http://localhost:8080/execute[/dim]")
     console.print()
-
-    # Step 1 — config file
-    console.print("  [bold cyan]Step 1[/bold cyan]  Create [cyan].evalview/config.yaml[/cyan] in your project root")
-    console.print()
-    console.print(Panel(
-        "adapter: http\nendpoint: http://localhost:8080/execute\ntimeout: 30.0",
-        title="[dim].evalview/config.yaml[/dim]",
-        border_style="cyan",
-        padding=(0, 2),
-    ))
-    console.print()
-
-    # Adapter reference table
-    console.print("  [bold]All supported adapters[/bold]  [dim]← set adapter: <name> in config[/dim]")
-    console.print()
-    adapters_info = [
-        ("http",               "Any REST API agent — the most common choice"),
-        ("streaming",         "JSONL streaming agents (token-by-token output)"),
-        ("langgraph",         "LangGraph agents (Platform or self-hosted)"),
-        ("crewai",            "CrewAI crews"),
-        ("openai-assistants", "OpenAI Assistants API  (needs assistant_id)"),
-        ("anthropic",         "Claude directly  (needs ANTHROPIC_API_KEY)"),
-        ("ollama",            "Local models via Ollama  (e.g. model: llama3.2)"),
-    ]
-    for name, desc in adapters_info:
-        console.print(f"    [cyan]{name:<22}[/cyan]  [dim]{desc}[/dim]")
-    console.print()
-
-    # Steps 2 + 3
-    console.print("  [bold cyan]Step 2[/bold cyan]  Start your agent server")
-    console.print()
-    console.print("  [bold cyan]Step 3[/bold cyan]  Run [cyan]evalview run[/cyan]")
-    console.print()
-
-    # Demo shortcut
-    console.print(Panel(
-        "[dim]Want to see EvalView working right now — no setup needed?[/dim]\n\n"
-        "  [cyan]$ evalview demo[/cyan]\n\n"
-        "  [dim]Spins up a live agent, captures a baseline, introduces a regression,\n"
-        "  then catches it — the full workflow in 30 seconds.[/dim]",
-        border_style="dim",
-        padding=(0, 2),
-    ))
+    console.print("  Or see EvalView catch a real regression right now:")
+    console.print("  [bold cyan]→ evalview demo[/bold cyan]   [dim](no setup, 30 seconds)[/dim]")
     console.print()
 
 
