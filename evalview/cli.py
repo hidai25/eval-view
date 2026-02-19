@@ -1754,6 +1754,31 @@ async def _run_async(
         with open(config_path) as f:
             early_config = yaml.safe_load(f) or {}
 
+    # ── Connectivity check — before ANY output ────────────────────────────────
+    # Do this first so users with no agent never see the banner or verbose flags.
+    _ec_endpoint = early_config.get("endpoint") if not adapter_override else None
+    _ec_adapter = (adapter_override or early_config.get("adapter", "http")).lower()
+    _ec_no_http_check = {"openai-assistants", "anthropic", "ollama", "goose"}
+
+    if _ec_endpoint and _ec_adapter not in _ec_no_http_check:
+        import socket as _socket
+        from urllib.parse import urlparse as _urlparse
+        try:
+            _p = _urlparse(_ec_endpoint)
+            _sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+            _sock.settimeout(1.5)
+            _ok = _sock.connect_ex((_p.hostname or "localhost", _p.port or 80)) == 0
+            _sock.close()
+            if not _ok:
+                _display_no_agent_guide(_ec_endpoint)
+                return
+        except Exception:
+            _display_no_agent_guide(_ec_endpoint)
+            return
+    elif not _ec_endpoint and not early_config and _ec_adapter not in _ec_no_http_check:
+        _display_no_agent_guide(None)
+        return
+
     # Apply judge config from config file BEFORE provider selection
     # Config.yaml judge settings OVERRIDE .env.local (explicit config takes priority)
     judge_config = early_config.get("judge", {})
@@ -1876,34 +1901,6 @@ async def _run_async(
         config = {}
         if verbose:
             console.print("[dim]No config file found - will use test case adapter/endpoint if available[/dim]")
-
-    # ── Early agent connectivity check ───────────────────────────────────────
-    # Before loading test cases or spending LLM judge credits, verify the
-    # agent endpoint is reachable. Show a helpful guide if not.
-    _early_endpoint = config.get("endpoint") if not adapter_override else None
-    _early_adapter = (adapter_override or config.get("adapter", "http")).lower()
-    _api_adapters = {"openai-assistants", "anthropic", "ollama", "goose"}
-    _early_needs_tcp = bool(_early_endpoint) and _early_adapter not in _api_adapters
-
-    if _early_needs_tcp:
-        import socket as _socket
-        from urllib.parse import urlparse as _urlparse
-        try:
-            _p = _urlparse(_early_endpoint)
-            _sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
-            _sock.settimeout(1.5)
-            _reachable = _sock.connect_ex((_p.hostname or "localhost", _p.port or 80)) == 0
-            _sock.close()
-            if not _reachable:
-                _display_no_agent_guide(_early_endpoint)
-                return
-        except Exception:
-            _display_no_agent_guide(_early_endpoint)
-            return
-    elif not _early_endpoint and _early_adapter not in _api_adapters:
-        # No endpoint at all in config — show full setup guide
-        _display_no_agent_guide(None)
-        return
 
     console.print("[blue]Running test cases...[/blue]\n")
 
