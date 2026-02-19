@@ -2,11 +2,14 @@
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 from importlib.metadata import version as _pkg_version, PackageNotFoundError
 from typing import Any, Dict, Optional
+
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 try:
     _EVALVIEW_VERSION = _pkg_version("evalview")
@@ -274,4 +277,5 @@ class MCPServer:
         output = result.stdout
         if result.stderr:
             output += result.stderr
-        return output.strip() or f"Command exited with code {result.returncode}"
+        output = _ANSI_ESCAPE.sub("", output).strip()
+        return output or f"Command exited with code {result.returncode}"
