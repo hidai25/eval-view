@@ -967,15 +967,16 @@ model:
         console.print("[dim]Your real agent will report actual LLM usage.[/dim]")
 
         console.print("\n[bold]Next steps:[/bold]")
-        console.print("  1. Connect your agent:")
+        console.print("  1. Connect your real agent:")
         console.print("     [cyan]evalview connect[/cyan]  ← Auto-detect running agents")
         console.print("     [dim]or edit .evalview/config.yaml manually[/dim]")
-        console.print("  2. Write test cases for your agent's capabilities")
-        console.print("  3. Run [cyan]evalview run[/cyan] for detailed results")
-
-        console.print("\n[bold cyan]💡 Pro tip: Scale your tests automatically[/bold cyan]")
-        console.print("  [cyan]evalview expand your-test.yaml --count 100[/cyan]  # Generate variations")
-        console.print("  [cyan]evalview record --interactive[/cyan]              # Record live sessions")
+        console.print("  2. Write or generate test cases:")
+        console.print("     [cyan]evalview expand your-test.yaml --count 20[/cyan]  ← generate variations from a seed")
+        console.print("     [cyan]evalview record --interactive[/cyan]              ← record live sessions as tests")
+        console.print("     [dim]or write YAML manually in tests/[/dim]")
+        console.print("  3. Run [cyan]evalview run[/cyan] for full results")
+        console.print("  4. See regression detection in action:")
+        console.print("     [cyan]evalview demo[/cyan]  ← snapshot + break + catch, live in 30 seconds")
 
         console.print()
         console.print("[dim]⭐ EvalView helped? Star us: [link=https://github.com/hidai25/eval-view]github.com/hidai25/eval-view[/link][/dim]\n")
