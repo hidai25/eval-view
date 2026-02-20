@@ -89,24 +89,38 @@ jobs:
         uv run python dogfood/mock_agent.py &
         MOCK_PID=$!
 
-        # Wait for agent to be ready
+        # Wait for agent to be ready (fail explicitly if it doesn't start)
+        AGENT_READY=false
         for i in $(seq 1 15); do
           if curl -sf http://localhost:8002/health > /dev/null; then
+            echo "Mock agent ready after ${i}s"
+            AGENT_READY=true
             break
           fi
           sleep 1
         done
 
+        if [ "$AGENT_READY" = "false" ]; then
+          echo "exit_code=1" >> $GITHUB_OUTPUT
+          echo "Mock agent failed to start within 15s" >&2
+          kill $MOCK_PID 2>/dev/null || true
+          exit 1
+        fi
+
         # Copy mock-agent config so evalview finds it
         mkdir -p .evalview
         cp dogfood/mock-agent-tests/config.yaml .evalview/config.yaml
 
-        # Check correct-behavior tests against golden baselines
+        # Check correct-behavior tests against golden baselines.
+        # Capture exit code before tee — piping to tee would overwrite it with tee's exit code (0).
         uv run evalview check dogfood/mock-agent-tests/ --fail-on REGRESSION --json \
-          2>&1 | tee regression-output.txt
-        echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+          > regression-output.txt 2>&1
+        EXIT_CODE=$?
+        cat regression-output.txt
+        echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
 
         kill $MOCK_PID 2>/dev/null || true
+        wait $MOCK_PID 2>/dev/null || true
 
     - name: Run dogfood self-tests (chat mode)
       id: dogfood

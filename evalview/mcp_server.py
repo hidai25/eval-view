@@ -9,7 +9,8 @@ import sys
 from importlib.metadata import version as _pkg_version, PackageNotFoundError
 from typing import Any, Dict, Optional
 
-_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+# Matches CSI sequences (\x1b[...m), OSC sequences (\x1b]...\x07), and single-char escapes
+_ANSI_ESCAPE = re.compile(r"\x1b(?:\[[0-9;]*[A-Za-z]|\][^\x07]*\x07|[@-_][0-`]?)")
 
 try:
     _EVALVIEW_VERSION = _pkg_version("evalview")
@@ -271,12 +272,14 @@ class MCPServer:
             return "Error: evalview not found in PATH. Run: pip install -e ."
 
         if name == "run_check":
-            cmd = ["evalview", "check", args.get("test_path", self.test_path), "--json"]
+            test_path = os.path.normpath(args.get("test_path", self.test_path))
+            cmd = ["evalview", "check", test_path, "--json"]
             if args.get("test"):
                 cmd += ["--test", args["test"]]
 
         elif name == "run_snapshot":
-            cmd = ["evalview", "snapshot", args.get("test_path", self.test_path)]
+            test_path = os.path.normpath(args.get("test_path", self.test_path))
+            cmd = ["evalview", "snapshot", test_path]
             if args.get("test"):
                 cmd += ["--test", args["test"]]
             if args.get("notes"):
