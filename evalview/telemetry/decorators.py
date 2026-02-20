@@ -1,12 +1,42 @@
 """Decorators for tracking CLI command usage."""
 
+import atexit
 import functools
 import time
 from typing import Callable, Any, Optional, Dict
 
 from evalview.telemetry.config import is_telemetry_enabled
-from evalview.telemetry.events import CommandEvent, ErrorEvent
+from evalview.telemetry.events import CommandEvent, ErrorEvent, SessionEvent
 from evalview.telemetry.client import get_client
+
+# ── Session tracking ──────────────────────────────────────────────────────────
+# Tracks total time spent in this CLI invocation.
+
+_session_start: float = time.perf_counter()
+_session_command: str = ""
+_session_commands_run: int = 0
+
+
+def _send_session_event() -> None:
+    """Send session duration event at process exit."""
+    if not is_telemetry_enabled():
+        return
+    try:
+        duration_ms = (time.perf_counter() - _session_start) * 1000
+        # Only send if session was meaningful (> 500ms, a command actually ran)
+        if duration_ms < 500 or _session_commands_run == 0:
+            return
+        event = SessionEvent(
+            command_name=_session_command,
+            session_duration_ms=round(duration_ms),
+            commands_run=_session_commands_run,
+        )
+        get_client().track(event)
+    except Exception:
+        pass
+
+
+atexit.register(_send_session_event)
 
 
 def track_command(
@@ -37,7 +67,14 @@ def track_command(
             if not is_telemetry_enabled():
                 return func(*args, **kwargs)
 
+            global _session_command, _session_commands_run
             name = command_name or func.__name__
+
+            # Record this as the primary command for session tracking
+            if _session_commands_run == 0:
+                _session_command = name
+            _session_commands_run += 1
+
             start_time = time.perf_counter()
             success = True
             error_class = None
@@ -50,10 +87,8 @@ def track_command(
                 error_class = type(e).__name__
                 raise
             finally:
-                # Calculate duration
                 duration_ms = (time.perf_counter() - start_time) * 1000
 
-                # Extract additional properties if extractor provided
                 properties = {}
                 if properties_extractor:
                     try:
@@ -61,7 +96,6 @@ def track_command(
                     except Exception:
                         pass
 
-                # Send command event
                 event = CommandEvent(
                     command_name=name,
                     duration_ms=duration_ms,
@@ -70,7 +104,6 @@ def track_command(
                 )
                 get_client().track(event)
 
-                # Send error event if failed
                 if error_class:
                     error_event = ErrorEvent(
                         command_name=name,

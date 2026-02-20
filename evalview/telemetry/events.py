@@ -128,6 +128,20 @@ class ErrorEvent(BaseEvent):
     # Never include error message content
 
 
+@dataclass
+class SessionEvent(BaseEvent):
+    """Tracks a complete CLI session — fired at process exit via atexit.
+
+    Captures total time spent in EvalView per invocation so PostHog can
+    show average session length, power users vs casual users, etc.
+    """
+
+    event_type: str = "session"
+    command_name: str = ""       # Primary command run in this session
+    session_duration_ms: float = 0.0
+    commands_run: int = 1        # Number of commands in this session
+
+
 # ============================================================================
 # Skill Test Generation Events
 # ============================================================================

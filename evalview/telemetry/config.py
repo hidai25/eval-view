@@ -34,6 +34,9 @@ class TelemetryConfig:
     install_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     first_run_notice_shown: bool = False
     created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+    # True after posthog.identify() has been called for this install.
+    # Prevents re-sending person properties on every command.
+    identified: bool = False
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -49,6 +52,7 @@ class TelemetryConfig:
             install_id=data.get("install_id", str(uuid.uuid4())),
             first_run_notice_shown=data.get("first_run_notice_shown", False),
             created_at=data.get("created_at", datetime.utcnow().isoformat() + "Z"),
+            identified=data.get("identified", False),
         )
 
 
