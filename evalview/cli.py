@@ -1685,9 +1685,9 @@ def _display_no_agent_guide(endpoint: Optional[str] = None) -> None:
         console.print("    [dim]adapter: http[/dim]")
         console.print("    [dim]endpoint: http://localhost:8080/execute[/dim]")
     console.print()
-    console.print("  [dim]Need a working agent to start with?[/dim]")
-    console.print("  [dim]github.com/hidai25/eval-view/blob/main/demo-agent/agent.py[/dim]")
-    console.print("  [dim]→ pip install fastapi uvicorn && python agent.py[/dim]")
+    console.print("  [dim]Need a running agent?[/dim]")
+    console.print("  [dim]HTTP:      github.com/hidai25/eval-view/blob/main/demo-agent/agent.py[/dim]")
+    console.print("  [dim]LangGraph: github.com/hidai25/eval-view/tree/main/examples/langgraph[/dim]")
     console.print()
     console.print("  Or see EvalView catch a real regression right now:")
     console.print("  [bold cyan]→ evalview demo[/bold cyan]   [dim](no setup, 30 seconds)[/dim]")
@@ -4753,16 +4753,13 @@ def demo():
     # ── Intro ─────────────────────────────────────────────────────────────────
     console.print(Rule(" EvalView — Live Regression Demo ", style="bold cyan"))
     console.print()
-    console.print("  [bold]What you're about to see:[/bold]")
-    console.print("  [dim]1. A real agent runs and its behavior is snapshotted as baseline.[/dim]")
-    console.print("  [dim]2. A code change is made — the agent starts behaving differently.[/dim]")
-    console.print("  [dim]3. EvalView catches the regression before it ships.[/dim]")
+    console.print("  [bold]Scenario:[/bold] Your customer support AI handles 50,000 tickets a day.")
+    console.print("  Engineering just shipped a model update. Let's check it before customers do.")
     console.print()
     console.print("  [dim]Everything below is live — a real HTTP server, real evaluation.[/dim]")
     console.print()
 
     # ── Start embedded demo agent ─────────────────────────────────────────────
-    # Simple state flag toggled between phases
     _state: Dict[str, bool] = {"broken": False}
 
     class _DemoHandler(BaseHTTPRequestHandler):
@@ -4783,44 +4780,68 @@ def demo():
                 self.end_headers()
 
         def log_message(self, format: str, *args: Any) -> None:  # type: ignore[override]
-            pass  # suppress server logs
+            pass
 
         def _good(self, query: str) -> Dict[str, Any]:
-            if "calculate" in query or "10 + 5" in query or "add" in query:
+            if "refund" in query or "return" in query or "jacket" in query:
                 return {
-                    "response": "The result of 10 + 5 is 15.",
+                    "response": (
+                        "I've found your order #4821 for $84.99 placed 12 days ago. "
+                        "Our 30-day return policy covers this — I've initiated your full refund. "
+                        "You'll see $84.99 back in 3–5 business days. "
+                        "You'll get a confirmation email shortly."
+                    ),
                     "steps": [
-                        {"tool": "calculator", "parameters": {"a": 10, "b": 5, "op": "add"}, "output": "15"}
+                        {"tool": "lookup_order", "parameters": {"query": query}, "output": "Order #4821, $84.99, 12 days ago"},
+                        {"tool": "check_policy", "parameters": {"type": "return"}, "output": "30-day return window, full refund eligible"},
+                        {"tool": "process_refund", "parameters": {"order_id": "4821", "amount": 84.99}, "output": "Refund initiated"},
                     ],
                 }
-            if "weather" in query and "tokyo" in query:
+            if "charge" in query or "billing" in query or "129" in query:
                 return {
-                    "response": "The current weather in Tokyo is 22°C and sunny.",
+                    "response": (
+                        "That $129 charge is your annual plan renewal from March 3rd. "
+                        "You signed up for annual billing last year with auto-renewal enabled. "
+                        "I can email you the full invoice or switch you to monthly billing — which would you prefer?"
+                    ),
                     "steps": [
-                        {"tool": "get_weather", "parameters": {"city": "Tokyo"}, "output": "22°C, sunny"}
+                        {"tool": "lookup_account", "parameters": {"query": query}, "output": "Account #8821, annual plan"},
+                        {"tool": "check_billing_history", "parameters": {"account_id": "8821"}, "output": "$129 annual renewal, March 3rd, auto-renewal on"},
                     ],
                 }
-            return {"response": "Query handled.", "steps": []}
+            return {"response": "How can I help you today?", "steps": []}
 
         def _broken(self, query: str) -> Dict[str, Any]:
-            if "calculate" in query or "10 + 5" in query or "add" in query:
-                # TOOLS_CHANGED: unnecessary validator tool added after the commit
+            if "refund" in query or "return" in query or "jacket" in query:
+                # TOOLS_CHANGED: model now escalates every refund to a human agent
+                # $2.50/escalation × 50K daily tickets = $125K/day in unnecessary ops cost
                 return {
-                    "response": "The result of 10 + 5 is 15.",
+                    "response": (
+                        "I've found your order #4821 for $84.99 placed 12 days ago. "
+                        "Our 30-day return policy covers this — I've initiated your full refund. "
+                        "You'll see $84.99 back in 3–5 business days. "
+                        "You'll get a confirmation email shortly."
+                    ),
                     "steps": [
-                        {"tool": "calculator", "parameters": {"a": 10, "b": 5, "op": "add"}, "output": "15"},
-                        {"tool": "validator", "parameters": {"result": "15"}, "output": "valid"},
+                        {"tool": "lookup_order", "parameters": {"query": query}, "output": "Order #4821, $84.99, 12 days ago"},
+                        {"tool": "check_policy", "parameters": {"type": "return"}, "output": "30-day return window, full refund eligible"},
+                        {"tool": "process_refund", "parameters": {"order_id": "4821", "amount": 84.99}, "output": "Refund initiated"},
+                        {"tool": "escalate_to_human", "parameters": {"reason": "refund_processed"}, "output": "Ticket #9921 opened"},
                     ],
                 }
-            if "weather" in query and "tokyo" in query:
-                # REGRESSION: broken response — score will drop significantly
+            if "charge" in query or "billing" in query or "129" in query:
+                # REGRESSION: model skips billing lookup, gives vague non-answer
+                # Customers can't understand their bill → chargebacks, escalations, churn
                 return {
-                    "response": "I'm unable to retrieve weather information at this time. Please try again later.",
+                    "response": (
+                        "I understand your concern about this charge. "
+                        "I'll look into this billing issue and have someone follow up with you within 24–48 hours."
+                    ),
                     "steps": [
-                        {"tool": "get_weather", "parameters": {"city": "Tokyo"}, "output": "error: service unavailable"}
+                        {"tool": "lookup_account", "parameters": {"query": query}, "output": "Account #8821, annual plan"},
                     ],
                 }
-            return {"response": "Error.", "steps": []}
+            return {"response": "How can I help you today?", "steps": []}
 
     # Pick a random free port
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as _s:
@@ -4840,31 +4861,36 @@ def demo():
         (_tmp / "tests").mkdir()
         (_tmp / ".evalview").mkdir()
 
-        (_tmp / "tests" / "calculator-test.yaml").write_text(
-            "name: calculator-test\n"
-            "description: Addition via calculator tool\n"
+        (_tmp / "tests" / "refund-request.yaml").write_text(
+            "name: refund-request\n"
+            "description: Customer requests refund for a recent purchase\n"
             "input:\n"
-            "  query: calculate 10 + 5\n"
+            "  query: I bought a jacket 12 days ago and it doesn't fit. Can I get a refund?\n"
             "expected:\n"
             "  tools:\n"
-            "    - calculator\n"
+            "    - lookup_order\n"
+            "    - check_policy\n"
+            "    - process_refund\n"
             "  output:\n"
             "    contains:\n"
-            "      - '15'\n"
+            "      - '84.99'\n"
+            "      - refund\n"
             "thresholds:\n"
             "  min_score: 70\n"
         )
-        (_tmp / "tests" / "weather-test.yaml").write_text(
-            "name: weather-test\n"
-            "description: Weather lookup for Tokyo\n"
+        (_tmp / "tests" / "billing-dispute.yaml").write_text(
+            "name: billing-dispute\n"
+            "description: Customer disputes an unrecognized charge\n"
             "input:\n"
-            "  query: What's the weather in Tokyo?\n"
+            "  query: There's a $129 charge on my account from last Tuesday I don't recognize.\n"
             "expected:\n"
             "  tools:\n"
-            "    - get_weather\n"
+            "    - lookup_account\n"
+            "    - check_billing_history\n"
             "  output:\n"
             "    contains:\n"
-            "      - '22'\n"
+            "      - annual\n"
+            "      - '129'\n"
             "thresholds:\n"
             "  min_score: 70\n"
         )
@@ -4876,9 +4902,9 @@ def demo():
         )
 
         # ── Phase 1: Snapshot good behavior ──────────────────────────────────
-        console.print(Rule(" Phase 1 — Snapshot: capturing agent v1 baseline ", style="cyan"))
+        console.print(Rule(" Phase 1 — Baseline: the agent before the update ", style="cyan"))
         console.print()
-        console.print("  [dim]Agent v1 is live on port[/dim] [cyan]{port}[/cyan][dim]. Running tests...[/dim]".replace("{port}", str(_port)))
+        console.print("  [dim]Running the test suite against today's production agent...[/dim]")
         console.print()
 
         _subprocess.run(
@@ -4891,10 +4917,9 @@ def demo():
         console.print()
 
         # ── Phase 2: Break the agent, run check ──────────────────────────────
-        console.print(Rule(" Phase 2 — New commit deployed: agent v2 is live ", style="yellow"))
+        console.print(Rule(" Phase 2 — Model update deployed to staging ", style="yellow"))
         console.print()
-        console.print("  [bold]Someone pushed a change.[/bold]")
-        console.print("  [dim]The agent now behaves differently. Let's see if EvalView catches it...[/dim]")
+        console.print("  [bold]The new model is live. Running regression check before it hits production...[/bold]")
         console.print()
 
         _state["broken"] = True  # switch agent to broken mode
@@ -4907,14 +4932,19 @@ def demo():
         )
 
         console.print()
+        console.print("  [bold red]At 50K tickets/day, this update would have cost:[/bold red]")
+        console.print("  [red]  • escalate_to_human on every refund  →  $125K/day in unnecessary ops[/red]")
+        console.print("  [red]  • billing-dispute non-answer  →  chargebacks, churn, manual escalations[/red]")
+        console.print()
+        console.print("  [green]EvalView caught both before a single customer was affected.[/green]")
+        console.print()
 
         # ── CTA ──────────────────────────────────────────────────────────────
         console.print(Panel(
-            "[bold green]Now try it on your own agent:[/bold green]\n"
+            "[bold green]Now run this on your own agent:[/bold green]\n"
             "\n"
-            "  [cyan]$ evalview init[/cyan]       [dim]# set up your project[/dim]\n"
             "  [cyan]$ evalview snapshot[/cyan]   [dim]# save today's behavior as baseline[/dim]\n"
-            "  [cyan]$ evalview check[/cyan]      [dim]# run this before every deploy[/dim]",
+            "  [cyan]$ evalview check[/cyan]      [dim]# run before every deploy[/dim]",
             border_style="green",
             padding=(1, 3),
         ))

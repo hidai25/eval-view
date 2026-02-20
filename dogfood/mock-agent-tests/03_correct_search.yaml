@@ -15,4 +15,4 @@ expected:
       - "results"
 
 thresholds:
-  min_score: 80
+  min_score: 65

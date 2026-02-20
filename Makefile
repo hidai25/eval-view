@@ -1,4 +1,5 @@
-.PHONY: help install test format lint typecheck check clean dev-install run-example agent-tests gym gym-list gym-failures gym-security gym-agent
+.PHONY: help install test format lint typecheck check clean dev-install run-example agent-tests gym gym-list gym-failures gym-security gym-agent \
+        dogfood-agent dogfood-check dogfood-snapshot dogfood-run
 
 # Default target
 help:
@@ -172,3 +173,23 @@ gym-agent:
 	@echo "Agent will run at http://localhost:2024"
 	@echo ""
 	cd gym/agents/support-bot && uv run langgraph dev
+
+# ── Dogfood regression tests ──────────────────────────────────────────────────
+# EvalView testing itself using the deterministic mock agent (port 8002).
+# Tests the 3 correct-behavior scenarios to catch EvalView evaluation regressions.
+
+## Start the deterministic mock agent (keep running in a separate terminal)
+dogfood-agent:
+	uv run python dogfood/mock_agent.py
+
+## Check for regressions in EvalView's evaluation logic (requires dogfood-agent)
+dogfood-check:
+	uv run evalview check dogfood/mock-agent-tests/ --fail-on REGRESSION
+
+## Save current evaluation results as the new golden baseline (requires dogfood-agent)
+dogfood-snapshot:
+	uv run evalview snapshot dogfood/mock-agent-tests/
+
+## Run the full dogfood suite including failure-detection tests (requires dogfood-agent)
+dogfood-run:
+	uv run evalview run dogfood/mock-agent-tests/

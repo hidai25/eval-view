@@ -81,6 +81,33 @@ jobs:
         uv run pytest tests/test_dogfood_e2e.py -v --tb=short 2>&1 | tee dogfood-e2e-output.txt
         echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
 
+    - name: Regression check (EvalView evaluating itself)
+      id: regression
+      continue-on-error: true
+      run: |
+        # Start deterministic mock agent
+        uv run python dogfood/mock_agent.py &
+        MOCK_PID=$!
+
+        # Wait for agent to be ready
+        for i in $(seq 1 15); do
+          if curl -sf http://localhost:8002/health > /dev/null; then
+            break
+          fi
+          sleep 1
+        done
+
+        # Copy mock-agent config so evalview finds it
+        mkdir -p .evalview
+        cp dogfood/mock-agent-tests/config.yaml .evalview/config.yaml
+
+        # Check correct-behavior tests against golden baselines
+        uv run evalview check dogfood/mock-agent-tests/ --fail-on REGRESSION --json \
+          2>&1 | tee regression-output.txt
+        echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+
+        kill $MOCK_PID 2>/dev/null || true
+
     - name: Run dogfood self-tests (chat mode)
       id: dogfood
       continue-on-error: true
@@ -151,6 +178,10 @@ jobs:
 
         if [ "${{ steps.dogfood_e2e.outputs.exit_code }}" != "0" ]; then
           FAILED="${FAILED}dogfood-e2e,"
+        fi
+
+        if [ "${{ steps.regression.outputs.exit_code }}" != "0" ]; then
+          FAILED="${FAILED}regression,"
         fi
 
         if [ "${{ steps.dogfood.outputs.exit_code }}" != "0" ] && [ "${{ steps.dogfood.outputs.skipped }}" != "true" ]; then
@@ -256,6 +287,12 @@ jobs:
           echo "✅ e2e dogfood tests passed (12 tests)" >> $GITHUB_STEP_SUMMARY
         else
           echo "❌ e2e dogfood tests failed" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        if [ "${{ steps.regression.outputs.exit_code }}" == "0" ]; then
+          echo "✅ regression check passed (EvalView evaluating itself)" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ regression check failed — EvalView evaluation logic may have regressed" >> $GITHUB_STEP_SUMMARY
         fi
 
         if [ "${{ steps.dogfood.outputs.skipped }}" == "true" ]; then
