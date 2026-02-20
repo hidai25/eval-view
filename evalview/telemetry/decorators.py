@@ -3,6 +3,7 @@
 import atexit
 import functools
 import time
+import uuid
 from typing import Callable, Any, Optional, Dict
 
 from evalview.telemetry.config import is_telemetry_enabled
@@ -10,8 +11,11 @@ from evalview.telemetry.events import CommandEvent, ErrorEvent, SessionEvent
 from evalview.telemetry.client import get_client
 
 # ── Session tracking ──────────────────────────────────────────────────────────
-# Tracks total time spent in this CLI invocation.
+# A new $session_id is generated for each CLI invocation.
+# Attaching it to every event lets PostHog group events into sessions and
+# calculate session duration, events-per-session, and retention properly.
 
+_session_id: str = str(uuid.uuid4())
 _session_start: float = time.perf_counter()
 _session_command: str = ""
 _session_commands_run: int = 0

@@ -134,6 +134,13 @@ class TelemetryClient:
             properties = event.to_dict()
             # Always attach developer flag so events can be filtered in PostHog
             properties["is_developer"] = _is_developer()
+            # Attach $session_id so PostHog groups events into sessions and
+            # can calculate session duration, events-per-session, and retention.
+            try:
+                from evalview.telemetry.decorators import _session_id
+                properties["$session_id"] = _session_id
+            except ImportError:
+                pass
 
             self._posthog.capture(
                 distinct_id=install_id,
