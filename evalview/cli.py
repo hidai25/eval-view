@@ -4913,10 +4913,12 @@ def demo():
         console.print("  [dim]Running the test suite against today's production agent...[/dim]")
         console.print()
 
+        _demo_env = {**os.environ, "EVALVIEW_DEMO": "1"}
+
         _subprocess.run(
             ["evalview", "snapshot", "tests/"],
             cwd=_tmpdir,
-            env={**os.environ},
+            env=_demo_env,
             stderr=_subprocess.DEVNULL,
         )
 
@@ -4933,7 +4935,7 @@ def demo():
         _subprocess.run(
             ["evalview", "check"],
             cwd=_tmpdir,
-            env={**os.environ},
+            env=_demo_env,
             stderr=_subprocess.DEVNULL,
         )
 

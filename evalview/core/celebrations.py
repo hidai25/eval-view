@@ -6,9 +6,15 @@ feel memorable, fun, and habit-forming.
 Philosophy: "Serious about regressions, playful about everything else"
 """
 
+import os
+
 from rich.console import Console
 from rich.panel import Panel
 from evalview.core.project_state import ProjectState
+
+# When running inside evalview demo, suppress personal onboarding messages
+# that assume this is the user's real project (it's a throwaway temp dir).
+_IS_DEMO = os.environ.get("EVALVIEW_DEMO") == "1"
 
 console = Console()
 
@@ -37,6 +43,9 @@ class Celebrations:
         Args:
             test_count: Number of tests snapshotted
         """
+        if _IS_DEMO:
+            console.print(f"\n[green]✓ Baseline captured: {test_count} test(s)[/green]\n")
+            return
         console.print()
         console.print("[bold cyan]" + "=" * BANNER_WIDTH + "[/bold cyan]")
         console.print()
@@ -144,15 +153,16 @@ class Celebrations:
             diff_summary: Summary of what changed
         """
         console.print()
+        if _IS_DEMO:
+            return
         console.print(Panel(
             "[yellow]⚠️  REGRESSION DETECTED[/yellow]\n\n"
-            "Your agent's behavior changed. This might be intentional!\n\n"
+            "Your agent's behavior changed.\n\n"
             "[bold]What changed?[/bold]\n"
             f"  {diff_summary}\n\n"
             "[bold]What to do:[/bold]\n"
-            "  • If this change is good: [cyan]evalview snapshot[/cyan] to update baseline\n"
-            "  • If this is a bug: fix it and [cyan]evalview check[/cyan] again\n"
-            "  • See details: [cyan]evalview view[/cyan] (coming soon)",
+            "  • If this change is intentional: [cyan]evalview snapshot[/cyan] to update baseline\n"
+            "  • If this is a bug: fix it and [cyan]evalview check[/cyan] again",
             title="Regression Detected",
             border_style="yellow"
         ))
@@ -212,6 +222,8 @@ class Celebrations:
     @staticmethod
     def first_check() -> None:
         """Encourage on first check ever."""
+        if _IS_DEMO:
+            return
         console.print("[cyan]This is your first check! 🎯[/cyan]")
         console.print("[dim]From now on, I'll catch when your agent drifts.[/dim]\n")
 
