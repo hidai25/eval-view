@@ -137,6 +137,89 @@ TOOLS = [
             "properties": {},
         },
     },
+    {
+        "name": "validate_skill",
+        "description": (
+            "Validate a SKILL.md file for correct structure, naming conventions, and completeness. "
+            "Call this after writing or editing a SKILL.md before running tests. "
+            "Returns a list of issues found and whether the skill is valid."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "required": ["skill_path"],
+            "properties": {
+                "skill_path": {
+                    "type": "string",
+                    "description": "Path to the SKILL.md file or directory containing skills (e.g. '.claude/skills/my-skill/SKILL.md')",
+                },
+            },
+        },
+    },
+    {
+        "name": "generate_skill_tests",
+        "description": (
+            "Auto-generate test cases from a SKILL.md file. "
+            "Call this when the user asks to create tests for a skill — it reads the skill "
+            "definition and generates a ready-to-run YAML test suite covering explicit, "
+            "implicit, contextual, and negative test categories. "
+            "After generating, call run_skill_test to execute them."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "required": ["skill_path"],
+            "properties": {
+                "skill_path": {
+                    "type": "string",
+                    "description": "Path to the SKILL.md file to generate tests from",
+                },
+                "output_path": {
+                    "type": "string",
+                    "description": "Where to save the generated test YAML (default: same directory as SKILL.md)",
+                },
+                "count": {
+                    "type": "number",
+                    "description": "Number of test cases to generate (default: 10)",
+                },
+            },
+        },
+    },
+    {
+        "name": "run_skill_test",
+        "description": (
+            "Run a skill test suite against a SKILL.md. "
+            "Executes two evaluation phases: "
+            "Phase 1 (deterministic) checks tool calls, file operations, commands run, output content, and token budgets. "
+            "Phase 2 (rubric) uses LLM-as-judge to score output quality against a defined rubric. "
+            "Call this after writing skill tests or after any change to the skill or agent. "
+            "Use --no-rubric for fast Phase 1-only checks with no LLM cost."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "required": ["test_file"],
+            "properties": {
+                "test_file": {
+                    "type": "string",
+                    "description": "Path to the skill test YAML file (e.g. 'tests/my-skill-tests.yaml')",
+                },
+                "agent": {
+                    "type": "string",
+                    "description": "Agent type to test against: 'claude-code', 'system-prompt', 'codex', 'langgraph', 'crewai', 'openai-assistants', 'custom'. Defaults to value in YAML.",
+                },
+                "no_rubric": {
+                    "type": "boolean",
+                    "description": "Skip Phase 2 rubric evaluation — run deterministic checks only (faster, no LLM cost). Default: false.",
+                },
+                "model": {
+                    "type": "string",
+                    "description": "Model to use for evaluation (default: claude-sonnet-4-20250514)",
+                },
+                "verbose": {
+                    "type": "boolean",
+                    "description": "Show detailed output for all tests, not just failures. Default: false.",
+                },
+            },
+        },
+    },
 ]
 
 
@@ -287,6 +370,36 @@ class MCPServer:
 
         elif name == "list_tests":
             cmd = ["evalview", "golden", "list"]
+
+        elif name == "validate_skill":
+            skill_path = os.path.normpath(args.get("skill_path", ""))
+            if not skill_path:
+                return "Error: 'skill_path' is required."
+            cmd = ["evalview", "skill", "validate", skill_path]
+
+        elif name == "generate_skill_tests":
+            skill_path = os.path.normpath(args.get("skill_path", ""))
+            if not skill_path:
+                return "Error: 'skill_path' is required."
+            cmd = ["evalview", "skill", "generate-tests", skill_path, "--auto"]
+            if args.get("output_path"):
+                cmd += ["-o", os.path.normpath(args["output_path"])]
+            if args.get("count"):
+                cmd += ["-c", str(int(args["count"]))]
+
+        elif name == "run_skill_test":
+            test_file = os.path.normpath(args.get("test_file", ""))
+            if not test_file:
+                return "Error: 'test_file' is required."
+            cmd = ["evalview", "skill", "test", test_file, "--json"]
+            if args.get("agent"):
+                cmd += ["--agent", args["agent"]]
+            if args.get("no_rubric"):
+                cmd += ["--no-rubric"]
+            if args.get("model"):
+                cmd += ["--model", args["model"]]
+            if args.get("verbose"):
+                cmd += ["--verbose"]
 
         else:
             return f"Unknown tool: {name}"

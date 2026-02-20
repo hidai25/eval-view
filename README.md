@@ -289,7 +289,9 @@ cp CLAUDE.md.example CLAUDE.md
 
 ### What you get
 
-4 tools Claude Code can call on your behalf:
+7 tools Claude Code can call on your behalf:
+
+**Agent regression testing:**
 
 | Tool | What it does |
 |------|-------------|
@@ -297,6 +299,14 @@ cp CLAUDE.md.example CLAUDE.md
 | `run_snapshot` | Capture current agent behavior as the golden baseline |
 | `run_check` | Detect regressions vs baseline, returns structured JSON diff |
 | `list_tests` | Show all golden baselines with scores and timestamps |
+
+**Skills testing (full 3-phase workflow):**
+
+| Tool | Phase | What it does |
+|------|-------|-------------|
+| `validate_skill` | Pre-test | Validate SKILL.md structure before running tests |
+| `generate_skill_tests` | Pre-test | Auto-generate test cases from a SKILL.md |
+| `run_skill_test` | Test | Run Phase 1 (deterministic) + Phase 2 (rubric) evaluation |
 
 ### How it works in practice
 
@@ -316,6 +326,15 @@ Claude: [makes code changes]
 ```
 
 No YAML. No terminal switching. No context loss.
+
+**Skills testing example:**
+```
+You: I wrote a code-reviewer skill, test it
+Claude: [validate_skill] ✅ SKILL.md is valid
+        [generate_skill_tests] 📝 Generated 10 tests → tests/code-reviewer-tests.yaml
+        [run_skill_test] Phase 1: 9/10 ✓  Phase 2: avg 87/100
+                         1 failure: skill didn't trigger on implicit input
+```
 
 ### Manual server start (advanced)
 

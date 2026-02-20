@@ -2,9 +2,13 @@
 # Copy this file to CLAUDE.md and customize for your project:
 #   cp CLAUDE.md.example CLAUDE.md
 
-## Agent Testing with EvalView (MCP)
+## Agent & Skill Testing with EvalView (MCP)
 
-EvalView is connected as an MCP server. Use these tools **proactively** — don't wait to be asked:
+EvalView is connected as an MCP server. Use these tools **proactively** — don't wait to be asked.
+
+---
+
+### Agent Regression Testing
 
 | When | Do this |
 |------|---------|
@@ -18,16 +22,59 @@ EvalView is connected as an MCP server. Use these tools **proactively** — don'
 - After `create_test`, always follow up with `run_snapshot` so the baseline is captured immediately
 - Never ask the user to run terminal commands for EvalView — do it via MCP tools instead
 
-**Example flows:**
-
+**Example:**
 ```
 User: "Refactor the search tool to use async"
 → You make the change
 → You call run_check automatically
 → "✅ All clean — refactor didn't break anything."
+```
 
-User: "Add a test for the weather lookup"
-→ You call create_test(name="weather-lookup", query="What's the weather in NYC?", expected_tools=["weather_api"])
-→ You call run_snapshot
-→ "Test created and baseline captured."
+---
+
+### Skills Testing (full workflow)
+
+Skills testing has three phases. Run them in order:
+
+| Phase | When | Tool |
+|-------|------|------|
+| 1. Validate | After writing/editing a SKILL.md | `validate_skill` |
+| 2. Generate tests | User asks to test a skill or create tests | `generate_skill_tests` |
+| 3. Run tests | After generating tests or editing the skill | `run_skill_test` |
+
+**When to call each:**
+
+| When | Do this |
+|------|---------|
+| After writing or editing a SKILL.md | Call `validate_skill` immediately |
+| User asks to "test my skill" or "add tests for this skill" | Call `generate_skill_tests`, then `run_skill_test` |
+| After any change to a skill | Call `run_skill_test --no-rubric` for fast Phase 1 check, then full `run_skill_test` |
+| User wants quick feedback with no LLM cost | Call `run_skill_test` with `no_rubric: true` |
+
+**Phase 1 (deterministic — fast, no LLM)** checks:
+- Correct tools were called (or not called)
+- Files were created/modified with correct content
+- Commands were run
+- Output contains expected strings
+- Token budget not exceeded
+- No forbidden patterns (no sudo, no `rm -rf`, etc.)
+
+**Phase 2 (rubric — LLM-as-judge)** checks:
+- Output quality against your custom rubric
+- Only runs if Phase 1 passes
+- Skippable with `no_rubric: true` for CI speed
+
+**Example flow:**
+```
+User: "I wrote a new code-reviewer skill in .claude/skills/code-reviewer/SKILL.md"
+→ You call validate_skill(skill_path=".claude/skills/code-reviewer/SKILL.md")
+→ "✅ Skill is valid — 3 commands defined, naming conventions correct."
+
+→ You call generate_skill_tests(skill_path=".claude/skills/code-reviewer/SKILL.md")
+→ "Generated 10 test cases in .claude/skills/code-reviewer/tests.yaml"
+
+→ You call run_skill_test(test_file=".claude/skills/code-reviewer/tests.yaml", agent="claude-code")
+→ Phase 1: 9/10 checks passed
+→ Phase 2: avg score 87/100
+→ "1 test failed: implicit category — skill didn't trigger on ambiguous input."
 ```
