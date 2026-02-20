@@ -1,0 +1,59 @@
+{
+  "metadata": {
+    "test_name": "Search for TODO Comments",
+    "blessed_at": "2026-01-01T23:05:43.987895",
+    "blessed_by": "user",
+    "source_result_file": ".evalview/results/20260101_225935.json",
+    "score": 70.0,
+    "notes": null,
+    "version": 1
+  },
+  "trace": {
+    "session_id": "goose-f6a437d8",
+    "start_time": "2026-01-01T22:59:12.337993",
+    "end_time": "2026-01-01T22:59:19.307964",
+    "steps": [
+      {
+        "step_id": "step-1",
+        "step_name": "Step 1",
+        "tool_name": "analyze",
+        "parameters": {},
+        "output": "focus: TODO\npath: /Users/hidaibar-mor/Downloads/eval-view",
+        "success": true,
+        "error": null,
+        "metrics": {
+          "latency": 0.0,
+          "cost": 0.0,
+          "tokens": null
+        }
+      },
+      {
+        "step_id": "step-2",
+        "step_name": "Step 2",
+        "tool_name": "bash",
+        "parameters": {
+          "command": "rg 'TODO' ."
+        },
+        "output": "./docs/ADAPTERS.md:        # TODO: Call your agent API\n./docs/ADAPTERS.md:        # TODO: Parse response and extract steps\n./docs/ADAPTERS.md:        # TODO: Get final output\n./examples/goosebench/README.md:| Search TODOs | Agent makes up TODOs without `grep` |\n./examples/goosebench/README.md:4. **Search TODOs** - Must use `grep` to find them\n./examples/goosebench/tasks/04-search-todos.yaml:# GooseBench Task 4: Search for TODOs\n./examples/goosebench/tasks/04-search-todos.yaml:# Tests: Does Goose use grep/search to find TODOs?\n./examples/goosebench/tasks/04-search-todos.yaml:name: \"Search for TODO Comments\"\n./examples/goosebench/tasks/04-search-todos.yaml:description: \"Goose must use grep/search to find TODOs, not guess\"\n./examples/goosebench/tasks/04-search-todos.yaml:  query: \"Find all TODO comments in this codebase and list them.\"",
+        "success": true,
+        "error": null,
+        "metrics": {
+          "latency": 0.0,
+          "cost": 0.0,
+          "tokens": null
+        }
+      }
+    ],
+    "final_output": "Here are all the TODO comments found in the codebase:\n\n### In `docs/ADAPTERS.md`\n- `# TODO: Call your agent API`\n- `# TODO: Parse response and extract steps`\n- `# TODO: Get final output`\n\n### In `examples/goosebench/README.md`\n- `| Search TODOs | Agent makes up TODOs without \\`grep\\` |`\n- `4. **Search TODOs** - Must use \\`grep\\` to find them`\n\n### In `examples/goosebench/tasks/04-search-todos.yaml`\n- `# GooseBench Task 4: Search for TODOs`\n- `# Tests: Does Goose use grep/search to find TODOs?`\n- `name: \"Search for TODO Comments\"`\n- `description: \"Goose must use grep/search to find TODOs, not guess\"`\n- `query: \"Find all TODO comments in this codebase and list them.\"`\n\nIf you need further details or actions related to these TODO comments, feel free to ask!",
+    "metrics": {
+      "total_cost": 0.003453,
+      "total_latency": 6969.9710000000005,
+      "total_tokens": null
+    }
+  },
+  "tool_sequence": [
+    "analyze",
+    "bash"
+  ],
+  "output_hash": "4feec262"
+}

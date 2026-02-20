@@ -1,0 +1,50 @@
+{
+  "metadata": {
+    "test_name": "Calculator Test",
+    "blessed_at": "2026-01-02T10:19:12.171780",
+    "blessed_by": "user",
+    "source_result_file": ".evalview/results/20260102_101304.json",
+    "score": 97.5,
+    "notes": null,
+    "version": 1
+  },
+  "trace": {
+    "session_id": "session-1767341581",
+    "start_time": "2026-01-02T10:13:01.163029",
+    "end_time": "2026-01-02T10:13:01.378945",
+    "steps": [
+      {
+        "step_id": "step-0",
+        "step_name": "calculator",
+        "tool_name": "calculator",
+        "parameters": {
+          "operation": "divide",
+          "a": 144.0,
+          "b": 12.0
+        },
+        "output": 12.0,
+        "success": true,
+        "error": null,
+        "metrics": {
+          "latency": 16.292810440063477,
+          "cost": 0.001,
+          "tokens": null
+        }
+      }
+    ],
+    "final_output": "The result of 144.0 / 12.0 = 12.0",
+    "metrics": {
+      "total_cost": 0.001,
+      "total_latency": 215.916,
+      "total_tokens": {
+        "input_tokens": 76,
+        "output_tokens": 113,
+        "cached_tokens": 0
+      }
+    }
+  },
+  "tool_sequence": [
+    "calculator"
+  ],
+  "output_hash": "55b90024"
+}

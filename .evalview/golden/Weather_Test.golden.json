@@ -1,0 +1,52 @@
+{
+  "metadata": {
+    "test_name": "Weather Test",
+    "blessed_at": "2026-01-02T10:19:12.170353",
+    "blessed_by": "user",
+    "source_result_file": ".evalview/results/20260102_101304.json",
+    "score": 90.0,
+    "notes": null,
+    "version": 1
+  },
+  "trace": {
+    "session_id": "session-1767341581",
+    "start_time": "2026-01-02T10:13:01.155685",
+    "end_time": "2026-01-02T10:13:01.343006",
+    "steps": [
+      {
+        "step_id": "step-0",
+        "step_name": "get_weather",
+        "tool_name": "get_weather",
+        "parameters": {
+          "city": "tokyo"
+        },
+        "output": {
+          "temp": 22,
+          "condition": "cloudy",
+          "humidity": 70
+        },
+        "success": true,
+        "error": null,
+        "metrics": {
+          "latency": 16.15118980407715,
+          "cost": 0.001,
+          "tokens": null
+        }
+      }
+    ],
+    "final_output": "The weather in Tokyo is 22C, cloudy with 70% humidity",
+    "metrics": {
+      "total_cost": 0.001,
+      "total_latency": 187.321,
+      "total_tokens": {
+        "input_tokens": 78,
+        "output_tokens": 133,
+        "cached_tokens": 0
+      }
+    }
+  },
+  "tool_sequence": [
+    "get_weather"
+  ],
+  "output_hash": "44f4680b"
+}

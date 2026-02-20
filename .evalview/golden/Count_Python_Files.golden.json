@@ -1,0 +1,44 @@
+{
+  "metadata": {
+    "test_name": "Count Python Files",
+    "blessed_at": "2026-01-01T23:05:43.977583",
+    "blessed_by": "user",
+    "source_result_file": ".evalview/results/20260101_225935.json",
+    "score": 75.0,
+    "notes": null,
+    "version": 1
+  },
+  "trace": {
+    "session_id": "goose-44595fce",
+    "start_time": "2026-01-01T22:59:12.216028",
+    "end_time": "2026-01-01T22:59:14.591381",
+    "steps": [
+      {
+        "step_id": "step-1",
+        "step_name": "Step 1",
+        "tool_name": "bash",
+        "parameters": {
+          "command": "rg --files | rg '.py' | wc -l"
+        },
+        "output": "66",
+        "success": true,
+        "error": null,
+        "metrics": {
+          "latency": 0.0,
+          "cost": 0.0,
+          "tokens": null
+        }
+      }
+    ],
+    "final_output": "There are **66 Python files** (.py) in this project.",
+    "metrics": {
+      "total_cost": 0.001218,
+      "total_latency": 2375.353,
+      "total_tokens": null
+    }
+  },
+  "tool_sequence": [
+    "bash"
+  ],
+  "output_hash": "99bb14ad"
+}

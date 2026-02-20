@@ -1,0 +1,55 @@
+{
+  "metadata": {
+    "test_name": "sources-coverage",
+    "blessed_at": "2026-02-19T22:56:21.477618",
+    "blessed_by": "user",
+    "source_result_file": null,
+    "score": 55.0,
+    "notes": null,
+    "version": 1
+  },
+  "trace": {
+    "session_id": "session-1771534567",
+    "start_time": "2026-02-19T22:56:07.558260",
+    "end_time": "2026-02-19T22:56:07.617606",
+    "steps": [],
+    "final_output": "I received your query: What sources do you monitor for pain points?",
+    "metrics": {
+      "total_cost": 0.00129,
+      "total_latency": 59.346000000000004,
+      "total_tokens": {
+        "input_tokens": 11,
+        "output_tokens": 16,
+        "cached_tokens": 0
+      }
+    },
+    "trace_context": {
+      "trace_id": "8578726bfabe49e9",
+      "root_span_id": "97be6230",
+      "spans": [
+        {
+          "span_id": "97be6230",
+          "parent_span_id": null,
+          "trace_id": "8578726bfabe49e9",
+          "kind": "agent",
+          "name": "HTTP Agent",
+          "start_time": "2026-02-19T22:56:07.558315",
+          "end_time": "2026-02-19T22:56:07.617556",
+          "duration_ms": 59.241,
+          "status": "ok",
+          "error_message": null,
+          "llm": null,
+          "tool": null,
+          "cost": 0.0
+        }
+      ],
+      "start_time": "2026-02-19T22:56:07.558315",
+      "end_time": "2026-02-19T22:56:07.618123",
+      "total_llm_calls": 0,
+      "total_tool_calls": 0,
+      "total_cost": 0.0
+    }
+  },
+  "tool_sequence": [],
+  "output_hash": "7e2ae88a"
+}

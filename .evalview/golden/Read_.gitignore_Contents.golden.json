@@ -1,0 +1,44 @@
+{
+  "metadata": {
+    "test_name": "Read .gitignore Contents",
+    "blessed_at": "2026-01-01T23:05:43.989281",
+    "blessed_by": "user",
+    "source_result_file": ".evalview/results/20260101_225935.json",
+    "score": 92.5,
+    "notes": null,
+    "version": 1
+  },
+  "trace": {
+    "session_id": "goose-9b3aa9b5",
+    "start_time": "2026-01-01T22:59:12.352172",
+    "end_time": "2026-01-01T22:59:20.948323",
+    "steps": [
+      {
+        "step_id": "step-1",
+        "step_name": "Step 1",
+        "tool_name": "text_editor",
+        "parameters": {
+          "path": ".gitignore"
+        },
+        "output": "command: view",
+        "success": true,
+        "error": null,
+        "metrics": {
+          "latency": 0.0,
+          "cost": 0.0,
+          "tokens": null
+        }
+      }
+    ],
+    "final_output": "Here are the patterns listed in the `.gitignore` file:\n\n### General Patterns\n- `__pycache__/`\n- `*.py[cod]`\n- `*$py.class`\n- `*.so`\n- `.Python`\n- `build/`\n- `develop-eggs/`\n- `dist/`\n- `downloads/`\n- `eggs/`\n- `.eggs/`\n- `lib/`\n- `lib64/`\n- `parts/`\n- `sdist/`\n- `var/`\n- `wheels/`\n- `*.egg-info/`\n- `.installed.cfg`\n- `*.egg`\n- `MANIFEST`\n\n### Virtual Environments\n- `venv/`\n- `ENV/`\n- `env/`\n- `.venv`\n\n### Environment Variables\n- `.env`\n- `.env.local`\n- `.env.*.local`\n\n### IDE Files\n- `.vscode/`\n- `.idea/`\n- `*.swp`\n- `*.swo`\n- `*~`\n\n### EvalView Specific\n- `.agenteval/`\n- `.evalview/`\n- `tests/test-cases/*.yaml`\n- `!tests/test-cases/example.yaml` (This is an exception to the previous pattern)\n\n### Testing\n- `.pytest_cache/`\n- `.coverage`\n- `htmlcov/`\n\n### Operating System Files\n- `.DS_Store`\n- `Thumbs.db`\n\n### Claude Code\n- `CLAUDE.md`\n- `.claude/` \n\nThese patterns are used to ignore files and directories in Git, ensuring that unnecessary files are not tracked in the repository.",
+    "metrics": {
+      "total_cost": 0.001921,
+      "total_latency": 8596.151000000002,
+      "total_tokens": null
+    }
+  },
+  "tool_sequence": [
+    "text_editor"
+  ],
+  "output_hash": "7e777f10"
+}

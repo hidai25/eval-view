@@ -1,0 +1,55 @@
+{
+  "metadata": {
+    "test_name": "agent-identity",
+    "blessed_at": "2026-02-19T22:56:21.479292",
+    "blessed_by": "user",
+    "source_result_file": null,
+    "score": 55.0,
+    "notes": null,
+    "version": 1
+  },
+  "trace": {
+    "session_id": "session-1771534574",
+    "start_time": "2026-02-19T22:56:14.467591",
+    "end_time": "2026-02-19T22:56:14.477112",
+    "steps": [],
+    "final_output": "I received your query: What is PainTracker and what can you help me with?",
+    "metrics": {
+      "total_cost": 0.00144,
+      "total_latency": 9.521,
+      "total_tokens": {
+        "input_tokens": 12,
+        "output_tokens": 18,
+        "cached_tokens": 0
+      }
+    },
+    "trace_context": {
+      "trace_id": "85c984e3e07a4ab0",
+      "root_span_id": "136922af",
+      "spans": [
+        {
+          "span_id": "136922af",
+          "parent_span_id": null,
+          "trace_id": "85c984e3e07a4ab0",
+          "kind": "agent",
+          "name": "HTTP Agent",
+          "start_time": "2026-02-19T22:56:14.467646",
+          "end_time": "2026-02-19T22:56:14.477100",
+          "duration_ms": 9.454,
+          "status": "ok",
+          "error_message": null,
+          "llm": null,
+          "tool": null,
+          "cost": 0.0
+        }
+      ],
+      "start_time": "2026-02-19T22:56:14.467646",
+      "end_time": "2026-02-19T22:56:14.477167",
+      "total_llm_calls": 0,
+      "total_tool_calls": 0,
+      "total_cost": 0.0
+    }
+  },
+  "tool_sequence": [],
+  "output_hash": "42ab4aae"
+}

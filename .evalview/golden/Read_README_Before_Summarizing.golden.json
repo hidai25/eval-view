@@ -1,0 +1,44 @@
+{
+  "metadata": {
+    "test_name": "Read README Before Summarizing",
+    "blessed_at": "2026-01-01T23:05:43.982212",
+    "blessed_by": "user",
+    "source_result_file": ".evalview/results/20260101_225935.json",
+    "score": 92.5,
+    "notes": null,
+    "version": 1
+  },
+  "trace": {
+    "session_id": "goose-5c0d981b",
+    "start_time": "2026-01-01T22:59:12.256570",
+    "end_time": "2026-01-01T22:59:15.768981",
+    "steps": [
+      {
+        "step_id": "step-1",
+        "step_name": "Step 1",
+        "tool_name": "text_editor",
+        "parameters": {
+          "path": "~/Downloads/eval-view/README.md"
+        },
+        "output": "command: view\n\n**EvalView** is a regression testing framework designed for AI agents that automatically detects regressions like tool changes or output variations before deployment, ensuring stable and predictable behavior.",
+        "success": true,
+        "error": null,
+        "metrics": {
+          "latency": 0.0,
+          "cost": 0.0,
+          "tokens": null
+        }
+      }
+    ],
+    "final_output": "**EvalView** is a regression testing framework designed for AI agents that automatically detects regressions like tool changes or output variations before deployment, ensuring stable and predictable behavior.",
+    "metrics": {
+      "total_cost": 0.001347,
+      "total_latency": 3512.411,
+      "total_tokens": null
+    }
+  },
+  "tool_sequence": [
+    "text_editor"
+  ],
+  "output_hash": "69dc92c1"
+}

@@ -41,7 +41,9 @@ env/
 
 # EvalView specific
 .agenteval/
-.evalview/
+.evalview/state.json
+.evalview/results/
+.evalview/config.yaml
 tests/test-cases/*.yaml
 !tests/test-cases/example.yaml
 

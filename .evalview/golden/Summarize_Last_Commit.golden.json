@@ -1,0 +1,44 @@
+{
+  "metadata": {
+    "test_name": "Summarize Last Commit",
+    "blessed_at": "2026-01-01T23:05:43.986492",
+    "blessed_by": "user",
+    "source_result_file": ".evalview/results/20260101_225935.json",
+    "score": 97.5,
+    "notes": null,
+    "version": 1
+  },
+  "trace": {
+    "session_id": "goose-8d13d3c0",
+    "start_time": "2026-01-01T22:59:12.323247",
+    "end_time": "2026-01-01T22:59:18.428647",
+    "steps": [
+      {
+        "step_id": "step-1",
+        "step_name": "Step 1",
+        "tool_name": "bash",
+        "parameters": {
+          "command": "git log -1 --stat"
+        },
+        "output": "commit 7f18119bb05a24eb234f74b80848da23032a53b8",
+        "success": true,
+        "error": null,
+        "metrics": {
+          "latency": 0.0,
+          "cost": 0.0,
+          "tokens": null
+        }
+      }
+    ],
+    "final_output": "Author: Hidai Bar-Mor <hidai25@gmail.com>\nDate:   Thu Jan 1 22:55:06 2026 +0200\nfix: goose adapter not being selected from test case\nGoose adapter was skipped because CLI required an endpoint.\nAdded goose to list of adapters that work without endpoint (like openai-assistants).\nevalview/cli.py | 13 +++++++++++--\n1 file changed, 11 insertions(+), 2 deletions(-)\n### Summary of the Last Commit\n\n**Commit ID:** 7f18119bb05a24eb234f74b80848da23032a53b8  \n**Author:** Hidai Bar-Mor  \n**Date:** January 1, 2026\n\n#### Changes Made:\n- **Fix:** The Goose adapter was not being selected during test cases due to the CLI requiring an endpoint.\n- **Modification:** Added the Goose adapter to the list of adapters that can operate without an endpoint, similar to the functionality of `openai-assistants`.\n\n#### File Modified:\n- **File:** `evalview/cli.py`\n  - **Lines Changed:** 13 lines modified (11 additions, 2 deletions) \n\nThis commit addresses an issue to ensure that the Goose adapter is correctly recognized in scenarios where an endpoint is not required.",
+    "metrics": {
+      "total_cost": 0.001992,
+      "total_latency": 6105.400000000001,
+      "total_tokens": null
+    }
+  },
+  "tool_sequence": [
+    "bash"
+  ],
+  "output_hash": "148e4478"
+}

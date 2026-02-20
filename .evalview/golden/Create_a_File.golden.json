@@ -1,0 +1,44 @@
+{
+  "metadata": {
+    "test_name": "Create a File",
+    "blessed_at": "2026-01-01T23:05:43.990631",
+    "blessed_by": "user",
+    "source_result_file": ".evalview/results/20260101_225935.json",
+    "score": 80.0,
+    "notes": null,
+    "version": 1
+  },
+  "trace": {
+    "session_id": "goose-f815cb41",
+    "start_time": "2026-01-01T22:59:16.989691",
+    "end_time": "2026-01-01T22:59:19.460224",
+    "steps": [
+      {
+        "step_id": "step-1",
+        "step_name": "Step 1",
+        "tool_name": "text_editor",
+        "parameters": {
+          "path": "goosebench-test.txt"
+        },
+        "output": "command: write\nfile_text: Hello from GooseBench",
+        "success": true,
+        "error": null,
+        "metrics": {
+          "latency": 0.0,
+          "cost": 0.0,
+          "tokens": null
+        }
+      }
+    ],
+    "final_output": "The file **goosebench-test.txt** has been created with the content:\n\n```\nHello from GooseBench\n```",
+    "metrics": {
+      "total_cost": 0.001282,
+      "total_latency": 2470.533,
+      "total_tokens": null
+    }
+  },
+  "tool_sequence": [
+    "text_editor"
+  ],
+  "output_hash": "c495f497"
+}

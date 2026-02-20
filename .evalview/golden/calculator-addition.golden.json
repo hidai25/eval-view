@@ -1,0 +1,95 @@
+{
+  "metadata": {
+    "test_name": "calculator-addition",
+    "blessed_at": "2026-02-19T08:34:36.673643",
+    "blessed_by": "user",
+    "source_result_file": null,
+    "score": 100.0,
+    "notes": "initial baseline for search test",
+    "version": 1
+  },
+  "trace": {
+    "session_id": "session-1771482872",
+    "start_time": "2026-02-19T08:34:32.741277",
+    "end_time": "2026-02-19T08:34:32.752102",
+    "steps": [
+      {
+        "step_id": "step-0",
+        "step_name": "calculator",
+        "tool_name": "calculator",
+        "parameters": {
+          "expression": "10 + 5"
+        },
+        "output": "15",
+        "success": true,
+        "error": null,
+        "metrics": {
+          "latency": 10.0,
+          "cost": 0.0,
+          "tokens": null
+        }
+      }
+    ],
+    "final_output": "The result of 10 + 5 is 15.",
+    "metrics": {
+      "total_cost": 0.001,
+      "total_latency": 10.825,
+      "total_tokens": {
+        "input_tokens": 4,
+        "output_tokens": 6,
+        "cached_tokens": 0
+      }
+    },
+    "trace_context": {
+      "trace_id": "ad5c028e8ed143c6",
+      "root_span_id": "35db5ca0",
+      "spans": [
+        {
+          "span_id": "35db5ca0",
+          "parent_span_id": null,
+          "trace_id": "ad5c028e8ed143c6",
+          "kind": "agent",
+          "name": "HTTP Agent",
+          "start_time": "2026-02-19T08:34:32.741367",
+          "end_time": "2026-02-19T08:34:32.752091",
+          "duration_ms": 10.723999999999998,
+          "status": "ok",
+          "error_message": null,
+          "llm": null,
+          "tool": null,
+          "cost": 0.0
+        },
+        {
+          "span_id": "613ceef1",
+          "parent_span_id": "35db5ca0",
+          "trace_id": "ad5c028e8ed143c6",
+          "kind": "tool",
+          "name": "calculator",
+          "start_time": "2026-02-19T08:34:32.752045",
+          "end_time": "2026-02-19T08:34:32.752045",
+          "duration_ms": 10.0,
+          "status": "ok",
+          "error_message": null,
+          "llm": null,
+          "tool": {
+            "tool_name": "calculator",
+            "parameters": {
+              "expression": "10 + 5"
+            },
+            "result": "15"
+          },
+          "cost": 0.0
+        }
+      ],
+      "start_time": "2026-02-19T08:34:32.741367",
+      "end_time": "2026-02-19T08:34:32.752160",
+      "total_llm_calls": 0,
+      "total_tool_calls": 1,
+      "total_cost": 0.0
+    }
+  },
+  "tool_sequence": [
+    "calculator"
+  ],
+  "output_hash": "851322c4"
+}

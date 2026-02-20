@@ -1,0 +1,90 @@
+{
+  "metadata": {
+    "test_name": "Multi-Tool Test",
+    "blessed_at": "2026-01-02T10:19:12.172794",
+    "blessed_by": "user",
+    "source_result_file": ".evalview/results/20260102_101304.json",
+    "score": 75.0,
+    "notes": null,
+    "version": 1
+  },
+  "trace": {
+    "session_id": "session-1767341581",
+    "start_time": "2026-01-02T10:13:01.170492",
+    "end_time": "2026-01-02T10:13:01.361319",
+    "steps": [
+      {
+        "step_id": "step-0",
+        "step_name": "get_weather",
+        "tool_name": "get_weather",
+        "parameters": {
+          "city": "london"
+        },
+        "output": {
+          "temp": 12,
+          "condition": "rainy",
+          "humidity": 85
+        },
+        "success": true,
+        "error": null,
+        "metrics": {
+          "latency": 6.2713623046875,
+          "cost": 0.001,
+          "tokens": null
+        }
+      },
+      {
+        "step_id": "step-1",
+        "step_name": "calculator",
+        "tool_name": "calculator",
+        "parameters": {
+          "operation": "multiply",
+          "a": 12,
+          "b": 1.8
+        },
+        "output": 21.6,
+        "success": true,
+        "error": null,
+        "metrics": {
+          "latency": 6.2713623046875,
+          "cost": 0.001,
+          "tokens": null
+        }
+      },
+      {
+        "step_id": "step-2",
+        "step_name": "calculator",
+        "tool_name": "calculator",
+        "parameters": {
+          "operation": "add",
+          "a": 21.6,
+          "b": 32
+        },
+        "output": 53.6,
+        "success": true,
+        "error": null,
+        "metrics": {
+          "latency": 6.2713623046875,
+          "cost": 0.001,
+          "tokens": null
+        }
+      }
+    ],
+    "final_output": "The weather in London is 12C (53.6F), rainy",
+    "metrics": {
+      "total_cost": 0.003,
+      "total_latency": 190.827,
+      "total_tokens": {
+        "input_tokens": 93,
+        "output_tokens": 123,
+        "cached_tokens": 0
+      }
+    }
+  },
+  "tool_sequence": [
+    "get_weather",
+    "calculator",
+    "calculator"
+  ],
+  "output_hash": "9d1840ca"
+}

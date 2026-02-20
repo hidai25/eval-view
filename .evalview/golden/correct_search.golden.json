@@ -1,0 +1,95 @@
+{
+  "metadata": {
+    "test_name": "correct_search",
+    "blessed_at": "2026-02-20T09:48:47.008642",
+    "blessed_by": "user",
+    "source_result_file": null,
+    "score": 70.0,
+    "notes": null,
+    "version": 1
+  },
+  "trace": {
+    "session_id": "session-1771573719",
+    "start_time": "2026-02-20T09:48:39.423918",
+    "end_time": "2026-02-20T09:48:39.488078",
+    "steps": [
+      {
+        "step_id": "step-0",
+        "step_name": "search",
+        "tool_name": "search",
+        "parameters": {
+          "query": "python tutorials"
+        },
+        "output": "Found 3 results for 'python tutorials': Result 1, Result 2, Result 3",
+        "success": true,
+        "error": null,
+        "metrics": {
+          "latency": 10.0,
+          "cost": 0.0,
+          "tokens": null
+        }
+      }
+    ],
+    "final_output": "I found information about python tutorials. Here are the top results: Result 1, Result 2, Result 3.",
+    "metrics": {
+      "total_cost": 0.001,
+      "total_latency": 64.16,
+      "total_tokens": {
+        "input_tokens": 6,
+        "output_tokens": 24,
+        "cached_tokens": 0
+      }
+    },
+    "trace_context": {
+      "trace_id": "e5d14642256345b3",
+      "root_span_id": "b6a0a0cd",
+      "spans": [
+        {
+          "span_id": "b6a0a0cd",
+          "parent_span_id": null,
+          "trace_id": "e5d14642256345b3",
+          "kind": "agent",
+          "name": "HTTP Agent",
+          "start_time": "2026-02-20T09:48:39.423968",
+          "end_time": "2026-02-20T09:48:39.487966",
+          "duration_ms": 63.998,
+          "status": "ok",
+          "error_message": null,
+          "llm": null,
+          "tool": null,
+          "cost": 0.0
+        },
+        {
+          "span_id": "f1468e76",
+          "parent_span_id": "b6a0a0cd",
+          "trace_id": "e5d14642256345b3",
+          "kind": "tool",
+          "name": "search",
+          "start_time": "2026-02-20T09:48:39.487847",
+          "end_time": "2026-02-20T09:48:39.487847",
+          "duration_ms": 10.0,
+          "status": "ok",
+          "error_message": null,
+          "llm": null,
+          "tool": {
+            "tool_name": "search",
+            "parameters": {
+              "query": "python tutorials"
+            },
+            "result": "Found 3 results for 'python tutorials': Result 1, Result 2, Result 3"
+          },
+          "cost": 0.0
+        }
+      ],
+      "start_time": "2026-02-20T09:48:39.423968",
+      "end_time": "2026-02-20T09:48:39.488156",
+      "total_llm_calls": 0,
+      "total_tool_calls": 1,
+      "total_cost": 0.0
+    }
+  },
+  "tool_sequence": [
+    "search"
+  ],
+  "output_hash": "d860561e"
+}

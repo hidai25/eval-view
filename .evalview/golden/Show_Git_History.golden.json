@@ -1,0 +1,44 @@
+{
+  "metadata": {
+    "test_name": "Show Git History",
+    "blessed_at": "2026-01-01T23:05:43.980454",
+    "blessed_by": "user",
+    "source_result_file": ".evalview/results/20260101_225935.json",
+    "score": 92.5,
+    "notes": null,
+    "version": 1
+  },
+  "trace": {
+    "session_id": "goose-95215670",
+    "start_time": "2026-01-01T22:59:12.231331",
+    "end_time": "2026-01-01T22:59:16.816443",
+    "steps": [
+      {
+        "step_id": "step-1",
+        "step_name": "Step 1",
+        "tool_name": "bash",
+        "parameters": {
+          "command": "git log -3 --pretty=format:'%h %s'"
+        },
+        "output": "7f18119 fix: goose adapter not being selected from test case\n160eb07 chore: bump version to 0.1.8\nb521138 Merge branch 'refactor/migrate-pip-to-uv'",
+        "success": true,
+        "error": null,
+        "metrics": {
+          "latency": 0.0,
+          "cost": 0.0,
+          "tokens": null
+        }
+      }
+    ],
+    "final_output": "Here are the last 3 git commits along with their messages:\n\n1. `7f18119` - fix: goose adapter not being selected from test case\n2. `160eb07` - chore: bump version to 0.1.8\n3. `b521138` - Merge branch 'refactor/migrate-pip-to-uv'",
+    "metrics": {
+      "total_cost": 0.001463,
+      "total_latency": 4585.112,
+      "total_tokens": null
+    }
+  },
+  "tool_sequence": [
+    "bash"
+  ],
+  "output_hash": "f3dde7e8"
+}

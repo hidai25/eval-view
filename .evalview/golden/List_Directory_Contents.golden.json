@@ -1,0 +1,44 @@
+{
+  "metadata": {
+    "test_name": "List Directory Contents",
+    "blessed_at": "2025-12-29T21:00:15.540180",
+    "blessed_by": "user",
+    "source_result_file": ".evalview/results/20251229_205646.json",
+    "score": 97.5,
+    "notes": null,
+    "version": 1
+  },
+  "trace": {
+    "session_id": "goose-b9a0082d",
+    "start_time": "2025-12-29T20:56:27.749324",
+    "end_time": "2025-12-29T20:56:40.857088",
+    "steps": [
+      {
+        "step_id": "step-1",
+        "step_name": "Step 1",
+        "tool_name": "bash",
+        "parameters": {
+          "command": "rg --files"
+        },
+        "output": "action.yml",
+        "success": true,
+        "error": null,
+        "metrics": {
+          "latency": 0.0,
+          "cost": 0.0,
+          "tokens": null
+        }
+      }
+    ],
+    "final_output": "SECURITY.md\nassets/demo.gif\nevalview/reporters/console_reporter.py\nevalview/reporters/__init__.py\nevalview/reporters/json_reporter.py\nevalview/reporters/html_reporter.py\nevalview/skills/parser.py\nevalview/skills/types.py\nevalview/skills/__init__.py\nevalview/skills/runner.py\nevalview/skills/validator.py\nevalview/expander.py\nevalview/tracking/__init__.py\nevalview/tracking/database.py\nevalview/tracking/regression.py\nevalview/templates/patterns/output-format.yaml\nevalview/templates/patterns/wrong-tool-chosen.yaml\nevalview/templates/patterns/multi-turn-memory.yaml\nevalview/templates/patterns/cost-budget.yaml\nevalview/templates/patterns/rag-grounding.yaml\nevalview/templates/patterns/latency-budget.yaml\nevalview/templates/patterns/tool-error-handling.yaml\nevalview/templates/patterns/tool-not-called.yaml\nevalview/cli.py\nevalview/adapters/ollama_adapter.py\nevalview/adapters/http_adapter.py\nevalview/adapters/anthropic_adapter.py\nevalview/adapters/base.py\nevalview/adapters/openai_assistants_adapter.py\nevalview/adapters/__init__.py\nevalview/adapters/goose_adapter.py\nevalview/adapters/langgraph_adapter.py\nevalview/adapters/tapescope_adapter.py\nevalview/adapters/registry.py\nevalview/adapters/huggingface_adapter.py\nevalview/adapters/crewai_adapter.py\nevalview/evaluators/evaluator.py\nevalview/evaluators/statistical_evaluator.py\nevalview/evaluators/cost_evaluator.py\nevalview/evaluators/hallucination_evaluator.py\nevalview/evaluators/output_evaluator.py\nevalview/evaluators/safety_evaluator.py\nevalview/evaluators/latency_evaluator.py\nevalview/evaluators/__init__.py\nevalview/evaluators/tool_call_evaluator.py\nevalview/evaluators/sequence_evaluator.py\nevalview/__init__.py\nevalview/recorder.py\nevalview/core/tool_categories.py\nevalview/core/parallel.py\nevalview/core/llm_provider.py\nevalview/core/watcher.py\nevalview/core/diff.py\nevalview/core/pricing.py\nevalview/core/loader.py\nevalview/core/retry.py\nevalview/core/types.py\nevalview/core/__init__.py\nevalview/core/golden.py\nevalview/core/security.py\nevalview/core/config.py\ntest_verbose.sh\nscripts/setup-test-user.js\ndemo-agent/agent.py\ndemo-agent/requirements.txt\nexamples/backend-implementations.md\nexamples/dify/README.md\nexamples/dify/test-case.yaml\nexamples/autogen/README.md\nexamples/autogen/test-case.yaml\nexamples/ollama/README.md\nexamples/ollama/langgraph-ollama-test.yaml\nexamples/huggingface/chatbot-test.yaml\nexamples/huggingface/README.md\nexamples/skills/test-skill/SKILL.md\nexamples/skills/test-skill/README.md\nexamples/skills/test-skill/tests.yaml\nexamples/anthropic/README.md\nexamples/anthropic/test-case.yaml\nexamples/anthropic/config.yaml\nexamples/anthropic/tests/test-cases/test-case.yaml\nexamples/config.example.yaml\nexamples/statistical-mode-example.yaml\nexamples/openai-assistants/data-analysis.yaml\nexamples/openai-assistants/math-test.yaml\nexamples/openai-assistants/README.md\nexamples/openai-assistants/create_assistant.py\nexamples/openai-assistants/general-knowledge.yaml\nexamples/README.md\nexamples/groq/test-case.yaml\nexamples/stock-analysis.yaml\nexamples/goosebench/scripts/scorecard.py\nexamples/goosebench/README.md\nexamples/goosebench/tasks/03-explore-codebase.yaml\nexamples/goosebench/tasks/06-create-file.yaml\nexamples/goosebench/tasks/07-read-gitignore.yaml\nexamples/goosebench/tasks/04-search-todos.yaml\nexamples/goosebench/tasks/10-last-commit.yaml\nexamples/goosebench/tasks/09-check-dependencies.yaml\nexamples/goosebench/tasks/01-list-files.yaml\nexamples/goosebench/tasks/02-read-before-answer.yaml\nexamples/goosebench/tasks/08-git-log.yaml\nexamples/goosebench/tasks/05-count-files.yaml\nexamples/crewai/README.md\nexamples/crewai/test-case.yaml\nexamples/crewai/Screenshot.png\nexamples/crewai/report_20251127_001019.html\nexamples/langgraph/README.md\nexamples/langgraph/test-case.yaml\nexamples/langgraph/screenshot.png\nCONTRIBUTING.md\nguides/detecting-llm-hallucinations-in-ci.md\nguides/pytest-for-ai-agents-langgraph-ci.md\npackage.json\nREADME.md\nNOTICE\npytest.ini\ndocs/SETUP_LANGGRAPH_EXAMPLE.md\ndocs/COST_TRACKING.md\ndocs/DEBUGGING.md\ndocs/DATABASE_SETUP.md\ndocs/AGENTS.md\ndocs/LANGGRAPH_CLOUD.md\ndocs/FRAMEWORK_SUPPORT.md\ndocs/GETTING_STARTED.md\nCODE_OF_CONDUCT.md\ndocs/QUICKSTART_LANGGRAPH.md\ndocs/QUICKSTART_HUGGINGFACE.md\ndocs/ADAPTERS.md\ndocs/BACKEND_REQUIREMENTS.md\ndocs/TROUBLESHOOTING.md\nCHANGELOG.md\nrequirements.txt\ndocs/imgs/runclisummary.png\ndocs/YAML_SCHEMA.md\nLICENSE\npyproject.toml\nMakefile\ngoosebench-test.txt\ntests/test_types.py\ntests/test_adapters.py\ntests/test_evaluators.py\ntests/test_statistical_evaluator.py\ntests/adapters/__init__.py\ntests/adapters/fixtures.py\ntests/README.md\ntests/test_loader.py\ntests/conftest.py\ntests/test_main_evaluator.py\nsdks/node/package-lock.json\nsdks/node/README.md\nsdks/node/LICENSE\nsdks/node/package.json\nsdks/node/tsconfig.json\nsdks/node/src/index.ts\nsdks/node/src/middleware.ts\nThe current directory contains the following files:\n\n### Core Files\n- `evalview/core/types.py`\n- `evalview/core/__init__.py`\n- `evalview/core/golden.py`\n- `evalview/core/security.py`\n- `evalview/core/config.py`\n\n### Scripts\n- `test_verbose.sh`\n- `scripts/setup-test-user.js`\n\n### Demo Agent\n- `demo-agent/agent.py`\n- `demo-agent/requirements.txt`\n\n### Examples\n- `examples/backend-implementations.md`\n- `examples/dify/README.md`\n- `examples/dify/test-case.yaml`\n- `examples/autogen/README.md`\n- `examples/autogen/test-case.yaml`\n- `examples/ollama/README.md`\n- `examples/ollama/langgraph-ollama-test.yaml`\n- `examples/huggingface/chatbot-test.yaml`\n- `examples/huggingface/README.md`\n- `examples/skills/test-skill/SKILL.md`\n- `examples/skills/test-skill/README.md`\n- `examples/skills/test-skill/tests.yaml`\n- `examples/anthropic/README.md`\n- `examples/anthropic/test-case.yaml`\n- `examples/anthropic/config.yaml`\n- `examples/anthropic/tests/test-cases/test-case.yaml`\n- `examples/config.example.yaml`\n- `examples/statistical-mode-example.yaml`\n- `examples/openai-assistants/data-analysis.yaml`\n- `examples/openai-assistants/math-test.yaml`\n- `examples/openai-assistants/README.md`\n- `examples/openai-assistants/create_assistant.py`\n- `examples/openai-assistants/general-knowledge.yaml`\n- `examples/README.md`\n- `examples/groq/test-case.yaml`\n- `examples/stock-analysis.yaml`\n- `examples/goosebench/scripts/scorecard.py`\n- `examples/goosebench/README.md`\n- `examples/goosebench/tasks/...` (various YAML task files)\n- `examples/crewai/README.md`\n- `examples/crewai/test-case.yaml`\n- `examples/crewai/Screenshot.png`\n- `examples/crewai/report_20251127_001019.html`\n- `examples/langgraph/README.md`\n- `examples/langgraph/test-case.yaml`\n- `examples/langgraph/screenshot.png`\n\n### Documentation\n- `CONTRIBUTING.md`\n- `guides/...` (various markdown files)\n- `README.md`\n- `NOTICE`\n- `pytest.ini`\n- `docs/...` (multiple markdown files and an image)\n- `LICENSE`\n- `pyproject.toml`\n- `Makefile`\n\n### Tests\n- `tests/test_types.py`\n- `tests/test_adapters.py`\n- `tests/test_evaluators.py`\n- `tests/test_statistical_evaluator.py`\n- `tests/adapters/__init__.py`\n- `tests/adapters/fixtures.py`\n- `tests/README.md`\n- `tests/test_loader.py`\n- `tests/conftest.py`\n- `tests/test_main_evaluator.py`\n\n### SDKs\n- `sdks/node/...` (various files including README, LICENSE, package.json, and TypeScript files)\n\nIf you need further information or details about any specific files, feel free to ask!",
+    "metrics": {
+      "total_cost": 0.006645,
+      "total_latency": 13107.764,
+      "total_tokens": null
+    }
+  },
+  "tool_sequence": [
+    "bash"
+  ],
+  "output_hash": "25f9dff9"
+}

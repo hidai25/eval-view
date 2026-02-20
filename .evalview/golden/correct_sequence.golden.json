@@ -1,0 +1,133 @@
+{
+  "metadata": {
+    "test_name": "correct_sequence",
+    "blessed_at": "2026-02-20T09:46:06.876579",
+    "blessed_by": "user",
+    "source_result_file": null,
+    "score": 85.0,
+    "notes": null,
+    "version": 1
+  },
+  "trace": {
+    "session_id": "session-1771573546",
+    "start_time": "2026-02-20T09:45:46.732766",
+    "end_time": "2026-02-20T09:45:46.742578",
+    "steps": [
+      {
+        "step_id": "step-0",
+        "step_name": "search",
+        "tool_name": "search",
+        "parameters": {
+          "query": "EvalView features"
+        },
+        "output": "EvalView is an AI agent testing framework with evaluators for tool calls, sequences, and output quality.",
+        "success": true,
+        "error": null,
+        "metrics": {
+          "latency": 10.0,
+          "cost": 0.0,
+          "tokens": null
+        }
+      },
+      {
+        "step_id": "step-1",
+        "step_name": "summarize",
+        "tool_name": "summarize",
+        "parameters": {
+          "text": "EvalView is an AI agent testing framework..."
+        },
+        "output": "EvalView: AI agent testing with multiple evaluators.",
+        "success": true,
+        "error": null,
+        "metrics": {
+          "latency": 10.0,
+          "cost": 0.0,
+          "tokens": null
+        }
+      }
+    ],
+    "final_output": "EvalView is an AI agent testing framework that provides evaluators for tool calls, sequences, and output quality.",
+    "metrics": {
+      "total_cost": 0.002,
+      "total_latency": 9.812,
+      "total_tokens": {
+        "input_tokens": 11,
+        "output_tokens": 28,
+        "cached_tokens": 0
+      }
+    },
+    "trace_context": {
+      "trace_id": "fbe87e4bcb304473",
+      "root_span_id": "ec17aeed",
+      "spans": [
+        {
+          "span_id": "ec17aeed",
+          "parent_span_id": null,
+          "trace_id": "fbe87e4bcb304473",
+          "kind": "agent",
+          "name": "HTTP Agent",
+          "start_time": "2026-02-20T09:45:46.732829",
+          "end_time": "2026-02-20T09:45:46.742569",
+          "duration_ms": 9.74,
+          "status": "ok",
+          "error_message": null,
+          "llm": null,
+          "tool": null,
+          "cost": 0.0
+        },
+        {
+          "span_id": "5acd4215",
+          "parent_span_id": "ec17aeed",
+          "trace_id": "fbe87e4bcb304473",
+          "kind": "tool",
+          "name": "search",
+          "start_time": "2026-02-20T09:45:46.742497",
+          "end_time": "2026-02-20T09:45:46.742497",
+          "duration_ms": 10.0,
+          "status": "ok",
+          "error_message": null,
+          "llm": null,
+          "tool": {
+            "tool_name": "search",
+            "parameters": {
+              "query": "EvalView features"
+            },
+            "result": "EvalView is an AI agent testing framework with evaluators for tool calls, sequences, and output quality."
+          },
+          "cost": 0.0
+        },
+        {
+          "span_id": "32642995",
+          "parent_span_id": "ec17aeed",
+          "trace_id": "fbe87e4bcb304473",
+          "kind": "tool",
+          "name": "summarize",
+          "start_time": "2026-02-20T09:45:46.742559",
+          "end_time": "2026-02-20T09:45:46.742559",
+          "duration_ms": 10.0,
+          "status": "ok",
+          "error_message": null,
+          "llm": null,
+          "tool": {
+            "tool_name": "summarize",
+            "parameters": {
+              "text": "EvalView is an AI agent testing framework..."
+            },
+            "result": "EvalView: AI agent testing with multiple evaluators."
+          },
+          "cost": 0.0
+        }
+      ],
+      "start_time": "2026-02-20T09:45:46.732829",
+      "end_time": "2026-02-20T09:45:46.742664",
+      "total_llm_calls": 0,
+      "total_tool_calls": 2,
+      "total_cost": 0.0
+    }
+  },
+  "tool_sequence": [
+    "search",
+    "summarize"
+  ],
+  "output_hash": "6e0e1e23"
+}

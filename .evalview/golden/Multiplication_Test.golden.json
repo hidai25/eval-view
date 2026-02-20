@@ -1,0 +1,50 @@
+{
+  "metadata": {
+    "test_name": "Multiplication Test",
+    "blessed_at": "2026-01-02T10:19:12.167252",
+    "blessed_by": "user",
+    "source_result_file": ".evalview/results/20260102_101304.json",
+    "score": 97.5,
+    "notes": null,
+    "version": 1
+  },
+  "trace": {
+    "session_id": "session-1767341581",
+    "start_time": "2026-01-02T10:13:01.146551",
+    "end_time": "2026-01-02T10:13:01.219796",
+    "steps": [
+      {
+        "step_id": "step-0",
+        "step_name": "calculator",
+        "tool_name": "calculator",
+        "parameters": {
+          "operation": "multiply",
+          "a": 25.0,
+          "b": 4.0
+        },
+        "output": 100.0,
+        "success": true,
+        "error": null,
+        "metrics": {
+          "latency": 19.005775451660156,
+          "cost": 0.001,
+          "tokens": null
+        }
+      }
+    ],
+    "final_output": "The result of 25.0 * 4.0 = 100.0",
+    "metrics": {
+      "total_cost": 0.001,
+      "total_latency": 73.245,
+      "total_tokens": {
+        "input_tokens": 69,
+        "output_tokens": 112,
+        "cached_tokens": 0
+      }
+    }
+  },
+  "tool_sequence": [
+    "calculator"
+  ],
+  "output_hash": "8ab49124"
+}
