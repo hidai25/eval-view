@@ -104,7 +104,18 @@ class TraceDiff:
 
         parts = []
         if self.tool_diffs:
-            parts.append(f"{len(self.tool_diffs)} tool difference(s)")
+            added = [d.actual_tool for d in self.tool_diffs if d.type == "added" and d.actual_tool]
+            removed = [d.golden_tool for d in self.tool_diffs if d.type == "removed" and d.golden_tool]
+            changed = [d.actual_tool for d in self.tool_diffs if d.type not in ("added", "removed") and d.actual_tool]
+            if added:
+                parts.append(f"+{', +'.join(added)}")
+            if removed:
+                parts.append(f"-{', -'.join(removed)}")
+            if changed:
+                parts.append(f"~{', ~'.join(changed)}")
+            if not added and not removed and not changed:
+                n = len(self.tool_diffs)
+                parts.append(f"{n} tool {'change' if n == 1 else 'changes'}")
         if self.output_diff and self.output_diff.similarity < 0.95:
             parts.append(f"output similarity: {self.output_diff.similarity:.0%}")
         if abs(self.score_diff) > 5:

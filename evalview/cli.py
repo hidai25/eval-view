@@ -4913,12 +4913,12 @@ def demo():
         console.print("  [dim]Running the test suite against today's production agent...[/dim]")
         console.print()
 
-        _demo_env = {**os.environ, "EVALVIEW_DEMO": "1"}
+        _demo_env_base = {**os.environ, "EVALVIEW_DEMO": "1"}
 
         _subprocess.run(
             ["evalview", "snapshot", "tests/"],
             cwd=_tmpdir,
-            env=_demo_env,
+            env={**_demo_env_base, "EVALVIEW_DEMO_PHASE": "snapshot"},
             stderr=_subprocess.DEVNULL,
         )
 
@@ -4935,7 +4935,7 @@ def demo():
         _subprocess.run(
             ["evalview", "check"],
             cwd=_tmpdir,
-            env=_demo_env,
+            env={**_demo_env_base, "EVALVIEW_DEMO_PHASE": "check"},
             stderr=_subprocess.DEVNULL,
         )
 
@@ -6844,13 +6844,13 @@ def _display_check_results(
             console.print(f"  {unchanged}/{len(diffs)} unchanged")
             if analysis["has_regressions"]:
                 count = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.REGRESSION)
-                console.print(f"  {count} regression(s)")
+                console.print(f"  {count} {'regression' if count == 1 else 'regressions'}")
             if analysis["has_tools_changed"]:
                 count = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.TOOLS_CHANGED)
-                console.print(f"  {count} tool change(s)")
+                console.print(f"  {count} tool {'change' if count == 1 else 'changes'}")
             if analysis["has_output_changed"]:
                 count = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.OUTPUT_CHANGED)
-                console.print(f"  {count} output change(s)")
+                console.print(f"  {count} output {'change' if count == 1 else 'changes'}")
 
             console.print()
 

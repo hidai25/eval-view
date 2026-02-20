@@ -6,6 +6,7 @@ feel less like a chore and more like a helpful colleague checking in.
 Philosophy: "Serious about regressions, playful about everything else"
 """
 
+import os
 import random
 from typing import List
 
@@ -17,6 +18,18 @@ CHECKING_MESSAGES: List[str] = [
     "🔍 Running regression checks...",
     "🔍 Sniffing out changes...",
     "🔍 Looking for what changed...",
+]
+
+# Demo-specific messages — used when EVALVIEW_DEMO=1
+# Phase 1 (snapshot): clean and purposeful, no randomness
+DEMO_SNAPSHOT_MESSAGE = "🔍 Locking in baseline behavior..."
+
+# Phase 2 (check): the "moment of truth" — relatable for any dev who's
+# ever held their breath after a model swap
+DEMO_CHECK_MESSAGES: List[str] = [
+    "🔍 Moment of truth — what did the new model change?",
+    "🔍 Let's see what slipped through...",
+    "🔍 Running the new model through its paces...",
 ]
 
 # Clean check messages (rotate randomly when no regressions found)
@@ -38,11 +51,19 @@ ERROR_MESSAGES = {
 
 
 def get_random_checking_message() -> str:
-    """Get a random checking message.
+    """Get a checking message.
+
+    When EVALVIEW_DEMO_PHASE is set, returns a demo-specific message
+    instead of a random one, preserving narrative consistency.
 
     Returns:
         A friendly status message for diff operations
     """
+    phase = os.environ.get("EVALVIEW_DEMO_PHASE")
+    if phase == "snapshot":
+        return DEMO_SNAPSHOT_MESSAGE
+    if phase == "check":
+        return random.choice(DEMO_CHECK_MESSAGES)
     return random.choice(CHECKING_MESSAGES)
 
 

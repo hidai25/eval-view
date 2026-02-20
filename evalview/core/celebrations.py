@@ -44,8 +44,7 @@ class Celebrations:
             test_count: Number of tests snapshotted
         """
         if _IS_DEMO:
-            console.print(f"\n[green]✓ Baseline captured: {test_count} test(s)[/green]\n")
-            return
+            return  # individual "✓ Snapshotted: X" lines from snapshot command are sufficient
         console.print()
         console.print("[bold cyan]" + "=" * BANNER_WIDTH + "[/bold cyan]")
         console.print()
