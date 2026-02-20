@@ -1908,7 +1908,12 @@ async def _run_async(
         if verbose:
             console.print("[dim]No config file found - will use test case adapter/endpoint if available[/dim]")
 
-    console.print("[blue]Running test cases...[/blue]\n")
+    _run_endpoint = config.get("endpoint", "")
+    _run_adapter = config.get("adapter", "http")
+    if _run_endpoint:
+        console.print(f"[blue]Running test cases...[/blue]  [dim]→ {_run_adapter}  {_run_endpoint}[/dim]\n")
+    else:
+        console.print("[blue]Running test cases...[/blue]\n")
 
     # Apply CI config from config.yaml (if CLI flags not provided)
     # Priority: CLI flags > config.yaml > hardcoded defaults

@@ -3,7 +3,13 @@
 This agent returns predictable responses based on the query, allowing us to
 verify that EvalView's evaluation logic produces correct scores.
 
-Scenarios:
+Customer support scenarios (default test suite):
+- "refund" / "return" -> lookup_order + check_policy + process_refund
+- "charge" / "billing" / "129" -> lookup_account + check_billing_history
+- "order" / "shipping" / "placed" -> lookup_order + check_shipping
+- "upgrade" / "premium" / "plan" -> lookup_account + check_plans
+
+Additional test scenarios:
 - "calculate X" -> uses calculator tool, returns correct answer
 - "search for X" -> uses search tool, returns relevant results
 - "calculate X wrong" -> uses calculator but returns wrong answer (tests scoring)
@@ -250,6 +256,62 @@ def handle_natural_math(query: str) -> Tuple[str, List[ToolCall]]:
     return "I need a valid math expression.", []
 
 
+def handle_refund(query: str) -> Tuple[str, List[ToolCall]]:
+    """Handle refund requests."""
+    tool_calls = [
+        ToolCall(name="lookup_order", arguments={"query": query}, result="Order #4821, $84.99, 12 days ago"),
+        ToolCall(name="check_policy", arguments={"type": "return"}, result="30-day return window, full refund eligible"),
+        ToolCall(name="process_refund", arguments={"order_id": "4821", "amount": 84.99}, result="Refund initiated"),
+    ]
+    return (
+        "I've found your order #4821 for $84.99 placed 12 days ago. "
+        "Our 30-day return policy covers this — I've initiated your full refund. "
+        "You'll see $84.99 back in 3–5 business days.",
+        tool_calls,
+    )
+
+
+def handle_billing_dispute(query: str) -> Tuple[str, List[ToolCall]]:
+    """Handle billing disputes."""
+    tool_calls = [
+        ToolCall(name="lookup_account", arguments={"query": query}, result="Account #8821, annual plan"),
+        ToolCall(name="check_billing_history", arguments={"account_id": "8821"}, result="$129 annual renewal, March 3rd, auto-renewal on"),
+    ]
+    return (
+        "That $129 charge is your annual plan renewal from March 3rd. "
+        "You signed up for annual billing last year with auto-renewal enabled. "
+        "I can email you the full invoice or switch you to monthly billing — which would you prefer?",
+        tool_calls,
+    )
+
+
+def handle_order_status(query: str) -> Tuple[str, List[ToolCall]]:
+    """Handle order status inquiries."""
+    tool_calls = [
+        ToolCall(name="lookup_order", arguments={"query": query}, result="Order #5503, placed 3 days ago, processing"),
+        ToolCall(name="check_shipping", arguments={"order_id": "5503"}, result="Label created, pickup scheduled for tomorrow"),
+    ]
+    return (
+        "I found your order #5503. It's currently being prepared — the shipping label has been created "
+        "and carrier pickup is scheduled for tomorrow. You'll receive a tracking number via email once it ships.",
+        tool_calls,
+    )
+
+
+def handle_account_upgrade(query: str) -> Tuple[str, List[ToolCall]]:
+    """Handle account upgrade requests."""
+    tool_calls = [
+        ToolCall(name="lookup_account", arguments={"query": query}, result="Account #8821, currently on basic plan"),
+        ToolCall(name="check_plans", arguments={"current": "basic"}, result="Premium: $29/mo — unlimited seats, priority support, analytics"),
+    ]
+    return (
+        "You're currently on the Basic plan. The Premium plan is $29/month and includes: "
+        "unlimited team seats, priority support (< 2hr response), and advanced analytics. "
+        "Would you like me to upgrade your account now?",
+        tool_calls,
+    )
+
+
 def handle_multi_step(query: str) -> Tuple[str, List[ToolCall]]:
     """Handle multi-step query requiring search then summarize."""
     tool_calls = [
@@ -295,7 +357,17 @@ async def execute(request: ExecuteRequest):
 
     # Route to appropriate handler based on query
     # More specific patterns must come first!
-    if "wrong tool" in query_lower and "calculate" in query_lower:
+    # --- Customer support scenarios (default test suite) ---
+    if any(w in query_lower for w in ("refund", "return", "jacket", "doesn't fit")):
+        output, tool_calls = handle_refund(query)
+    elif any(w in query_lower for w in ("charge", "billing", "invoice")) or "129" in query_lower:
+        output, tool_calls = handle_billing_dispute(query)
+    elif any(w in query_lower for w in ("shipping confirmation", "where is", "placed an order", "placed it", "haven't received")):
+        output, tool_calls = handle_order_status(query)
+    elif any(w in query_lower for w in ("upgrade", "premium plan", "premium")):
+        output, tool_calls = handle_account_upgrade(query)
+    # --- Additional test scenarios ---
+    elif "wrong tool" in query_lower and "calculate" in query_lower:
         output, tool_calls = handle_wrong_tool(query)
     elif "wrong" in query_lower and "calculate" in query_lower:
         output, tool_calls = handle_calculate_wrong(query)
