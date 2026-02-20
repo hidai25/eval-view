@@ -89,7 +89,7 @@ console = Console()
 
 
 # Helper Functions
-def _create_adapter(adapter_type: str, endpoint: str, timeout: float = 30.0, allow_private_urls: bool = True):
+def _create_adapter(adapter_type: str, endpoint: str, timeout: float = 30.0, allow_private_urls: bool = True) -> "AgentAdapter":
     """Factory function for creating adapters based on type.
 
     Args:
@@ -1686,8 +1686,8 @@ def _display_no_agent_guide(endpoint: Optional[str] = None) -> None:
         console.print("    [dim]endpoint: http://localhost:8080/execute[/dim]")
     console.print()
     console.print("  [dim]Need a running agent?[/dim]")
-    console.print("  [dim]HTTP:      github.com/hidai25/eval-view/blob/main/demo-agent/agent.py[/dim]")
-    console.print("  [dim]LangGraph: github.com/hidai25/eval-view/tree/main/examples/langgraph[/dim]")
+    console.print("  [dim]HTTP:      https://github.com/hidai25/eval-view/blob/main/demo-agent/agent.py[/dim]")
+    console.print("  [dim]LangGraph: https://github.com/hidai25/eval-view/tree/main/examples/langgraph[/dim]")
     console.print()
     console.print("  Or see EvalView catch a real regression right now:")
     console.print("  [bold cyan]→ evalview demo[/bold cyan]   [dim](no setup, 30 seconds)[/dim]")
@@ -1761,9 +1761,10 @@ async def _run_async(
 
     # ── Connectivity check — before ANY output ────────────────────────────────
     # Do this first so users with no agent never see the banner or verbose flags.
-    _ec_endpoint = early_config.get("endpoint") if not adapter_override else None
     _ec_adapter = (adapter_override or early_config.get("adapter", "http")).lower()
     _ec_no_http_check = {"openai-assistants", "anthropic", "ollama", "goose"}
+    # Skip endpoint check for API-key-based adapters; always check URL-based ones
+    _ec_endpoint = early_config.get("endpoint") if _ec_adapter not in _ec_no_http_check else None
 
     if _ec_endpoint and _ec_adapter not in _ec_no_http_check:
         import socket as _socket
@@ -6721,9 +6722,11 @@ def _execute_check_tests(
             allow_private = getattr(config, "allow_private_urls", True) if config else True
             try:
                 adapter = _create_adapter(adapter_type, endpoint, allow_private_urls=allow_private)
-            except ValueError:
+            except ValueError as e:
+                import sys
+                print(f"warning: skipping {tc.name}: {e}", file=sys.stderr)
                 if not json_output:
-                    console.print(f"[yellow]⚠ Skipping {tc.name}: Unknown adapter type '{adapter_type}'[/yellow]")
+                    console.print(f"[yellow]⚠ Skipping {tc.name}: {e}[/yellow]")
                 continue
 
             # Run test (wrap asyncio.run to catch async exceptions)

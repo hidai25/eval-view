@@ -1,47 +1,52 @@
 # EvalView Examples
 
-Real-world examples of testing the **5 most popular AI agent frameworks** with EvalView.
+Working examples for the most popular AI agent frameworks.
 
 ## Quick Start
 
-1. Choose an example below
-2. Follow setup instructions in each folder
-3. Run: `evalview run --pattern examples/<folder>/test-case.yaml`
+```bash
+# 1. Pick a framework below and follow its README
+# 2. Start your agent
+# 3. Run EvalView against it
+evalview run --pattern examples/<framework>/test-case.yaml
+```
 
 ## Examples
 
-| Framework | Stars | Use Case | Folder |
-|-----------|-------|----------|--------|
-| 🦜 LangGraph | 8k+ | Multi-step research agent | [langgraph/](langgraph/) |
-| 🚢 CrewAI | 25k+ | Multi-agent team collaboration | [crewai/](crewai/) |
-| 🤖 AutoGen | 35k+ | Multi-agent conversations | [autogen/](autogen/) |
-| 🎨 Dify | 55k+ | Visual workflow builder | [dify/](dify/) |
-| 💬 OpenAI Assistants | - | Native OpenAI agents | [openai-assistants/](openai-assistants/) |
+| Framework | Folder | What it tests |
+|-----------|--------|---------------|
+| 🦜 **LangGraph** | [langgraph/](langgraph/) | Multi-step research agent with tool calls |
+| 🚢 **CrewAI** | [crewai/](crewai/) | Multi-agent team collaboration |
+| 🤖 **AutoGen** | [autogen/](autogen/) | Multi-agent conversation patterns |
+| 🎨 **Dify** | [dify/](dify/) | Visual workflow builder |
+| 💬 **OpenAI Assistants** | [openai-assistants/](openai-assistants/) | Native OpenAI Assistants API |
+| 🤖 **Anthropic** | [anthropic/](anthropic/) | Claude direct API + Claude Agent SDK |
 
-## Screenshots
+## New to EvalView?
 
-See actual EvalView output for each framework:
-
-![LangGraph](../assets/langgraph-output.png)
-![CrewAI](../assets/crewai-output.png)
-![AutoGen](../assets/autogen-output.png)
-![Dify](../assets/dify-output.png)
-![OpenAI Assistants](../assets/openai-assistants-output.png)
-
-## Quick Clone Commands
+Start here — a complete working agent you can run in 2 minutes:
 
 ```bash
-# LangGraph
-git clone https://github.com/langchain-ai/langgraph.git
+# Clone and run the demo agent
+curl -O https://raw.githubusercontent.com/hidai25/eval-view/main/demo-agent/agent.py
+pip install fastapi uvicorn
+python agent.py
 
-# CrewAI
-git clone https://github.com/crewAIInc/crewAI-examples.git
-
-# AutoGen
-git clone https://github.com/microsoft/autogen.git
-
-# Dify
-git clone https://github.com/langgenius/dify.git
-
-# OpenAI Assistants - No clone needed, use API directly
+# Point EvalView at it
+evalview run
 ```
+
+Or see EvalView catch a real regression without any setup:
+
+```bash
+evalview demo
+```
+
+## Implementing Your Own Agent
+
+See [`backend-implementations.md`](backend-implementations.md) for copy-paste examples in FastAPI, Flask, Express.js, and streaming JSONL — with the exact request/response format EvalView expects.
+
+## Questions?
+
+- [GitHub Discussions](https://github.com/hidai25/eval-view/discussions)
+- [Backend requirements spec](../docs/BACKEND_REQUIREMENTS.md)

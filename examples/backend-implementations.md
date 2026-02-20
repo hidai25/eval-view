@@ -2,27 +2,33 @@
 
 Copy-paste examples for implementing each tier of EvalView support.
 
+> **Key contract:** EvalView sends `POST /execute` with `{"query": "..."}` and expects `{"response": "..."}` back.
+> The field is `query`, not `message`. The endpoint is `/execute`, not `/chat`.
+
+---
+
 ## Level 1: Basic Agent (5 minutes)
 
-### Express.js (Node.js)
-```javascript
-const express = require('express');
-const app = express();
-app.use(express.json());
+Minimum required: accept `query`, return `response`.
 
-app.post('/api/chat', async (req, res) => {
-  const { message } = req.body;
+### FastAPI (Python)
+```python
+from fastapi import FastAPI
+from pydantic import BaseModel
+from typing import Optional
 
-  // Your agent logic here
-  const response = await yourAgent.run(message);
+app = FastAPI()
 
-  // Minimum response format
-  res.json({
-    response: response
-  });
-});
+class ExecuteRequest(BaseModel):
+    query: str
+    context: Optional[dict] = None
 
-app.listen(3000);
+@app.post("/execute")
+async def execute(req: ExecuteRequest):
+    # Your agent logic here
+    response = await your_agent.run(req.query)
+
+    return {"response": response}
 ```
 
 ### Flask (Python)
@@ -31,332 +37,267 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-@app.route('/api/chat', methods=['POST'])
-def chat():
-    message = request.json['message']
+@app.route("/execute", methods=["POST"])
+def execute():
+    query = request.json["query"]
 
     # Your agent logic here
-    response = your_agent.run(message)
+    response = your_agent.run(query)
 
-    # Minimum response format
-    return jsonify({
-        'response': response
-    })
+    return jsonify({"response": response})
 
-if __name__ == '__main__':
-    app.run(port=3000)
+if __name__ == "__main__":
+    app.run(port=8080)
 ```
 
-### FastAPI (Python)
-```python
-from fastapi import FastAPI
-from pydantic import BaseModel
+### Express.js (Node.js)
+```javascript
+const express = require('express');
+const app = express();
+app.use(express.json());
 
-app = FastAPI()
+app.post('/execute', async (req, res) => {
+  const { query } = req.body;
 
-class ChatRequest(BaseModel):
-    message: str
+  // Your agent logic here
+  const response = await yourAgent.run(query);
 
-@app.post("/api/chat")
-async def chat(req: ChatRequest):
-    # Your agent logic here
-    response = await your_agent.run(req.message)
+  res.json({ response });
+});
 
-    # Minimum response format
-    return {"response": response}
+app.listen(8080);
 ```
 
 ---
 
-## Level 2: Agent with Metadata (15 minutes)
+## Level 2: Agent with Tool Tracking (15 minutes)
 
-### Express.js with Cost Tracking
-```javascript
-app.post('/api/chat', async (req, res) => {
-  const { message } = req.body;
-  const startTokens = /* track input tokens */;
+Add `steps` so EvalView can evaluate which tools were called and in what order.
 
-  // Your agent logic here
-  const result = await yourAgent.run(message);
-
-  // Calculate costs
-  const inputTokens = startTokens;
-  const outputTokens = result.tokens;
-  const cost = calculateCost(inputTokens, outputTokens);
-
-  // Enhanced response format
-  res.json({
-    response: result.text,
-    metadata: {
-      cost: cost,
-      tokens: {
-        input: inputTokens,
-        output: outputTokens
-      },
-      steps: result.toolsCalled || []  // Optional: list of tools used
-    }
-  });
-});
-
-function calculateCost(input, output) {
-  const INPUT_PRICE = 0.01 / 1000;  // $0.01 per 1K tokens
-  const OUTPUT_PRICE = 0.03 / 1000; // $0.03 per 1K tokens
-  return (input * INPUT_PRICE) + (output * OUTPUT_PRICE);
-}
-```
-
-### Python with OpenAI Integration
+### FastAPI + Anthropic
 ```python
-import openai
+import anthropic
+from fastapi import FastAPI
+from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
 
-@app.post("/api/chat")
-async def chat(req: ChatRequest):
-    # Track execution
-    tools_called = []
+app = FastAPI()
+client = anthropic.Anthropic()
 
-    # Run agent with tools
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": req.message}],
-        tools=[...],  # Your tools
+class ExecuteRequest(BaseModel):
+    query: str
+    context: Optional[dict] = None
+
+@app.post("/execute")
+async def execute(req: ExecuteRequest):
+    steps: List[Dict[str, Any]] = []
+
+    response = client.messages.create(
+        model="claude-opus-4-6",
+        max_tokens=1024,
+        messages=[{"role": "user", "content": req.query}],
+        tools=[...],  # your tools
     )
 
-    # Extract usage
-    usage = response.usage
-    cost = calculate_cost(
-        usage.prompt_tokens,
-        usage.completion_tokens
-    )
+    # Capture tool calls
+    for block in response.content:
+        if block.type == "tool_use":
+            steps.append({
+                "tool": block.name,
+                "parameters": block.input,
+                "output": None,  # fill in after tool execution
+            })
 
-    # Track which tools were called
-    if response.choices[0].message.tool_calls:
-        tools_called = [
-            tc.function.name
-            for tc in response.choices[0].message.tool_calls
-        ]
+    final_text = next(
+        (b.text for b in response.content if hasattr(b, "text")), ""
+    )
 
     return {
-        "response": response.choices[0].message.content,
-        "metadata": {
-            "cost": cost,
-            "tokens": {
-                "input": usage.prompt_tokens,
-                "output": usage.completion_tokens,
-                "cached": getattr(usage, 'cached_tokens', 0)
-            },
-            "steps": tools_called
-        }
+        "response": final_text,
+        "steps": steps,
+        "cost": (response.usage.input_tokens * 0.000015 +
+                 response.usage.output_tokens * 0.000075),
+        "tokens": {
+            "input": response.usage.input_tokens,
+            "output": response.usage.output_tokens,
+        },
     }
+```
 
-def calculate_cost(input_tokens, output_tokens):
-    # GPT-4 pricing (example)
-    INPUT_PRICE = 0.03 / 1000
-    OUTPUT_PRICE = 0.06 / 1000
-    return (input_tokens * INPUT_PRICE) + (output_tokens * OUTPUT_PRICE)
+### FastAPI + OpenAI
+```python
+from openai import AsyncOpenAI
+from fastapi import FastAPI
+from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
+
+app = FastAPI()
+client = AsyncOpenAI()
+
+class ExecuteRequest(BaseModel):
+    query: str
+    context: Optional[dict] = None
+
+@app.post("/execute")
+async def execute(req: ExecuteRequest):
+    steps: List[Dict[str, Any]] = []
+
+    response = await client.chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": req.query}],
+        tools=[...],  # your tools
+    )
+
+    message = response.choices[0].message
+
+    # Capture tool calls
+    if message.tool_calls:
+        for tc in message.tool_calls:
+            steps.append({
+                "tool": tc.function.name,
+                "parameters": tc.function.arguments,
+                "output": None,
+            })
+
+    usage = response.usage
+    cost = (usage.prompt_tokens * 0.000005 +
+            usage.completion_tokens * 0.000015)
+
+    return {
+        "response": message.content or "",
+        "steps": steps,
+        "cost": cost,
+        "tokens": {
+            "input": usage.prompt_tokens,
+            "output": usage.completion_tokens,
+            "cached": getattr(usage, "prompt_tokens_details", {}).get("cached_tokens", 0),
+        },
+    }
 ```
 
 ---
 
 ## Level 3: Streaming Agent (30 minutes)
 
-### Express.js with JSONL Streaming
-```javascript
-app.post('/api/chat', async (req, res) => {
-  const { message } = req.body;
+Use `adapter: streaming` in your config. EvalView reads JSONL events line by line.
 
-  // Set headers for streaming
-  res.setHeader('Content-Type', 'application/x-ndjson');
-  res.setHeader('Transfer-Encoding', 'chunked');
-
-  const emit = (event) => {
-    res.write(JSON.stringify(event) + '\n');
-  };
-
-  // Start event
-  emit({ type: 'start', data: { message } });
-
-  // Tool call
-  emit({
-    type: 'tool_call',
-    data: {
-      name: 'analyzeStock',
-      args: { symbol: 'AAPL' }
-    }
-  });
-
-  // Execute tool
-  const toolResult = await yourAgent.tools.analyzeStock('AAPL');
-
-  // Tool result
-  emit({
-    type: 'tool_result',
-    data: {
-      result: toolResult,
-      success: true
-    }
-  });
-
-  // Token usage
-  emit({
-    type: 'usage',
-    data: {
-      input_tokens: 100,
-      output_tokens: 500,
-      cached_tokens: 0
-    }
-  });
-
-  // Final message
-  emit({
-    type: 'message_complete',
-    data: {
-      content: 'Final agent response...'
-    }
-  });
-
-  res.end();
-});
-```
-
-### Python FastAPI with Streaming
+### FastAPI with JSONL Streaming
 ```python
+from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+from typing import Optional
 import json
-import asyncio
 
-@app.post("/api/chat")
-async def chat_stream(req: ChatRequest):
-    async def event_generator():
-        # Start
-        yield json.dumps({"type": "start", "data": {"message": req.message}}) + "\n"
+app = FastAPI()
 
-        # Tool execution
+class ExecuteRequest(BaseModel):
+    query: str
+    context: Optional[dict] = None
+
+@app.post("/execute")
+async def execute(req: ExecuteRequest):
+    async def event_stream():
+        # Tool call
         yield json.dumps({
             "type": "tool_call",
-            "data": {"name": "analyzeStock", "args": {"symbol": "AAPL"}}
+            "data": {"name": "search", "args": {"query": req.query}}
         }) + "\n"
 
-        # Execute tool
-        result = await your_agent.tools.analyze_stock("AAPL")
-
+        # Tool result
+        result = await your_agent.search(req.query)
         yield json.dumps({
             "type": "tool_result",
             "data": {"result": result, "success": True}
         }) + "\n"
 
-        # Usage tracking
+        # Token usage
         yield json.dumps({
             "type": "usage",
-            "data": {
-                "input_tokens": 100,
-                "output_tokens": 500,
-                "cached_tokens": 0
-            }
+            "data": {"input_tokens": 100, "output_tokens": 300, "cached_tokens": 0}
         }) + "\n"
 
         # Final response
         yield json.dumps({
             "type": "message_complete",
-            "data": {"content": "Final agent response..."}
+            "data": {"content": f"Here are results for: {req.query}"}
         }) + "\n"
 
-    return StreamingResponse(
-        event_generator(),
-        media_type="application/x-ndjson"
-    )
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 ```
 
 ---
 
 ## Testing Your Implementation
 
-### 1. Test Basic Connectivity
+### 1. Verify basic connectivity
 ```bash
-curl -X POST http://localhost:3000/api/chat \
+curl -X POST http://localhost:8080/execute \
   -H "Content-Type: application/json" \
-  -d '{"message": "Test"}' | jq
+  -d '{"query": "hello"}' | jq
+```
+Expected: `{"response": "..."}`
+
+### 2. Verify tool tracking (Level 2)
+```bash
+curl -X POST http://localhost:8080/execute \
+  -H "Content-Type: application/json" \
+  -d '{"query": "search for EvalView"}' | jq '.steps'
+```
+Expected: `[{"tool": "search", "parameters": {...}, "output": "..."}]`
+
+### 3. Point EvalView at it
+```yaml
+# .evalview/config.yaml
+adapter: http
+endpoint: http://localhost:8080/execute
+timeout: 30.0
 ```
 
-Should see: `{"response": "..."}`
-
-### 2. Test Metadata (Level 2)
 ```bash
-curl -X POST http://localhost:3000/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Test"}' | jq '.metadata'
+evalview run
 ```
-
-Should see: `{"cost": 0.05, "tokens": {...}, "steps": [...]}`
-
-### 3. Test Streaming (Level 3)
-```bash
-curl -X POST http://localhost:3000/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Test"}' | jq -R 'fromjson? | .type'
-```
-
-Should see multiple event types: `start`, `tool_call`, `usage`, etc.
 
 ---
 
 ## Common Mistakes
 
-### ❌ Don't: Return HTML or plain text
-```javascript
-res.send("Agent response");  // Wrong!
+### ❌ Wrong field name
+```python
+query = request.json["message"]  # EvalView sends "query", not "message"
 ```
-
-### ✅ Do: Always return JSON
-```javascript
-res.json({ response: "Agent response" });
-```
-
----
-
-### ❌ Don't: Forget to track ALL token usage
-```javascript
-// Only tracking final LLM call - missing tool calls!
-const cost = calculateCost(finalResponse.tokens);
-```
-
-### ✅ Do: Sum tokens across all LLM calls
-```javascript
-let totalInput = 0;
-let totalOutput = 0;
-
-// Track each LLM call
-for (const step of execution.steps) {
-  totalInput += step.usage.input_tokens;
-  totalOutput += step.usage.output_tokens;
-}
-
-const cost = calculateCost(totalInput, totalOutput);
+### ✅ Correct
+```python
+query = request.json["query"]
 ```
 
 ---
 
-### ❌ Don't: Emit events without newlines (streaming)
-```javascript
-res.write(JSON.stringify(event));  // Wrong - not JSONL!
+### ❌ Wrong endpoint path
+```python
+@app.route("/api/chat", methods=["POST"])  # EvalView expects /execute by default
 ```
-
-### ✅ Do: Add newline after each event
-```javascript
-res.write(JSON.stringify(event) + '\n');  // Correct JSONL
+### ✅ Correct
+```python
+@app.route("/execute", methods=["POST"])
+# Or set a custom path in .evalview/config.yaml: endpoint: http://localhost:8080/api/chat
 ```
 
 ---
 
-## Next Steps
+### ❌ Plain text response
+```python
+return "The answer is 42"  # EvalView can't parse this
+```
+### ✅ JSON with response key
+```python
+return {"response": "The answer is 42"}
+```
 
-1. **Start with Level 1** - Get basic tests running (5 minutes)
-2. **Add metadata** - Enable cost/token tracking (10 more minutes)
-3. **Add streaming** (optional) - Full tool tracking (20 more minutes)
-4. **Run tests**: `evalview run`
-.evalview/results/TIMESTAMP.json
+---
 
 ## Questions?
 
-- See `docs/BACKEND_REQUIREMENTS.md` for detailed specs
-- See `tests/test-cases/` for example test cases
+- See `docs/BACKEND_REQUIREMENTS.md` for the full spec
+- See `demo-agent/agent.py` for a complete working example
 - File issues: https://github.com/hidai25/eval-view/issues

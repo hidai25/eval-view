@@ -10,7 +10,7 @@
 <p align="center">
 
 ```bash
-pip install evalview && evalview demo   # No API key needed
+pip install evalview && evalview demo   # Uses your configured API key
 ```
 
 </p>

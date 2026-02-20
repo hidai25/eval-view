@@ -14,7 +14,7 @@ Scenarios:
 
 import re
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -49,7 +49,7 @@ class ExecuteResponse(BaseModel):
 # =============================================================================
 
 
-def handle_calculate(query: str) -> tuple[str, List[ToolCall]]:
+def handle_calculate(query: str) -> Tuple[str, List[ToolCall]]:
     """Handle calculation queries - returns correct answer with calculator tool."""
     # Extract numbers from "calculate X + Y" or "calculate X * Y" etc.
     match = re.search(r"calculate\s+(\d+)\s*([+\-*/])\s*(\d+)", query.lower())
@@ -78,7 +78,7 @@ def handle_calculate(query: str) -> tuple[str, List[ToolCall]]:
     return "I need a valid calculation expression.", []
 
 
-def handle_calculate_wrong(query: str) -> tuple[str, List[ToolCall]]:
+def handle_calculate_wrong(query: str) -> Tuple[str, List[ToolCall]]:
     """Handle calculation but return WRONG answer - tests that EvalView catches errors."""
     match = re.search(r"calculate\s+(\d+)\s*([+\-*/])\s*(\d+)", query.lower())
     if match:
@@ -105,7 +105,7 @@ def handle_calculate_wrong(query: str) -> tuple[str, List[ToolCall]]:
     return "I need a valid calculation expression.", []
 
 
-def handle_search(query: str) -> tuple[str, List[ToolCall]]:
+def handle_search(query: str) -> Tuple[str, List[ToolCall]]:
     """Handle search queries - uses search tool and returns results."""
     search_term = query.lower().replace("search for", "").replace("search", "").strip()
 
@@ -122,7 +122,7 @@ def handle_search(query: str) -> tuple[str, List[ToolCall]]:
     )
 
 
-def handle_hallucinate(_query: str) -> tuple[str, List[ToolCall]]:
+def handle_hallucinate(_query: str) -> Tuple[str, List[ToolCall]]:
     """Return fabricated specific facts without any tool calls."""
     # No tools called, but claims specific data
     return (
@@ -132,7 +132,7 @@ def handle_hallucinate(_query: str) -> tuple[str, List[ToolCall]]:
     ), []
 
 
-def handle_wrong_tool(query: str) -> tuple[str, List[ToolCall]]:
+def handle_wrong_tool(query: str) -> Tuple[str, List[ToolCall]]:
     """Use wrong tool for the task - e.g., use weather for calculation."""
     match = re.search(r"calculate\s+(\d+)\s*([+\-*/])\s*(\d+)", query.lower())
     if match:
@@ -151,7 +151,7 @@ def handle_wrong_tool(query: str) -> tuple[str, List[ToolCall]]:
     return "I checked the weather instead.", []
 
 
-def handle_weather(query: str) -> tuple[str, List[ToolCall]]:
+def handle_weather(query: str) -> Tuple[str, List[ToolCall]]:
     """Handle weather queries - uses get_weather tool."""
     # Extract city name from common patterns
     city = "unknown"
@@ -178,7 +178,7 @@ def handle_weather(query: str) -> tuple[str, List[ToolCall]]:
     return f"The current weather in {city} is {temp} and {cond}.", tool_calls
 
 
-def handle_weather_convert(query: str) -> tuple[str, List[ToolCall]]:
+def handle_weather_convert(query: str) -> Tuple[str, List[ToolCall]]:
     """Handle weather + unit conversion (multi-tool)."""
     city = "London"
     m = re.search(r"weather in (\w+)", query.lower())
@@ -211,7 +211,7 @@ def handle_weather_convert(query: str) -> tuple[str, List[ToolCall]]:
     )
 
 
-def handle_natural_math(query: str) -> tuple[str, List[ToolCall]]:
+def handle_natural_math(query: str) -> Tuple[str, List[ToolCall]]:
     """Handle natural-language math: 'What is X times/divided by/plus/minus Y?'"""
     q = query.lower()
 
@@ -250,7 +250,7 @@ def handle_natural_math(query: str) -> tuple[str, List[ToolCall]]:
     return "I need a valid math expression.", []
 
 
-def handle_multi_step(query: str) -> tuple[str, List[ToolCall]]:
+def handle_multi_step(query: str) -> Tuple[str, List[ToolCall]]:
     """Handle multi-step query requiring search then summarize."""
     tool_calls = [
         ToolCall(
@@ -270,7 +270,7 @@ def handle_multi_step(query: str) -> tuple[str, List[ToolCall]]:
     )
 
 
-def handle_no_tools(_query: str) -> tuple[str, List[ToolCall]]:
+def handle_no_tools(_query: str) -> Tuple[str, List[ToolCall]]:
     """Answer without using any tools."""
     return (
         "I can answer this from my knowledge: The sky is blue because of Rayleigh scattering.",
