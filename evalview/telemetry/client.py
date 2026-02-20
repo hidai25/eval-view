@@ -78,7 +78,13 @@ class TelemetryClient:
             return True
         try:
             from posthog import Posthog
-            self._posthog = Posthog(project_api_key=POSTHOG_API_KEY, host=POSTHOG_HOST)
+            self._posthog = Posthog(
+                project_api_key=POSTHOG_API_KEY,
+                host=POSTHOG_HOST,
+                # Send asynchronously — never block the CLI waiting for network.
+                # max_retries=0 means failed sends are dropped, not retried forever.
+                on_error=lambda e, items: None,
+            )
             return True
         except ImportError:
             return False
@@ -147,7 +153,9 @@ class TelemetryClient:
                 event=event_name,
                 properties=properties,
             )
-            self._posthog.flush()
+            # Do NOT call flush() here — it blocks until the network call
+            # completes and can hang for minutes if PostHog is unreachable.
+            # PostHog's background thread drains the queue automatically.
         except Exception:
             pass
 
