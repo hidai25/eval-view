@@ -4747,13 +4747,6 @@ def demo():
     from http.server import BaseHTTPRequestHandler, HTTPServer
     from rich.rule import Rule
 
-    try:
-        from evalview.telemetry.client import get_client as _tc
-        from evalview.telemetry.events import CommandEvent as _CE
-        _tc().track(_CE(command_name="demo_started", properties={"is_demo": True}))
-    except Exception:
-        pass
-
     console.print()
 
     # ── Intro ─────────────────────────────────────────────────────────────────
@@ -4913,7 +4906,11 @@ def demo():
         console.print("  [dim]Running the test suite against today's production agent...[/dim]")
         console.print()
 
-        _demo_env_base = {**os.environ, "EVALVIEW_DEMO": "1"}
+        _demo_env_base = {
+            **os.environ,
+            "EVALVIEW_DEMO": "1",
+            "EVALVIEW_TELEMETRY_DISABLED": "1",  # prevent telemetry blocking subprocess exit
+        }
 
         _subprocess.run(
             ["evalview", "snapshot", "tests/"],
@@ -4964,15 +4961,9 @@ def demo():
         console.print()
 
     finally:
-        _server.shutdown()
         shutil.rmtree(_tmpdir, ignore_errors=True)
+        os._exit(0)  # force-exit — PostHog consumer thread would otherwise block indefinitely
 
-    try:
-        from evalview.telemetry.client import get_client as _tc
-        from evalview.telemetry.events import CommandEvent as _CE
-        _tc().track(_CE(command_name="demo_completed", properties={"is_demo": True}))
-    except Exception:
-        pass
 
 
 @main.command()
