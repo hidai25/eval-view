@@ -137,13 +137,26 @@ Perfect for LLM-based agents with creative variation.
 
 ---
 
-## 🆕 New in v0.2.9: Claude Code MCP Server
+## 🆕 New in v0.3: Visual Reports + Claude Code MCP
 
-If you're using Claude Code, this is the biggest upgrade in recent releases:
+**Beautiful HTML reports** — one command, auto-opens in browser:
 
-- Run EvalView checks inline from Claude Code via MCP tools
-- Generate tests from natural language (`create_test`)
-- Capture baselines and detect regressions without leaving the editor/conversation
+```bash
+evalview inspect                          # Latest run → visual report
+evalview inspect latest --notes "PR #42"  # With context
+evalview visualize --compare run1.json --compare run2.json  # Side-by-side runs
+```
+
+The report includes tabbed **Overview** (KPI cards, score charts, cost-per-query table), **Execution Trace** (Mermaid sequence diagrams with full query/response), **Diffs** (golden vs actual), and **Timeline** (step latencies). Glassmorphism dark theme, auto-opens in browser, fully self-contained HTML.
+
+**Claude Code MCP** — ask Claude inline without leaving your conversation:
+
+```bash
+claude mcp add --transport stdio evalview -- evalview mcp serve
+cp CLAUDE.md.example CLAUDE.md
+```
+
+8 MCP tools: `create_test`, `run_snapshot`, `run_check`, `list_tests`, `validate_skill`, `generate_skill_tests`, `run_skill_test`, `generate_visual_report`
 
 👉 Jump to [Claude Code Integration (MCP)](#-claude-code-integration-mcp)
 
@@ -350,7 +363,8 @@ evalview mcp serve --test-path my_tests/  # Custom test directory
 | Feature | Description | Docs |
 |---------|-------------|------|
 | 📸 **Snapshot/Check Workflow** | Simple `snapshot` → `check` commands for regression detection | [→](docs/GOLDEN_TRACES.md) |
-| 🤖 **Claude Code MCP** | Run checks inline in Claude Code — no terminal switching | [↑](#-claude-code-integration-mcp) |
+| 🎨 **Visual Reports** | `evalview inspect` — glassmorphism HTML with traces, diffs, cost-per-query | [↑](#-new-in-v03-visual-reports--claude-code-mcp) |
+| 🤖 **Claude Code MCP** | 8 tools — run checks, generate tests, test skills, visual reports inline | [↑](#-claude-code-integration-mcp) |
 | 🔥 **Streak Tracking** | Habit-forming celebrations for consecutive clean checks | [→](docs/GOLDEN_TRACES.md) |
 | 🎨 **Multi-Reference Goldens** | Save up to 5 variants per test for non-deterministic agents | [→](docs/GOLDEN_TRACES.md) |
 | 💬 **Chat Mode** | AI assistant: `/run`, `/test`, `/compare` | [→](docs/CHAT_MODE.md) |
