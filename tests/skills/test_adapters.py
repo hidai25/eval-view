@@ -540,6 +540,210 @@ class TestCodexAdapter:
 
 
 # =============================================================================
+# OpenClaw Adapter Tests
+# =============================================================================
+
+
+class TestOpenClawAdapter:
+    """Tests for OpenClaw CLI adapter."""
+
+    @pytest.fixture
+    def config(self) -> AgentConfig:
+        return AgentConfig(
+            type=AgentType.OPENCLAW,
+            timeout=120.0,
+        )
+
+    @pytest.fixture
+    def skill(self) -> Skill:
+        return Skill(
+            metadata=SkillMetadata(
+                name="test-skill",
+                description="A test skill",
+            ),
+            instructions="Do something.",
+            raw_content="",
+            file_path="/fake/SKILL.md",
+        )
+
+    # -- Adapter identity ------------------------------------------------
+
+    def test_adapter_name_is_openclaw(self, config):
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+        assert adapter.name == "openclaw"
+
+    def test_adapter_not_found_when_cli_missing(self, config):
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value=None):
+            with patch("os.access", return_value=False):
+                adapter = OpenClawAdapter(config)
+                with pytest.raises(AgentNotFoundError):
+                    _ = adapter.cli_path
+
+    # -- Execute (via inherited CLIAgentAdapter) -------------------------
+
+    @pytest.mark.asyncio
+    async def test_execute_calls_openclaw_cli(
+        self, config, skill, mock_subprocess_run
+    ):
+        mock_subprocess_run.return_value = MagicMock(
+            stdout=json.dumps({
+                "messages": [{"role": "assistant", "content": "Done."}],
+                "usage": {"input_tokens": 200, "output_tokens": 80},
+            }),
+            stderr="",
+            returncode=0,
+        )
+
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+            trace = await adapter.execute(skill, "Test query")
+
+        assert isinstance(trace, SkillAgentTrace)
+        assert trace.total_input_tokens == 200
+
+    @pytest.mark.asyncio
+    async def test_execute_parses_tool_calls(
+        self, config, skill, mock_subprocess_run
+    ):
+        mock_subprocess_run.return_value = MagicMock(
+            stdout=json.dumps({
+                "messages": [{
+                    "role": "assistant",
+                    "content": [
+                        {"type": "tool_use", "name": "shell", "input": {"command": "npm install"}},
+                        {"type": "tool_use", "name": "write_file", "input": {"path": "index.js"}},
+                        {"type": "text", "text": "Project created."},
+                    ],
+                }],
+                "usage": {"input_tokens": 100, "output_tokens": 50},
+            }),
+            stderr="",
+            returncode=0,
+        )
+
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+            trace = await adapter.execute(skill, "Create a project")
+
+        assert "shell" in trace.tool_calls
+        assert "write_file" in trace.tool_calls
+        assert "npm install" in trace.commands_ran
+        assert "index.js" in trace.files_created
+
+    # -- OpenClaw-specific command building ------------------------------
+
+    def test_build_command_includes_headless(self, config, skill):
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+            cmd = adapter._build_command(skill, "query")
+
+        assert "--headless" in cmd
+        assert "run" in cmd
+
+    def test_build_command_includes_skill_path(self, config, tmp_path):
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("---\nname: test\n---\nInstructions")
+
+        skill_with_path = Skill(
+            metadata=SkillMetadata(
+                name="test-skill",
+                description="A test skill for path testing",
+            ),
+            instructions="Instructions",
+            raw_content="",
+            file_path=str(skill_file),
+        )
+
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+            cmd = adapter._build_command(skill_with_path, "query")
+
+        assert "--skill-path" in cmd
+        assert str(skill_file) in cmd
+
+    def test_build_command_includes_max_turns(self, skill):
+        config = AgentConfig(type=AgentType.OPENCLAW, timeout=120.0, max_turns=15)
+
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+            cmd = adapter._build_command(skill, "query")
+
+        assert "--max-turns" in cmd
+        assert "15" in cmd
+
+    def test_build_command_includes_tools(self, config, skill):
+        config_tools = AgentConfig(
+            type=AgentType.OPENCLAW, timeout=120.0,
+            tools=["Read", "Write", "Bash"],
+        )
+
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config_tools)
+            cmd = adapter._build_command(skill, "query")
+
+        assert "--tools" in cmd
+        assert "Read,Write,Bash" in cmd
+
+    # -- Extended tool-name recognition ----------------------------------
+
+    def test_openclaw_recognises_extra_creation_tools(self, config):
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+
+        fc, fm, cmds = [], [], []  # type: ignore[var-annotated]
+        adapter._track_operations("file_write", {"path": "out.py"}, fc, fm, cmds)
+        assert "out.py" in fc
+
+        fc2, fm2, cmds2 = [], [], []  # type: ignore[var-annotated]
+        adapter._track_operations("save_file", {"path": "saved.txt"}, fc2, fm2, cmds2)
+        assert "saved.txt" in fc2
+
+    def test_openclaw_recognises_extra_command_tools(self, config):
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+
+        fc, fm, cmds = [], [], []  # type: ignore[var-annotated]
+        adapter._track_operations("run_command", {"command": "ls"}, fc, fm, cmds)
+        assert "ls" in cmds
+
+        fc2, fm2, cmds2 = [], [], []  # type: ignore[var-annotated]
+        adapter._track_operations("terminal", {"command": "pwd"}, fc2, fm2, cmds2)
+        assert "pwd" in cmds2
+
+    # -- AgentSkill context format ---------------------------------------
+
+    def test_format_skill_context_uses_agentskill(self, config, skill):
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+        ctx = adapter._format_skill_context(skill)
+        assert "AgentSkill" in ctx
+        assert skill.metadata.name in ctx
+
+
+# =============================================================================
 # LangGraph Adapter Tests
 # =============================================================================
 

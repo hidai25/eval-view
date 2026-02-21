@@ -29,6 +29,7 @@ class AgentType(str, Enum):
 
     CLAUDE_CODE = "claude-code"
     CODEX = "codex"
+    OPENCLAW = "openclaw"
     LANGGRAPH = "langgraph"
     CREWAI = "crewai"
     OPENAI_ASSISTANTS = "openai-assistants"

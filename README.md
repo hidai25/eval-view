@@ -224,6 +224,7 @@ evalview gym
 |-------|:-----------:|:-------------:|
 | **Claude Code** | ✅ | ✅ |
 | **OpenAI Codex** | ✅ | ✅ |
+| **OpenClaw** | ✅ | ✅ |
 | **LangGraph** | ✅ | ✅ |
 | **CrewAI** | ✅ | ✅ |
 | **OpenAI Assistants** | ✅ | ✅ |
@@ -382,7 +383,7 @@ evalview mcp serve --test-path my_tests/  # Custom test directory
 ## 🔬 Advanced: Skills Testing
 
 Test that your agent's code actually works — not just that the output looks right.
-Best for teams maintaining SKILL.md workflows for Claude Code or Codex.
+Best for teams maintaining SKILL.md workflows for Claude Code, Codex, or OpenClaw.
 
 ```yaml
 tests:
@@ -406,6 +407,7 @@ tests:
 ```bash
 evalview skill test tests.yaml --agent claude-code
 evalview skill test tests.yaml --agent codex
+evalview skill test tests.yaml --agent openclaw
 evalview skill test tests.yaml --agent langgraph
 ```
 
