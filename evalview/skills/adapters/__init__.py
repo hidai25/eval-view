@@ -23,6 +23,8 @@ Usage:
 
 from evalview.skills.adapters.base import (
     SkillAgentAdapter,
+    CLIAgentAdapter,
+    CLIInvocation,
     SkillAgentAdapterError,
     AgentNotFoundError,
     AgentTimeoutError,
@@ -70,6 +72,8 @@ except ImportError:
 __all__ = [
     # Base classes and exceptions
     "SkillAgentAdapter",
+    "CLIAgentAdapter",
+    "CLIInvocation",
     "SkillAgentAdapterError",
     "AgentNotFoundError",
     "AgentTimeoutError",
