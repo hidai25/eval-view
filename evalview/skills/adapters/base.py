@@ -322,6 +322,10 @@ class CLIAgentAdapter(SkillAgentAdapter):
         test_name = context.get("test_name", "unnamed-test")
         cwd = self._resolve_working_directory(context.get("cwd"))
 
+        # Defence-in-depth: validate inputs before building command
+        self._validate_query(query)
+        self._validate_skill_instructions(skill.instructions)
+
         session_id = self._generate_session_id()
         start_time = datetime.now()
 
@@ -361,6 +365,57 @@ class CLIAgentAdapter(SkillAgentAdapter):
                 adapter_name=self.name,
                 recoverable=False,
             )
+
+    # Input validation ---------------------------------------------------
+
+    @staticmethod
+    def _validate_query(query: str) -> None:
+        """Reject queries with obvious shell injection or control chars.
+
+        This is a defence-in-depth layer.  subprocess.run with a list
+        argument is already safe against shell expansion, but malicious
+        queries could still exploit the *receiving CLI tool's* parser.
+
+        Raises:
+            SkillAgentAdapterError: If the query fails validation.
+        """
+        if not query or not query.strip():
+            raise SkillAgentAdapterError(
+                "Query must not be empty",
+                adapter_name="cli",
+                recoverable=False,
+            )
+        # Reject ASCII control characters (except \n \r \t)
+        if re.search(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', query):
+            raise SkillAgentAdapterError(
+                "Query contains illegal control characters",
+                adapter_name="cli",
+                recoverable=False,
+            )
+
+    @staticmethod
+    def _validate_skill_instructions(instructions: str) -> None:
+        """Reject skill instructions containing known injection markers.
+
+        Raises:
+            SkillAgentAdapterError: If instructions fail validation.
+        """
+        _INSTRUCTION_DENY = [
+            r'\bignore\s+(all\s+)?previous\s+instructions?\b',
+            r'\bforget\s+(everything|all)\b',
+            r'\byou\s+are\s+now\b',
+            r'\bact\s+as\s+(if\s+you\s+are\s+)?a?\s*(different|new)\b',
+            r'\bexecute\s+(arbitrary|any)\s+code\b',
+            r'\b(rm\s+-rf|format\s+c:|del\s+/[sq])\b',
+            r'\b(api[_-]?key|secret[_-]?key|password)\s*[=:]\s*[\'"][^\'"]+[\'"]',
+        ]
+        for pattern in _INSTRUCTION_DENY:
+            if re.search(pattern, instructions, re.IGNORECASE):
+                raise SkillAgentAdapterError(
+                    f"Skill instructions contain prohibited pattern: {pattern}",
+                    adapter_name="cli",
+                    recoverable=False,
+                )
 
     # Subprocess ---------------------------------------------------------
 
