@@ -81,9 +81,9 @@ def _safe_mermaid(s: str) -> str:
     """Strip everything except safe alphanumeric + basic punctuation for Mermaid labels."""
     import re
     s = s.replace("\n", " ").replace("\r", "")
-    # Keep only safe chars — anything else breaks Mermaid parser
     s = re.sub(r'[^\w\s\.\-_/]', '', s)
-    return s[:40].strip() or "..."
+    s = s[:28].strip()
+    return (s + '...') if len(s) == 28 else s or '...'
 
 
 # ── KPI helpers ────────────────────────────────────────────────────────────────
@@ -172,6 +172,8 @@ def generate_visual_report(
     auto_open: bool = True,
     title: str = "EvalView Report",
     notes: Optional[str] = None,
+    compare_results: Optional[List[List["EvaluationResult"]]] = None,
+    compare_labels: Optional[List[str]] = None,
 ) -> str:
     """Generate a self-contained visual HTML report.
 
@@ -192,12 +194,40 @@ def generate_visual_report(
         output_path = f".evalview/reports/{ts}.html"
 
     kpis = _kpis(results)
-    traces = [
-        {"name": r.test_case, "diagram": _mermaid_trace(r), "passed": r.passed}
-        for r in results
-    ]
+    traces = []
+    for r in results:
+        try:
+            cost = r.trace.metrics.total_cost or 0.0
+            latency = r.trace.metrics.total_latency or 0.0
+            tokens = None
+            if r.trace.metrics.total_tokens:
+                tokens = r.trace.metrics.total_tokens.input_tokens + r.trace.metrics.total_tokens.output_tokens
+        except AttributeError:
+            cost, latency, tokens = 0.0, 0.0, None
+        traces.append({
+            "name": r.test_case,
+            "diagram": _mermaid_trace(r),
+            "passed": r.passed,
+            "cost": f"${cost:.6f}".rstrip('0').rstrip('.') if cost else "$0",
+            "latency": f"{int(latency)}ms",
+            "tokens": f"{tokens:,} tokens" if tokens else "",
+            "score": round(r.score, 1),
+            "query": getattr(r, "input_query", "") or "",
+            "output": getattr(r, "actual_output", "") or "",
+        })
     diff_rows = _diff_rows(diffs or [])
     timeline = _timeline_data(results)
+
+    # Build comparison data if multiple runs provided
+    compare_data = None
+    if compare_results:
+        labels = compare_labels or []
+        all_runs = [results] + list(compare_results)
+        all_labels = labels if labels else [f"Run {i+1}" for i in range(len(all_runs))]
+        compare_data = {
+            "labels": all_labels,
+            "runs": [_kpis(r) for r in all_runs],
+        }
 
     html = _render_template(
         title=title,
@@ -207,6 +237,7 @@ def generate_visual_report(
         traces=traces,
         diff_rows=diff_rows,
         timeline=timeline,
+        compare=compare_data,
     )
 
     abs_path = os.path.abspath(output_path)
@@ -392,9 +423,13 @@ body::after{width:400px;height:400px;background:rgba(34,211,165,.07);bottom:-100
 }
 .mermaid-box{
   background:rgba(0,0,0,.4);border:1px solid var(--border);
-  border-radius:10px;padding:24px;overflow-x:auto;text-align:center;
-  min-height:80px;display:flex;align-items:center;justify-content:center;
+  border-radius:10px;padding:32px 24px;overflow-x:auto;
+  min-height:220px;
 }
+.mermaid-box svg{
+  min-width:560px;max-width:100%;height:auto;display:block;margin:0 auto;
+}
+.mermaid-box .mermaid{min-width:560px}
 /* Diff */
 .diff-item{
   background:var(--glass);border:1px solid var(--border);
@@ -437,6 +472,9 @@ body::after{width:400px;height:400px;background:rgba(34,211,165,.07);bottom:-100
 /* Empty */
 .empty{text-align:center;padding:72px 40px;color:var(--muted)}
 .empty-icon{font-size:40px;margin-bottom:14px;display:block;filter:grayscale(1);opacity:.5}
+/* Compare table */
+table td,table th{transition:background .15s}
+table tr:hover td{background:rgba(255,255,255,.02)}
 /* Scrollbar */
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -472,6 +510,7 @@ body::after{width:400px;height:400px;background:rgba(34,211,165,.07);bottom:-100
     <button class="tab" onclick="show('trace',this)">Execution Trace</button>
     <button class="tab" onclick="show('diffs',this)">Diffs</button>
     <button class="tab" onclick="show('timeline',this)">Timeline</button>
+    {% if compare %}<button class="tab" onclick="show('compare',this)">Compare Runs</button>{% endif %}
   </div>
 
   <!-- OVERVIEW -->
@@ -518,6 +557,39 @@ body::after{width:400px;height:400px;background:rgba(34,211,165,.07);bottom:-100
         <div class="chart-wrap"><canvas id="bars"></canvas></div>
       </div>
     </div>
+
+    <!-- Cost per query breakdown -->
+    <div class="card">
+      <div class="card-title">Cost per Query (LLM API cost to serve each user request)</div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding:8px 12px;color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)">Test</th>
+            <th style="text-align:left;padding:8px 12px;color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)">LLM Cost</th>
+            <th style="text-align:left;padding:8px 12px;color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)">Tokens</th>
+            <th style="text-align:left;padding:8px 12px;color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)">Latency</th>
+            <th style="text-align:left;padding:8px 12px;color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)">Score</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in traces %}
+          <tr>
+            <td style="padding:10px 12px;border-bottom:1px solid var(--border);font-weight:500">{{ t.name }}</td>
+            <td style="padding:10px 12px;border-bottom:1px solid var(--border);font-family:monospace;color:{% if t.cost == '$0' %}var(--muted){% else %}var(--blue){% endif %};font-weight:600">{{ t.cost }}</td>
+            <td style="padding:10px 12px;border-bottom:1px solid var(--border);color:var(--muted)">{{ t.tokens or '—' }}</td>
+            <td style="padding:10px 12px;border-bottom:1px solid var(--border);color:var(--muted)">{{ t.latency }}</td>
+            <td style="padding:10px 12px;border-bottom:1px solid var(--border);font-weight:700;color:{% if t.score >= 80 %}var(--green){% elif t.score >= 60 %}var(--yellow){% else %}var(--red){% endif %}">{{ t.score }}</td>
+          </tr>
+          {% endfor %}
+          <tr style="background:rgba(255,255,255,.02)">
+            <td style="padding:10px 12px;font-weight:700;color:var(--text)">Total</td>
+            <td style="padding:10px 12px;font-family:monospace;font-weight:700;color:var(--blue)">${{ kpis.total_cost }}</td>
+            <td colspan="3" style="padding:10px 12px;font-size:11px;color:var(--muted)">avg ${{ '%.6f'|format(kpis.total_cost / kpis.total) if kpis.total else '0' }} per query</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     {% else %}
     <div class="empty"><span class="empty-icon">📊</span>No results to display</div>
     {% endif %}
@@ -531,10 +603,26 @@ body::after{width:400px;height:400px;background:rgba(34,211,165,.07);bottom:-100
         <div class="item-head" onclick="tog('tr{{ loop.index }}',this)">
           <span class="badge {% if t.passed %}b-green{% else %}b-red{% endif %}">{% if t.passed %}✓{% else %}✗{% endif %}</span>
           <span class="item-name">{{ t.name }}</span>
+          <span style="display:flex;align-items:center;gap:12px;font-size:11px;color:var(--muted)">
+            <span style="color:{% if t.score >= 80 %}var(--green){% elif t.score >= 60 %}var(--yellow){% else %}var(--red){% endif %}">● {{ t.score }}/100</span>
+            {% if t.cost != "$0" %}<span>💰 {{ t.cost }}</span>{% endif %}
+            <span>⚡ {{ t.latency }}</span>
+            {% if t.tokens %}<span>🔤 {{ t.tokens }}</span>{% endif %}
+          </span>
           <span class="chevron">▾</span>
         </div>
         <div id="tr{{ loop.index }}" class="item-body" {% if not loop.first %}style="display:none"{% endif %}>
+          {% if t.query %}
+          <div style="background:rgba(124,149,255,.06);border:1px solid rgba(124,149,255,.2);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--muted)">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:rgba(124,149,255,.7);margin-right:8px">Query</span>{{ t.query }}
+          </div>
+          {% endif %}
           <div class="mermaid-box"><div class="mermaid">{{ t.diagram }}</div></div>
+          {% if t.output %}
+          <div style="background:rgba(34,211,165,.04);border:1px solid rgba(34,211,165,.15);border-radius:8px;padding:10px 14px;margin-top:14px;font-size:12px;color:var(--muted)">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:rgba(34,211,165,.7);margin-right:8px">Response</span>{{ t.output[:300] }}{% if t.output|length > 300 %}...{% endif %}
+          </div>
+          {% endif %}
         </div>
       </div>
       {% endfor %}
@@ -601,11 +689,61 @@ body::after{width:400px;height:400px;background:rgba(34,211,165,.07);bottom:-100
     {% endif %}
   </div>
 
+  <!-- COMPARE -->
+  {% if compare %}
+  <div id="p-compare" class="panel">
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title">Pass Rate Across Runs</div>
+      <div class="chart-wrap" style="height:240px"><canvas id="cmpPassRate"></canvas></div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title">Avg Score Across Runs</div>
+      <div class="chart-wrap" style="height:240px"><canvas id="cmpScore"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Run Summary</div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr>
+            {% for lbl in compare.labels %}<th style="text-align:left;padding:10px 12px;color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)">{{ lbl }}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            {% for run in compare.runs %}
+            <td style="padding:12px;border-bottom:1px solid var(--border)">
+              <div style="font-size:22px;font-weight:800;color:{% if run.pass_rate >= 80 %}var(--green){% else %}var(--red){% endif %}">{{ run.pass_rate }}%</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px">{{ run.passed }}/{{ run.total }} · avg {{ run.avg_score }}/100</div>
+            </td>
+            {% endfor %}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
 </main>
 
 <script>
-mermaid.initialize({startOnLoad:true,theme:'dark',securityLevel:'loose',
-  sequence:{actorFontFamily:'Inter,sans-serif',noteFontFamily:'Inter,sans-serif',messageFontFamily:'Inter,sans-serif'}});
+mermaid.initialize({
+  startOnLoad:true,theme:'dark',securityLevel:'loose',
+  useMaxWidth:true,
+  sequence:{
+    useMaxWidth:true,
+    width:180,
+    wrap:false,
+    actorFontFamily:'Inter,sans-serif',
+    noteFontFamily:'Inter,sans-serif',
+    messageFontFamily:'Inter,sans-serif',
+    actorFontSize:13,
+    messageFontSize:11,
+    noteFontSize:11,
+    boxTextMargin:6,
+    mirrorActors:false,
+    messageAlign:'center'
+  }
+});
 
 function show(id,btn){
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
@@ -654,6 +792,30 @@ function tog(id,head){
       },
       plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` Score: ${ctx.raw}/100`}}}}
   });
+})();
+{% endif %}
+
+{% if compare %}
+(function(){
+  const labels={{ compare.labels|tojson }};
+  const passRates={{ compare.runs|map(attribute='pass_rate')|list|tojson }};
+  const avgScores={{ compare.runs|map(attribute='avg_score')|list|tojson }};
+  const tc='rgba(122,143,166,.8)',gc='rgba(255,255,255,.05)';
+  const colors=['rgba(124,149,255,.7)','rgba(34,211,165,.7)','rgba(248,107,138,.7)','rgba(251,191,36,.7)','rgba(192,132,252,.7)'];
+  const borders=['rgba(124,149,255,.9)','rgba(34,211,165,.9)','rgba(248,107,138,.9)','rgba(251,191,36,.9)','rgba(192,132,252,.9)'];
+  const opts={responsive:true,maintainAspectRatio:false,
+    scales:{y:{grid:{color:gc},ticks:{color:tc},border:{display:false}},x:{grid:{display:false},ticks:{color:tc,font:{size:11}},border:{display:false}}},
+    plugins:{legend:{display:false}}};
+  new Chart(document.getElementById('cmpPassRate'),{type:'bar',
+    data:{labels,datasets:[{label:'Pass Rate %',data:passRates,
+      backgroundColor:colors.slice(0,labels.length),borderColor:borders.slice(0,labels.length),
+      borderWidth:1,borderRadius:8,borderSkipped:false}]},
+    options:{...opts,scales:{...opts.scales,y:{...opts.scales.y,min:0,max:100}}}});
+  new Chart(document.getElementById('cmpScore'),{type:'bar',
+    data:{labels,datasets:[{label:'Avg Score',data:avgScores,
+      backgroundColor:colors.slice(0,labels.length),borderColor:borders.slice(0,labels.length),
+      borderWidth:1,borderRadius:8,borderSkipped:false}]},
+    options:{...opts,scales:{...opts.scales,y:{...opts.scales.y,min:0,max:100}}}});
 })();
 {% endif %}
 </script>

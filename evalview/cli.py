@@ -7337,6 +7337,101 @@ def inspect_cmd(target: str, title: str, notes: str, no_open: bool, output: Opti
     console.print(f"  {passed}/{total} tests passing ({rate}%)\n")
 
 
+@main.command("visualize")
+@click.argument("target", default="latest", required=False)
+@click.option("--compare", "-c", multiple=True, help="Additional result files to compare (use multiple times)")
+@click.option("--title", default=None, help="Report title (auto-generated if omitted)")
+@click.option("--notes", default="", help="Optional note shown in the report header")
+@click.option("--no-open", is_flag=True, help="Do not auto-open in browser (useful in CI)")
+@click.option("--output", "-o", default=None, help="Output HTML path")
+def visualize_cmd(target: str, compare: tuple, title: Optional[str], notes: str, no_open: bool, output: Optional[str]) -> None:
+    """Generate a visual HTML report, optionally comparing multiple runs.
+
+    TARGET can be 'latest' (default), a path to a results JSON file, or a
+    partial timestamp string matching a file in .evalview/results/.
+
+    Use --compare to add more runs for side-by-side comparison.
+
+    \b
+    Examples:
+        evalview visualize
+        evalview visualize latest
+        evalview visualize latest --compare .evalview/results/20260220_110044.json
+        evalview visualize --compare run1.json --compare run2.json --compare run3.json
+        evalview visualize latest --notes "after PR #42" --no-open
+    """
+    import glob as _glob
+
+    from evalview.reporters.json_reporter import JSONReporter
+    from evalview.visualization import generate_visual_report
+
+    def _resolve(t: str) -> Optional[str]:
+        if t == "latest":
+            files = sorted(_glob.glob(".evalview/results/*.json"))
+            return files[-1] if files else None
+        if os.path.exists(t):
+            return t
+        matches = sorted(_glob.glob(f".evalview/results/*{t}*.json"))
+        return matches[-1] if matches else None
+
+    # Resolve primary target
+    primary = _resolve(target)
+    if not primary:
+        console.print("\n[red]No results found.[/red] Run [bold]evalview run[/bold] first.\n")
+        raise SystemExit(1)
+
+    # Resolve comparison targets
+    compare_files = []
+    for c in compare:
+        r = _resolve(c)
+        if r:
+            compare_files.append(r)
+        else:
+            console.print(f"[yellow]⚠ Could not find comparison file: {c}[/yellow]")
+
+    all_files = [primary] + compare_files
+    is_multi = len(all_files) > 1
+
+    console.print(f"\n[cyan]◈ Generating visual report{'s' if is_multi else ''} from {len(all_files)} run{'s' if is_multi else ''}...[/cyan]")
+
+    try:
+        all_results = [JSONReporter.load_as_results(f) for f in all_files]
+    except Exception as exc:
+        console.print(f"[red]Failed to load results: {exc}[/red]\n")
+        raise SystemExit(1)
+
+    # Primary results are first; flatten for single-run view
+    results = all_results[0]
+
+    auto_title = title or (
+        f"Comparison: {len(all_files)} runs" if is_multi else "EvalView Report"
+    )
+    auto_notes = notes or (
+        " · ".join(os.path.basename(f).replace(".json", "") for f in all_files)
+        if is_multi else notes
+    )
+
+    path = generate_visual_report(
+        results=results,
+        compare_results=all_results[1:] if is_multi else None,
+        compare_labels=[os.path.basename(f).replace(".json", "") for f in all_files],
+        title=auto_title,
+        notes=auto_notes,
+        output_path=output,
+        auto_open=not no_open,
+    )
+
+    total = len(results)
+    passed = sum(1 for r in results if r.passed)
+    rate = round(passed / total * 100) if total else 0
+
+    console.print(f"[green]✓ Report generated:[/green] {path}")
+    if is_multi:
+        console.print(f"  Comparing {len(all_files)} runs — primary: {passed}/{total} passing ({rate}%)\n")
+    else:
+        console.print(f"  {passed}/{total} tests passing ({rate}%)\n")
+
+
 @main.command()
 @click.option(
     "--provider",
