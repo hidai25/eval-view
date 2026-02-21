@@ -21,7 +21,7 @@ import json
 import os
 import re
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -45,10 +45,10 @@ from evalview.skills.types import Skill, SkillMetadata
 # ---------------------------------------------------------------------------
 
 def _make_trace(
-    commands: List[str] | None = None,
-    files_created: List[str] | None = None,
-    files_modified: List[str] | None = None,
-    tool_calls: List[str] | None = None,
+    commands: Optional[List[str]] = None,
+    files_created: Optional[List[str]] = None,
+    files_modified: Optional[List[str]] = None,
+    tool_calls: Optional[List[str]] = None,
     final_output: str = "",
 ) -> SkillAgentTrace:
     """Build a minimal SkillAgentTrace for evaluator tests."""
