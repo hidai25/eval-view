@@ -143,6 +143,7 @@ class ClaudeCodeAdapter(SkillAgentAdapter):
 
         # Prepare environment
         env = os.environ.copy()
+        env.pop("CLAUDECODE", None)  # Allow nested invocation from within Claude Code
         if self.config.env:
             env.update(self.config.env)
 

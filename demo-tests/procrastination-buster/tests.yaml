@@ -1,0 +1,214 @@
+name: test-procrastination-buster
+description: Tests for procrastination-buster skill with realistic assertions, security checks, and LLM-as-judge rubric
+skill: /Users/hidaibar-mor/Downloads/eval-view/demo-tests/procrastination-buster/SKILL.md
+agent:
+  type: custom
+  script_path: /Users/hidaibar-mor/Downloads/eval-view/demo-tests/procrastination-buster/runner.py
+  timeout: 60.0
+  env:
+    ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+min_pass_rate: 0.7
+
+tests:
+
+# ── EXPLICIT ────────────────────────────────────────────────────────────────
+
+- name: break-down-task
+  category: explicit
+  input: Break down writing a research paper into 5 startable steps.
+  should_trigger: true
+  description: Explicit task breakdown — model must produce numbered/structured steps.
+  expected:
+    output_contains:
+    - step
+    no_secrets_in_output: true
+    no_prompt_injection: true
+    no_destructive_commands: true
+  rubric:
+    prompt: |
+      The user asked to break a research paper into 5 startable steps.
+      Evaluate the response on:
+      1. Does it provide at least 3 concrete, numbered or bulleted steps? (40 pts)
+      2. Are the steps actionable — not vague like "just start"? (30 pts)
+      3. Does it reduce the feeling of overwhelm? (30 pts)
+      Score 0-100. Return JSON: {"score": <number>, "reasoning": "<explanation>"}
+    min_score: 70.0
+
+- name: two-minute-start
+  category: explicit
+  input: Give me a 2-minute start for organizing my closet.
+  should_trigger: true
+  description: Explicit 2-minute start — must suggest one tiny, immediate action.
+  expected:
+    output_contains:
+    - minute
+    no_secrets_in_output: true
+    no_prompt_injection: true
+    no_destructive_commands: true
+  rubric:
+    prompt: |
+      The user asked for a "2-minute start" for organizing their closet.
+      Evaluate:
+      1. Does it suggest ONE specific, immediate action (not a list of chores)? (50 pts)
+      2. Is the action achievable in 2 minutes or less? (30 pts)
+      3. Does it explain why starting small helps? (20 pts)
+      Score 0-100. Return JSON: {"score": <number>, "reasoning": "<explanation>"}
+    min_score: 70.0
+
+- name: track-progress
+  category: explicit
+  input: "Track my progress on writing the report—check in tomorrow."
+  should_trigger: true
+  description: Explicit accountability tracking request.
+  expected:
+    output_contains:
+    - progress
+    no_secrets_in_output: true
+    no_prompt_injection: true
+    no_destructive_commands: true
+  rubric:
+    prompt: |
+      The user asked to track their progress on a report and check in tomorrow.
+      Evaluate:
+      1. Does it acknowledge and log the commitment? (40 pts)
+      2. Does it set a clear check-in expectation? (30 pts)
+      3. Is it encouraging without being preachy? (30 pts)
+      Score 0-100. Return JSON: {"score": <number>, "reasoning": "<explanation>"}
+    min_score: 70.0
+
+# ── IMPLICIT ────────────────────────────────────────────────────────────────
+
+- name: implied-task-breakdown
+  category: implicit
+  input: I need to start my thesis. Can you help me figure out how to do it?
+  should_trigger: true
+  description: Implicit breakdown — user didn't say "break it down" but that's what they need.
+  expected:
+    output_contains:
+    - thesis
+    no_secrets_in_output: true
+    no_prompt_injection: true
+    no_destructive_commands: true
+  rubric:
+    prompt: |
+      The user is overwhelmed about starting their thesis and asked for help.
+      Evaluate:
+      1. Does it break the thesis into smaller pieces or phases? (40 pts)
+      2. Does it offer a concrete first action to take today? (40 pts)
+      3. Is it empathetic and not overwhelming? (20 pts)
+      Score 0-100. Return JSON: {"score": <number>, "reasoning": "<explanation>"}
+    min_score: 70.0
+
+- name: implied-2-minute-start
+  category: implicit
+  input: I can't seem to begin cleaning the garage. What should I do?
+  should_trigger: true
+  description: Implicit 2-minute start — stuck user needs a tiny first action.
+  expected:
+    output_contains:
+    - start
+    no_secrets_in_output: true
+    no_prompt_injection: true
+    no_destructive_commands: true
+  rubric:
+    prompt: |
+      The user is stuck and can't begin cleaning their garage.
+      Evaluate:
+      1. Does it suggest one small, immediate action to get started? (50 pts)
+      2. Does it acknowledge the difficulty of starting (not just "just do it")? (25 pts)
+      3. Is the advice practical and specific to the situation? (25 pts)
+      Score 0-100. Return JSON: {"score": <number>, "reasoning": "<explanation>"}
+    min_score: 70.0
+
+- name: log-blockers
+  category: implicit
+  input: I'm just avoiding my project. Can you help me understand why?
+  should_trigger: true
+  description: Blocker identification — user avoids a project and wants to understand blockers.
+  expected:
+    output_contains:
+    - avoid
+    no_secrets_in_output: true
+    no_prompt_injection: true
+    no_destructive_commands: true
+  rubric:
+    prompt: |
+      The user is avoiding their project and wants to understand why.
+      Evaluate:
+      1. Does it help identify possible blockers (fear, unclear goals, skill gap, etc.)? (50 pts)
+      2. Does it offer actionable strategies to remove the blocker? (30 pts)
+      3. Is the tone empathetic rather than judgmental? (20 pts)
+      Score 0-100. Return JSON: {"score": <number>, "reasoning": "<explanation>"}
+    min_score: 70.0
+
+# ── CONTEXTUAL ──────────────────────────────────────────────────────────────
+
+- name: contextual-task-breakdown
+  category: contextual
+  input: "I have a big project due next week. Break it down, and make sure it's manageable."
+  should_trigger: true
+  description: Breakdown with deadline pressure — must account for time constraint.
+  expected:
+    output_contains:
+    - week
+    no_secrets_in_output: true
+    no_prompt_injection: true
+    no_destructive_commands: true
+  rubric:
+    prompt: |
+      The user has a big project due next week and needs it broken down manageably.
+      Evaluate:
+      1. Does it produce a concrete breakdown with steps? (40 pts)
+      2. Does it acknowledge the deadline or time pressure? (30 pts)
+      3. Does it feel manageable — not just dumping more tasks on the user? (30 pts)
+      Score 0-100. Return JSON: {"score": <number>, "reasoning": "<explanation>"}
+    min_score: 70.0
+
+- name: contextual-progress-tracking
+  category: contextual
+  input: I want to finish my essay, but I keep getting distracted. Can you help me track my progress?
+  should_trigger: true
+  description: Tracking + distraction — must address both progress tracking and focus.
+  expected:
+    output_contains:
+    - essay
+    no_secrets_in_output: true
+    no_prompt_injection: true
+    no_destructive_commands: true
+  rubric:
+    prompt: |
+      The user wants to track essay progress but keeps getting distracted.
+      Evaluate:
+      1. Does it offer a tracking method (check-ins, milestones, commits)? (40 pts)
+      2. Does it address the distraction problem specifically? (40 pts)
+      3. Is the combined advice practical and not overwhelming? (20 pts)
+      Score 0-100. Return JSON: {"score": <number>, "reasoning": "<explanation>"}
+    min_score: 70.0
+
+# ── NEGATIVE ────────────────────────────────────────────────────────────────
+
+- name: negative-installation-help
+  category: negative
+  input: How do I install Python on my computer?
+  should_trigger: false
+  description: Pure technical question — skill should not hijack with procrastination advice.
+  expected:
+    output_not_contains:
+    - procrastination
+    - 2-minute rule
+    - accountability
+    no_secrets_in_output: true
+    no_prompt_injection: true
+
+- name: negative-general-advice
+  category: negative
+  input: What is photosynthesis?
+  should_trigger: false
+  description: Off-topic factual question — skill should not trigger at all.
+  expected:
+    output_not_contains:
+    - procrastination
+    - 2-minute
+    - task breakdown
+    no_secrets_in_output: true
+    no_prompt_injection: true

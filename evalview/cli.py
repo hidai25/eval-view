@@ -6076,7 +6076,7 @@ async def _skill_generate_tests_async(
             generator = SkillTestGenerator()
             console.print(
                 f"[dim]Auto-selected: {generator.client.config.display_name} / "
-                f"{generator.client.config.model}[/dim]"
+                f"{generator.client.config.default_model}[/dim]"
             )
             console.print()
         else:
@@ -6102,7 +6102,7 @@ async def _skill_generate_tests_async(
             skill_name=skill.metadata.name,
             test_count=count,
             categories=[c.value for c in (category_list or [])] if category_list else [],
-            model=generator.client.config.model,
+            model=generator.client.config.default_model,
             has_example_suite=False,  # Golden example always bundled
         )
     )
@@ -6138,7 +6138,7 @@ async def _skill_generate_tests_async(
                 tests_generated=len(suite.tests),
                 generation_latency_ms=generation_time_ms,
                 estimated_cost_usd=generator.get_generation_cost(),
-                model=generator.client.config.model,
+                model=generator.client.config.default_model,
                 validation_errors=len(validation_errors),
                 categories_distribution=generator.get_category_distribution(suite),
             )
@@ -6151,7 +6151,7 @@ async def _skill_generate_tests_async(
                 skill_name=skill.metadata.name,
                 error_type=type(e).__name__,
                 error_message=str(e)[:200],
-                model=generator.client.config.model,
+                model=generator.client.config.default_model,
                 attempt_number=1,
             )
         )

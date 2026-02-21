@@ -1,0 +1,15 @@
+name: "search-results"
+description: "Search tool returns relevant results"
+
+input:
+  query: "search for EvalView"
+
+expected:
+  tools:
+    - search
+  output:
+    contains:
+      - "Result 1"
+
+thresholds:
+  min_score: 70

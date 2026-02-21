@@ -1,0 +1,15 @@
+name: "calculator-addition"
+description: "Basic addition via calculator tool"
+
+input:
+  query: "calculate 10 + 5"
+
+expected:
+  tools:
+    - calculator
+  output:
+    contains:
+      - "15"
+
+thresholds:
+  min_score: 70
