@@ -220,6 +220,37 @@ TOOLS = [
             },
         },
     },
+    {
+        "name": "generate_visual_report",
+        "description": (
+            "Generate a beautiful self-contained HTML visual report from the latest "
+            "evalview check or run results. Opens automatically in the browser. "
+            "Call this after run_check or run_snapshot to give the user a visual breakdown "
+            "of traces, diffs, scores, and timelines. "
+            "Returns the absolute path to the generated HTML file."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "results_file": {
+                    "type": "string",
+                    "description": "Path to a specific results JSON file. If omitted, uses the latest file in .evalview/results/.",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Report title shown in the header (default: 'EvalView Report')",
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "Optional note shown in the report header (e.g. 'after refactor PR #42')",
+                },
+                "no_auto_open": {
+                    "type": "boolean",
+                    "description": "Set to true to suppress auto-opening the browser (useful in CI). Default: false.",
+                },
+            },
+        },
+    },
 ]
 
 
@@ -401,6 +432,9 @@ class MCPServer:
             if args.get("verbose"):
                 cmd += ["--verbose"]
 
+        elif name == "generate_visual_report":
+            return self._generate_visual_report(args)
+
         else:
             return f"Unknown tool: {name}"
 
@@ -411,3 +445,57 @@ class MCPServer:
             output += result.stderr
         output = _ANSI_ESCAPE.sub("", output).strip()
         return output or f"Command exited with code {result.returncode}"
+
+    def _generate_visual_report(self, args: Dict[str, Any]) -> str:
+        """Generate a beautiful HTML visual report from results JSON."""
+        import glob
+        import json as _json
+
+        # Resolve results file
+        results_file = args.get("results_file", "")
+        if not results_file:
+            # Find latest in .evalview/results/
+            pattern = ".evalview/results/*.json"
+            files = sorted(glob.glob(pattern))
+            if not files:
+                return (
+                    "No results found in .evalview/results/. "
+                    "Run `evalview run` or `evalview snapshot` first."
+                )
+            results_file = files[-1]
+
+        results_file = os.path.normpath(results_file)
+        if not os.path.exists(results_file):
+            return f"Results file not found: {results_file}"
+
+        try:
+            with open(results_file, encoding="utf-8") as f:
+                raw = _json.load(f)
+        except Exception as exc:
+            return f"Failed to load results: {exc}"
+
+        # Convert raw dicts to EvaluationResult objects
+        try:
+            from evalview.reporters.json_reporter import JSONReporter
+            results = JSONReporter.load_as_results(results_file)
+        except Exception:
+            return "Failed to parse results — file may be in an unsupported format."
+
+        try:
+            from evalview.visualization import generate_visual_report
+            path = generate_visual_report(
+                results=results,
+                diffs=None,
+                title=args.get("title", "EvalView Report"),
+                notes=args.get("notes", ""),
+                auto_open=not args.get("no_auto_open", False),
+            )
+            total = len(results)
+            passed = sum(1 for r in results if r.passed)
+            return (
+                f"Report generated: {path}\n"
+                f"{passed}/{total} tests passing\n\n"
+                f"Open in browser or share the HTML file."
+            )
+        except Exception as exc:
+            return f"Failed to generate report: {exc}"

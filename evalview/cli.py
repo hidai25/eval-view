@@ -7270,6 +7270,73 @@ def mcp_serve(test_path: str) -> None:
     MCPServer(test_path=test_path).serve()
 
 
+@main.command("inspect")
+@click.argument("target", default="latest", required=False)
+@click.option("--title", default="EvalView Report", help="Report title")
+@click.option("--notes", default="", help="Optional note shown in the report header")
+@click.option("--no-open", is_flag=True, help="Do not auto-open in browser")
+@click.option("--output", "-o", default=None, help="Output HTML path")
+def inspect_cmd(target: str, title: str, notes: str, no_open: bool, output: Optional[str]) -> None:
+    """Generate a beautiful visual HTML report and open it in the browser.
+
+    TARGET can be 'latest' (default), a path to a results JSON file, or a
+    timestamp string matching a file in .evalview/results/.
+
+    \b
+    Examples:
+        evalview inspect
+        evalview inspect latest
+        evalview inspect .evalview/results/20260221_103000.json
+        evalview inspect latest --notes "after refactor PR #42"
+    """
+    import glob as _glob
+
+    from evalview.reporters.json_reporter import JSONReporter
+    from evalview.visualization import generate_visual_report
+
+    # Resolve target to a results file
+    results_file: Optional[str] = None
+    if target == "latest" or not target:
+        files = sorted(_glob.glob(".evalview/results/*.json"))
+        if not files:
+            console.print("\n[red]No results found in .evalview/results/[/red]")
+            console.print("[dim]Run [bold]evalview run[/bold] or [bold]evalview snapshot[/bold] first.[/dim]\n")
+            raise SystemExit(1)
+        results_file = files[-1]
+    elif os.path.exists(target):
+        results_file = target
+    else:
+        # Try as partial timestamp match
+        matches = sorted(_glob.glob(f".evalview/results/*{target}*.json"))
+        if not matches:
+            console.print(f"\n[red]No results file found matching: {target}[/red]\n")
+            raise SystemExit(1)
+        results_file = matches[-1]
+
+    console.print(f"\n[cyan]◈ Generating visual report from {results_file}...[/cyan]")
+
+    try:
+        results = JSONReporter.load_as_results(results_file)
+    except Exception as exc:
+        console.print(f"[red]Failed to load results: {exc}[/red]\n")
+        raise SystemExit(1)
+
+    path = generate_visual_report(
+        results=results,
+        title=title,
+        notes=notes,
+        output_path=output,
+        auto_open=not no_open,
+    )
+
+    total = len(results)
+    passed = sum(1 for r in results if r.passed)
+    rate = round(passed / total * 100) if total else 0
+
+    console.print(f"[green]✓ Report generated:[/green] {path}")
+    console.print(f"  {passed}/{total} tests passing ({rate}%)\n")
+
+
 @main.command()
 @click.option(
     "--provider",
