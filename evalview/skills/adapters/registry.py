@@ -131,6 +131,14 @@ class SkillAdapterRegistry:
         except ImportError as e:
             logger.debug(f"CodexAdapter not available: {e}")
 
+        # OpenClaw adapter - OpenClaw autonomous agent CLI
+        try:
+            from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+            cls.register(AgentType.OPENCLAW.value, OpenClawAdapter)
+        except ImportError as e:
+            logger.debug(f"OpenClawAdapter not available: {e}")
+
         # LangGraph adapter - LangGraph SDK/Cloud
         try:
             from evalview.skills.adapters.langgraph_adapter import LangGraphSkillAdapter
