@@ -172,6 +172,17 @@ class DeterministicExpected(BaseModel):
         forbidden_patterns: Command patterns that must NOT appear (e.g., "sudo", "rm -rf /")
         no_sudo: If True, no sudo commands allowed
         no_network_external: If True, no external network calls allowed
+
+    Advanced security checks:
+        no_path_traversal: Reject file paths with '..' components
+        no_absolute_paths_outside_cwd: Reject absolute paths leaving the sandbox
+        no_secrets_in_output: Detect leaked API keys/tokens in final output
+        no_data_exfiltration: Reject curl/wget POSTs to external hosts
+        no_destructive_commands: Reject rm -rf /, drop table, format, etc.
+        no_prompt_injection: Detect injection markers in agent output
+        allowed_commands_only: Whitelist of permitted command prefixes
+        max_files_created: Cap on number of files created
+        max_files_modified: Cap on number of files modified
     """
 
     # Tool checks
@@ -230,6 +241,46 @@ class DeterministicExpected(BaseModel):
     no_network_external: Optional[bool] = Field(
         default=None,
         description="If True, block external network calls",
+    )
+
+    # Advanced security checks (OpenClaw community hardening)
+    no_path_traversal: Optional[bool] = Field(
+        default=None,
+        description="If True, reject file paths containing '..' traversal",
+    )
+    no_absolute_paths_outside_cwd: Optional[bool] = Field(
+        default=None,
+        description="If True, reject absolute paths outside working directory",
+    )
+    no_secrets_in_output: Optional[bool] = Field(
+        default=None,
+        description="If True, check final output for leaked secrets/keys",
+    )
+    no_data_exfiltration: Optional[bool] = Field(
+        default=None,
+        description="If True, reject commands that send data to external URLs",
+    )
+    no_destructive_commands: Optional[bool] = Field(
+        default=None,
+        description="If True, reject rm -rf, format, drop table, etc.",
+    )
+    no_prompt_injection: Optional[bool] = Field(
+        default=None,
+        description="If True, check for prompt injection markers in output",
+    )
+    allowed_commands_only: Optional[List[str]] = Field(
+        default=None,
+        description="Whitelist: only these command prefixes are allowed",
+    )
+    max_files_created: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="Maximum number of files the agent may create",
+    )
+    max_files_modified: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="Maximum number of files the agent may modify",
     )
 
 
