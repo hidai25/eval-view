@@ -5,6 +5,7 @@ Tests adapter base class, registry, and concrete adapter implementations.
 
 import asyncio
 import json
+import os
 import subprocess
 from datetime import datetime
 from typing import Any, Dict, Optional
@@ -810,6 +811,254 @@ class TestOpenClawAdapter:
 
         assert trace.total_input_tokens == 300
         assert trace.total_output_tokens == 100
+
+    @pytest.mark.asyncio
+    async def test_execute_timeout_raises_agent_timeout_error(
+        self, config, skill
+    ):
+        """Timeout during execution should raise AgentTimeoutError."""
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+            adapter._openclaw_path = "/usr/bin/openclaw"
+
+            with patch.object(
+                adapter, "_run_subprocess", side_effect=asyncio.TimeoutError("timed out")
+            ):
+                with pytest.raises(AgentTimeoutError) as exc_info:
+                    await adapter.execute(skill, "Test query")
+
+                assert exc_info.value.timeout == config.timeout
+
+    def test_build_command_includes_tools(self, config, skill):
+        """_build_command should include --tools when config has tools."""
+        config_with_tools = AgentConfig(
+            type=AgentType.OPENCLAW,
+            timeout=120.0,
+            tools=["Read", "Write", "Bash"],
+        )
+
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config_with_tools)
+            adapter._openclaw_path = "/usr/bin/openclaw"
+
+        command = adapter._build_command(skill, "Test query")
+
+        assert "--tools" in command
+        assert "Read,Write,Bash" in command
+
+    def test_build_command_includes_skill_path(self, config, tmp_path):
+        """_build_command should include --skill-path when file exists."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("---\nname: test\n---\nInstructions")
+
+        skill_with_path = Skill(
+            metadata=SkillMetadata(
+                name="test-skill",
+                description="A test skill for path testing",
+            ),
+            instructions="Instructions",
+            raw_content="",
+            file_path=str(skill_file),
+        )
+
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+            adapter._openclaw_path = "/usr/bin/openclaw"
+
+        command = adapter._build_command(skill_with_path, "Test query")
+
+        assert "--skill-path" in command
+        assert str(skill_file) in command
+
+    def test_build_command_includes_max_turns(self, skill):
+        """_build_command should include --max-turns from config."""
+        config_with_turns = AgentConfig(
+            type=AgentType.OPENCLAW,
+            timeout=120.0,
+            max_turns=15,
+        )
+
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config_with_turns)
+            adapter._openclaw_path = "/usr/bin/openclaw"
+
+        command = adapter._build_command(skill, "Test query")
+
+        assert "--max-turns" in command
+        assert "15" in command
+
+    def test_output_truncation(self, config):
+        """Large output should be truncated to prevent OOM."""
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter, _MAX_OUTPUT_SIZE
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+
+        # Create output larger than max
+        large_output = "x" * (_MAX_OUTPUT_SIZE + 1000)
+        truncated = adapter._truncate_output(large_output)
+
+        assert len(truncated) < len(large_output)
+        assert truncated.endswith("... [truncated]")
+
+        # Small output should not be truncated
+        small_output = "short output"
+        assert adapter._truncate_output(small_output) == small_output
+
+    def test_extract_shell_file_ops_touch(self, config):
+        """Should extract file paths from touch commands."""
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+
+        files = []
+        adapter._extract_shell_file_ops("touch newfile.txt", files)
+
+        assert "newfile.txt" in files
+
+    def test_extract_shell_file_ops_mkdir(self, config):
+        """Should extract dir paths from mkdir commands."""
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+
+        files = []
+        adapter._extract_shell_file_ops("mkdir -p src/components", files)
+
+        assert "src/components" in files
+
+    def test_extract_shell_file_ops_redirect(self, config):
+        """Should extract file paths from output redirects."""
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+
+        files = []
+        adapter._extract_shell_file_ops("echo hello > output.txt", files)
+
+        assert "output.txt" in files
+
+    def test_prepare_environment_filters_secrets(self, config):
+        """Should filter sensitive environment variables."""
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+
+        with patch.dict("os.environ", {
+            "PATH": "/usr/bin",
+            "HOME": "/home/user",
+            "API_KEY": "secret-key-123",
+            "AWS_SECRET": "aws-secret",
+            "SAFE_VAR": "safe-value",
+        }, clear=True):
+            env = adapter._prepare_environment()
+
+        assert "PATH" in env
+        assert "HOME" in env
+        assert "SAFE_VAR" in env
+        assert "API_KEY" not in env
+        assert "AWS_SECRET" not in env
+
+    def test_prepare_environment_allows_configured_secrets(self, config):
+        """Configured env vars should be passed through even if sensitive."""
+        config_with_env = AgentConfig(
+            type=AgentType.OPENCLAW,
+            timeout=120.0,
+            env={"OPENCLAW_API_KEY": "required-key"},
+        )
+
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config_with_env)
+
+        with patch.dict("os.environ", {"PATH": "/usr/bin"}, clear=True):
+            env = adapter._prepare_environment()
+
+        # Configured env vars are added after filtering
+        assert env["OPENCLAW_API_KEY"] == "required-key"
+
+    def test_track_operations_file_creation(self, config):
+        """Should identify file creation tool calls."""
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+
+        files_created = []
+        files_modified = []
+        commands = []
+
+        adapter._track_operations(
+            "write_file", {"path": "index.js"},
+            files_created, files_modified, commands,
+        )
+
+        assert "index.js" in files_created
+        assert files_modified == []
+
+    def test_track_operations_file_modification(self, config):
+        """Should identify file modification tool calls."""
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+
+        files_created = []
+        files_modified = []
+        commands = []
+
+        adapter._track_operations(
+            "edit", {"file_path": "config.json"},
+            files_created, files_modified, commands,
+        )
+
+        assert "config.json" in files_modified
+
+    def test_track_operations_command_execution(self, config):
+        """Should identify command execution tool calls."""
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+
+        files_created = []
+        files_modified = []
+        commands = []
+
+        adapter._track_operations(
+            "run_command", {"command": "npm install"},
+            files_created, files_modified, commands,
+        )
+
+        assert "npm install" in commands
+
+    def test_resolve_working_directory_priority(self, config, tmp_path):
+        """Working directory resolution should follow priority order."""
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+
+        # Context override takes precedence
+        result = adapter._resolve_working_directory(str(tmp_path))
+        assert result == str(tmp_path)
+
+        # Falls back to cwd when no override
+        result = adapter._resolve_working_directory(None)
+        assert result == os.getcwd()
 
 
 # =============================================================================

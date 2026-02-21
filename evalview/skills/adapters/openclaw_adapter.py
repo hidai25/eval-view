@@ -27,8 +27,7 @@ import os
 import re
 import shutil
 import subprocess
-import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Final, List, Optional, Tuple
@@ -56,6 +55,7 @@ _MAX_OUTPUT_SIZE: Final[int] = 1024 * 1024  # 1MB max output to prevent OOM
 _SENSITIVE_ENV_PATTERNS: Final[Tuple[str, ...]] = (
     "KEY", "SECRET", "TOKEN", "PASSWORD", "CREDENTIAL", "AUTH",
 )
+_SESSION_ID_LENGTH: Final[int] = 8
 
 
 @dataclass(frozen=True)
@@ -101,7 +101,6 @@ class OpenClawAdapter(SkillAgentAdapter):
     """
 
     BINARY_NAME: Final[str] = "openclaw"
-    SUPPORTED_OUTPUT_FORMATS: Final[Tuple[str, ...]] = ("json", "text", "jsonl")
 
     def __init__(self, config: AgentConfig) -> None:
         """Initialize OpenClaw adapter with configuration.
@@ -309,7 +308,8 @@ class OpenClawAdapter(SkillAgentAdapter):
         Returns:
             8-character hex string for trace identification.
         """
-        return uuid.uuid4().hex[:8]
+        import uuid
+        return uuid.uuid4().hex[:_SESSION_ID_LENGTH]
 
     def _build_command(self, skill: Skill, query: str) -> List[str]:
         """Build the OpenClaw CLI command with skill injection.
@@ -391,14 +391,23 @@ Follow the skill instructions above when responding to the user's request.
 
         Copies current environment and:
             1. Adds any configured env vars
-            2. Filters out sensitive variables from logging
+            2. Filters out sensitive variables to prevent secret leakage
 
         Returns:
             Environment dictionary for subprocess.
         """
         env = os.environ.copy()
 
-        # Add configured environment variables
+        # Filter out sensitive environment variables
+        filtered_keys = [
+            key for key in env
+            if any(pattern in key.upper() for pattern in _SENSITIVE_ENV_PATTERNS)
+        ]
+        for key in filtered_keys:
+            logger.debug(f"Filtered sensitive env var from OpenClaw execution: {key}")
+            del env[key]
+
+        # Add configured environment variables (these are intentional, so not filtered)
         if self.config.env:
             env.update(self.config.env)
 
@@ -456,7 +465,7 @@ Follow the skill instructions above when responding to the user's request.
         Raises:
             asyncio.TimeoutError: If execution exceeds timeout.
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def _sync_run():
             return subprocess.run(
@@ -892,7 +901,8 @@ Follow the skill instructions above when responding to the user's request.
         if mkdir_match:
             files_created.append(mkdir_match.group(1))
 
-        redirect_match = re.search(r'>\s*([^\s;|&]+)', command)
+        # Match stdout redirects (> file or >> file) but not fd redirects (2>)
+        redirect_match = re.search(r'(?:^|[^0-9])>{1,2}\s*([^\s;|&]+)', command)
         if redirect_match:
             files_created.append(redirect_match.group(1))
 
