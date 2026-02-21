@@ -44,7 +44,7 @@ def _mermaid_trace(result: "EvaluationResult") -> str:
 
     seen_tools: Dict[str, str] = {}
     for step in steps:
-        tool = getattr(step, "tool_name", None) or getattr(step, "step_name", "unknown")
+        tool: str = str(getattr(step, "tool_name", None) or getattr(step, "step_name", None) or "unknown")
         if tool not in seen_tools:
             alias = f"T{len(seen_tools)}"
             seen_tools[tool] = alias
@@ -52,12 +52,12 @@ def _mermaid_trace(result: "EvaluationResult") -> str:
             lines.append(f"    participant {alias} as {short}")
 
     # Input
-    query = getattr(result, "input_query", "") or ""
+    query: str = str(getattr(result, "input_query", "") or "")
     short_query = (query[:40] + "…") if len(query) > 40 else query
     lines.append(f"    User->>Agent: {_safe_mermaid(short_query)}")
 
     for step in steps:
-        tool = getattr(step, "tool_name", None) or getattr(step, "step_name", "unknown")
+        tool = str(getattr(step, "tool_name", None) or getattr(step, "step_name", None) or "unknown")
         alias = seen_tools.get(tool, tool)
         params = getattr(step, "parameters", {}) or {}
         param_str = ", ".join(f"{k}={str(v)[:20]}" for k, v in list(params.items())[:2])
