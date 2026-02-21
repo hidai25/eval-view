@@ -78,8 +78,12 @@ def _mermaid_trace(result: "EvaluationResult") -> str:
 
 
 def _safe_mermaid(s: str) -> str:
-    """Escape characters that break Mermaid labels."""
-    return s.replace('"', "'").replace("\n", " ").replace(":", ";").replace("<", "").replace(">", "")
+    """Strip everything except safe alphanumeric + basic punctuation for Mermaid labels."""
+    import re
+    s = s.replace("\n", " ").replace("\r", "")
+    # Keep only safe chars — anything else breaks Mermaid parser
+    s = re.sub(r'[^\w\s\.\-_/]', '', s)
+    return s[:40].strip() or "..."
 
 
 # ── KPI helpers ────────────────────────────────────────────────────────────────
@@ -228,325 +232,427 @@ def _render_template(**ctx: Any) -> str:
     return env.from_string(_TEMPLATE).render(**ctx)
 
 
-_TEMPLATE = r"""<!DOCTYPE html>
-<html lang="en" data-theme="dark">
+_TEMPLATE = r"""<!doctype html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ title }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <style>
-:root{--bg:#0d1117;--bg2:#161b22;--bg3:#21262d;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--green:#3fb950;--red:#f85149;--yellow:#d29922;--blue:#58a6ff;--purple:#a371f7;--radius:8px;--font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.6;min-height:100vh}
-a{color:var(--blue);text-decoration:none}
-/* Layout */
-.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:20px 32px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
-.header-left h1{font-size:18px;font-weight:600;display:flex;align-items:center;gap:10px}
-.header-left h1 .logo{color:var(--blue)}
-.header-meta{font-size:12px;color:var(--muted);margin-top:2px}
-.badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}
-.badge-green{background:rgba(63,185,80,.15);color:var(--green)}
-.badge-red{background:rgba(248,81,73,.15);color:var(--red)}
-.badge-yellow{background:rgba(210,153,34,.15);color:var(--yellow)}
-.badge-blue{background:rgba(88,166,255,.15);color:var(--blue)}
-.badge-purple{background:rgba(163,113,247,.15);color:var(--purple)}
-.container{max-width:1200px;margin:0 auto;padding:24px 32px}
-/* Tabs */
-.tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:28px}
-.tab{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;font-weight:500;padding:10px 18px;border-bottom:2px solid transparent;transition:all .15s;font-family:var(--font)}
-.tab:hover{color:var(--text)}
-.tab.active{color:var(--text);border-bottom-color:var(--blue)}
-.tab-panel{display:none}
-.tab-panel.active{display:block}
-/* KPI Cards */
-.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:28px}
-.kpi-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;transition:border-color .15s}
-.kpi-card:hover{border-color:var(--blue)}
-.kpi-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
-.kpi-value{font-size:28px;font-weight:700;line-height:1}
-.kpi-value.green{color:var(--green)}
-.kpi-value.red{color:var(--red)}
-.kpi-value.yellow{color:var(--yellow)}
-.kpi-value.blue{color:var(--blue)}
-.kpi-sub{font-size:11px;color:var(--muted);margin-top:4px}
-/* Charts row */
-.charts-row{display:grid;grid-template-columns:1fr 2fr;gap:16px;margin-bottom:28px}
-.chart-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px}
-.chart-card h3{font-size:13px;font-weight:600;color:var(--muted);margin-bottom:16px}
-.chart-wrap{position:relative;height:180px}
-/* Trace cards */
-.trace-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:16px;overflow:hidden}
-.trace-header{padding:14px 20px;display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none}
-.trace-header:hover{background:var(--bg3)}
-.trace-name{font-weight:600;font-size:13px;flex:1}
-.trace-body{padding:20px;border-top:1px solid var(--border);background:var(--bg)}
-.mermaid-wrap{background:var(--bg2);border-radius:6px;padding:20px;overflow-x:auto;text-align:center}
-/* Diff cards */
-.diff-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:16px;overflow:hidden}
-.diff-header{padding:14px 20px;display:flex;align-items:center;gap:10px}
+:root{
+  --green:#22d3a5;--red:#ff6b8a;--yellow:#fbbf24;--blue:#7c95ff;--purple:#c084fc;--pink:#f472b6;
+  --g1:rgba(34,211,165,.2);--g2:rgba(124,149,255,.2);--g3:rgba(248,107,138,.2);
+  --glass:rgba(255,255,255,.04);--glass2:rgba(255,255,255,.07);
+  --border:rgba(255,255,255,.09);--border2:rgba(255,255,255,.15);
+  --text:#f8fafc;--muted:#7a8fa6;--r:14px;
+  --font:'Inter',-apple-system,sans-serif;
+}
+html{scroll-behavior:smooth}
+body{
+  font-family:var(--font);font-size:14px;line-height:1.6;
+  color:var(--text);min-height:100vh;overflow-x:hidden;
+  background:
+    radial-gradient(ellipse 90% 60% at 15% 0%,rgba(124,149,255,.18),transparent 60%),
+    radial-gradient(ellipse 70% 50% at 85% 100%,rgba(34,211,165,.15),transparent 60%),
+    radial-gradient(ellipse 50% 40% at 50% 50%,rgba(248,107,138,.08),transparent 60%),
+    #050a14;
+}
+/* Animated orbs */
+body::before,body::after{
+  content:'';position:fixed;border-radius:50%;filter:blur(80px);
+  pointer-events:none;z-index:0;animation:float 12s ease-in-out infinite;
+}
+body::before{width:500px;height:500px;background:rgba(124,149,255,.07);top:-150px;right:-100px}
+body::after{width:400px;height:400px;background:rgba(34,211,165,.07);bottom:-100px;left:-80px;animation-delay:-6s}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-20px)}}
+/* Header */
+.header{
+  position:sticky;top:0;z-index:200;
+  background:rgba(5,10,20,.8);
+  border-bottom:1px solid var(--border);
+  backdrop-filter:blur(24px) saturate(180%);
+  -webkit-backdrop-filter:blur(24px) saturate(180%);
+  padding:0 40px;height:62px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.logo{
+  display:flex;align-items:center;gap:12px;
+}
+.logo-icon{
+  width:34px;height:34px;border-radius:10px;flex-shrink:0;
+  background:linear-gradient(135deg,#7c95ff,#c084fc);
+  box-shadow:0 0 0 1px rgba(124,149,255,.4),0 4px 20px rgba(124,149,255,.35);
+  display:flex;align-items:center;justify-content:center;font-size:16px;
+}
+.logo-text{font-size:15px;font-weight:700;letter-spacing:-.02em}
+.logo-sub{font-size:11px;color:var(--muted);font-weight:400}
+.header-right{display:flex;align-items:center;gap:8px}
+/* Badges */
+.badge{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;
+}
+.b-green{background:rgba(34,211,165,.12);color:var(--green);border:1px solid rgba(34,211,165,.25)}
+.b-red{background:rgba(255,107,138,.12);color:var(--red);border:1px solid rgba(255,107,138,.25)}
+.b-yellow{background:rgba(251,191,36,.12);color:var(--yellow);border:1px solid rgba(251,191,36,.25)}
+.b-blue{background:rgba(124,149,255,.12);color:var(--blue);border:1px solid rgba(124,149,255,.25)}
+.b-purple{background:rgba(192,132,252,.12);color:var(--purple);border:1px solid rgba(192,132,252,.25)}
+/* Main */
+.main{max-width:1200px;margin:0 auto;padding:32px 40px;position:relative;z-index:1}
+/* Tab bar */
+.tabbar{
+  display:flex;gap:2px;
+  background:rgba(255,255,255,.03);border:1px solid var(--border);
+  border-radius:12px;padding:3px;margin-bottom:32px;width:fit-content;
+}
+.tab{
+  background:none;border:none;color:var(--muted);cursor:pointer;
+  font:500 13px/1 var(--font);padding:9px 20px;border-radius:9px;
+  transition:all .18s;
+}
+.tab:hover{color:var(--text);background:rgba(255,255,255,.05)}
+.tab.on{
+  color:#fff;
+  background:linear-gradient(135deg,rgba(124,149,255,.3),rgba(192,132,252,.2));
+  border:1px solid rgba(124,149,255,.35);
+  box-shadow:0 2px 16px rgba(124,149,255,.2),inset 0 1px 0 rgba(255,255,255,.1);
+}
+.panel{display:none}.panel.on{display:block}
+/* KPI row */
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
+.kpi{
+  background:var(--glass);border:1px solid var(--border);
+  border-radius:var(--r);padding:22px 20px;
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  position:relative;overflow:hidden;
+  transition:transform .2s,border-color .2s,box-shadow .2s;cursor:default;
+}
+.kpi::after{
+  content:'';position:absolute;inset:0;pointer-events:none;border-radius:var(--r);
+  background:linear-gradient(135deg,rgba(255,255,255,.05) 0%,transparent 60%);
+}
+.kpi:hover{transform:translateY(-3px)}
+.kpi.kpi-pass{border-color:rgba(34,211,165,.2)}
+.kpi.kpi-pass:hover{box-shadow:0 12px 40px rgba(34,211,165,.15);border-color:rgba(34,211,165,.4)}
+.kpi.kpi-fail{border-color:rgba(255,107,138,.2)}
+.kpi.kpi-fail:hover{box-shadow:0 12px 40px rgba(255,107,138,.15);border-color:rgba(255,107,138,.4)}
+.kpi.kpi-blue{border-color:rgba(124,149,255,.2)}
+.kpi.kpi-blue:hover{box-shadow:0 12px 40px rgba(124,149,255,.15);border-color:rgba(124,149,255,.4)}
+.kpi-icon{font-size:20px;margin-bottom:14px;display:block}
+.kpi-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px}
+.kpi-num{font-size:36px;font-weight:800;letter-spacing:-.03em;line-height:1}
+.kpi-num.c-green{color:var(--green);text-shadow:0 0 30px rgba(34,211,165,.4)}
+.kpi-num.c-red{color:var(--red);text-shadow:0 0 30px rgba(255,107,138,.4)}
+.kpi-num.c-yellow{color:var(--yellow)}
+.kpi-num.c-blue{color:var(--blue);text-shadow:0 0 30px rgba(124,149,255,.4)}
+.kpi-sub{font-size:12px;color:var(--muted);margin-top:6px}
+/* Score bar on KPI */
+.kpi-bar{margin-top:14px;height:3px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden}
+.kpi-bar-fill{height:100%;border-radius:2px;transition:width 1s cubic-bezier(.4,0,.2,1)}
+.kpi-bar-fill.green{background:linear-gradient(90deg,#22d3a5,#7c95ff)}
+.kpi-bar-fill.red{background:linear-gradient(90deg,#ff6b8a,#fbbf24)}
+.kpi-bar-fill.blue{background:linear-gradient(90deg,#7c95ff,#c084fc)}
+/* Charts */
+.chart-row{display:grid;grid-template-columns:260px 1fr;gap:16px;margin-bottom:20px}
+.card{
+  background:var(--glass);border:1px solid var(--border);
+  border-radius:var(--r);padding:22px;
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  position:relative;overflow:hidden;
+}
+.card::after{
+  content:'';position:absolute;inset:0;pointer-events:none;border-radius:var(--r);
+  background:linear-gradient(135deg,rgba(255,255,255,.04) 0%,transparent 50%);
+}
+.card-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:18px;display:flex;align-items:center;gap:8px}
+.card-title::before{content:'';width:3px;height:14px;border-radius:2px;background:linear-gradient(to bottom,#7c95ff,#c084fc)}
+.chart-wrap{position:relative;height:200px}
+/* Trace */
+.item{
+  background:var(--glass);border:1px solid var(--border);
+  border-radius:var(--r);margin-bottom:10px;overflow:hidden;
+  backdrop-filter:blur(12px);transition:border-color .2s;
+}
+.item:hover{border-color:var(--border2)}
+.item-head{
+  padding:15px 20px;display:flex;align-items:center;gap:12px;
+  cursor:pointer;transition:background .15s;
+}
+.item-head:hover{background:rgba(255,255,255,.03)}
+.item-name{font-weight:600;font-size:13px;flex:1;letter-spacing:-.01em}
+.chevron{color:var(--muted);font-size:11px;transition:transform .2s}
+.item-body{
+  padding:20px;border-top:1px solid var(--border);
+  background:rgba(0,0,0,.25);
+}
+.mermaid-box{
+  background:rgba(0,0,0,.4);border:1px solid var(--border);
+  border-radius:10px;padding:24px;overflow-x:auto;text-align:center;
+  min-height:80px;display:flex;align-items:center;justify-content:center;
+}
+/* Diff */
+.diff-item{
+  background:var(--glass);border:1px solid var(--border);
+  border-radius:var(--r);margin-bottom:10px;overflow:hidden;
+  backdrop-filter:blur(12px);
+}
+.diff-head{padding:15px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--border)}
 .diff-name{font-weight:600;font-size:13px;flex:1}
-.diff-body{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--border)}
+.diff-cols{display:grid;grid-template-columns:1fr 1fr}
 .diff-col{padding:16px 20px}
-.diff-col:first-child{border-right:1px solid var(--border)}
-.diff-col-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
-.tool-list{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
-.tool-tag{background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;font-family:'SF Mono','Fira Code',monospace}
-.tool-tag.added{border-color:var(--green);color:var(--green);background:rgba(63,185,80,.1)}
-.tool-tag.removed{border-color:var(--red);color:var(--red);background:rgba(248,81,73,.1)}
-.output-box{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:10px 12px;font-size:12px;font-family:'SF Mono','Fira Code',monospace;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;line-height:1.5;color:var(--muted)}
-.diff-lines{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:8px;font-size:11px;font-family:'SF Mono','Fira Code',monospace;max-height:160px;overflow-y:auto;margin-top:8px}
-.diff-lines .add{color:var(--green)}
-.diff-lines .rem{color:var(--red)}
+.diff-col+.diff-col{border-left:1px solid var(--border)}
+.col-title{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px}
+.tags{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+.tag{
+  background:rgba(255,255,255,.05);border:1px solid var(--border);
+  border-radius:5px;padding:2px 9px;font-size:11px;font-family:monospace;
+}
+.tag.add{border-color:rgba(34,211,165,.3);color:var(--green);background:rgba(34,211,165,.08)}
+.tag.rem{border-color:rgba(255,107,138,.3);color:var(--red);background:rgba(255,107,138,.08)}
+.outbox{
+  background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:8px;
+  padding:12px;font:12px/1.5 monospace;color:var(--muted);
+  white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;
+}
+.difflines{
+  background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:8px;
+  padding:10px;font:11px/1.5 monospace;max-height:160px;overflow-y:auto;margin-top:8px;
+}
+.difflines .a{color:var(--green)}.difflines .r{color:var(--red)}
 /* Timeline */
-.timeline-bars{display:flex;flex-direction:column;gap:6px}
-.timeline-row{display:flex;align-items:center;gap:10px}
-.timeline-label{font-size:11px;color:var(--muted);width:200px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.timeline-bar-wrap{flex:1;background:var(--bg3);border-radius:3px;height:20px;position:relative;overflow:hidden}
-.timeline-bar{height:100%;border-radius:3px;transition:width .5s ease;display:flex;align-items:center;padding-left:6px;font-size:10px;font-weight:600;color:#000}
-.timeline-bar.ok{background:var(--green)}
-.timeline-bar.err{background:var(--red)}
-.timeline-ms{font-size:10px;color:var(--muted);width:60px;text-align:right;flex-shrink:0}
-/* Similarity ring */
-.sim-ring{display:inline-flex;align-items:center;gap:6px;font-size:12px}
-/* Empty state */
-.empty{text-align:center;padding:48px;color:var(--muted)}
-.empty .icon{font-size:32px;margin-bottom:12px}
+.tl-row{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+.tl-label{font-size:11px;color:var(--muted);width:210px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tl-track{flex:1;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:4px;height:24px;overflow:hidden;position:relative}
+.tl-fill{height:100%;border-radius:4px;transition:width .7s cubic-bezier(.4,0,.2,1);position:relative}
+.tl-fill.ok{background:linear-gradient(90deg,rgba(34,211,165,.7),rgba(124,149,255,.4))}
+.tl-fill.err{background:linear-gradient(90deg,rgba(255,107,138,.7),rgba(251,191,36,.4))}
+.tl-ms{font-size:10px;color:var(--muted);width:65px;text-align:right;flex-shrink:0}
+/* Sim */
+.sim{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+/* Empty */
+.empty{text-align:center;padding:72px 40px;color:var(--muted)}
+.empty-icon{font-size:40px;margin-bottom:14px;display:block;filter:grayscale(1);opacity:.5}
 /* Scrollbar */
-::-webkit-scrollbar{width:6px;height:6px}
-::-webkit-scrollbar-track{background:var(--bg)}
-::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:4px}
 </style>
 </head>
 <body>
 
-<div class="header">
-  <div class="header-left">
-    <h1><span class="logo">◈</span> {{ title }}</h1>
-    <div class="header-meta">Generated {{ generated_at }}{% if notes %} · {{ notes }}{% endif %}</div>
+<header class="header">
+  <div class="logo">
+    <div class="logo-icon">◈</div>
+    <div>
+      <div class="logo-text">{{ title }}</div>
+      <div class="logo-sub">{{ generated_at }}{% if notes %} · {{ notes }}{% endif %}</div>
+    </div>
   </div>
-  <div style="display:flex;gap:8px;align-items:center">
+  <div class="header-right">
     {% if kpis %}
       {% if kpis.failed == 0 %}
-        <span class="badge badge-green">✓ All Passing</span>
+        <span class="badge b-green">✓ All Passing</span>
       {% else %}
-        <span class="badge badge-red">{{ kpis.failed }} Failed</span>
+        <span class="badge b-red">✗ {{ kpis.failed }} Failed</span>
       {% endif %}
-      <span class="badge badge-blue">{{ kpis.total }} Tests</span>
+      <span class="badge b-blue">{{ kpis.total }} Tests</span>
     {% endif %}
   </div>
-</div>
+</header>
 
-<div class="container">
+<main class="main">
 
-  <div class="tabs">
-    <button class="tab active" onclick="showTab('overview')">Overview</button>
-    <button class="tab" onclick="showTab('trace')">Execution Trace</button>
-    <button class="tab" onclick="showTab('diffs')">Diffs</button>
-    <button class="tab" onclick="showTab('timeline')">Timeline</button>
+  <div class="tabbar">
+    <button class="tab on" onclick="show('overview',this)">Overview</button>
+    <button class="tab" onclick="show('trace',this)">Execution Trace</button>
+    <button class="tab" onclick="show('diffs',this)">Diffs</button>
+    <button class="tab" onclick="show('timeline',this)">Timeline</button>
   </div>
 
-  <!-- ─── OVERVIEW ─── -->
-  <div id="tab-overview" class="tab-panel active">
+  <!-- OVERVIEW -->
+  <div id="p-overview" class="panel on">
     {% if kpis %}
-    <div class="kpi-grid">
-      <div class="kpi-card">
+    <div class="kpi-row">
+      <div class="kpi {% if kpis.pass_rate >= 80 %}kpi-pass{% else %}kpi-fail{% endif %}">
+        <span class="kpi-icon">{% if kpis.pass_rate == 100 %}🟢{% elif kpis.pass_rate >= 80 %}✅{% else %}⚠️{% endif %}</span>
         <div class="kpi-label">Pass Rate</div>
-        <div class="kpi-value {% if kpis.pass_rate >= 80 %}green{% elif kpis.pass_rate >= 60 %}yellow{% else %}red{% endif %}">{{ kpis.pass_rate }}%</div>
-        <div class="kpi-sub">{{ kpis.passed }}/{{ kpis.total }} tests</div>
+        <div class="kpi-num {% if kpis.pass_rate >= 80 %}c-green{% elif kpis.pass_rate >= 60 %}c-yellow{% else %}c-red{% endif %}">{{ kpis.pass_rate }}%</div>
+        <div class="kpi-sub">{{ kpis.passed }} of {{ kpis.total }} tests</div>
+        <div class="kpi-bar"><div class="kpi-bar-fill {% if kpis.pass_rate >= 80 %}green{% else %}red{% endif %}" style="width:{{ kpis.pass_rate }}%"></div></div>
       </div>
-      <div class="kpi-card">
+      <div class="kpi {% if kpis.avg_score >= 80 %}kpi-pass{% else %}kpi-blue{% endif %}">
+        <span class="kpi-icon">📊</span>
         <div class="kpi-label">Avg Score</div>
-        <div class="kpi-value {% if kpis.avg_score >= 80 %}green{% elif kpis.avg_score >= 60 %}yellow{% else %}red{% endif %}">{{ kpis.avg_score }}</div>
+        <div class="kpi-num {% if kpis.avg_score >= 80 %}c-green{% elif kpis.avg_score >= 60 %}c-yellow{% else %}c-red{% endif %}">{{ kpis.avg_score }}</div>
         <div class="kpi-sub">out of 100</div>
+        <div class="kpi-bar"><div class="kpi-bar-fill {% if kpis.avg_score >= 80 %}green{% else %}red{% endif %}" style="width:{{ kpis.avg_score }}%"></div></div>
       </div>
-      <div class="kpi-card">
+      <div class="kpi kpi-blue">
+        <span class="kpi-icon">💰</span>
         <div class="kpi-label">Total Cost</div>
-        <div class="kpi-value blue">${{ kpis.total_cost }}</div>
+        <div class="kpi-num c-blue">${{ kpis.total_cost }}</div>
         <div class="kpi-sub">this run</div>
+        <div class="kpi-bar"><div class="kpi-bar-fill blue" style="width:30%"></div></div>
       </div>
-      <div class="kpi-card">
+      <div class="kpi kpi-blue">
+        <span class="kpi-icon">⚡</span>
         <div class="kpi-label">Avg Latency</div>
-        <div class="kpi-value blue">{{ kpis.avg_latency_ms|int }}ms</div>
+        <div class="kpi-num c-blue">{{ kpis.avg_latency_ms|int }}<span style="font-size:16px;font-weight:500">ms</span></div>
         <div class="kpi-sub">per test</div>
+        <div class="kpi-bar"><div class="kpi-bar-fill blue" style="width:45%"></div></div>
       </div>
     </div>
 
-    <div class="charts-row">
-      <div class="chart-card">
-        <h3>Pass / Fail</h3>
-        <div class="chart-wrap"><canvas id="donutChart"></canvas></div>
+    <div class="chart-row">
+      <div class="card">
+        <div class="card-title">Distribution</div>
+        <div class="chart-wrap"><canvas id="donut"></canvas></div>
       </div>
-      <div class="chart-card">
-        <h3>Score per Test</h3>
-        <div class="chart-wrap"><canvas id="barChart"></canvas></div>
+      <div class="card">
+        <div class="card-title">Score per Test</div>
+        <div class="chart-wrap"><canvas id="bars"></canvas></div>
       </div>
     </div>
     {% else %}
-    <div class="empty"><div class="icon">📊</div>No results to display</div>
+    <div class="empty"><span class="empty-icon">📊</span>No results to display</div>
     {% endif %}
   </div>
 
-  <!-- ─── TRACE ─── -->
-  <div id="tab-trace" class="tab-panel">
+  <!-- TRACE -->
+  <div id="p-trace" class="panel">
     {% if traces %}
       {% for t in traces %}
-      <div class="trace-card">
-        <div class="trace-header" onclick="toggleSection('trace-{{ loop.index }}')">
-          <span class="badge {% if t.passed %}badge-green{% else %}badge-red{% endif %}">
-            {% if t.passed %}✓{% else %}✗{% endif %}
-          </span>
-          <span class="trace-name">{{ t.name }}</span>
-          <span style="color:var(--muted);font-size:12px">▾</span>
+      <div class="item">
+        <div class="item-head" onclick="tog('tr{{ loop.index }}',this)">
+          <span class="badge {% if t.passed %}b-green{% else %}b-red{% endif %}">{% if t.passed %}✓{% else %}✗{% endif %}</span>
+          <span class="item-name">{{ t.name }}</span>
+          <span class="chevron">▾</span>
         </div>
-        <div id="trace-{{ loop.index }}" class="trace-body" {% if not loop.first %}style="display:none"{% endif %}>
-          <div class="mermaid-wrap">
-            <div class="mermaid">{{ t.diagram }}</div>
-          </div>
+        <div id="tr{{ loop.index }}" class="item-body" {% if not loop.first %}style="display:none"{% endif %}>
+          <div class="mermaid-box"><div class="mermaid">{{ t.diagram }}</div></div>
         </div>
       </div>
       {% endfor %}
     {% else %}
-      <div class="empty"><div class="icon">🔍</div>No trace data available</div>
+      <div class="empty"><span class="empty-icon">🔍</span>No trace data available</div>
     {% endif %}
   </div>
 
-  <!-- ─── DIFFS ─── -->
-  <div id="tab-diffs" class="tab-panel">
+  <!-- DIFFS -->
+  <div id="p-diffs" class="panel">
     {% if diff_rows %}
       {% for d in diff_rows %}
-      <div class="diff-card">
-        <div class="diff-header">
-          {% if d.status == 'regression' %}
-            <span class="badge badge-red">⬇ Regression</span>
-          {% elif d.status == 'tools_changed' %}
-            <span class="badge badge-yellow">⚠ Tools Changed</span>
-          {% elif d.status == 'output_changed' %}
-            <span class="badge badge-purple">~ Output Changed</span>
-          {% else %}
-            <span class="badge badge-green">✓ Passed</span>
-          {% endif %}
+      <div class="diff-item">
+        <div class="diff-head">
+          {% if d.status == 'regression' %}<span class="badge b-red">⬇ Regression</span>
+          {% elif d.status == 'tools_changed' %}<span class="badge b-yellow">⚠ Tools Changed</span>
+          {% elif d.status == 'output_changed' %}<span class="badge b-purple">~ Output Changed</span>
+          {% else %}<span class="badge b-green">✓ Passed</span>{% endif %}
           <span class="diff-name">{{ d.name }}</span>
           {% if d.score_delta != 0 %}
-            <span class="badge {% if d.score_delta > 0 %}badge-green{% else %}badge-red{% endif %}">
-              {% if d.score_delta > 0 %}+{% endif %}{{ d.score_delta }} pts
-            </span>
+            <span class="badge {% if d.score_delta > 0 %}b-green{% else %}b-red{% endif %}">{% if d.score_delta > 0 %}+{% endif %}{{ d.score_delta }} pts</span>
           {% endif %}
-          <span class="sim-ring" style="color:var(--muted)">
-            similarity: <b style="color:{% if d.similarity >= 80 %}var(--green){% elif d.similarity >= 50 %}var(--yellow){% else %}var(--red){% endif %}">{{ d.similarity }}%</b>
-          </span>
+          <span class="sim">similarity <b style="color:{% if d.similarity >= 80 %}var(--green){% elif d.similarity >= 50 %}var(--yellow){% else %}var(--red){% endif %}">{{ d.similarity }}%</b></span>
         </div>
-        <div class="diff-body">
+        <div class="diff-cols">
           <div class="diff-col">
-            <div class="diff-col-title">Golden</div>
-            <div class="tool-list">
-              {% for t in d.golden_tools %}
-                <span class="tool-tag {% if t not in d.actual_tools %}removed{% endif %}">{{ t }}</span>
-              {% endfor %}
-            </div>
-            <div class="output-box">{{ d.golden_out }}</div>
+            <div class="col-title">Golden</div>
+            <div class="tags">{% for t in d.golden_tools %}<span class="tag {% if t not in d.actual_tools %}rem{% endif %}">{{ t }}</span>{% endfor %}</div>
+            <div class="outbox">{{ d.golden_out }}</div>
           </div>
           <div class="diff-col">
-            <div class="diff-col-title">Actual</div>
-            <div class="tool-list">
-              {% for t in d.actual_tools %}
-                <span class="tool-tag {% if t not in d.golden_tools %}added{% endif %}">{{ t }}</span>
-              {% endfor %}
-            </div>
-            <div class="output-box">{{ d.actual_out }}</div>
+            <div class="col-title">Actual</div>
+            <div class="tags">{% for t in d.actual_tools %}<span class="tag {% if t not in d.golden_tools %}add{% endif %}">{{ t }}</span>{% endfor %}</div>
+            <div class="outbox">{{ d.actual_out }}</div>
             {% if d.diff_lines %}
-            <div class="diff-lines">
-              {% for line in d.diff_lines %}
-                {% if line.startswith('+') %}<div class="add">{{ line }}</div>
-                {% elif line.startswith('-') %}<div class="rem">{{ line }}</div>
-                {% else %}<div>{{ line }}</div>{% endif %}
-              {% endfor %}
-            </div>
+            <div class="difflines">{% for line in d.diff_lines %}{% if line.startswith('+') %}<div class="a">{{ line }}</div>{% elif line.startswith('-') %}<div class="r">{{ line }}</div>{% else %}<div>{{ line }}</div>{% endif %}{% endfor %}</div>
             {% endif %}
           </div>
         </div>
       </div>
       {% endfor %}
     {% else %}
-      <div class="empty"><div class="icon">✨</div>No diffs — run <code>evalview check</code> to compare against a baseline</div>
+      <div class="empty"><span class="empty-icon">✨</span>No diffs yet — run <code style="background:rgba(255,255,255,.08);padding:2px 6px;border-radius:4px">evalview check</code> to compare against a baseline</div>
     {% endif %}
   </div>
 
-  <!-- ─── TIMELINE ─── -->
-  <div id="tab-timeline" class="tab-panel">
+  <!-- TIMELINE -->
+  <div id="p-timeline" class="panel">
     {% if timeline %}
-      {% set max_lat = namespace(v=1) %}
-      {% for row in timeline %}{% if row.latency > max_lat.v %}{% set max_lat.v = row.latency %}{% endif %}{% endfor %}
-      <div class="chart-card" style="margin-bottom:20px">
-        <h3>Step Latencies (ms)</h3>
-        <div class="timeline-bars">
-          {% for row in timeline %}
-          <div class="timeline-row">
-            <div class="timeline-label" title="{{ row.test }} › {{ row.tool }}">{{ row.test }} › {{ row.tool }}</div>
-            <div class="timeline-bar-wrap">
-              <div class="timeline-bar {% if row.success %}ok{% else %}err{% endif %}"
-                   style="width:{{ [(row.latency / max_lat.v * 100)|round|int, 2]|max }}%">
-              </div>
-            </div>
-            <div class="timeline-ms">{{ row.latency }}ms</div>
-          </div>
-          {% endfor %}
+      {% set mx = namespace(v=1) %}
+      {% for row in timeline %}{% if row.latency > mx.v %}{% set mx.v = row.latency %}{% endif %}{% endfor %}
+      <div class="card">
+        <div class="card-title">Step Latencies</div>
+        {% for row in timeline %}
+        <div class="tl-row">
+          <div class="tl-label" title="{{ row.test }} › {{ row.tool }}">{{ row.test }} › {{ row.tool }}</div>
+          <div class="tl-track"><div class="tl-fill {% if row.success %}ok{% else %}err{% endif %}" style="width:{{ [(row.latency / mx.v * 100)|round|int, 2]|max }}%"></div></div>
+          <div class="tl-ms">{{ row.latency }}ms</div>
         </div>
+        {% endfor %}
       </div>
     {% else %}
-      <div class="empty"><div class="icon">⏱</div>No step timing data available</div>
+      <div class="empty"><span class="empty-icon">⏱</span>No step timing data</div>
     {% endif %}
   </div>
 
-</div><!-- /container -->
+</main>
 
 <script>
-mermaid.initialize({startOnLoad:true,theme:'dark',securityLevel:'loose'});
+mermaid.initialize({startOnLoad:true,theme:'dark',securityLevel:'loose',
+  sequence:{actorFontFamily:'Inter,sans-serif',noteFontFamily:'Inter,sans-serif',messageFontFamily:'Inter,sans-serif'}});
 
-function showTab(name){
-  document.querySelectorAll('.tab,.tab-panel').forEach(el=>el.classList.remove('active'));
-  document.querySelector('[onclick="showTab(\''+name+'\')"]').classList.add('active');
-  document.getElementById('tab-'+name).classList.add('active');
+function show(id,btn){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.getElementById('p-'+id).classList.add('on');
+  btn.classList.add('on');
 }
-
-function toggleSection(id){
+function tog(id,head){
   const el=document.getElementById(id);
-  el.style.display=el.style.display==='none'?'block':'none';
+  const open=el.style.display!=='none';
+  el.style.display=open?'none':'block';
+  head.querySelector('.chevron').style.transform=open?'':'rotate(180deg)';
 }
 
-// Charts
 {% if kpis %}
 (function(){
-  const passed={{ kpis.passed }}, failed={{ kpis.failed }};
-  const scores={{ kpis.scores|tojson }};
-  const names={{ kpis.test_names|tojson }};
+  const passed={{ kpis.passed }},failed={{ kpis.failed }};
+  const scores={{ kpis.scores|tojson }},names={{ kpis.test_names|tojson }};
+  const tc='rgba(122,143,166,.8)',gc='rgba(255,255,255,.05)';
 
-  new Chart(document.getElementById('donutChart'),{
+  new Chart(document.getElementById('donut'),{
     type:'doughnut',
-    data:{
-      labels:['Passed','Failed'],
-      datasets:[{data:[passed,failed],backgroundColor:['#3fb950','#f85149'],borderWidth:0}]
-    },
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8b949e',font:{size:11}}}}}
+    data:{labels:['Passed','Failed'],datasets:[{
+      data:[passed,failed],
+      backgroundColor:['rgba(34,211,165,.75)','rgba(255,107,138,.75)'],
+      borderColor:['rgba(34,211,165,.2)','rgba(255,107,138,.2)'],
+      borderWidth:1,hoverOffset:8
+    }]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'74%',
+      plugins:{legend:{labels:{color:tc,font:{size:12},padding:20,boxWidth:10,boxHeight:10}},
+      tooltip:{callbacks:{label:ctx=>` ${ctx.label}: ${ctx.raw}`}}}}
   });
 
-  new Chart(document.getElementById('barChart'),{
+  new Chart(document.getElementById('bars'),{
     type:'bar',
-    data:{
-      labels:names,
-      datasets:[{
-        label:'Score',
-        data:scores,
-        backgroundColor:scores.map(s=>s>=80?'#3fb950':s>=60?'#d29922':'#f85149'),
-        borderRadius:4
-      }]
-    },
-    options:{
-      responsive:true,maintainAspectRatio:false,
-      scales:{y:{min:0,max:100,grid:{color:'#21262d'},ticks:{color:'#8b949e'}},x:{grid:{display:false},ticks:{color:'#8b949e',font:{size:10}}}},
-      plugins:{legend:{display:false}}
-    }
+    data:{labels:names,datasets:[{
+      label:'Score',data:scores,
+      backgroundColor:scores.map(s=>s>=80?'rgba(34,211,165,.65)':s>=60?'rgba(251,191,36,.65)':'rgba(255,107,138,.65)'),
+      borderColor:scores.map(s=>s>=80?'rgba(34,211,165,.9)':s>=60?'rgba(251,191,36,.9)':'rgba(255,107,138,.9)'),
+      borderWidth:1,borderRadius:8,borderSkipped:false
+    }]},
+    options:{responsive:true,maintainAspectRatio:false,
+      scales:{
+        y:{min:0,max:100,grid:{color:gc},ticks:{color:tc,callback:v=>v+''},border:{display:false}},
+        x:{grid:{display:false},ticks:{color:tc,font:{size:11}},border:{display:false}}
+      },
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` Score: ${ctx.raw}/100`}}}}
   });
 })();
 {% endif %}
