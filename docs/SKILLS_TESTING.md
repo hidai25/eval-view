@@ -1,7 +1,7 @@
-# Advanced: Skills Testing (Claude Code & OpenAI Codex)
+# Advanced: Skills Testing (Claude Code, OpenAI Codex & OpenClaw)
 
 > **This is an advanced feature.** For standard agent regression testing, see [Getting Started](GETTING_STARTED.md).
-> Use skills testing if you maintain SKILL.md workflows for Claude Code or Codex.
+> Use skills testing if you maintain SKILL.md workflows for Claude Code, Codex, or OpenClaw.
 
 > **Your Claude Code skills might be broken.** Claude silently ignores skills that exceed its [15k char budget](https://blog.fsck.com/2025/12/17/claude-code-skills-not-triggering/). EvalView catches this.
 
@@ -227,6 +227,7 @@ Skills are code. Code needs tests. EvalView brings the rigor of software testing
 | Claude Code | Supported |
 | Claude.ai Skills | Supported |
 | OpenAI Codex CLI | Same SKILL.md format |
+| OpenClaw | Supported (AgentSkills / SKILL.md format) |
 | Custom Skills | Any SKILL.md file |
 
 ---
@@ -250,7 +251,39 @@ evalview skill test TEST_FILE [OPTIONS]
 
 Options:
   --model TEXT       Claude model to use (default: claude-sonnet-4-20250514)
+  --agent TEXT       Agent type: system-prompt, claude-code, codex, openclaw,
+                     langgraph, crewai, openai-assistants, custom
 ```
+
+### Testing with OpenClaw
+
+OpenClaw uses [AgentSkills](https://docs.openclaw.ai/tools/skills) (SKILL.md files with YAML frontmatter) to extend its capabilities. EvalView supports testing OpenClaw skills directly:
+
+```bash
+# Test a skill through the OpenClaw CLI
+evalview skill test tests.yaml --agent openclaw
+
+# YAML configuration for OpenClaw
+```
+
+```yaml
+# tests/my-openclaw-skill.yaml
+name: test-my-skill
+skill: ./skills/my-skill/SKILL.md
+agent:
+  type: openclaw
+  timeout: 120
+  max_turns: 10
+
+tests:
+  - name: basic-test
+    input: "Use the skill to do something"
+    expected:
+      output_contains: ["expected result"]
+      files_created: ["output.txt"]
+```
+
+OpenClaw must be installed and accessible in your PATH (`pip install openclaw`).
 
 ### `evalview skill doctor`
 

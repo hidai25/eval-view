@@ -35,6 +35,7 @@ class TestAgentType:
         expected_types = {
             "claude-code",
             "codex",
+            "openclaw",
             "langgraph",
             "crewai",
             "openai-assistants",

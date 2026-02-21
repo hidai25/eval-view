@@ -5607,8 +5607,8 @@ def _run_agent_skill_test(
 @click.option("--json", "output_json", is_flag=True, help="Output as JSON")
 @click.option(
     "--agent", "-a",
-    type=click.Choice(["system-prompt", "claude-code", "codex", "langgraph",
-                       "crewai", "openai-assistants", "custom"]),
+    type=click.Choice(["system-prompt", "claude-code", "codex", "openclaw",
+                       "langgraph", "crewai", "openai-assistants", "custom"]),
     default=None,
     help="Agent type (overrides YAML). Default: system-prompt (legacy mode)"
 )

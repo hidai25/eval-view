@@ -540,6 +540,279 @@ class TestCodexAdapter:
 
 
 # =============================================================================
+# OpenClaw Adapter Tests
+# =============================================================================
+
+
+class TestOpenClawAdapter:
+    """Tests for OpenClaw CLI adapter."""
+
+    @pytest.fixture
+    def config(self) -> AgentConfig:
+        return AgentConfig(
+            type=AgentType.OPENCLAW,
+            timeout=120.0,
+        )
+
+    @pytest.fixture
+    def skill(self) -> Skill:
+        return Skill(
+            metadata=SkillMetadata(
+                name="test-skill",
+                description="A test skill",
+            ),
+            instructions="Do something.",
+            raw_content="",
+            file_path="/fake/SKILL.md",
+        )
+
+    @pytest.mark.asyncio
+    async def test_execute_calls_openclaw_cli(
+        self, config, skill, mock_subprocess_run
+    ):
+        """Execute should call openclaw CLI."""
+        mock_subprocess_run.return_value = MagicMock(
+            stdout=json.dumps({
+                "messages": [
+                    {"role": "assistant", "content": "Done."}
+                ],
+                "usage": {
+                    "input_tokens": 200,
+                    "output_tokens": 80,
+                },
+            }),
+            stderr="",
+            returncode=0,
+        )
+
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+            trace = await adapter.execute(skill, "Test query")
+
+        assert isinstance(trace, SkillAgentTrace)
+        mock_subprocess_run.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_execute_returns_trace_with_output(
+        self, config, skill, mock_subprocess_run
+    ):
+        """Execute should return trace with parsed final output."""
+        mock_subprocess_run.return_value = MagicMock(
+            stdout=json.dumps({
+                "messages": [
+                    {"role": "assistant", "content": "Task completed successfully."}
+                ],
+                "usage": {
+                    "input_tokens": 150,
+                    "output_tokens": 60,
+                },
+            }),
+            stderr="",
+            returncode=0,
+        )
+
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+            trace = await adapter.execute(skill, "Test query")
+
+        assert trace.skill_name == "test-skill"
+        assert trace.final_output == "Task completed successfully."
+        assert trace.total_input_tokens == 150
+        assert trace.total_output_tokens == 60
+
+    @pytest.mark.asyncio
+    async def test_execute_parses_tool_calls(
+        self, config, skill, mock_subprocess_run
+    ):
+        """Execute should extract tool calls from JSON output."""
+        mock_subprocess_run.return_value = MagicMock(
+            stdout=json.dumps({
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "tool_use", "name": "shell", "input": {"command": "npm install"}},
+                            {"type": "tool_use", "name": "write_file", "input": {"path": "index.js"}},
+                            {"type": "text", "text": "Project created."},
+                        ],
+                    }
+                ],
+                "usage": {"input_tokens": 100, "output_tokens": 50},
+            }),
+            stderr="",
+            returncode=0,
+        )
+
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+            trace = await adapter.execute(skill, "Create a project")
+
+        assert "shell" in trace.tool_calls
+        assert "write_file" in trace.tool_calls
+        assert "npm install" in trace.commands_ran
+        assert "index.js" in trace.files_created
+
+    @pytest.mark.asyncio
+    async def test_execute_handles_jsonl_output(
+        self, config, skill, mock_subprocess_run
+    ):
+        """Execute should parse JSONL (stream) output format."""
+        jsonl_output = (
+            '{"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "run_command", "input": {"command": "ls"}}]}}\n'
+            '{"type": "result", "result": "Files listed.", "usage": {"input_tokens": 50, "output_tokens": 20}}'
+        )
+        mock_subprocess_run.return_value = MagicMock(
+            stdout=jsonl_output,
+            stderr="",
+            returncode=0,
+        )
+
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+            trace = await adapter.execute(skill, "List files")
+
+        assert trace.final_output == "Files listed."
+        assert "run_command" in trace.tool_calls
+        assert "ls" in trace.commands_ran
+
+    @pytest.mark.asyncio
+    async def test_execute_handles_text_fallback(
+        self, config, skill, mock_subprocess_run
+    ):
+        """Execute should fall back to text parsing when no JSON."""
+        mock_subprocess_run.return_value = MagicMock(
+            stdout="Plain text response from OpenClaw.",
+            stderr="",
+            returncode=0,
+        )
+
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+            trace = await adapter.execute(skill, "Test query")
+
+        assert trace.final_output == "Plain text response from OpenClaw."
+        assert trace.tool_calls == []
+
+    @pytest.mark.asyncio
+    async def test_adapter_name_is_openclaw(self, config):
+        """Adapter name should be 'openclaw'."""
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+
+        assert adapter.name == "openclaw"
+
+    def test_adapter_not_found_when_cli_missing(self, config):
+        """Should raise AgentNotFoundError when CLI not installed."""
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value=None):
+            with patch("os.access", return_value=False):
+                adapter = OpenClawAdapter(config)
+                with pytest.raises(AgentNotFoundError) as exc_info:
+                    _ = adapter.openclaw_path
+
+                assert "not found" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_health_check_succeeds(self, config, mock_subprocess_run):
+        """Health check should return True when CLI is available."""
+        mock_subprocess_run.return_value = MagicMock(
+            stdout="openclaw 1.0.0",
+            stderr="",
+            returncode=0,
+        )
+
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+            result = await adapter.health_check()
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_health_check_fails_gracefully(self, config, mock_subprocess_run):
+        """Health check should return False when CLI fails."""
+        mock_subprocess_run.side_effect = FileNotFoundError("openclaw not found")
+
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+            result = await adapter.health_check()
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_execute_records_errors_on_nonzero_exit(
+        self, config, skill, mock_subprocess_run
+    ):
+        """Non-zero exit code should be captured in trace errors."""
+        mock_subprocess_run.return_value = MagicMock(
+            stdout="",
+            stderr="Error: skill not found",
+            returncode=1,
+        )
+
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+            trace = await adapter.execute(skill, "Test query")
+
+        assert trace.has_errors
+        assert any("code 1" in e for e in trace.errors)
+
+    def test_invocation_log_tracking(self, config, skill):
+        """Invocations should be logged for audit."""
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+
+        log = adapter.get_invocation_log()
+        assert log == []  # No invocations yet
+
+    @pytest.mark.asyncio
+    async def test_execute_handles_prompt_tokens_alias(
+        self, config, skill, mock_subprocess_run
+    ):
+        """Should handle prompt_tokens/completion_tokens aliases."""
+        mock_subprocess_run.return_value = MagicMock(
+            stdout=json.dumps({
+                "result": "Done.",
+                "usage": {
+                    "prompt_tokens": 300,
+                    "completion_tokens": 100,
+                },
+            }),
+            stderr="",
+            returncode=0,
+        )
+
+        from evalview.skills.adapters.openclaw_adapter import OpenClawAdapter
+
+        with patch("shutil.which", return_value="/usr/bin/openclaw"):
+            adapter = OpenClawAdapter(config)
+            trace = await adapter.execute(skill, "Test query")
+
+        assert trace.total_input_tokens == 300
+        assert trace.total_output_tokens == 100
+
+
+# =============================================================================
 # LangGraph Adapter Tests
 # =============================================================================
 
