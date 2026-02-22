@@ -1,6 +1,6 @@
-# EvalView Gym
+# EvalView Gym — Learn AI Agent Testing Patterns with Guided Exercises
 
-**Learn to write production-grade agent evals.**
+> **Learn to write production-grade AI agent evaluations.** Practice regression detection, golden baselines, statistical testing, and hallucination detection with a built-in demo agent.
 
 The Gym is a self-contained training environment with a demo agent and curated test scenarios. Use it to practice eval patterns before testing your own agents.
 

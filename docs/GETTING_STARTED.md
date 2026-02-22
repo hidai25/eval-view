@@ -1,6 +1,8 @@
 # Getting Started with EvalView
 
-EvalView is a lightweight, YAML-first testing framework for AI agents. Get started in under 5 minutes.
+> **What is EvalView?** An open-source, pytest-style testing framework for AI agents that detects regressions when you change prompts, swap models, or update tools. Works with LangGraph, CrewAI, OpenAI Assistants, Anthropic Claude, HuggingFace, Ollama, and any HTTP API.
+
+EvalView is lightweight, YAML-first, and gets you testing AI agents in under 5 minutes. No database required, no vendor lock-in, works offline with Ollama.
 
 ## Installation
 
@@ -257,7 +259,25 @@ evalview run --judge-model llama-70b --judge-provider huggingface  # Free!
 - [Adapters & Agent Integration](./ADAPTERS.md)
 - [Framework Support](./FRAMEWORK_SUPPORT.md)
 
+## Regression Detection (Golden Baselines)
+
+Once you have tests running, set up regression detection to catch behavioral drift:
+
+```bash
+# 1. Save current behavior as golden baseline
+evalview snapshot
+
+# 2. Make changes to your agent (prompt, model, tools)
+
+# 3. Detect regressions automatically
+evalview check
+```
+
+EvalView will report: PASSED, TOOLS_CHANGED, OUTPUT_CHANGED, or REGRESSION. See [Golden Traces](./GOLDEN_TRACES.md) for details.
+
 ## Need Help?
 
 - [GitHub Issues](https://github.com/hidai25/eval-view/issues)
 - [Discussions](https://github.com/hidai25/eval-view/discussions)
+- [FAQ](./FAQ.md)
+- [Troubleshooting](./TROUBLESHOOTING.md)

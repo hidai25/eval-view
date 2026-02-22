@@ -1,4 +1,8 @@
-# Statistical Mode (Variance Testing)
+# Statistical Mode — Handling Flaky LLM Tests with pass@k
+
+> **Problem:** LLM agents are non-deterministic. A test that passes once might fail the next run. Traditional pass/fail doesn't work when your AI agent gives different answers each time.
+>
+> **Solution:** EvalView's statistical mode runs each test N times and uses statistical metrics (pass@k, pass^k, flakiness score, confidence intervals) to give you reliable pass/fail decisions for non-deterministic AI agents.
 
 LLMs are non-deterministic. A test that passes once might fail the next run. Statistical mode addresses this by running tests multiple times and using statistical thresholds for pass/fail decisions.
 

@@ -1,6 +1,6 @@
-# AutoGen Example
+# AutoGen Example — Testing Microsoft AutoGen Multi-Agent Conversations with EvalView
 
-Test a Microsoft AutoGen multi-agent conversation with EvalView.
+> Test Microsoft AutoGen multi-agent conversations with EvalView — verify agent coordination, tool usage, and output quality across multi-turn interactions.
 
 ## Setup
 

@@ -1,4 +1,8 @@
-# MCP Contract Testing
+# MCP Contract Testing — Detect External MCP Server Interface Changes
+
+> **Problem:** Your AI agent depends on external MCP servers you don't control. When those servers change their tool definitions (rename parameters, remove tools, add required fields), your agent breaks silently.
+>
+> **Solution:** EvalView's MCP contract testing captures a snapshot of a server's tool definitions and diffs against it on every CI run. If the interface changed, you know immediately — before running your full test suite.
 
 Detect when external MCP servers change their interface before your agent breaks.
 

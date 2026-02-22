@@ -1,6 +1,6 @@
-# Database Setup for EvalView
+# Database Setup for EvalView — Test User Configuration for AI Agent Testing
 
-EvalView can test any agent that uses a database for user management. This guide shows you how to set up test users for different database systems.
+> EvalView does NOT require a database. This guide is only for teams whose AI agents require a valid user ID in their database. It shows how to set up test users for PostgreSQL, MongoDB, MySQL, Firebase, and Supabase.
 
 ## Overview
 

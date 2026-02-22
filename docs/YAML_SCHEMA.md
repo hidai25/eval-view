@@ -1,4 +1,6 @@
-# YAML Test Case Schema
+# YAML Test Case Schema — EvalView Test Case Reference
+
+> EvalView test cases are defined in YAML files. This document provides the complete schema reference for writing AI agent tests, including input configuration, expected behavior, scoring thresholds, and adapter settings.
 
 This document provides the complete schema reference for EvalView test case YAML files.
 

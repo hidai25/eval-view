@@ -1,6 +1,6 @@
-# HuggingFace Examples
+# HuggingFace Examples — Testing HuggingFace Spaces Agents with EvalView
 
-Test HuggingFace Spaces agents with EvalView - **100% open source, zero OpenAI costs**.
+> Test HuggingFace Spaces agents (Gradio-based) with EvalView — 100% open source, zero OpenAI costs. Use Llama as a free LLM-as-judge.
 
 ## Quick Start
 

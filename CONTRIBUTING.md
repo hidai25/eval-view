@@ -1,6 +1,6 @@
-# Contributing to EvalView
+# Contributing to EvalView — The Open-Source AI Agent Testing Framework
 
-Thanks for your interest in contributing! This guide will help you get started.
+> EvalView is an open-source, pytest-style testing and regression detection framework for AI agents. Contributions are welcome! This guide covers development setup, architecture, coding standards, and how to submit changes.
 
 ## Development Setup
 

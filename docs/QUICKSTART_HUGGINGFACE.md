@@ -1,6 +1,6 @@
-# Quick Start: HuggingFace + EvalView
+# Quick Start: Testing with HuggingFace + EvalView (Free, Open Source)
 
-Use EvalView with HuggingFace - **zero OpenAI dependency, 100% open source**.
+> Use EvalView with HuggingFace for free, fully open-source AI agent testing — zero OpenAI dependency. Test any agent and use Llama as a free LLM-as-judge.
 
 ## Key Concept: Agent vs Judge
 

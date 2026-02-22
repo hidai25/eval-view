@@ -1,6 +1,6 @@
-# OpenAI Assistants Example
+# OpenAI Assistants Example — Testing OpenAI Assistants API Agents with EvalView
 
-Test an OpenAI Assistants API agent with EvalView.
+> Test OpenAI Assistants API agents with EvalView — verify function calling, code interpreter usage, file search, output quality, and detect regressions.
 
 ## Setup
 

@@ -1,6 +1,6 @@
-# Troubleshooting Guide
+# Troubleshooting Guide — Common EvalView Issues and Solutions
 
-This guide covers common issues when using EvalView and how to resolve them.
+> This guide covers common issues when using EvalView for AI agent testing, including type errors, connection problems, framework-specific issues, and evaluation debugging.
 
 ## Quick Diagnostics
 

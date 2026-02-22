@@ -1,4 +1,8 @@
-# Test Generation
+# Test Generation — Auto-Generate AI Agent Test Variations
+
+> **Problem:** Writing AI agent tests manually is slow. You need dozens or hundreds of test cases to catch edge-case regressions, but hand-crafting each one doesn't scale.
+>
+> **Solution:** EvalView's test generation creates 100+ test variations from a single seed test. It generates paraphrases, edge cases, error scenarios, and adversarial inputs automatically.
 
 **Problem:** Writing tests manually is slow. You need volume to catch regressions.
 

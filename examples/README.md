@@ -1,4 +1,6 @@
-# EvalView Examples
+# EvalView Examples — Working Test Configurations for AI Agent Frameworks
+
+> Ready-to-use EvalView test configurations for LangGraph, CrewAI, AutoGen, Dify, OpenAI Assistants, Anthropic Claude, HuggingFace, Ollama, and more. Each example includes test cases, adapter configuration, and step-by-step instructions.
 
 Working examples for the most popular AI agent frameworks.
 

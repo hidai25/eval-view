@@ -1,4 +1,6 @@
-# Framework Support Guide
+# Framework Support — Testing LangGraph, CrewAI, OpenAI, Claude, and More
+
+> EvalView provides dedicated testing adapters for the most popular AI agent frameworks. Each adapter handles framework-specific API formats, tool call extraction, and response parsing automatically.
 
 EvalView supports multiple AI agent frameworks out of the box. Each framework has a dedicated adapter that handles its specific API format.
 

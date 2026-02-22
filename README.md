@@ -1,10 +1,17 @@
-# EvalView — Proof that your agent still works.
+<!--
+  EvalView - Open-source AI agent testing and regression detection framework
+  Keywords: AI agent testing, LLM testing, agent evaluation, regression testing for AI,
+  golden baseline testing, LangGraph testing, CrewAI testing, OpenAI agent testing,
+  AI CI/CD, pytest for AI agents, SKILL.md validation, MCP contract testing,
+  non-deterministic testing, LLM evaluation, agent regression detection
+-->
 
-> You changed a prompt. Swapped a model. Updated a tool.
-> Did anything break? **Run EvalView. Know for sure.**
+# EvalView — The open-source testing framework for AI agents
+
+> **Regression testing for AI agents.** Save a golden baseline of your agent's behavior. Detect when it breaks. Block regressions in CI. Works with LangGraph, CrewAI, OpenAI, Claude, and any HTTP API.
 
 <p align="center">
-  <img src="assets/demo.gif" alt="EvalView Demo" width="700">
+  <img src="assets/demo.gif" alt="EvalView Demo - AI Agent Testing Framework" width="700">
 </p>
 
 <p align="center">
@@ -23,12 +30,27 @@ pip install evalview && evalview demo   # Uses your configured API key
 </p>
 
 <p align="center">
-  🌟 <strong>Like it?</strong> Give us a ⭐ — it helps more devs discover EvalView.
+  Like it? Give us a star — it helps more devs discover EvalView.
 </p>
 
 ---
 
-## 🔍 What EvalView Catches
+## What is EvalView?
+
+**EvalView is a pytest-style testing framework for AI agents** that detects when your agent's behavior changes after you modify prompts, swap models, or update tools. It's the missing CI/CD layer for AI agent development.
+
+Unlike observability platforms (LangSmith) that show you *what happened*, or eval platforms (Braintrust) that score *how good* your agent is, EvalView answers: **"Did my agent break?"**
+
+**Key capabilities:**
+- **Automatic regression detection** — Golden baseline diffing catches behavioral drift
+- **Works without API keys** — Deterministic tool-call and sequence scoring, no LLM-as-judge needed
+- **Framework-native adapters** — LangGraph, CrewAI, OpenAI Assistants, Anthropic Claude, HuggingFace, Ollama, MCP
+- **CI/CD-ready** — GitHub Action, exit codes, PR comments, JSON output
+- **Free and open source** — Apache 2.0, no vendor lock-in, works fully offline with Ollama
+
+---
+
+## What EvalView Catches
 
 | Status | What it means | What you do |
 |--------|--------------|-------------|
@@ -39,7 +61,7 @@ pip install evalview && evalview demo   # Uses your configured API key
 
 ---
 
-## 🤔 How It Works
+## How It Works
 
 **Simple workflow (recommended):**
 
@@ -65,7 +87,7 @@ evalview run --diff               # Compare with custom options
 
 That's it. **Deterministic proof, no LLM-as-judge required, no API keys needed.**
 
-### 🎯 New: Habit-Forming Regression Detection
+### Habit-Forming Regression Detection
 
 EvalView now tracks your progress and celebrates wins:
 
@@ -77,12 +99,12 @@ evalview check
 ```
 
 **Features:**
-- 🔥 **Streak tracking** — Celebrate consecutive clean checks (3, 5, 10, 25+ milestones)
-- 📊 **Health score** — See your project's stability at a glance
-- 🔔 **Smart recaps** — "Since last time" summaries to stay in context
-- 📈 **Progress visualization** — Track improvement over time
+- **Streak tracking** — Celebrate consecutive clean checks (3, 5, 10, 25+ milestones)
+- **Health score** — See your project's stability at a glance
+- **Smart recaps** — "Since last time" summaries to stay in context
+- **Progress visualization** — Track improvement over time
 
-### 🎨 Multi-Reference Goldens (for non-deterministic agents)
+### Multi-Reference Goldens (for non-deterministic agents)
 
 Some agents produce valid variations. Save up to 5 golden variants per test:
 
@@ -100,7 +122,7 @@ Perfect for LLM-based agents with creative variation.
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 1. **Install EvalView**
 
@@ -137,7 +159,7 @@ Perfect for LLM-based agents with creative variation.
 
 ---
 
-## 🆕 New in v0.3: Visual Reports + Claude Code MCP
+## New in v0.3: Visual Reports + Claude Code MCP
 
 **Beautiful HTML reports** — one command, auto-opens in browser:
 
@@ -158,34 +180,42 @@ cp CLAUDE.md.example CLAUDE.md
 
 8 MCP tools: `create_test`, `run_snapshot`, `run_check`, `list_tests`, `validate_skill`, `generate_skill_tests`, `run_skill_test`, `generate_visual_report`
 
-👉 Jump to [Claude Code Integration (MCP)](#-claude-code-integration-mcp)
+See [Claude Code Integration (MCP)](#claude-code-integration-mcp) below.
 
 ---
 
-## 💡 Why EvalView?
+## Why EvalView? (Comparison with Alternatives)
 
-- 🔄 **Automatic regression detection** — Know instantly when your agent breaks
-- 📸 **Golden baseline diffing** — Save known-good behavior, compare every change
-- 🔑 **Works without API keys** — Deterministic scoring, no LLM-as-judge needed
-- 💸 **Free & open source** — No vendor lock-in, no SaaS pricing
-- 🏠 **Works offline** — Use Ollama for fully local evaluation
+EvalView fills a gap that observability and evaluation platforms don't cover:
 
-|  | Observability (LangSmith) | Benchmarks (Braintrust) | **EvalView** |
-|---|:---:|:---:|:---:|
-| **Answers** | "What did my agent do?" | "How good is my agent?" | **"Did my agent change?"** |
-| Detects regressions | ❌ | ⚠️ Manual | ✅ Automatic |
-| Golden baseline diffing | ❌ | ❌ | ✅ |
-| Works without API keys | ❌ | ❌ | ✅ |
-| Free & open source | ❌ | ❌ | ✅ |
-| Works offline (Ollama) | ❌ | ⚠️ Some | ✅ |
+|  | LangSmith | Braintrust | Promptfoo | **EvalView** |
+|---|:---:|:---:|:---:|:---:|
+| **Core question** | "What did my agent do?" | "How good is my agent?" | "Which prompt is better?" | **"Did my agent break?"** |
+| **Primary purpose** | Observability/tracing | Evaluation platform | Prompt testing | Agent regression testing |
+| Automatic regression detection | No | Manual | No | **Yes** |
+| Golden baseline diffing | No | No | No | **Yes** |
+| Works without API keys | No | No | Partial | **Yes** |
+| Free & open source | No | No | Yes | **Yes** |
+| Works fully offline (Ollama) | No | Partial | Partial | **Yes** |
+| Agent framework adapters | LangChain only | Generic | Generic | **LangGraph, CrewAI, OpenAI, Claude, HF, Ollama, MCP** |
+| Skills testing (SKILL.md) | No | No | No | **Yes** |
+| Statistical mode (pass@k) | No | No | No | **Yes** |
+| MCP contract testing | No | No | No | **Yes** |
 
 **Use observability tools to see what happened. Use EvalView to prove it didn't break.**
 
+### Key differentiators:
+- **Automatic regression detection** — Know instantly when your agent breaks
+- **Golden baseline diffing** — Save known-good behavior, compare every change
+- **Works without API keys** — Deterministic scoring, no LLM-as-judge needed
+- **Free & open source** — No vendor lock-in, no SaaS pricing
+- **Works offline** — Use Ollama for fully local evaluation
+
 ---
 
-## 🧭 Explore & Learn
+## Explore & Learn
 
-### 💬 Interactive Chat
+### Interactive Chat
 
 Talk to your tests. Debug failures. Compare runs.
 
@@ -208,7 +238,7 @@ Slash commands: `/run`, `/test`, `/compare`, `/traces`, `/skill`, `/adapters`
 
 [Chat mode docs →](docs/CHAT_MODE.md)
 
-### 🏋️ EvalView Gym
+### EvalView Gym
 
 Practice agent eval patterns with guided exercises.
 
@@ -218,7 +248,7 @@ evalview gym
 
 ---
 
-## ⚡ Supported Agents & Frameworks
+## Supported Agents & Frameworks
 
 | Agent | E2E Testing | Trace Capture |
 |-------|:-----------:|:-------------:|
@@ -236,7 +266,7 @@ Also works with: AutoGen • Dify • Ollama • HuggingFace • Any HTTP API
 
 ---
 
-## 🔧 Automate It
+## CI/CD Integration
 
 ### GitHub Actions
 
@@ -284,7 +314,7 @@ PRs with regressions get blocked. Add a PR comment showing exactly what changed:
 
 ---
 
-## 🤖 Claude Code Integration (MCP)
+## Claude Code Integration (MCP)
 
 **Test your agent without leaving the conversation.** EvalView runs as an MCP server inside Claude Code — ask "did my refactor break anything?" and get the answer inline.
 
@@ -359,28 +389,30 @@ evalview mcp serve --test-path my_tests/  # Custom test directory
 
 ---
 
-## 📦 Features
+## Features
 
 | Feature | Description | Docs |
 |---------|-------------|------|
-| 📸 **Snapshot/Check Workflow** | Simple `snapshot` → `check` commands for regression detection | [→](docs/GOLDEN_TRACES.md) |
-| 🎨 **Visual Reports** | `evalview inspect` — glassmorphism HTML with traces, diffs, cost-per-query | [↑](#-new-in-v03-visual-reports--claude-code-mcp) |
-| 🤖 **Claude Code MCP** | 8 tools — run checks, generate tests, test skills, visual reports inline | [↑](#-claude-code-integration-mcp) |
-| 🔥 **Streak Tracking** | Habit-forming celebrations for consecutive clean checks | [→](docs/GOLDEN_TRACES.md) |
-| 🎨 **Multi-Reference Goldens** | Save up to 5 variants per test for non-deterministic agents | [→](docs/GOLDEN_TRACES.md) |
-| 💬 **Chat Mode** | AI assistant: `/run`, `/test`, `/compare` | [→](docs/CHAT_MODE.md) |
-| 🏷️ **Tool Categories** | Match by intent, not exact tool names | [→](docs/TOOL_CATEGORIES.md) |
-| 📊 **Statistical Mode** | Handle flaky LLMs with `--runs N` and pass@k | [→](docs/STATISTICAL_MODE.md) |
-| 💰 **Cost & Latency** | Automatic threshold enforcement | [→](docs/EVALUATION_METRICS.md) |
-| 📈 **HTML Reports** | Interactive Plotly charts | [→](docs/CLI_REFERENCE.md) |
-| 🧪 **Test Generation** | Generate 1000 tests from 1 | [→](docs/TEST_GENERATION.md) |
-| 🏗️ **Suite Types** | Separate capability vs regression tests | [→](docs/SUITE_TYPES.md) |
-| 🎯 **Difficulty Levels** | Filter by `--difficulty hard`, benchmark by tier | [→](docs/STATISTICAL_MODE.md) |
-| 🔬 **Behavior Coverage** | Track tasks, tools, paths tested | [→](docs/BEHAVIOR_COVERAGE.md) |
+| **Snapshot/Check Workflow** | Simple `snapshot` then `check` commands for regression detection | [Docs](docs/GOLDEN_TRACES.md) |
+| **Visual Reports** | `evalview inspect` — interactive HTML with traces, diffs, cost-per-query | [Docs](#new-in-v03-visual-reports--claude-code-mcp) |
+| **Claude Code MCP** | 8 tools — run checks, generate tests, test skills, visual reports inline | [Docs](#claude-code-integration-mcp) |
+| **Streak Tracking** | Habit-forming celebrations for consecutive clean checks | [Docs](docs/GOLDEN_TRACES.md) |
+| **Multi-Reference Goldens** | Save up to 5 variants per test for non-deterministic agents | [Docs](docs/GOLDEN_TRACES.md) |
+| **Chat Mode** | AI assistant: `/run`, `/test`, `/compare` | [Docs](docs/CHAT_MODE.md) |
+| **Tool Categories** | Match by intent, not exact tool names | [Docs](docs/TOOL_CATEGORIES.md) |
+| **Statistical Mode (pass@k)** | Handle flaky LLMs with `--runs N` and pass@k/pass^k metrics | [Docs](docs/STATISTICAL_MODE.md) |
+| **Cost & Latency Thresholds** | Automatic threshold enforcement per test | [Docs](docs/EVALUATION_METRICS.md) |
+| **Interactive HTML Reports** | Plotly charts, Mermaid sequence diagrams, glassmorphism theme | [Docs](docs/CLI_REFERENCE.md) |
+| **Test Generation** | Generate 100+ test variations from 1 seed test | [Docs](docs/TEST_GENERATION.md) |
+| **Suite Types** | Separate capability vs regression tests | [Docs](docs/SUITE_TYPES.md) |
+| **Difficulty Levels** | Filter by `--difficulty hard`, benchmark by tier | [Docs](docs/STATISTICAL_MODE.md) |
+| **Behavior Coverage** | Track tasks, tools, paths tested | [Docs](docs/BEHAVIOR_COVERAGE.md) |
+| **MCP Contract Testing** | Detect when external MCP servers change their interface | [Docs](docs/MCP_CONTRACTS.md) |
+| **Skills Testing** | Validate and test Claude Code / Codex SKILL.md workflows | [Docs](docs/SKILLS_TESTING.md) |
 
 ---
 
-## 🔬 Advanced: Skills Testing
+## Advanced: Skills Testing (Claude Code, Codex, OpenClaw)
 
 Test that your agent's code actually works — not just that the output looks right.
 Best for teams maintaining SKILL.md workflows for Claude Code, Codex, or OpenClaw.
@@ -423,7 +455,7 @@ evalview skill test tests.yaml --agent langgraph
 
 ---
 
-## 📚 Documentation
+## Documentation
 
 | | |
 |---|---|
@@ -438,7 +470,7 @@ evalview skill test tests.yaml --agent langgraph
 
 ---
 
-## 📂 Examples
+## Examples
 
 | Framework | Link |
 |-----------|------|
@@ -453,7 +485,7 @@ evalview skill test tests.yaml --agent langgraph
 
 ---
 
-## 🗺️ Roadmap
+## Roadmap
 
 **Shipped:** Golden traces • **Snapshot/check workflow** • **Streak tracking & celebrations** • **Multi-reference goldens** • Tool categories • Statistical mode • Difficulty levels • Partial sequence credit • Skills validation • E2E agent testing • Build & smoke tests • Health checks • Safety guards (`no_sudo`, `git_clean`) • Claude Code & Codex adapters • **Opus 4.6 cost tracking** • MCP servers • HTML reports • Interactive chat mode • EvalView Gym
 
@@ -463,7 +495,7 @@ evalview skill test tests.yaml --agent langgraph
 
 ---
 
-## 🤝 Get Help & Contributing
+## Get Help & Contributing
 
 - **Questions?** [GitHub Discussions](https://github.com/hidai25/eval-view/discussions)
 - **Bugs?** [GitHub Issues](https://github.com/hidai25/eval-view/issues)
@@ -474,17 +506,16 @@ evalview skill test tests.yaml --agent langgraph
 
 ---
 
-### ⭐ Thank You for the Support!
+### Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=hidai25/eval-view&type=Date)](https://star-history.com/#hidai25/eval-view&Date)
-
-🌟 **Don't miss out on future updates! Star the repo and be the first to know about new features.**
 
 ---
 
 <p align="center">
-  <b>Proof that your agent still works.</b><br>
-  <a href="#-quick-start">Get started →</a>
+  <b>EvalView — The open-source testing framework for AI agents.</b><br>
+  Regression testing, golden baselines, CI/CD integration. Works with LangGraph, CrewAI, OpenAI, Claude, and any HTTP API.<br><br>
+  <a href="#quick-start">Get started</a> | <a href="docs/GETTING_STARTED.md">Full guide</a> | <a href="docs/FAQ.md">FAQ</a>
 </p>
 
 ---

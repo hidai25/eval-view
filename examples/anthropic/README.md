@@ -1,6 +1,6 @@
-# Anthropic Examples
+# Anthropic Examples — Testing Claude Models and Agents with EvalView
 
-Test Anthropic Claude models and agents with EvalView.
+> Test Anthropic Claude models and Claude-based agents with EvalView — supports direct API calls, Claude Agent SDK, and tool-equipped Claude agents.
 
 ## Two Ways to Test
 

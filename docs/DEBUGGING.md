@@ -1,6 +1,6 @@
-# Debugging EvalView
+# Debugging EvalView — How to Debug Failing AI Agent Tests
 
-This guide helps you troubleshoot issues when running EvalView tests.
+> This guide helps you troubleshoot issues when running EvalView tests, including "No response" errors, database issues, timeouts, and tool name mismatches.
 
 ## Common Issues
 

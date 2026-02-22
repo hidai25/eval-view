@@ -1,6 +1,6 @@
-# Dify Example
+# Dify Example — Testing Dify AI Workflows with EvalView
 
-Test a Dify AI agent workflow with EvalView.
+> Test Dify AI agent workflows with EvalView — verify tool execution, output quality, and detect regressions in visual workflow configurations.
 
 ## Setup
 

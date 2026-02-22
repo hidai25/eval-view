@@ -1,4 +1,8 @@
-# Suite Types: Capability vs Regression
+# Suite Types — Capability vs Regression Tests for AI Agents
+
+> **Problem:** Not all AI agent test failures are equal. A failure on a new experimental feature is expected. A failure on a core user flow is a critical regression. Without distinguishing them, you either ignore all failures or get overwhelmed by false alarms.
+>
+> **Solution:** EvalView's suite types let you tag tests as `capability` (expected failures, tracking progress) or `regression` (critical failures, block deploys). CI can be configured to fail only on regression failures.
 
 Not all test failures are equal. Tag your tests to distinguish **expected** failures from **critical** regressions.
 

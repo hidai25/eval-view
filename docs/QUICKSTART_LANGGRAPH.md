@@ -1,6 +1,6 @@
-# Quick Start: Testing LangGraph with EvalView
+# Quick Start: Testing LangGraph Agents with EvalView
 
-This guide gets you testing your LangGraph agent in **5 minutes**.
+> This guide gets you testing your LangGraph agent with EvalView in 5 minutes. EvalView provides a dedicated LangGraph adapter with auto-detection, streaming support, and native thread tracking.
 
 ## Step 1: Start Your LangGraph Agent
 

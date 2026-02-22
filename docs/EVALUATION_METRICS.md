@@ -1,4 +1,8 @@
-# Evaluation Metrics
+# Evaluation Metrics — How EvalView Scores AI Agents
+
+> **Problem:** How do you score an AI agent's quality? Output quality alone isn't enough — you need to verify it called the right tools, in the right order, under budget, and within latency limits.
+>
+> **Solution:** EvalView uses 5-dimensional scoring: tool accuracy, output quality, sequence correctness, cost, and latency. Each is independently configurable with weights and thresholds.
 
 EvalView evaluates agents across multiple dimensions to give you a complete picture of agent quality.
 

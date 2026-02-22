@@ -1,6 +1,6 @@
-# EvalView Tutorials
+# EvalView Tutorials — Step-by-Step Guides for AI Agent Testing
 
-Hands-on guides for mastering EvalView's advanced features.
+> Hands-on guides for mastering EvalView's advanced features, including multi-reference goldens, CI/CD regression detection, diff status interpretation, parameter-level debugging, and migration from older workflows.
 
 ---
 

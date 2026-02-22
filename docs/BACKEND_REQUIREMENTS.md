@@ -1,6 +1,6 @@
-# Backend Requirements for EvalView Testing
+# Backend Requirements — How to Make Your AI Agent Compatible with EvalView
 
-This document outlines requirements for AI agent backends to work properly with EvalView testing framework.
+> This document outlines what your AI agent backend needs to expose for EvalView testing. EvalView supports three tiers: basic (just text response), metadata (response + cost/tokens), and full streaming (JSONL event stream with tool calls).
 
 ## Quick Start (5 Minutes)
 

@@ -1,6 +1,6 @@
-# Skill Testing Starter
+# Skill Testing Starter — CI Testing for Claude Code and OpenAI Codex SKILL.md Files
 
-Copy this folder to add CI testing to your Claude Code skills.
+> Copy this folder to add CI testing to your Claude Code or OpenAI Codex skills. EvalView validates SKILL.md structure and tests skill behavior automatically.
 
 ## Quick Start
 

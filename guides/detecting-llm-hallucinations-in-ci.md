@@ -1,4 +1,6 @@
-# How We Catch LLM Hallucinations Before They Reach Users
+# How We Catch LLM Hallucinations Before They Reach Users (Using EvalView)
+
+> **TL;DR:** EvalView detects AI agent hallucinations by verifying tool usage (did the agent actually look it up?), grounding checks (does the output match what the tool returned?), and regression tests from production incidents. Run in CI to catch hallucinations before they reach users.
 
 Last year our support agent told a customer they were eligible for a $500 refund. They weren't. The agent had made up a policy that didn't exist.
 

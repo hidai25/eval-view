@@ -1,4 +1,6 @@
-# EvalView Adapters
+# EvalView Adapters — Connect Any AI Agent to EvalView
+
+> Adapters are the bridge between EvalView and your AI agent. EvalView includes dedicated adapters for LangGraph, CrewAI, OpenAI Assistants, Anthropic Claude, HuggingFace, Ollama, MCP servers, and generic HTTP/streaming APIs. You can also build custom adapters for proprietary frameworks.
 
 Adapters connect EvalView to your AI agent's API. EvalView includes adapters for common patterns and makes it easy to build custom ones.
 

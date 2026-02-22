@@ -1,6 +1,6 @@
-# Testing LangGraph Example with EvalView
+# Testing LangGraph Example with EvalView — Step-by-Step Setup Guide
 
-Step-by-step guide to test the [LangGraph example](https://github.com/langchain-ai/langgraph-example) with EvalView.
+> Step-by-step guide to test the [LangGraph example](https://github.com/langchain-ai/langgraph-example) with EvalView. Covers setup, test case creation, adapter configuration, and debugging.
 
 ---
 
