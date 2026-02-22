@@ -62,10 +62,10 @@ class SkillRunner:
                     from openai import OpenAI
                 except ImportError:
                     raise ImportError("openai package required. Install with: pip install openai")
-                kwargs = {"api_key": self.api_key}
                 if self.base_url:
-                    kwargs["base_url"] = self.base_url
-                self._client = OpenAI(**kwargs)
+                    self._client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+                else:
+                    self._client = OpenAI(api_key=self.api_key)
         return self._client
 
     def _resolve_provider_config(
@@ -131,6 +131,7 @@ class SkillRunner:
         # 2) Otherwise use OpenAI-compatible if any relevant key is present.
         anthropic_key = explicit_api_key or os.environ.get("ANTHROPIC_API_KEY")
         openai_key_source = None
+        openai_key: Optional[str]
         if explicit_api_key:
             openai_key = explicit_api_key
         else:
