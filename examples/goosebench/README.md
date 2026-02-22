@@ -1,6 +1,6 @@
-# GooseBench
+# GooseBench — Regression Testing for Block's Goose AI Agent
 
-**Regression tests for [Goose](https://github.com/block/goose)** - Block's open-source AI agent.
+> **Regression tests for [Goose](https://github.com/block/goose)** — Block's open-source AI agent. Uses EvalView to detect when Goose hallucinates instead of using tools.
 
 GooseBench tests whether Goose actually uses tools before answering, or just guesses (hallucinates).
 

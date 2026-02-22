@@ -1,6 +1,6 @@
-# LangGraph Example
+# LangGraph Example — Testing LangGraph Agents with EvalView
 
-Test LangGraph agents with EvalView - capture tool calls, measure latency, cost, and output quality.
+> Test LangGraph agents with EvalView — capture tool calls, verify execution sequences, measure latency and cost, detect regressions with golden baselines, and run in CI.
 
 ## Example Output
 

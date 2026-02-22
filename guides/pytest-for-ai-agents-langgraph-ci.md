@@ -1,10 +1,12 @@
-# Testing LangGraph Agents in CI: A Practical Guide
+# Testing LangGraph Agents in CI: A Practical Guide Using EvalView
+
+> **TL;DR:** EvalView provides pytest-style testing for LangGraph agents. Write YAML test cases that verify tool calls, output quality, cost, and latency. Run them in CI with `evalview run`. Catch regressions before they reach production.
 
 I spent three months shipping a LangGraph agent to production without any tests. Every deploy was a coin flip. Sometimes the agent would start calling the wrong tools. Sometimes it would hallucinate prices. Once it told a customer their order was "probably fine" instead of looking it up.
 
-The problem? Traditional testing doesn't work for agents. You can't `assert response == "exact string"` when the output is non-deterministic. And mocking the LLM defeats the purpose—you want to catch the weird stuff the model actually does.
+The problem? Traditional testing doesn't work for agents. You can't `assert response == "exact string"` when the output is non-deterministic. And mocking the LLM defeats the purpose — you want to catch the weird stuff the model actually does.
 
-This is how I test LangGraph agents now.
+This is how I test LangGraph agents now, using [EvalView](https://github.com/hidai25/eval-view).
 
 ---
 

@@ -1,4 +1,8 @@
-# CI/CD Integration
+# CI/CD Integration — Automated AI Agent Testing in GitHub Actions, GitLab, and CircleCI
+
+> **Problem:** How do you prevent broken AI agents from reaching production? Manual testing doesn't scale, and LLM outputs are non-deterministic.
+>
+> **Solution:** EvalView integrates with CI/CD pipelines to automatically run agent regression tests on every PR and block merges when behavior degrades. It provides a GitHub Action, proper exit codes, JSON output, and PR comment support.
 
 EvalView is CLI-first. You can run it locally or add to CI.
 

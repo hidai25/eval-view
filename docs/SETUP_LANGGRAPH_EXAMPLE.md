@@ -1,6 +1,6 @@
-# Testing LangGraph Example with EvalView
+# Testing LangGraph Example with EvalView — Step-by-Step Setup Guide
 
-Step-by-step guide to test the [LangGraph example](https://github.com/langchain-ai/langgraph-example) with EvalView.
+> Step-by-step guide to test the [LangGraph example](https://github.com/langchain-ai/langgraph-example) with EvalView. Covers setup, test case creation, adapter configuration, and debugging.
 
 ---
 
@@ -322,3 +322,13 @@ Once you have basic tests working:
 ---
 
 **Need help?** Open an issue or check the [DEBUGGING.md](DEBUGGING.md) guide.
+
+---
+
+## Related Documentation
+
+- [Quick Start: LangGraph](QUICKSTART_LANGGRAPH.md) — Faster LangGraph setup (5 minutes)
+- [LangGraph Cloud](LANGGRAPH_CLOUD.md) — Testing LangGraph Cloud API agents
+- [Adapters](ADAPTERS.md) — LangGraph adapter configuration details
+- [YAML Schema](YAML_SCHEMA.md) — Test case format reference
+- [Debugging](DEBUGGING.md) — Troubleshooting test failures

@@ -1,6 +1,6 @@
-# EvalView Tutorials
+# EvalView Tutorials — Step-by-Step Guides for AI Agent Testing
 
-Hands-on guides for mastering EvalView's advanced features.
+> Hands-on guides for mastering EvalView's advanced features, including multi-reference goldens, CI/CD regression detection, diff status interpretation, parameter-level debugging, and migration from older workflows.
 
 ---
 
@@ -587,6 +587,17 @@ Output:
 - **API Reference**: Coming soon
 - **Community**: GitHub Discussions for questions
 - **Contributing**: See CONTRIBUTING.md
+
+---
+
+## Related Documentation
+
+- [Getting Started](GETTING_STARTED.md) — Install EvalView and run your first test
+- [Golden Traces](GOLDEN_TRACES.md) — How snapshot and check work
+- [Evaluation Metrics](EVALUATION_METRICS.md) — Scoring methodology
+- [CI/CD Integration](CI_CD.md) — Running regression checks in CI
+- [Statistical Mode](STATISTICAL_MODE.md) — pass@k for non-deterministic agents
+- [CLI Reference](CLI_REFERENCE.md) — All commands and flags
 
 ---
 

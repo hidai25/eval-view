@@ -1,8 +1,8 @@
-# Tool Categories (Flexible Matching)
+# Tool Categories — Flexible Tool Matching by Intent for AI Agent Tests
 
-**Problem:** Your test expects `read_file`. Agent uses `bash cat`. Test fails. Both are correct.
-
-**Solution:** Test by *intent*, not exact tool name.
+> **Problem:** Different AI agents use different tool names for the same action. Your test expects `read_file`, but the agent uses `bash cat`. The test fails even though the behavior is correct.
+>
+> **Solution:** EvalView's tool categories let you test by intent instead of exact tool name. Define `file_read` and it matches `read_file`, `bash cat`, `text_editor`, and more.
 
 ---
 

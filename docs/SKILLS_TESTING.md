@@ -1,4 +1,8 @@
-# Advanced: Skills Testing (Claude Code, OpenAI Codex & OpenClaw)
+# Skills Testing — Validate and Test SKILL.md for Claude Code, OpenAI Codex, and OpenClaw
+
+> **Problem:** SKILL.md files for Claude Code and OpenAI Codex can silently fail. Claude ignores skills that exceed its 15k character budget, and there's no built-in way to validate skill structure or test skill behavior before deployment.
+>
+> **Solution:** EvalView provides `evalview skill validate` for deterministic structure validation (no API key needed) and `evalview skill test` for behavior testing. It catches character budget overflows, missing sections, and broken skill logic before they reach users.
 
 > **This is an advanced feature.** For standard agent regression testing, see [Getting Started](GETTING_STARTED.md).
 > Use skills testing if you maintain SKILL.md workflows for Claude Code, Codex, or OpenClaw.

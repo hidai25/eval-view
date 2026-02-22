@@ -1,8 +1,8 @@
-# Golden Traces (Regression Detection)
+# Golden Traces — Automatic Regression Detection for AI Agents
 
-**Problem:** Your agent worked yesterday. Today it doesn't. What changed?
-
-**Solution:** Save "golden" baselines, detect regressions automatically.
+> **Problem:** You changed a prompt, swapped a model, or updated a tool in your AI agent. Did anything break? Without golden baselines, you can't know until users complain. Traditional unit tests don't work because LLM outputs are non-deterministic.
+>
+> **Solution:** EvalView's golden trace system captures a snapshot of known-good agent behavior and automatically detects when future runs deviate. Works without LLM-as-judge or API keys — pure deterministic tool-call and sequence comparison.
 
 ---
 

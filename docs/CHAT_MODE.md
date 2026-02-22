@@ -1,4 +1,8 @@
-# Chat Mode — AI-Powered CLI
+# Chat Mode — Interactive AI-Powered CLI for Agent Testing
+
+> **Problem:** CLI commands are hard to remember, especially when you're iterating quickly on agent tests.
+>
+> **Solution:** EvalView's chat mode lets you interact with your test suite using natural language. Ask "did my refactor break anything?" and get inline answers with regression comparisons.
 
 **Don't remember commands? Just ask.**
 

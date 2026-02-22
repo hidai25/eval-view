@@ -1,6 +1,6 @@
-# CrewAI Example
+# CrewAI Example — Testing CrewAI Multi-Agent Crews with EvalView
 
-Test CrewAI multi-agent crews with EvalView - track agent collaboration, tool usage, costs, and output quality.
+> Test CrewAI multi-agent crews with EvalView — track agent collaboration, verify tool usage across agents, measure costs, and detect regressions in multi-agent workflows.
 
 ## Example Output
 

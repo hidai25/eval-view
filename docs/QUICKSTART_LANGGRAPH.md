@@ -1,6 +1,6 @@
-# Quick Start: Testing LangGraph with EvalView
+# Quick Start: Testing LangGraph Agents with EvalView
 
-This guide gets you testing your LangGraph agent in **5 minutes**.
+> This guide gets you testing your LangGraph agent with EvalView in 5 minutes. EvalView provides a dedicated LangGraph adapter with auto-detection, streaming support, and native thread tracking.
 
 ## Step 1: Start Your LangGraph Agent
 
@@ -119,3 +119,13 @@ thresholds:
 ---
 
 **Need help?** Check [DEBUGGING.md](DEBUGGING.md) or open an issue!
+
+---
+
+## Related Documentation
+
+- [LangGraph Cloud Support](LANGGRAPH_CLOUD.md) — Testing LangGraph Cloud API agents
+- [Setup LangGraph Example](SETUP_LANGGRAPH_EXAMPLE.md) — Full step-by-step LangGraph setup
+- [Adapters](ADAPTERS.md) — LangGraph adapter configuration details
+- [YAML Schema](YAML_SCHEMA.md) — Test case format reference
+- [Golden Traces](GOLDEN_TRACES.md) — Regression detection with snapshot and check

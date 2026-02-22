@@ -1,4 +1,6 @@
-# Framework Support Guide
+# Framework Support — Testing LangGraph, CrewAI, OpenAI, Claude, and More
+
+> EvalView provides dedicated testing adapters for the most popular AI agent frameworks. Each adapter handles framework-specific API formats, tool call extraction, and response parsing automatically.
 
 EvalView supports multiple AI agent frameworks out of the box. Each framework has a dedicated adapter that handles its specific API format.
 
@@ -407,6 +409,15 @@ timeout: 120.0  # 2 minutes
 - Open an issue: https://github.com/hidai25/eval-view/issues
 
 ---
+
+## Related Documentation
+
+- [Adapters Guide](ADAPTERS.md) — How to build custom adapters
+- [Getting Started](GETTING_STARTED.md) — Install and run your first test
+- [Quick Start: LangGraph](QUICKSTART_LANGGRAPH.md) — LangGraph-specific setup
+- [Quick Start: HuggingFace](QUICKSTART_HUGGINGFACE.md) — Free, open-source testing
+- [Backend Requirements](BACKEND_REQUIREMENTS.md) — What your agent backend needs to expose
+- [Troubleshooting](TROUBLESHOOTING.md) — Common issues and solutions
 
 **Sources:**
 - [LangGraph Platform API](https://langchain-ai.github.io/langgraph/cloud/reference/api/api_ref.html)

@@ -1,4 +1,6 @@
-# YAML Test Case Schema
+# YAML Test Case Schema — EvalView Test Case Reference
+
+> EvalView test cases are defined in YAML files. This document provides the complete schema reference for writing AI agent tests, including input configuration, expected behavior, scoring thresholds, and adapter settings.
 
 This document provides the complete schema reference for EvalView test case YAML files.
 
@@ -313,3 +315,14 @@ Test cases are validated against Pydantic models on load. Common validation erro
 3. **Set realistic thresholds:** Start with `min_score: 50` and increase as you refine
 4. **Test timeouts:** Different frameworks have different latencies - adjust accordingly
 5. **Use adapter overrides:** Test the same query against different backends
+
+---
+
+## Related Documentation
+
+- [Getting Started](GETTING_STARTED.md) — Write and run your first test case
+- [Evaluation Metrics](EVALUATION_METRICS.md) — How `min_score`, tool accuracy, and output quality are calculated
+- [Tool Categories](TOOL_CATEGORIES.md) — Flexible tool name matching with categories
+- [Cost Tracking](COST_TRACKING.md) — How `max_cost` thresholds work
+- [Adapters](ADAPTERS.md) — Adapter-specific configuration options
+- [CLI Reference](CLI_REFERENCE.md) — Running tests with `evalview run`

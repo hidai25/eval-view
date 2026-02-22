@@ -1,8 +1,12 @@
-# Cost Tracking Implementation
+# Cost Tracking — Monitor AI Agent Token Usage and Spending
+
+> **Problem:** AI agent costs can spiral without visibility. A prompt change might double your token consumption, but you won't know until the bill arrives.
+>
+> **Solution:** EvalView tracks token usage and calculates costs per test run automatically. Set `max_cost` thresholds in test cases to catch budget overruns in CI before they reach production.
 
 ## Overview
 
-EvalView now includes comprehensive cost tracking based on model token usage. This feature automatically calculates costs per test run based on GPT-5 family pricing (or custom pricing) and provides detailed breakdowns.
+EvalView includes comprehensive cost tracking based on model token usage. This feature automatically calculates costs per test run based on GPT-5 family pricing (or custom pricing) and provides detailed breakdowns.
 
 ## Features Implemented
 
@@ -231,3 +235,13 @@ No new dependencies required! Uses existing libraries.
 - Old configs without `model` section use default gpt-5-mini pricing
 - Tests without token usage still work (show $0.00 cost)
 - No breaking changes to existing APIs
+
+---
+
+## Related Documentation
+
+- [Evaluation Metrics](EVALUATION_METRICS.md) — How cost fits into the 5-dimensional scoring system
+- [YAML Schema](YAML_SCHEMA.md) — Setting `max_cost` thresholds in test cases
+- [Backend Requirements](BACKEND_REQUIREMENTS.md) — How to emit token usage events from your agent
+- [CI/CD Integration](CI_CD.md) — Catching cost regressions in CI pipelines
+- [CLI Reference](CLI_REFERENCE.md) — Model configuration and pricing CLI options

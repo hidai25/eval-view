@@ -7,7 +7,7 @@ Drop-in Node.js/Next.js middleware for [EvalView](https://github.com/hidai25/eva
 
 ---
 
-## 🔍 What EvalView Catches
+## What EvalView Catches
 
 | Status | What it means | What you do |
 |--------|--------------|-------------|
@@ -18,7 +18,7 @@ Drop-in Node.js/Next.js middleware for [EvalView](https://github.com/hidai25/eva
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
 npm install @evalview/node
@@ -63,7 +63,7 @@ evalview check      # detect regressions on every change
 
 ---
 
-## 🤖 Claude Code Integration (MCP)
+## Claude Code Integration (MCP)
 
 Test your agent without leaving the conversation:
 
@@ -89,7 +89,7 @@ No YAML. No terminal switching. No context loss.
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
 ```typescript
 createEvalViewMiddleware({
@@ -124,7 +124,7 @@ createEvalViewMiddleware({
 
 ---
 
-## 🔧 Automate It
+## Automate It
 
 ```yaml
 # .github/workflows/evalview.yml
@@ -135,7 +135,7 @@ createEvalViewMiddleware({
 
 ---
 
-## 📚 Documentation
+## Documentation
 
 [Full docs →](https://github.com/hidai25/eval-view) • [Examples →](https://github.com/hidai25/eval-view/tree/main/examples) • [Issues →](https://github.com/hidai25/eval-view/issues)
 

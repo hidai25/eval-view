@@ -1,4 +1,6 @@
-# CLI Reference
+# CLI Reference — All EvalView Commands for AI Agent Testing
+
+> Complete reference for all EvalView CLI commands, including `snapshot`, `check`, `run`, `chat`, `skill`, `mcp`, and more. EvalView is a command-line tool for testing and detecting regressions in AI agents.
 
 Complete reference for all EvalView CLI commands.
 

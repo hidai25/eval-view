@@ -1,6 +1,6 @@
-# Troubleshooting Guide
+# Troubleshooting Guide — Common EvalView Issues and Solutions
 
-This guide covers common issues when using EvalView and how to resolve them.
+> This guide covers common issues when using EvalView for AI agent testing, including type errors, connection problems, framework-specific issues, and evaluation debugging.
 
 ## Quick Diagnostics
 
@@ -415,3 +415,13 @@ When reporting issues, include:
 - Full error message
 - Test case YAML (sanitized)
 - Raw API response (if possible)
+
+---
+
+## Related Documentation
+
+- [Debugging Guide](DEBUGGING.md) — Step-by-step debugging for "No response" and other issues
+- [Adapters](ADAPTERS.md) — Adapter configuration and supported frameworks
+- [Backend Requirements](BACKEND_REQUIREMENTS.md) — API format your agent must expose
+- [FAQ](FAQ.md) — Frequently asked questions about EvalView
+- [Getting Started](GETTING_STARTED.md) — Initial setup and configuration

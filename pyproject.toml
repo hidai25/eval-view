@@ -5,16 +5,18 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "evalview"
 version = "0.3.0"
-description = "Pytest-style testing framework for AI agents — LangGraph, CrewAI, OpenAI, Anthropic, Claude"
+description = "Open-source testing and regression detection framework for AI agents. Golden baseline diffing, CI/CD integration, works with LangGraph, CrewAI, OpenAI, Anthropic Claude, HuggingFace, Ollama, and MCP."
 readme = "README.md"
 license = "Apache-2.0"
 authors = [{name = "EvalView Team", email = "hidai@evalview.com"}]
 requires-python = ">=3.9"
 keywords = [
     "ai", "agents", "testing", "evaluation", "llm", "langchain", "langgraph", "crewai", "openai",
-    "anthropic", "claude", "claude-opus", "opus-4-6",
+    "anthropic", "claude", "huggingface", "ollama", "mcp",
     "multi-agent", "pytest-ai", "ai-agent-testing", "llm-testing", "agent-evaluation",
-    "regression-testing", "ci-cd-testing", "yaml-testing", "tool-calling"
+    "regression-testing", "golden-baseline", "ci-cd-testing", "yaml-testing", "tool-calling",
+    "agent-regression", "llm-regression", "skill-testing", "mcp-contract-testing",
+    "pass-at-k", "non-deterministic-testing", "ai-ci-cd"
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
