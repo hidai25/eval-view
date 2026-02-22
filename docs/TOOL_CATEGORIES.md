@@ -4,10 +4,6 @@
 >
 > **Solution:** EvalView's tool categories let you test by intent instead of exact tool name. Define `file_read` and it matches `read_file`, `bash cat`, `text_editor`, and more.
 
-**Problem:** Your test expects `read_file`. Agent uses `bash cat`. Test fails. Both are correct.
-
-**Solution:** Test by *intent*, not exact tool name.
-
 ---
 
 ## Before (Brittle)

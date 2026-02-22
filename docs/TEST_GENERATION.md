@@ -4,10 +4,6 @@
 >
 > **Solution:** EvalView's test generation creates 100+ test variations from a single seed test. It generates paraphrases, edge cases, error scenarios, and adversarial inputs automatically.
 
-**Problem:** Writing tests manually is slow. You need volume to catch regressions.
-
-**Solution:** Auto-generate test variations.
-
 ---
 
 ## Option 1: Expand from Existing Tests
