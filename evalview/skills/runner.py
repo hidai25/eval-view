@@ -1,8 +1,9 @@
-"""Skill test runner - executes skills against Claude."""
+"""Skill test runner - executes skills against Anthropic or OpenAI-compatible APIs."""
 
+import os
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Tuple
 import yaml  # type: ignore[import-untyped]
 
 from evalview.skills.types import (
@@ -17,7 +18,7 @@ from evalview.skills.parser import SkillParser
 
 
 class SkillRunner:
-    """Runs skill tests against Claude API.
+    """Runs skill tests against Anthropic or OpenAI-compatible APIs.
 
     Loads a skill, sends test queries, and evaluates responses.
     """
@@ -26,35 +27,201 @@ class SkillRunner:
         self,
         api_key: Optional[str] = None,
         model: str = "claude-sonnet-4-20250514",
+        provider: Optional[str] = None,
+        base_url: Optional[str] = None,
     ):
         """
         Initialize the skill runner.
 
         Args:
-            api_key: Anthropic API key (or uses ANTHROPIC_API_KEY env var)
+            api_key: Provider API key (or uses env vars)
             model: Model to use for testing
+            provider: Provider name ("anthropic", "openai", or "openai-compatible")
+            base_url: Optional base URL for OpenAI-compatible providers
         """
-        import os
-
-        self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-        if not self.api_key:
-            raise ValueError(
-                "Anthropic API key required. Set ANTHROPIC_API_KEY env var or pass api_key."
-            )
         self.model = model
+        self.provider, self.api_key, self.base_url = self._resolve_provider_config(
+            api_key=api_key,
+            provider=provider,
+            base_url=base_url,
+        )
         self._client: Optional[Any] = None
 
     @property
     def client(self):
-        """Lazy-load Anthropic client."""
+        """Lazy-load provider client."""
         if self._client is None:
-            try:
-                import anthropic
-
+            if self.provider == "anthropic":
+                try:
+                    import anthropic
+                except ImportError:
+                    raise ImportError("anthropic package required. Install with: pip install anthropic")
                 self._client = anthropic.Anthropic(api_key=self.api_key)
-            except ImportError:
-                raise ImportError("anthropic package required. Install with: pip install anthropic")
+            else:
+                try:
+                    from openai import OpenAI
+                except ImportError:
+                    raise ImportError("openai package required. Install with: pip install openai")
+                kwargs = {"api_key": self.api_key}
+                if self.base_url:
+                    kwargs["base_url"] = self.base_url
+                self._client = OpenAI(**kwargs)
         return self._client
+
+    def _resolve_provider_config(
+        self,
+        api_key: Optional[str],
+        provider: Optional[str],
+        base_url: Optional[str],
+    ) -> Tuple[str, str, Optional[str]]:
+        """Resolve provider configuration from args/env.
+
+        Env vars supported:
+        - `SKILL_TEST_PROVIDER` (`anthropic`, `openai`, `openai-compatible`)
+        - `SKILL_TEST_API_KEY`
+        - `SKILL_TEST_BASE_URL`
+        - Anthropic: `ANTHROPIC_API_KEY`
+        - OpenAI-compatible: `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `KIMI_API_KEY`, `MOONSHOT_API_KEY`
+        - Base URL aliases: `OPENAI_BASE_URL`, `DEEPSEEK_BASE_URL`, `KIMI_BASE_URL`, `MOONSHOT_BASE_URL`
+        """
+        provider = (provider or os.environ.get("SKILL_TEST_PROVIDER") or "").strip().lower() or None
+        explicit_api_key = api_key or os.environ.get("SKILL_TEST_API_KEY")
+        explicit_base_url = base_url or os.environ.get("SKILL_TEST_BASE_URL")
+
+        if provider in {"openai-compatible", "openai_compatible"}:
+            provider = "openai"
+
+        if provider == "anthropic":
+            key = explicit_api_key or os.environ.get("ANTHROPIC_API_KEY")
+            if not key:
+                raise ValueError(
+                    "API key required for Anthropic. Set ANTHROPIC_API_KEY or SKILL_TEST_API_KEY."
+                )
+            return "anthropic", key, None
+
+        if provider == "openai":
+            openai_key_source = None
+            if explicit_api_key:
+                key = explicit_api_key
+            else:
+                openai_key_source, key = self._first_env_item(
+                    "OPENAI_API_KEY",
+                    "DEEPSEEK_API_KEY",
+                    "KIMI_API_KEY",
+                    "MOONSHOT_API_KEY",
+                )
+            if not key:
+                raise ValueError(
+                    "API key required for OpenAI-compatible provider. "
+                    "Set one of OPENAI_API_KEY / DEEPSEEK_API_KEY / KIMI_API_KEY / MOONSHOT_API_KEY "
+                    "or SKILL_TEST_API_KEY."
+                )
+            resolved_base_url = self._resolve_openai_compatible_base_url(
+                key_source=openai_key_source,
+                explicit_base_url=explicit_base_url,
+            )
+            self._validate_openai_compatible_base_url(
+                key_source=openai_key_source,
+                resolved_base_url=resolved_base_url,
+            )
+            return "openai", key, resolved_base_url
+
+        # Auto-detect provider preference:
+        # 1) If an Anthropic key exists and no OpenAI-compatible base URL/key is set, prefer Anthropic.
+        # 2) Otherwise use OpenAI-compatible if any relevant key is present.
+        anthropic_key = explicit_api_key or os.environ.get("ANTHROPIC_API_KEY")
+        openai_key_source = None
+        if explicit_api_key:
+            openai_key = explicit_api_key
+        else:
+            openai_key_source, openai_key = self._first_env_item(
+                "OPENAI_API_KEY",
+                "DEEPSEEK_API_KEY",
+                "KIMI_API_KEY",
+                "MOONSHOT_API_KEY",
+            )
+        openai_base_url = self._resolve_openai_compatible_base_url(
+            key_source=openai_key_source,
+            explicit_base_url=explicit_base_url,
+        )
+
+        if openai_key and (openai_base_url or not anthropic_key):
+            self._validate_openai_compatible_base_url(
+                key_source=openai_key_source,
+                resolved_base_url=openai_base_url,
+            )
+            return "openai", openai_key, openai_base_url
+        if anthropic_key:
+            return "anthropic", anthropic_key, None
+        if openai_key:
+            self._validate_openai_compatible_base_url(
+                key_source=openai_key_source,
+                resolved_base_url=openai_base_url,
+            )
+            return "openai", openai_key, openai_base_url
+
+        raise ValueError(
+            "No supported API key found. Set ANTHROPIC_API_KEY for Anthropic, or "
+            "an OpenAI-compatible key (OPENAI_API_KEY / DEEPSEEK_API_KEY / KIMI_API_KEY / MOONSHOT_API_KEY). "
+            "Optional overrides: SKILL_TEST_PROVIDER, SKILL_TEST_API_KEY, SKILL_TEST_BASE_URL."
+        )
+
+    @staticmethod
+    def _first_env(*names: str) -> Optional[str]:
+        for name in names:
+            value = os.environ.get(name)
+            if value:
+                return value
+        return None
+
+    @staticmethod
+    def _first_env_item(*names: str) -> Tuple[Optional[str], Optional[str]]:
+        for name in names:
+            value = os.environ.get(name)
+            if value:
+                return name, value
+        return None, None
+
+    @staticmethod
+    def _validate_openai_compatible_base_url(
+        key_source: Optional[str],
+        resolved_base_url: Optional[str],
+    ) -> None:
+        """Prevent vendor-specific keys from defaulting to OpenAI's endpoint."""
+        if key_source in {"DEEPSEEK_API_KEY", "KIMI_API_KEY", "MOONSHOT_API_KEY"} and not resolved_base_url:
+            base_var = key_source.replace("_API_KEY", "_BASE_URL")
+            raise ValueError(
+                f"{key_source} detected but no base URL configured. "
+                f"Set {base_var} or SKILL_TEST_BASE_URL."
+            )
+
+    @staticmethod
+    def _resolve_openai_compatible_base_url(
+        key_source: Optional[str],
+        explicit_base_url: Optional[str],
+    ) -> Optional[str]:
+        """Resolve base URL matched to the selected OpenAI-compatible key source.
+
+        Order:
+        1) Explicit override (`SKILL_TEST_BASE_URL` / passed arg)
+        2) Matching alias-specific base URL for the selected key env var
+        3) None
+        """
+        if explicit_base_url:
+            return explicit_base_url
+
+        key_to_base_var = {
+            "OPENAI_API_KEY": "OPENAI_BASE_URL",
+            "DEEPSEEK_API_KEY": "DEEPSEEK_BASE_URL",
+            "KIMI_API_KEY": "KIMI_BASE_URL",
+            "MOONSHOT_API_KEY": "MOONSHOT_BASE_URL",
+        }
+        if not key_source:
+            return None
+        base_var = key_to_base_var.get(key_source)
+        if not base_var:
+            return None
+        return os.environ.get(base_var)
 
     def load_test_suite(self, yaml_path: str) -> SkillTestSuite:
         """Load a test suite from YAML file."""
@@ -135,20 +302,15 @@ class SkillRunner:
         # Build system prompt with skill instructions
         system_prompt = self._build_system_prompt(skill)
 
-        # Call Claude
+        # Call provider
         start_time = time.time()
         try:
-            response = self.client.messages.create(
+            output, input_tokens, output_tokens = self._invoke_model(
                 model=model,
-                max_tokens=4096,
-                system=system_prompt,
-                messages=[{"role": "user", "content": test.input}],
+                system_prompt=system_prompt,
+                user_input=test.input,
             )
             latency_ms = (time.time() - start_time) * 1000
-
-            output = response.content[0].text
-            input_tokens = response.usage.input_tokens
-            output_tokens = response.usage.output_tokens
             error = None
 
         except Exception as e:
@@ -156,7 +318,7 @@ class SkillRunner:
             output = ""
             input_tokens = 0
             output_tokens = 0
-            error = str(e)
+            error = self._categorize_model_error(e)
 
         # Evaluate the response
         evaluation = self._evaluate_response(output, test.expected)
@@ -177,9 +339,84 @@ class SkillRunner:
             error=error,
         )
 
+    def _invoke_model(self, model: str, system_prompt: str, user_input: str) -> Tuple[str, int, int]:
+        """Invoke configured provider and normalize response."""
+        if self.provider == "anthropic":
+            response = self.client.messages.create(
+                model=model,
+                max_tokens=4096,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_input}],
+            )
+            output = ""
+            if getattr(response, "content", None):
+                chunks = []
+                for block in response.content:
+                    text = getattr(block, "text", None)
+                    if text:
+                        chunks.append(text)
+                output = "\n".join(chunks).strip()
+            usage = getattr(response, "usage", None)
+            input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+            output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+            return output, input_tokens, output_tokens
+
+        response = self.client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_input},
+            ],
+            max_tokens=4096,
+        )
+        choice = response.choices[0] if getattr(response, "choices", None) else None
+        message = getattr(choice, "message", None)
+        content = getattr(message, "content", "")
+        if isinstance(content, list):
+            # Some OpenAI-compatible providers may return structured content blocks.
+            parts = []
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    parts.append(str(item.get("text", "")))
+                else:
+                    text = getattr(item, "text", None)
+                    if text:
+                        parts.append(str(text))
+            output = "\n".join(p for p in parts if p).strip()
+        else:
+            output = str(content or "")
+        usage = getattr(response, "usage", None)
+        input_tokens = int(
+            getattr(usage, "prompt_tokens", 0)
+            or getattr(usage, "input_tokens", 0)
+            or 0
+        )
+        output_tokens = int(
+            getattr(usage, "completion_tokens", 0)
+            or getattr(usage, "output_tokens", 0)
+            or 0
+        )
+        return output, input_tokens, output_tokens
+
+    @staticmethod
+    def _categorize_model_error(exc: Exception) -> str:
+        """Return a user-facing error label with light categorization."""
+        message = str(exc).strip() or exc.__class__.__name__
+        lowered = message.lower()
+
+        if any(token in lowered for token in ("authentication", "unauthorized", "invalid api key", "401", "forbidden", "403")):
+            return f"Authentication error: {message}"
+        if any(token in lowered for token in ("api key", "base url", "base_url", "provider")):
+            return f"Provider configuration error: {message}"
+        if "timeout" in lowered:
+            return f"Timeout error: {message}"
+        if any(token in lowered for token in ("connection", "dns", "name resolution", "network", "nodename nor servname")):
+            return f"Connection error: {message}"
+        return message
+
     def _build_system_prompt(self, skill: Skill) -> str:
         """Build system prompt with skill loaded."""
-        return f"""You are Claude, an AI assistant with the following skill loaded:
+        return f"""You are an AI assistant with the following skill loaded:
 
 # Skill: {skill.metadata.name}
 

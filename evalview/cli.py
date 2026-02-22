@@ -5603,6 +5603,17 @@ def _run_agent_skill_test(
 @skill.command("test")
 @click.argument("test_file", type=click.Path(exists=True))
 @click.option("--model", "-m", default="claude-sonnet-4-20250514", help="Model to use")
+@click.option(
+    "--provider",
+    type=click.Choice(["anthropic", "openai", "openai-compatible"]),
+    default=None,
+    help="Legacy mode provider override (env alternative: SKILL_TEST_PROVIDER)",
+)
+@click.option(
+    "--base-url",
+    default=None,
+    help="Legacy mode OpenAI-compatible base URL override (env alternative: SKILL_TEST_BASE_URL)",
+)
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed output")
 @click.option("--json", "output_json", is_flag=True, help="Output as JSON")
 @click.option(
@@ -5639,6 +5650,8 @@ def _run_agent_skill_test(
 def skill_test(
     test_file: str,
     model: str,
+    provider: str,
+    base_url: str,
     verbose: bool,
     output_json: bool,
     agent: str,
@@ -5654,6 +5667,8 @@ def skill_test(
     Args:
         test_file: Path to YAML test file
         model: Model to use for evaluation
+        provider: Provider override for legacy mode
+        base_url: Base URL override for legacy OpenAI-compatible providers
         verbose: Show detailed output
         output_json: Output as JSON
         agent: Agent type override
@@ -5734,17 +5749,18 @@ def skill_test(
     # Legacy mode - use original SkillRunner
     from evalview.skills import SkillRunner
 
-    # Check for API key
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        console.print("[red]Error: ANTHROPIC_API_KEY environment variable required[/red]")
-        console.print("[dim]Set it with: export ANTHROPIC_API_KEY=your-key[/dim]")
-        raise SystemExit(1)
-
     try:
-        runner = SkillRunner(model=model)
+        runner = SkillRunner(model=model, provider=provider, base_url=base_url)
         suite = runner.load_test_suite(test_file)
     except Exception as e:
-        console.print(f"[red]Error loading test suite: {e}[/red]")
+        if "API key" in str(e) or "base URL" in str(e) or "provider" in str(e).lower():
+            console.print(f"[red]Provider configuration error: {e}[/red]")
+            console.print(
+                "[dim]Use --provider/--base-url or set env vars such as "
+                "ANTHROPIC_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY, SKILL_TEST_BASE_URL[/dim]"
+            )
+        else:
+            console.print(f"[red]Error loading test suite: {e}[/red]")
         raise SystemExit(1)
 
     # EvalView banner
@@ -5752,6 +5768,9 @@ def skill_test(
     console.print(f"  [bold]Suite:[/bold]  {suite.name}")
     console.print(f"  [bold]Skill:[/bold]  [cyan]{suite.skill}[/cyan]")
     console.print(f"  [bold]Model:[/bold]  {model}")
+    console.print(f"  [bold]Provider:[/bold]  {getattr(runner, 'provider', 'unknown')}")
+    if getattr(runner, "provider", None) == "openai":
+        console.print(f"  [bold]Base URL:[/bold]  {getattr(runner, 'base_url', None) or '[dim]default[/dim]'}")
     console.print(f"  [bold]Tests:[/bold]  {len(suite.tests)}")
     console.print()
 

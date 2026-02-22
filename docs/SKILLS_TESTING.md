@@ -176,6 +176,47 @@ echo "ANTHROPIC_API_KEY=your-key" > .env.local
 evalview skill test tests/code-reviewer.yaml
 ```
 
+### Provider-Agnostic API Keys (Legacy `skill test` mode)
+
+Legacy `evalview skill test` (system-prompt mode) now supports Anthropic and OpenAI-compatible APIs.
+
+Anthropic:
+```bash
+export ANTHROPIC_API_KEY=your-key
+evalview skill test tests/code-reviewer.yaml --model claude-sonnet-4-20250514
+```
+
+OpenAI-compatible (OpenAI, DeepSeek, Kimi, Moonshot):
+```bash
+# Generic overrides (recommended for CI)
+export SKILL_TEST_PROVIDER=openai
+export SKILL_TEST_API_KEY=your-key
+export SKILL_TEST_BASE_URL=https://your-provider.example/v1
+
+evalview skill test tests/code-reviewer.yaml --model your-model-id
+```
+
+Direct CLI overrides (legacy/system-prompt mode):
+```bash
+evalview skill test tests/code-reviewer.yaml \
+  --provider openai \
+  --base-url https://api.deepseek.com/v1 \
+  --model deepseek-chat
+```
+
+Provider-specific aliases are also supported:
+```bash
+# DeepSeek example
+export SKILL_TEST_PROVIDER=openai
+export DEEPSEEK_API_KEY=your-key
+export DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+evalview skill test tests/code-reviewer.yaml --model deepseek-chat
+```
+
+Important:
+- `OPENAI_API_KEY` may omit `base_url` (defaults to OpenAI API)
+- `DEEPSEEK_API_KEY`, `KIMI_API_KEY`, and `MOONSHOT_API_KEY` require a matching `*_BASE_URL` (or `SKILL_TEST_BASE_URL`) so requests do not default to OpenAI's endpoint
+
 ### Example Output
 
 ```
@@ -255,9 +296,20 @@ evalview skill test TEST_FILE [OPTIONS]
 
 Options:
   --model TEXT       Claude model to use (default: claude-sonnet-4-20250514)
+  --provider TEXT    Legacy mode provider override: anthropic|openai
+  --base-url TEXT    Legacy mode OpenAI-compatible base URL override
   --agent TEXT       Agent type: system-prompt, claude-code, codex, openclaw,
                      langgraph, crewai, openai-assistants, custom
 ```
+
+Environment variables for legacy `skill test` (system-prompt mode):
+- `ANTHROPIC_API_KEY`
+- `SKILL_TEST_PROVIDER` (`anthropic` or `openai`)
+- `SKILL_TEST_API_KEY`, `SKILL_TEST_BASE_URL`
+- `OPENAI_API_KEY`, `OPENAI_BASE_URL`
+- `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`
+- `KIMI_API_KEY`, `KIMI_BASE_URL`
+- `MOONSHOT_API_KEY`, `MOONSHOT_BASE_URL`
 
 ### Testing with OpenClaw
 
