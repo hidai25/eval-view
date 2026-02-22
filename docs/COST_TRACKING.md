@@ -235,3 +235,13 @@ No new dependencies required! Uses existing libraries.
 - Old configs without `model` section use default gpt-5-mini pricing
 - Tests without token usage still work (show $0.00 cost)
 - No breaking changes to existing APIs
+
+---
+
+## Related Documentation
+
+- [Evaluation Metrics](EVALUATION_METRICS.md) — How cost fits into the 5-dimensional scoring system
+- [YAML Schema](YAML_SCHEMA.md) — Setting `max_cost` thresholds in test cases
+- [Backend Requirements](BACKEND_REQUIREMENTS.md) — How to emit token usage events from your agent
+- [CI/CD Integration](CI_CD.md) — Catching cost regressions in CI pipelines
+- [CLI Reference](CLI_REFERENCE.md) — Model configuration and pricing CLI options

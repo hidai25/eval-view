@@ -253,12 +253,6 @@ evalview run --judge-model llama-70b --judge-provider huggingface  # Free!
 | `EVAL_PROVIDER` | Force judge provider: `openai`, `anthropic`, `huggingface` |
 | `EVAL_MODEL` | Override judge model (default: auto-detected)
 
-## Next Steps
-
-- [YAML Schema Reference](./YAML_SCHEMA.md)
-- [Adapters & Agent Integration](./ADAPTERS.md)
-- [Framework Support](./FRAMEWORK_SUPPORT.md)
-
 ## Regression Detection (Golden Baselines)
 
 Once you have tests running, set up regression detection to catch behavioral drift:
@@ -275,9 +269,18 @@ evalview check
 
 EvalView will report: PASSED, TOOLS_CHANGED, OUTPUT_CHANGED, or REGRESSION. See [Golden Traces](./GOLDEN_TRACES.md) for details.
 
+## Related Documentation
+
+- [YAML Schema Reference](./YAML_SCHEMA.md) — Complete test case format
+- [Golden Traces](./GOLDEN_TRACES.md) — Regression detection with golden baselines
+- [Adapters & Agent Integration](./ADAPTERS.md) — Connect to your agent framework
+- [Framework Support](./FRAMEWORK_SUPPORT.md) — LangGraph, CrewAI, OpenAI, Claude, etc.
+- [Evaluation Metrics](./EVALUATION_METRICS.md) — How scoring works
+- [CI/CD Integration](./CI_CD.md) — Run tests in GitHub Actions
+- [FAQ](./FAQ.md) — Frequently asked questions
+- [Troubleshooting](./TROUBLESHOOTING.md) — Common issues and solutions
+
 ## Need Help?
 
 - [GitHub Issues](https://github.com/hidai25/eval-view/issues)
 - [Discussions](https://github.com/hidai25/eval-view/discussions)
-- [FAQ](./FAQ.md)
-- [Troubleshooting](./TROUBLESHOOTING.md)

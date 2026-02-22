@@ -277,3 +277,13 @@ evalview run
 ---
 
 **Need help?** Check [TROUBLESHOOTING.md](TROUBLESHOOTING.md) or [open an issue](https://github.com/hidai25/eval-view/issues)!
+
+---
+
+## Related Documentation
+
+- [Framework Support](FRAMEWORK_SUPPORT.md) — All supported frameworks including HuggingFace
+- [Adapters](ADAPTERS.md) — HuggingFace adapter configuration
+- [YAML Schema](YAML_SCHEMA.md) — Test case format reference
+- [Evaluation Metrics](EVALUATION_METRICS.md) — How scores are calculated
+- [Troubleshooting](TROUBLESHOOTING.md) — Common issues and fixes

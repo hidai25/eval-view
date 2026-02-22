@@ -306,10 +306,20 @@ thresholds:
 
 - **Run tests:** `evalview run --verbose`
 - **See results:** Check `.evalview/results/`
-- **Debug issues:** See [DEBUGGING.md](../DEBUGGING.md)
+- **Debug issues:** See [DEBUGGING.md](DEBUGGING.md)
 
 ## Need Help?
 
-- Check [DEBUGGING.md](../DEBUGGING.md) for common issues
+- Check [DEBUGGING.md](DEBUGGING.md) for common issues
 - See examples in `tests/test-cases/`
 - Open an issue on GitHub
+
+---
+
+## Related Documentation
+
+- [Getting Started](GETTING_STARTED.md) — Install and configure EvalView
+- [Backend Requirements](BACKEND_REQUIREMENTS.md) — API format your agent must expose
+- [YAML Schema](YAML_SCHEMA.md) — Test case format including `context.userId`
+- [Debugging](DEBUGGING.md) — Troubleshooting test failures
+- [Adapters](ADAPTERS.md) — Adapter configuration for your framework

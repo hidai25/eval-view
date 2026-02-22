@@ -364,3 +364,13 @@ If you're using TapeScope backend:
 - See `examples/` directory for reference implementations
 - Check `evalview/adapters/` for adapter code
 - File issues at: https://github.com/hidai25/eval-view/issues
+
+---
+
+## Related Documentation
+
+- [Adapters](ADAPTERS.md) — All supported adapters and configuration options
+- [Trace Specification](TRACE_SPEC.md) — Execution trace format produced from API events
+- [Cost Tracking](COST_TRACKING.md) — How token usage events enable cost monitoring
+- [Troubleshooting](TROUBLESHOOTING.md) — Common API connection and parsing issues
+- [Getting Started](GETTING_STARTED.md) — Install EvalView and run your first test

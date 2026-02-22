@@ -415,3 +415,13 @@ When reporting issues, include:
 - Full error message
 - Test case YAML (sanitized)
 - Raw API response (if possible)
+
+---
+
+## Related Documentation
+
+- [Debugging Guide](DEBUGGING.md) — Step-by-step debugging for "No response" and other issues
+- [Adapters](ADAPTERS.md) — Adapter configuration and supported frameworks
+- [Backend Requirements](BACKEND_REQUIREMENTS.md) — API format your agent must expose
+- [FAQ](FAQ.md) — Frequently asked questions about EvalView
+- [Getting Started](GETTING_STARTED.md) — Initial setup and configuration

@@ -590,4 +590,15 @@ Output:
 
 ---
 
+## Related Documentation
+
+- [Getting Started](GETTING_STARTED.md) — Install EvalView and run your first test
+- [Golden Traces](GOLDEN_TRACES.md) — How snapshot and check work
+- [Evaluation Metrics](EVALUATION_METRICS.md) — Scoring methodology
+- [CI/CD Integration](CI_CD.md) — Running regression checks in CI
+- [Statistical Mode](STATISTICAL_MODE.md) — pass@k for non-deterministic agents
+- [CLI Reference](CLI_REFERENCE.md) — All commands and flags
+
+---
+
 **Questions?** Open an issue or discussion on GitHub!

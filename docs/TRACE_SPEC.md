@@ -254,3 +254,13 @@ Adapters SHOULD:
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0 | 2026-01 | Initial specification |
+
+---
+
+## Related Documentation
+
+- [Adapters](ADAPTERS.md) — How adapters produce traces following this spec
+- [Golden Traces](GOLDEN_TRACES.md) — Saving and diffing traces for regression detection
+- [Evaluation Metrics](EVALUATION_METRICS.md) — How traces are scored
+- [Cost Tracking](COST_TRACKING.md) — Token usage and cost data in traces
+- [Backend Requirements](BACKEND_REQUIREMENTS.md) — Event format your API must emit

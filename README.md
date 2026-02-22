@@ -395,7 +395,7 @@ evalview mcp serve --test-path my_tests/  # Custom test directory
 |---------|-------------|------|
 | **Snapshot/Check Workflow** | Simple `snapshot` then `check` commands for regression detection | [Docs](docs/GOLDEN_TRACES.md) |
 | **Visual Reports** | `evalview inspect` — interactive HTML with traces, diffs, cost-per-query | [Docs](#new-in-v03-visual-reports--claude-code-mcp) |
-| **Claude Code MCP** | 8 tools — run checks, generate tests, test skills, visual reports inline | [Docs](#claude-code-integration-mcp) |
+| **Claude Code MCP** | 7 tools — run checks, generate tests, test skills inline | [Docs](#claude-code-integration-mcp) |
 | **Streak Tracking** | Habit-forming celebrations for consecutive clean checks | [Docs](docs/GOLDEN_TRACES.md) |
 | **Multi-Reference Goldens** | Save up to 5 variants per test for non-deterministic agents | [Docs](docs/GOLDEN_TRACES.md) |
 | **Chat Mode** | AI assistant: `/run`, `/test`, `/compare` | [Docs](docs/CHAT_MODE.md) |
@@ -457,16 +457,38 @@ evalview skill test tests.yaml --agent langgraph
 
 ## Documentation
 
+**Getting Started:**
+
 | | |
 |---|---|
 | [Getting Started](docs/GETTING_STARTED.md) | [CLI Reference](docs/CLI_REFERENCE.md) |
-| [Golden Traces](docs/GOLDEN_TRACES.md) | [CI/CD Integration](docs/CI_CD.md) |
-| [Tool Categories](docs/TOOL_CATEGORIES.md) | [Statistical Mode](docs/STATISTICAL_MODE.md) |
-| [Chat Mode](docs/CHAT_MODE.md) | [Evaluation Metrics](docs/EVALUATION_METRICS.md) |
-| [Skills Testing](docs/SKILLS_TESTING.md) | [Debugging](docs/DEBUGGING.md) |
-| [FAQ](docs/FAQ.md) | |
+| [FAQ](docs/FAQ.md) | [YAML Test Case Schema](docs/YAML_SCHEMA.md) |
+| [Framework Support](docs/FRAMEWORK_SUPPORT.md) | [Adapters Guide](docs/ADAPTERS.md) |
 
-**Guides:** [Testing LangGraph in CI](guides/pytest-for-ai-agents-langgraph-ci.md) • [Detecting Hallucinations](guides/detecting-llm-hallucinations-in-ci.md)
+**Core Features:**
+
+| | |
+|---|---|
+| [Golden Traces (Regression Detection)](docs/GOLDEN_TRACES.md) | [Evaluation Metrics](docs/EVALUATION_METRICS.md) |
+| [Statistical Mode (pass@k)](docs/STATISTICAL_MODE.md) | [Tool Categories](docs/TOOL_CATEGORIES.md) |
+| [Suite Types (Capability vs Regression)](docs/SUITE_TYPES.md) | [Behavior Coverage](docs/BEHAVIOR_COVERAGE.md) |
+| [Cost Tracking](docs/COST_TRACKING.md) | [Test Generation](docs/TEST_GENERATION.md) |
+
+**Integrations:**
+
+| | |
+|---|---|
+| [CI/CD Integration](docs/CI_CD.md) | [MCP Contract Testing](docs/MCP_CONTRACTS.md) |
+| [Skills Testing](docs/SKILLS_TESTING.md) | [Chat Mode](docs/CHAT_MODE.md) |
+| [Trace Specification](docs/TRACE_SPEC.md) | [Tutorials](docs/TUTORIALS.md) |
+
+**Troubleshooting:**
+
+| | |
+|---|---|
+| [Debugging Guide](docs/DEBUGGING.md) | [Troubleshooting](docs/TROUBLESHOOTING.md) |
+
+**Guides:** [Testing LangGraph in CI](guides/pytest-for-ai-agents-langgraph-ci.md) | [Detecting Hallucinations in CI](guides/detecting-llm-hallucinations-in-ci.md)
 
 ---
 

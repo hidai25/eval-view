@@ -154,3 +154,13 @@ If you're still having issues:
 - Use the conversational route for faster iteration during development
 - Check that your API endpoint is actually running before running tests
 - Verify your OPENAI_API_KEY is set correctly for LLM-as-judge evaluation
+
+---
+
+## Related Documentation
+
+- [Troubleshooting](TROUBLESHOOTING.md) — Common issues with type errors, tool mismatches, and LLM judges
+- [Adapters](ADAPTERS.md) — Adapter configuration and response parsing
+- [Trace Specification](TRACE_SPEC.md) — Understanding the execution trace format
+- [YAML Schema](YAML_SCHEMA.md) — Test case schema reference
+- [CLI Reference](CLI_REFERENCE.md) — Verbose mode and debug flags

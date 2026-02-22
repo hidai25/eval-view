@@ -230,3 +230,10 @@ Commit these files to your repo so CI can use them.
 
 5. **Check before testing** — Use `--contracts` on `evalview run` so drift is
    caught before wasting time on tests that will fail anyway.
+
+## Related Documentation
+
+- [Golden Traces (Regression Detection)](GOLDEN_TRACES.md) — Detect behavioral drift in your agent
+- [CI/CD Integration](CI_CD.md) — Run contract checks in CI
+- [CLI Reference](CLI_REFERENCE.md) — Full command reference for `evalview mcp`
+- [Framework Support](FRAMEWORK_SUPPORT.md) — Supported agent frameworks

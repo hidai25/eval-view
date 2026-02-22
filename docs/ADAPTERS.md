@@ -443,3 +443,14 @@ Popular frameworks we'd love adapters for:
 - SuperAGI
 - LangGraph
 - Haystack
+
+---
+
+## Related Documentation
+
+- [Getting Started](GETTING_STARTED.md) — Install EvalView and run your first test
+- [Framework Support](FRAMEWORK_SUPPORT.md) — Supported AI agent frameworks and setup
+- [YAML Schema](YAML_SCHEMA.md) — Test case schema with `adapter` and `adapter_config` fields
+- [Trace Specification](TRACE_SPEC.md) — Execution trace format that all adapters produce
+- [Backend Requirements](BACKEND_REQUIREMENTS.md) — What your agent API needs to expose
+- [Troubleshooting](TROUBLESHOOTING.md) — Common adapter connection and parsing issues

@@ -119,3 +119,13 @@ thresholds:
 ---
 
 **Need help?** Check [DEBUGGING.md](DEBUGGING.md) or open an issue!
+
+---
+
+## Related Documentation
+
+- [LangGraph Cloud Support](LANGGRAPH_CLOUD.md) — Testing LangGraph Cloud API agents
+- [Setup LangGraph Example](SETUP_LANGGRAPH_EXAMPLE.md) — Full step-by-step LangGraph setup
+- [Adapters](ADAPTERS.md) — LangGraph adapter configuration details
+- [YAML Schema](YAML_SCHEMA.md) — Test case format reference
+- [Golden Traces](GOLDEN_TRACES.md) — Regression detection with snapshot and check

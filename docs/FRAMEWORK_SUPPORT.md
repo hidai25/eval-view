@@ -410,6 +410,15 @@ timeout: 120.0  # 2 minutes
 
 ---
 
+## Related Documentation
+
+- [Adapters Guide](ADAPTERS.md) — How to build custom adapters
+- [Getting Started](GETTING_STARTED.md) — Install and run your first test
+- [Quick Start: LangGraph](QUICKSTART_LANGGRAPH.md) — LangGraph-specific setup
+- [Quick Start: HuggingFace](QUICKSTART_HUGGINGFACE.md) — Free, open-source testing
+- [Backend Requirements](BACKEND_REQUIREMENTS.md) — What your agent backend needs to expose
+- [Troubleshooting](TROUBLESHOOTING.md) — Common issues and solutions
+
 **Sources:**
 - [LangGraph Platform API](https://langchain-ai.github.io/langgraph/cloud/reference/api/api_ref.html)
 - [LangServe Documentation](https://python.langchain.com/docs/langserve/)
