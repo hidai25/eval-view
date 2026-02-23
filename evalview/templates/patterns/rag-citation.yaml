@@ -1,0 +1,29 @@
+# Pattern: RAG Citation
+# Tests that the agent retrieves documents AND cites sources in its answer.
+# Common failure: Agent uses retrieved content but strips source references from output.
+#
+# Customize: Change query and the citation marker your system uses (e.g. "[1]", "Source:", "According to").
+
+name: "RAG pipeline with citation"
+description: "Verify the agent retrieves context and cites sources in its response"
+
+input:
+  query: "What are the eligibility requirements for the enterprise plan?"
+
+expected:
+  tool_sequence:
+    - retriever          # <-- Your retrieval/search tool
+  output:
+    contains:
+      - "Source"         # <-- Citation marker — change to match your format
+      - "eligible"
+    not_contains:
+      - "I don't know"
+      - "I'm not sure"
+      - "I cannot find"
+
+thresholds:
+  min_score: 80
+
+checks:
+  hallucination: true    # Verify agent doesn't fabricate policy details

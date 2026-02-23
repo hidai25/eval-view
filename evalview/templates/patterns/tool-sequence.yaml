@@ -1,0 +1,26 @@
+# Pattern: Tool Sequence Order
+# Tests that the agent calls tools in the correct order — not just that it calls them.
+# Common failure: Agent calls tools out of order (e.g. summarizes before fetching,
+# or creates a record before validating input).
+#
+# Customize: Replace the tool sequence with the ordered steps your agent must follow.
+
+name: "Tool sequence — correct order"
+description: "Verify the agent executes tools in the required sequence"
+
+input:
+  query: "Fetch the latest sales report and summarize the key trends."
+
+expected:
+  tool_sequence:
+    - fetch_report       # <-- Step 1: must happen first
+    - summarize          # <-- Step 2: can only run after fetch
+  output:
+    contains:
+      - "trend"
+    not_contains:
+      - "error"
+      - "could not fetch"
+
+thresholds:
+  min_score: 85          # Sequence correctness contributes to score — raise for strict ordering

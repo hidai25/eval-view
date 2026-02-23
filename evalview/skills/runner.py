@@ -36,7 +36,7 @@ class SkillRunner:
         Args:
             api_key: Provider API key (or uses env vars)
             model: Model to use for testing
-            provider: Provider name ("anthropic", "openai", or "openai-compatible")
+            provider: Provider name — "anthropic" or "openai" (covers all OpenAI-compatible APIs)
             base_url: Optional base URL for OpenAI-compatible providers
         """
         self.model = model

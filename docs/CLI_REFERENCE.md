@@ -267,12 +267,12 @@ evalview skill test TEST_FILE     # Run behavior tests
 evalview skill doctor PATH        # Diagnose skill issues
 ```
 
-Legacy `skill test` also supports explicit overrides:
+`skill test` supports explicit provider overrides:
 ```bash
 evalview skill test tests.yaml --provider openai --base-url https://api.deepseek.com/v1 --model deepseek-chat
 ```
 
-Legacy `evalview skill test` (system-prompt mode) supports Anthropic and OpenAI-compatible APIs via environment variables:
+`evalview skill test` (system-prompt mode) supports Anthropic and OpenAI-compatible APIs via environment variables:
 - `ANTHROPIC_API_KEY`
 - `SKILL_TEST_PROVIDER` (`anthropic` or `openai`)
 - `SKILL_TEST_API_KEY`, `SKILL_TEST_BASE_URL`

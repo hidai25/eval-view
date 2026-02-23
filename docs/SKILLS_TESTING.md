@@ -176,9 +176,9 @@ echo "ANTHROPIC_API_KEY=your-key" > .env.local
 evalview skill test tests/code-reviewer.yaml
 ```
 
-### Provider-Agnostic API Keys (Legacy `skill test` mode)
+### Provider-Agnostic API Keys
 
-Legacy `evalview skill test` (system-prompt mode) now supports Anthropic and OpenAI-compatible APIs.
+`evalview skill test` (system-prompt mode) supports Anthropic and OpenAI-compatible APIs.
 
 Anthropic:
 ```bash
@@ -196,7 +196,7 @@ export SKILL_TEST_BASE_URL=https://your-provider.example/v1
 evalview skill test tests/code-reviewer.yaml --model your-model-id
 ```
 
-Direct CLI overrides (legacy/system-prompt mode):
+Direct CLI overrides:
 ```bash
 evalview skill test tests/code-reviewer.yaml \
   --provider openai \
@@ -295,14 +295,14 @@ Options:
 evalview skill test TEST_FILE [OPTIONS]
 
 Options:
-  --model TEXT       Claude model to use (default: claude-sonnet-4-20250514)
-  --provider TEXT    Legacy mode provider override: anthropic|openai
-  --base-url TEXT    Legacy mode OpenAI-compatible base URL override
+  --model TEXT       Model to use for testing (default: claude-sonnet-4-20250514)
+  --provider TEXT    Provider: anthropic|openai (default: anthropic)
+  --base-url TEXT    Base URL for OpenAI-compatible providers
   --agent TEXT       Agent type: system-prompt, claude-code, codex, openclaw,
                      langgraph, crewai, openai-assistants, custom
 ```
 
-Environment variables for legacy `skill test` (system-prompt mode):
+Environment variables (system-prompt mode):
 - `ANTHROPIC_API_KEY`
 - `SKILL_TEST_PROVIDER` (`anthropic` or `openai`)
 - `SKILL_TEST_API_KEY`, `SKILL_TEST_BASE_URL`

@@ -1,0 +1,31 @@
+# Pattern: Customer Support
+# Tests a support agent that looks up account/order data and creates tickets.
+# Common failure: Agent skips lookup, hallucinates order details, or forgets to open a ticket.
+#
+# Customize: Replace tool names, query, and expected output keywords.
+
+name: "Customer support — lookup and resolve"
+description: "Verify the agent fetches context before responding and creates a ticket"
+
+input:
+  query: "My order #4821 hasn't arrived and it's been 2 weeks."
+
+expected:
+  tool_sequence:
+    - lookup_order       # <-- Your order/account lookup tool
+    - create_ticket      # <-- Your ticket creation tool
+  output:
+    contains:
+      - "ticket"         # <-- Confirmation that a ticket was opened
+      - "order"
+    not_contains:
+      - "I don't have access to your order"
+      - "cannot look up"
+      - "I'm unable to"
+
+thresholds:
+  min_score: 80
+  max_latency: 15000   # 15s — support interactions should be fast
+
+checks:
+  hallucination: true  # Agent should cite retrieved data, not invent it
