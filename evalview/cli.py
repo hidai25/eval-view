@@ -192,7 +192,7 @@ def main(ctx):
 @click.option(
     "--wizard",
     is_flag=True,
-    help="[EXPERIMENTAL] Run auto-detection wizard to find and configure agents",
+    help="Run 3-question wizard to generate a personalized first test case",
 )
 @click.option(
     "--ci",
@@ -207,7 +207,7 @@ def init(dir: str, interactive: bool, wizard: bool, ci: bool):
         return
 
     if wizard:
-        asyncio.run(_init_wizard_async(dir))
+        _init_wizard(dir)
         return
 
     _init_standard(dir, interactive)
@@ -1159,285 +1159,171 @@ if __name__ == "__main__":
     (demo_agent_dir / "requirements.txt").write_text(requirements)
 
 
-async def _init_wizard_async(dir: str):
-    """Interactive wizard to auto-detect and configure agents."""
+def _build_wizard_yaml(description: str, tools: List[str]) -> str:
+    """Generate a personalized first test case YAML from wizard answers."""
+    desc = description.strip()
+    desc_lower = desc.lower()
 
+    # Derive a realistic query from the description
+    if any(kw in desc_lower for kw in ["support", "customer", "ticket", "order", "help desk"]):
+        query = "I placed an order last week and haven't received a shipping update. Can you help?"
+        contains = ["order", "help"]
+    elif any(kw in desc_lower for kw in ["code", "review", "pr", "pull request", "github", "refactor"]):
+        query = "Please review this function for bugs and suggest improvements: def add(a, b): return a + b"
+        contains = ["function", "code"]
+    elif any(kw in desc_lower for kw in ["data", "analys", "sql", "report", "dashboard", "metric"]):
+        query = "What were the top 5 products by revenue last month?"
+        contains = ["result", "data"]
+    elif any(kw in desc_lower for kw in ["search", "research", "find", "look up", "lookup", "web"]):
+        query = "Find recent information about the impact of AI on software development productivity."
+        contains = ["found", "information"]
+    elif any(kw in desc_lower for kw in ["schedule", "calendar", "book", "meeting", "appointment"]):
+        query = "Can you schedule a 1-hour meeting with the engineering team for next Tuesday at 2pm?"
+        contains = ["meeting", "scheduled"]
+    elif any(kw in desc_lower for kw in ["email", "draft", "write", "compose", "message"]):
+        query = "Draft a professional follow-up email to a client who missed our last meeting."
+        contains = ["email", "follow"]
+    elif any(kw in desc_lower for kw in ["summariz", "summary", "document", "read", "extract"]):
+        query = "Summarize the key points from the quarterly business review document."
+        contains = ["summary", "key"]
+    else:
+        # Generic fallback: use words from the description as hints
+        stopwords = {"a", "an", "the", "for", "that", "with", "and", "or", "is", "are",
+                     "of", "in", "to", "my", "your", "our", "agent", "bot", "assistant"}
+        meaningful = [w.lower().strip(".,;:") for w in desc.split()
+                      if w.lower().strip(".,;:") not in stopwords and len(w) > 3]
+        subject = meaningful[0] if meaningful else "task"
+        query = f"Help me with a typical {subject} request."
+        contains = meaningful[:2] if meaningful else ["response"]
+
+    # Build YAML lines
+    name = desc[:60].strip()
+    if name and not name[0].isupper():
+        name = name[0].upper() + name[1:]
+
+    lines = [
+        f'name: "{name}"',
+        f'description: "Verify the agent handles a typical {desc.lower()} request correctly"',
+        "",
+        "input:",
+        f'  query: "{query}"',
+        "",
+        "expected:",
+    ]
+
+    if tools:
+        lines.append("  tools:")
+        for t in tools:
+            lines.append(f"    - {t}")
+
+    lines += [
+        "  output:",
+        "    contains:",
+    ]
+    for kw in contains:
+        lines.append(f'      - "{kw}"')
+    lines += [
+        "    not_contains:",
+        '      - "error"',
+        "",
+        "thresholds:",
+        "  min_score: 75",
+        "  max_cost: 0.10",
+        "  max_latency: 15000",
+        "",
+        "checks:",
+        "  hallucination: true",
+        "  safety: true",
+    ]
+
+    return "\n".join(lines) + "\n"
+
+
+def _init_wizard(dir: str):
+    """3-question wizard that generates one personalized, immediately-runnable test case."""
     console.print("[blue]━━━ EvalView Setup Wizard ━━━[/blue]\n")
-    console.print("[cyan]🔍 Auto-detecting agent servers...[/cyan]\n")
+    console.print("3 questions. One working test case. Let's go.\n")
 
     base_path = Path(dir)
-
-    # Create directories
     (base_path / ".evalview").mkdir(exist_ok=True)
     (base_path / "tests" / "test-cases").mkdir(parents=True, exist_ok=True)
 
-    # Common ports and endpoints to scan
-    common_ports = [8000, 2024, 3000, 8080, 5000, 8888, 7860]
-    common_patterns = [
-        ("langgraph", "LangGraph Cloud", "/ok", "GET"),
-        ("langgraph", "LangGraph Cloud", "/info", "GET"),
-        ("langgraph", "LangGraph", "/invoke", "POST"),
-        ("langgraph", "LangGraph", "/api/chat", "POST"),
-        ("http", "LangServe", "/agent", "POST"),
-        ("streaming", "LangServe Streaming", "/agent/stream", "POST"),
-        ("streaming", "TapeScope", "/api/unifiedchat", "POST"),
-        ("crewai", "CrewAI", "/crew", "POST"),
-        ("http", "FastAPI", "/api/agent", "POST"),
-        ("http", "FastAPI", "/chat", "POST"),
+    # ── Q1: Framework ─────────────────────────────────────────────────────────
+    console.print("[bold]Step 1/3 — Framework[/bold]")
+    console.print("What adapter does your agent use?\n")
+
+    adapter_options = [
+        ("http",        "HTTP / REST API    (most common)"),
+        ("anthropic",   "Anthropic API      (direct Claude calls)"),
+        ("openai",      "OpenAI API         (direct GPT calls)"),
+        ("langgraph",   "LangGraph"),
+        ("crewai",      "CrewAI"),
+        ("ollama",      "Ollama             (local models)"),
+        ("huggingface", "HuggingFace"),
     ]
+    for i, (_, label) in enumerate(adapter_options, 1):
+        console.print(f"  {i}. {label}")
+    console.print(f"  {len(adapter_options) + 1}. Other (enter name)")
 
-    detected_agents = []
+    choice = click.prompt("\nChoice", type=int, default=1)
+    if 1 <= choice <= len(adapter_options):
+        adapter = adapter_options[choice - 1][0]
+    else:
+        adapter = click.prompt("Adapter name")
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-        transient=True,
-    ) as progress:
-        task = progress.add_task("Scanning ports...", total=None)
+    # ── Q2: What does your agent do? ──────────────────────────────────────────
+    console.print("\n[bold]Step 2/3 — What does your agent do?[/bold]")
+    console.print('[dim]Example: "customer support bot that handles order inquiries"[/dim]')
+    description = click.prompt("Describe your agent", default="general-purpose assistant")
 
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            for port in common_ports:
-                progress.update(task, description=f"Scanning port {port}...")
+    # ── Q3: Tools ─────────────────────────────────────────────────────────────
+    console.print("\n[bold]Step 3/3 — Tools[/bold]")
+    console.print("[dim]List the tools your agent exposes, comma-separated. Leave blank if none.[/dim]")
+    console.print('[dim]Example: "lookup_order, create_ticket, send_email"[/dim]')
+    tools_raw = click.prompt("Tools", default="")
+    tools = [t.strip() for t in tools_raw.split(",") if t.strip()]
 
-                for adapter_type, framework_name, path, method in common_patterns:
-                    url = f"http://127.0.0.1:{port}{path}"
-
-                    try:
-                        if method == "GET":
-                            response = await client.get(url)
-                        else:
-                            response = await client.post(
-                                url,
-                                json={
-                                    "query": "test",
-                                    "message": "test",
-                                    "messages": [{"role": "user", "content": "test"}],
-                                },
-                                headers={"Content-Type": "application/json"},
-                            )
-
-                        if response.status_code in [200, 201, 422]:
-                            content_type = response.headers.get("content-type", "")
-                            if not content_type.startswith("application/json"):
-                                continue
-
-                            # Try to detect actual adapter from response
-                            detected_adapter = adapter_type
-                            response_info = {}
-                            try:
-                                data = response.json()
-                                response_info = {"keys": list(data.keys())[:5]}
-
-                                # Refine detection based on response
-                                if "messages" in data or "thread_id" in data:
-                                    detected_adapter = "langgraph"
-                                elif "tasks" in data or "crew_id" in data or "crew" in data:
-                                    detected_adapter = "crewai"
-                            except Exception:
-                                pass
-
-                            # For LangGraph Cloud health endpoints, use base URL
-                            endpoint_url = url
-                            if detected_adapter == "langgraph" and (
-                                path == "/ok" or path == "/info"
-                            ):
-                                endpoint_url = f"http://127.0.0.1:{port}"
-
-                            detected_agents.append({
-                                "port": port,
-                                "path": path,
-                                "url": endpoint_url,
-                                "adapter": detected_adapter,
-                                "framework": framework_name,
-                                "response_info": response_info,
-                            })
-
-                    except (httpx.ConnectError, httpx.TimeoutException, Exception):
-                        continue
-
-    # Show results
-    if not detected_agents:
-        console.print("[yellow]⚠️  No agent servers detected.[/yellow]\n")
-        console.print("Make sure your agent server is running on one of these ports:")
-        console.print(f"  {', '.join(str(p) for p in common_ports)}\n")
-        console.print("[blue]To start a LangGraph agent:[/blue]")
-        console.print("  langgraph dev  # Runs on port 2024")
-        console.print()
-        console.print("[blue]Or run standard init:[/blue]")
-        console.print("  evalview init")
-        return
-
-    # Deduplicate by port (prefer more specific detections)
-    unique_agents = {}
-    for agent in detected_agents:
-        port = agent["port"]
-        # Prefer non-health-check endpoints
-        if port not in unique_agents or agent["path"] not in ["/ok", "/info"]:
-            unique_agents[port] = agent
-
-    detected_agents = list(unique_agents.values())
-
-    console.print(f"[green]✅ Found {len(detected_agents)} agent server(s)![/green]\n")
-
-    # Show detected agents
-    for i, agent in enumerate(detected_agents, 1):
-        console.print(f"  [{i}] [bold]{agent['framework']}[/bold] on port {agent['port']}")
-        console.print(f"      Endpoint: {agent['url']}")
-        console.print(f"      Adapter: {agent['adapter']}")
-        if agent.get("response_info", {}).get("keys"):
-            console.print(f"      Response keys: {agent['response_info']['keys']}")
-        console.print()
-
-    # Let user choose if multiple detected
-    selected_agent = detected_agents[0]
-    if len(detected_agents) > 1:
-        console.print("[bold]Which agent should EvalView connect to?[/bold]")
-        choice = click.prompt(
-            "Enter number",
-            type=int,
-            default=1,
-        )
-        if 1 <= choice <= len(detected_agents):
-            selected_agent = detected_agents[choice - 1]
-
+    # ── Endpoint & model ──────────────────────────────────────────────────────
     console.print()
-    console.print(f"[cyan]Configuring for {selected_agent['framework']}...[/cyan]\n")
+    default_endpoint = "http://localhost:8000/api/agent"
+    if adapter == "langgraph":
+        default_endpoint = "http://localhost:2024"
+    elif adapter == "crewai":
+        default_endpoint = "http://localhost:8000/crew"
+    endpoint = click.prompt("Agent endpoint URL", default=default_endpoint)
+    model_name = click.prompt("Model name", default="gpt-4o")
 
-    # Create config file
+    # ── Write config.yaml ─────────────────────────────────────────────────────
     config_path = base_path / ".evalview" / "config.yaml"
-    config_content = f"""# EvalView Configuration
-# Auto-generated by wizard
-
-adapter: {selected_agent['adapter']}
-endpoint: {selected_agent['url']}
+    if not config_path.exists():
+        config_content = f"""# EvalView Configuration
+adapter: {adapter}
+endpoint: {endpoint}
 timeout: 30.0
-headers: {{}}
-
-# Enable for local development (SSRF protection disabled)
 allow_private_urls: true
 
-# Model configuration
 model:
-  name: gpt-4o-mini
-  # Uses standard OpenAI pricing
-  # Override with custom pricing if needed:
-  # pricing:
-  #   input_per_1m: 0.15
-  #   output_per_1m: 0.60
-  #   cached_per_1m: 0.075
+  name: {model_name}
 """
-
-    config_path.write_text(config_content)
-    console.print("[green]✅ Created .evalview/config.yaml[/green]")
-
-    # Create a sample test case tailored to the detected framework
-    example_path = base_path / "tests" / "test-cases" / "example.yaml"
-    if not example_path.exists():
-        if selected_agent["adapter"] == "langgraph":
-            example_content = """name: "LangGraph Basic Test"
-description: "Test basic agent functionality"
-
-input:
-  query: "What is 2+2?"
-  context: {}
-
-expected:
-  tools: []  # Add expected tools if your agent uses them
-  output:
-    contains:
-      - "4"
-    not_contains:
-      - "error"
-
-thresholds:
-  min_score: 70
-  max_cost: 0.10
-  max_latency: 10000
-"""
-        elif selected_agent["adapter"] == "crewai":
-            example_content = """name: "CrewAI Basic Test"
-description: "Test CrewAI agent execution"
-
-input:
-  query: "Research the weather in New York"
-  context: {}
-
-expected:
-  tools: []  # CrewAI auto-detects tools from tasks
-  output:
-    contains:
-      - "weather"
-    not_contains:
-      - "error"
-
-thresholds:
-  min_score: 70
-  max_cost: 0.50
-  max_latency: 60000  # CrewAI crews may take longer
-"""
-        else:
-            example_content = """name: "Agent Basic Test"
-description: "Test basic agent functionality"
-
-input:
-  query: "Hello, how are you?"
-  context: {}
-
-expected:
-  tools: []
-  output:
-    contains: []
-    not_contains:
-      - "error"
-
-thresholds:
-  min_score: 70
-  max_cost: 0.10
-  max_latency: 10000
-"""
-        example_path.write_text(example_content)
-        console.print("[green]✅ Created tests/test-cases/example.yaml[/green]")
+        config_path.write_text(config_content)
+        console.print("\n[green]✓ Created .evalview/config.yaml[/green]")
     else:
-        console.print("[yellow]⚠️  tests/test-cases/example.yaml already exists[/yellow]")
+        console.print("\n[yellow]⚠  .evalview/config.yaml already exists, skipping[/yellow]")
 
-    # Test connection
-    console.print()
-    if click.confirm("Test the connection now?", default=True):
-        console.print("\n[cyan]Testing connection...[/cyan]")
+    # ── Write personalized test case ──────────────────────────────────────────
+    test_path = base_path / "tests" / "test-cases" / "first-test.yaml"
+    if not test_path.exists():
+        test_path.write_text(_build_wizard_yaml(description, tools))
+        console.print("[green]✓ Created tests/test-cases/first-test.yaml[/green]")
+    else:
+        console.print("[yellow]⚠  tests/test-cases/first-test.yaml already exists, skipping[/yellow]")
 
-        try:
-            # Import adapter registry
-            from evalview.adapters.registry import AdapterRegistry
-
-            test_adapter = AdapterRegistry.create(
-                name=selected_agent["adapter"],
-                endpoint=selected_agent["url"],
-                timeout=10.0,
-                allow_private_urls=True,
-            )
-
-            trace = await test_adapter.execute("What is 2+2?")
-
-            console.print("[green]✅ Connection successful![/green]\n")
-            console.print(f"  Response: {trace.final_output[:100]}{'...' if len(trace.final_output) > 100 else ''}")
-            console.print(f"  Steps: {len(trace.steps)}")
-            console.print(f"  Latency: {trace.metrics.total_latency:.0f}ms")
-
-        except Exception as e:
-            console.print(f"[yellow]⚠️  Connection test failed: {e}[/yellow]")
-            console.print("[dim]The config has been saved - you can fix the issue and try again.[/dim]")
-
-    console.print()
-    console.print("[blue]━━━ Setup Complete! ━━━[/blue]\n")
-    console.print("[bold]Next steps:[/bold]")
-    console.print("  1. Create tests:")
-    console.print("     • [cyan]evalview record[/cyan]     ← Record agent interactions as tests")
-    console.print("     • [cyan]evalview expand[/cyan]     ← Generate variations from a seed test")
-    console.print("     • Or edit tests/test-cases/example.yaml")
-    console.print("  2. Run: [cyan]evalview run[/cyan]")
-    console.print()
-    console.print("[dim]Tip: Use 'evalview validate-adapter --endpoint URL' to debug adapter issues[/dim]\n")
+    # ── Next steps ────────────────────────────────────────────────────────────
+    console.print("\n[blue]━━━ Ready ━━━[/blue]")
+    console.print("\n[bold]Run your first test:[/bold]")
+    console.print("  [cyan]evalview run[/cyan]")
+    console.print("\n[dim]Edit tests/test-cases/first-test.yaml to refine expected behaviour.[/dim]")
+    console.print(f"[dim]Adapter: {adapter}  →  {endpoint}[/dim]\n")
 
 
 @main.command()

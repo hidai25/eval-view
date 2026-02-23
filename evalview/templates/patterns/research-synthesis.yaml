@@ -1,0 +1,32 @@
+# Pattern: Research Synthesis
+# Tests a research agent that searches multiple sources and synthesizes a coherent answer.
+# Common failure: Agent returns raw search snippets instead of a synthesized response,
+# or stops after one search when the topic requires multiple queries.
+#
+# Customize: Replace tool names, query, and expected synthesis keywords.
+
+name: "Research synthesis — multi-source"
+description: "Verify the agent searches multiple sources and produces a synthesized answer"
+
+input:
+  query: "Compare the pricing models of the top 3 vector databases."
+
+expected:
+  tools:
+    - web_search         # <-- Your search tool (must be called at least once)
+  output:
+    contains:
+      - "compare"        # <-- Synthesis language — adjust to your domain
+      - "pricing"
+    not_contains:
+      - "I cannot search"
+      - "no results"
+      - "I don't have access to the internet"
+
+thresholds:
+  min_score: 75          # Lower bar — synthesis quality is hard to check deterministically
+  max_latency: 45000     # 45s — multi-step research takes longer
+  max_cost: 0.10
+
+checks:
+  hallucination: true

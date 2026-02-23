@@ -1,0 +1,31 @@
+# Pattern: Data Analysis
+# Tests an agent that queries a data source, analyzes the results, and reports findings.
+# Common failure: Agent skips the query step and invents numbers, or returns raw query
+# results instead of a human-readable analysis.
+#
+# Customize: Replace tool names, query, and the numeric/keyword markers you expect.
+
+name: "Data analysis — query and interpret"
+description: "Verify the agent queries data and returns a coherent analysis"
+
+input:
+  query: "What were our top 5 products by revenue last quarter?"
+
+expected:
+  tool_sequence:
+    - query_database     # <-- Your data query tool (SQL, BigQuery, etc.)
+  output:
+    contains:
+      - "revenue"        # <-- Expected analytical language
+      - "quarter"
+    not_contains:
+      - "I don't have access to your data"
+      - "cannot query"
+      - "error"
+
+thresholds:
+  min_score: 80
+  max_latency: 20000   # 20s — DB round trips should be fast
+
+checks:
+  hallucination: true  # Numbers in the answer must come from the query, not be fabricated

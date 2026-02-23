@@ -1,0 +1,31 @@
+# Pattern: Code Generation
+# Tests a coding agent that writes code, runs it, and reports results.
+# Common failure: Agent returns broken code, skips execution, or outputs prose instead of code.
+#
+# Customize: Replace the query with your code task and adjust expected output markers.
+
+name: "Code generation — write and validate"
+description: "Verify the agent produces runnable code and validates it"
+
+input:
+  query: "Write a Python function that returns the nth Fibonacci number."
+
+expected:
+  tool_sequence:
+    - code_executor      # <-- Your code execution tool (e.g. python_repl, exec_code)
+  output:
+    contains:
+      - "def "           # <-- Function definition should appear
+      - "return"
+    not_contains:
+      - "syntax error"
+      - "NameError"
+      - "I cannot write"
+      - "as an AI"
+
+thresholds:
+  min_score: 85
+  max_latency: 30000   # 30s — code gen + execution budget
+
+checks:
+  hallucination: false  # Output is code, not a factual claim — skip LLM judge
