@@ -1647,8 +1647,9 @@ async def _run_async(
         with open(config_path) as f:
             early_config = yaml.safe_load(f) or {}
 
-    # ── Connectivity check — before ANY output ────────────────────────────────
-    # Do this first so users with no agent never see the banner or verbose flags.
+    print_evalview_banner(console, subtitle="[dim]Catch agent regressions before you ship[/dim]")
+
+    # ── Connectivity check ────────────────────────────────────────────────────
     _ec_adapter = (adapter_override or early_config.get("adapter", "http")).lower()
     _ec_no_http_check = {"openai-assistants", "anthropic", "ollama", "goose"}
     # Skip endpoint check for API-key-based adapters; always check URL-based ones
@@ -1711,20 +1712,6 @@ async def _run_async(
     from evalview.core.llm_provider import LLMProvider
     if selected_provider != LLMProvider.OLLAMA:
         os.environ[config_for_provider.env_var] = selected_api_key
-
-    # Welcome banner
-    console.print()
-    console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗██╗   ██╗ █████╗ ██╗    ██╗   ██╗██╗███████╗██╗    ██╗[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔════╝██║   ██║██╔══██╗██║    ██║   ██║██║██╔════╝██║    ██║[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]█████╗  ██║   ██║███████║██║    ██║   ██║██║█████╗  ██║ █╗ ██║[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]██╔══╝  ╚██╗ ██╔╝██╔══██║██║    ╚██╗ ██╔╝██║██╔══╝  ██║███╗██║[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]███████╗ ╚████╔╝ ██║  ██║███████╗╚████╔╝ ██║███████╗╚███╔███╔╝[/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]  [bold green]╚══════╝  ╚═══╝  ╚═╝  ╚═╝╚══════╝ ╚═══╝  ╚═╝╚══════╝ ╚══╝╚══╝ [/bold green]  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]║[/bold cyan]        [dim]Catch agent regressions before you ship[/dim]               [bold cyan]║[/bold cyan]")
-    console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
-    console.print()
 
     if debug:
         console.print("[dim]🐛 Debug mode enabled - will show raw responses[/dim]\n")
@@ -4635,7 +4622,7 @@ def demo():
     from http.server import BaseHTTPRequestHandler, HTTPServer
     from rich.rule import Rule
 
-    console.print()
+    print_evalview_banner(console, subtitle="[dim]Live Regression Demo[/dim]")
 
     # ── Intro ─────────────────────────────────────────────────────────────────
     console.print(Rule(" EvalView — Live Regression Demo ", style="bold cyan"))
@@ -6526,6 +6513,8 @@ def snapshot(test_path: str, notes: str, test: str):
     from evalview.core.project_state import ProjectStateStore
     from evalview.core.celebrations import Celebrations
     from evalview.core.messages import get_random_checking_message
+
+    print_evalview_banner(console, subtitle="[dim]Catch agent regressions before you ship[/dim]")
 
     # Initialize stores
     state_store = ProjectStateStore()
