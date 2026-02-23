@@ -195,6 +195,7 @@ evalview init --wizard
 # 3 questions. One working test case. Let's go.
 #
 # Step 1/3 — Framework
+# What adapter does your agent use?
 #   1. HTTP / REST API    (most common)
 #   2. Anthropic API
 #   3. OpenAI API
@@ -484,7 +485,7 @@ evalview mcp serve --test-path my_tests/  # Custom test directory
 | **Skills Testing** | Validate and test Claude Code / Codex SKILL.md workflows | [Docs](docs/SKILLS_TESTING.md) |
 | **Provider-Agnostic Skill Tests** | Run skill tests against Anthropic, OpenAI, DeepSeek, or any OpenAI-compatible API | [Docs](docs/SKILLS_TESTING.md#provider-agnostic-api-keys) |
 | **Test Pattern Library** | 15 ready-made YAML patterns — copy to your project with `evalview add` | [Docs](#new-provider-agnostic-skill-tests--setup-wizard--15-templates) |
-| **Personalized Init Wizard** | `evalview init --wizard` — 3 questions, generates a first test tailored to your agent | [Docs](#new-provider-agnostic-skill-tests--setup-wizard--15-templates) |
+| **Personalized Init Wizard** | `evalview init --wizard` — generates a config + first test tailored to your agent | [Docs](#new-provider-agnostic-skill-tests--setup-wizard--15-templates) |
 
 ---
 
