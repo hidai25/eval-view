@@ -3,7 +3,9 @@
   Keywords: AI agent testing, LLM testing, agent evaluation, regression testing for AI,
   golden baseline testing, LangGraph testing, CrewAI testing, OpenAI agent testing,
   AI CI/CD, pytest for AI agents, SKILL.md validation, MCP contract testing,
-  non-deterministic testing, LLM evaluation, agent regression detection
+  non-deterministic testing, LLM evaluation, agent regression detection,
+  provider-agnostic LLM testing, OpenAI-compatible eval, DeepSeek testing,
+  evalview add templates, evalview init wizard, first agent test
 -->
 
 # EvalView — The open-source testing framework for AI agents
@@ -156,6 +158,62 @@ Perfect for LLM-based agents with creative variation.
     ```
 
 [Full getting started guide →](docs/GETTING_STARTED.md)
+
+---
+
+## New: Provider-Agnostic Skill Tests + Setup Wizard + 15 Templates
+
+**Run skill tests against any LLM provider** — Anthropic, OpenAI, DeepSeek, Kimi, Moonshot, or any OpenAI-compatible endpoint:
+
+```bash
+# Anthropic (default — unchanged)
+export ANTHROPIC_API_KEY=your-key
+evalview skill test tests/my-skill.yaml
+
+# OpenAI
+export OPENAI_API_KEY=your-key
+evalview skill test tests/my-skill.yaml --provider openai --model gpt-4o
+
+# Any OpenAI-compatible provider (DeepSeek, Groq, Together, etc.)
+evalview skill test tests/my-skill.yaml \
+  --provider openai \
+  --base-url https://api.deepseek.com/v1 \
+  --model deepseek-chat
+
+# Or via env vars (recommended for CI)
+export SKILL_TEST_PROVIDER=openai
+export SKILL_TEST_API_KEY=your-key
+export SKILL_TEST_BASE_URL=https://api.deepseek.com/v1
+evalview skill test tests/my-skill.yaml
+```
+
+**Personalized first test in 60 seconds** — the wizard asks 3 questions and generates a test case tuned to your actual agent:
+
+```bash
+evalview init --wizard
+# ━━━ EvalView Setup Wizard ━━━
+# 3 questions. One working test case. Let's go.
+#
+# 1. Framework? (http / anthropic / openai / langgraph / crewai): langgraph
+# 2. What does your agent do? customer support triage
+# 3. Tools it exposes? get_ticket, escalate, resolve_ticket
+#
+# ✓ Created tests/test-cases/first-test.yaml
+```
+
+**15 ready-made test patterns** — copy any to your project as a starting point:
+
+```bash
+evalview add                    # List all 15 patterns
+evalview add customer-support   # Copy to tests/customer-support.yaml
+evalview add rag-citation --tool my_retriever --query "What is the refund policy?"
+```
+
+Available patterns: `tool-not-called` · `wrong-tool-chosen` · `tool-error-handling` · `tool-sequence` · `cost-budget` · `latency-budget` · `output-format` · `multi-turn-memory` · `rag-grounding` · `rag-citation` · `customer-support` · `code-generation` · `data-analysis` · `research-synthesis` · `safety-refusal`
+
+> **When to use which:**
+> - `evalview init --wizard` → Day 0, blank slate, writes the first test for you
+> - `evalview add <pattern>` → Day 3+, you know your agent's domain and want a head start
 
 ---
 
@@ -409,6 +467,9 @@ evalview mcp serve --test-path my_tests/  # Custom test directory
 | **Behavior Coverage** | Track tasks, tools, paths tested | [Docs](docs/BEHAVIOR_COVERAGE.md) |
 | **MCP Contract Testing** | Detect when external MCP servers change their interface | [Docs](docs/MCP_CONTRACTS.md) |
 | **Skills Testing** | Validate and test Claude Code / Codex SKILL.md workflows | [Docs](docs/SKILLS_TESTING.md) |
+| **Provider-Agnostic Skill Tests** | Run skill tests against Anthropic, OpenAI, DeepSeek, or any OpenAI-compatible API | [Docs](docs/SKILLS_TESTING.md#provider-agnostic-api-keys-legacy-skill-test-mode) |
+| **Test Pattern Library** | 15 ready-made YAML patterns — copy to your project with `evalview add` | [Docs](#new-provider-agnostic-skill-tests--setup-wizard--15-templates) |
+| **Personalized Init Wizard** | `evalview init --wizard` — 3 questions, generates a first test tailored to your agent | [Docs](#new-provider-agnostic-skill-tests--setup-wizard--15-templates) |
 
 ---
 
@@ -509,7 +570,7 @@ evalview skill test tests.yaml --agent langgraph
 
 ## Roadmap
 
-**Shipped:** Golden traces • **Snapshot/check workflow** • **Streak tracking & celebrations** • **Multi-reference goldens** • Tool categories • Statistical mode • Difficulty levels • Partial sequence credit • Skills validation • E2E agent testing • Build & smoke tests • Health checks • Safety guards (`no_sudo`, `git_clean`) • Claude Code & Codex adapters • **Opus 4.6 cost tracking** • MCP servers • HTML reports • Interactive chat mode • EvalView Gym
+**Shipped:** Golden traces • **Snapshot/check workflow** • **Streak tracking & celebrations** • **Multi-reference goldens** • Tool categories • Statistical mode • Difficulty levels • Partial sequence credit • Skills validation • E2E agent testing • Build & smoke tests • Health checks • Safety guards (`no_sudo`, `git_clean`) • Claude Code & Codex adapters • **Opus 4.6 cost tracking** • MCP servers • HTML reports • Interactive chat mode • EvalView Gym • **Provider-agnostic skill tests** • **15-template pattern library** • **Personalized init wizard**
 
 **Coming:** Agent Teams trace analysis • Multi-turn conversations • Grounded hallucination detection • Error compounding metrics • Container isolation
 
