@@ -187,17 +187,32 @@ export SKILL_TEST_BASE_URL=https://api.deepseek.com/v1
 evalview skill test tests/my-skill.yaml
 ```
 
-**Personalized first test in 60 seconds** — the wizard asks 3 questions and generates a test case tuned to your actual agent:
+**Personalized first test in under 2 minutes** — the wizard asks a few questions and generates a config + test case tuned to your actual agent:
 
 ```bash
 evalview init --wizard
 # ━━━ EvalView Setup Wizard ━━━
 # 3 questions. One working test case. Let's go.
 #
-# 1. Framework? (http / anthropic / openai / langgraph / crewai): langgraph
-# 2. What does your agent do? customer support triage
-# 3. Tools it exposes? get_ticket, escalate, resolve_ticket
+# Step 1/3 — Framework
+#   1. HTTP / REST API    (most common)
+#   2. Anthropic API
+#   3. OpenAI API
+#   4. LangGraph
+#   5. CrewAI
+#   ...
+# Choice [1]: 4
 #
+# Step 2/3 — What does your agent do?
+# Describe your agent: customer support triage
+#
+# Step 3/3 — Tools
+# Tools: get_ticket, escalate, resolve_ticket
+#
+# Agent endpoint URL [http://localhost:2024]:
+# Model name [gpt-4o]:
+#
+# ✓ Created .evalview/config.yaml
 # ✓ Created tests/test-cases/first-test.yaml
 ```
 

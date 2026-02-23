@@ -1212,6 +1212,8 @@ def _build_wizard_yaml(description: str, tools: List[str]) -> str:
     ]
 
     if tools:
+        lines.append("  # `tools:` checks that each tool was called (any order).")
+        lines.append("  # Change to `tool_sequence:` if call order matters for your agent.")
         lines.append("  tools:")
         for t in tools:
             lines.append(f"    - {t}")

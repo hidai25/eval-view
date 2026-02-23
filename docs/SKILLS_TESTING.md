@@ -295,7 +295,7 @@ Options:
 evalview skill test TEST_FILE [OPTIONS]
 
 Options:
-  --model TEXT       Claude model to use (default: claude-sonnet-4-20250514)
+  --model TEXT       Model to use for testing (default: claude-sonnet-4-20250514)
   --provider TEXT    Provider: anthropic|openai (default: anthropic)
   --base-url TEXT    Base URL for OpenAI-compatible providers
   --agent TEXT       Agent type: system-prompt, claude-code, codex, openclaw,

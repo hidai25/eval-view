@@ -12,6 +12,8 @@ input:
   query: "Compare the pricing models of the top 3 vector databases."
 
 expected:
+  # `tools:` (not `tool_sequence:`) because call order doesn't matter here —
+  # the agent may call search multiple times in any order.
   tools:
     - web_search         # <-- Your search tool (must be called at least once)
   output:
