@@ -2,7 +2,14 @@
 
 import re
 from typing import List, Set, Tuple, Optional, Dict
-from evalview.core.types import TestCase, ExecutionTrace, ToolEvaluation, CategoryResult, ReasonCode
+from evalview.core.types import (
+    TestCase,
+    ExecutionTrace,
+    ToolEvaluation,
+    ForbiddenToolEvaluation,
+    CategoryResult,
+    ReasonCode,
+)
 from evalview.core.tool_categories import ToolCategoryMatcher, get_default_matcher
 
 
@@ -125,6 +132,44 @@ class ToolCallEvaluator:
             categories_total=len(expected_categories),
             reason_codes=reason_codes,
         )
+
+    def evaluate_forbidden(
+        self, test_case: TestCase, trace: ExecutionTrace
+    ) -> Optional[ForbiddenToolEvaluation]:
+        """Check whether any forbidden tools were invoked.
+
+        Returns None when the test case defines no forbidden_tools contract,
+        so callers can distinguish "not configured" from "passed with no violations".
+
+        Args:
+            test_case: Test case that may declare forbidden_tools.
+            trace: Execution trace with the actual tool calls.
+
+        Returns:
+            ForbiddenToolEvaluation if forbidden_tools is configured, else None.
+        """
+        forbidden = test_case.expected.forbidden_tools
+        if not forbidden:
+            return None
+
+        forbidden_set: Set[str] = set(forbidden)
+        # Use the same normalisation as the rest of the evaluator so that
+        # casing / separator differences are caught too.
+        violations = [
+            step.tool_name
+            for step in trace.steps
+            if step.tool_name in forbidden_set
+            or _normalize_tool_name(step.tool_name) in {_normalize_tool_name(f) for f in forbidden_set}
+        ]
+        # Deduplicate while preserving first-seen order.
+        seen: Set[str] = set()
+        unique_violations: List[str] = []
+        for v in violations:
+            if v not in seen:
+                seen.add(v)
+                unique_violations.append(v)
+
+        return ForbiddenToolEvaluation(violations=unique_violations, passed=len(unique_violations) == 0)
 
     def _generate_hints(
         self,

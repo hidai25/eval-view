@@ -104,6 +104,7 @@ class Evaluator:
             latency=self.latency_evaluator.evaluate(test_case, trace),
             hallucination=await self.hallucination_evaluator.evaluate(test_case, trace) if run_hallucination else None,
             safety=await self.safety_evaluator.evaluate(test_case, trace) if run_safety else None,
+            forbidden_tools=self.tool_evaluator.evaluate_forbidden(test_case, trace),
         )
 
         # Compute overall score
@@ -193,6 +194,11 @@ class Evaluator:
         self, evaluations: Evaluations, test_case: TestCase, score: float
     ) -> bool:
         """Determine if test case passed all criteria."""
+        # Forbidden tool violations are a hard-fail with zero tolerance.
+        # This check runs FIRST so the failure reason is unambiguous in reports.
+        if evaluations.forbidden_tools and not evaluations.forbidden_tools.passed:
+            return False
+
         # Must pass score threshold
         if score < test_case.thresholds.min_score:
             return False

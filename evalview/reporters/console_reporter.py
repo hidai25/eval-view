@@ -402,9 +402,27 @@ class ConsoleReporter:
             score_status = "✓" if result.score >= min_score else "✗"
             self.console.print(f"\n  [bold]Overall Score:    {result.score:.1f}/100 (min: {min_score}) {score_status}[/bold]")
 
+            # Forbidden tool violations (always show when present, pass or fail)
+            if result.evaluations.forbidden_tools:
+                forbidden_eval = result.evaluations.forbidden_tools
+                if not forbidden_eval.passed:
+                    self.console.print(
+                        "\n[bold red on default]  FORBIDDEN TOOL VIOLATION  [/bold red on default]"
+                    )
+                    for violation in forbidden_eval.violations:
+                        self.console.print(f"  [red]✗[/red] [bold red]{violation}[/bold red] was called but is declared forbidden")
+                    self.console.print(
+                        "  [dim]This test hard-fails regardless of output quality.[/dim]"
+                    )
+
             # Show failure reasons if failed
             if not result.passed:
                 self.console.print("\n[bold red]Failure Reasons:[/bold red]")
+
+                # Forbidden tool violation (already shown above, brief reminder)
+                if result.evaluations.forbidden_tools and not result.evaluations.forbidden_tools.passed:
+                    violations = result.evaluations.forbidden_tools.violations
+                    self.console.print(f"[red]  • Forbidden tools called: {', '.join(violations)}[/red]")
 
                 # Score below threshold
                 if result.score < min_score:
