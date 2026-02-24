@@ -1495,6 +1495,12 @@ model:
     default=False,
     help="Save results as golden baseline if all tests pass.",
 )
+@click.option(
+    "--no-judge",
+    is_flag=True,
+    default=False,
+    help="Skip LLM-as-judge evaluation. Uses deterministic scoring only (string matching + tool assertions). Scores capped at 75. No API key required.",
+)
 @track_command("run", lambda **kw: {"adapter": kw.get("adapter") or "auto", "has_path": bool(kw.get("path"))})
 def run(
     path: Optional[str],
@@ -1529,6 +1535,7 @@ def run(
     difficulty: Optional[str],
     contracts: bool,
     save_golden: bool,
+    no_judge: bool,
 ):
     """Run test cases against the agent.
 
@@ -1555,6 +1562,7 @@ def run(
         fail_on=fail_on, warn_on=warn_on, trace=trace, trace_out=trace_out,
         runs=runs, pass_rate=pass_rate, difficulty_filter=difficulty,
         contracts=contracts, save_golden=save_golden,
+        no_judge=no_judge,
     ))
 
 
@@ -1612,6 +1620,7 @@ async def _run_async(
     difficulty_filter: Optional[str] = None,
     contracts: bool = False,
     save_golden: bool = False,
+    no_judge: bool = False,
 ):
     """Async implementation of run command."""
     import fnmatch
@@ -1684,34 +1693,75 @@ async def _run_async(
             from evalview.core.llm_provider import resolve_model_alias
             os.environ["EVAL_MODEL"] = resolve_model_alias(judge_config["model"])
 
-    # Interactive provider selection for LLM-as-judge
-    result = get_or_select_provider(console)
-    if result is None:
-        try:
-            from evalview.telemetry.client import get_client as _tc
-            from evalview.telemetry.events import CommandEvent as _CE
-            _tc().track(_CE(
-                command_name="run_failed_early",
-                success=False,
-                properties={"failure_reason": "no_provider_configured", "has_config": bool(early_config)},
-            ))
-        except Exception:
-            pass
-        return
+    # --no-judge: skip provider selection and LLM evaluation entirely
+    if no_judge:
+        console.print("[yellow]⚠  --no-judge: skipping LLM-as-judge. Using deterministic scoring only (scores capped at 75).[/yellow]\n")
+    else:
+        # Interactive provider selection for LLM-as-judge
+        result = get_or_select_provider(console)
+        if result is None:
+            try:
+                from evalview.telemetry.client import get_client as _tc
+                from evalview.telemetry.events import CommandEvent as _CE
+                _tc().track(_CE(
+                    command_name="run_failed_early",
+                    success=False,
+                    properties={"failure_reason": "no_provider_configured", "has_config": bool(early_config)},
+                ))
+            except Exception:
+                pass
+            return
 
-    selected_provider, selected_api_key = result
+        selected_provider, selected_api_key = result
 
-    # Save preference for future runs
-    save_provider_preference(selected_provider)
+        # Validate the API key with a lightweight probe before running any tests.
+        # Fail fast here with a clear message rather than propagating 401s as
+        # opaque "EXECUTION ERROR" failures on every single test case.
+        from evalview.core.llm_provider import LLMProvider, PROVIDER_CONFIGS as _PROVIDER_CONFIGS
+        if selected_provider != LLMProvider.OLLAMA:
+            try:
+                import anthropic as _anthropic
+                import openai as _openai
 
-    # Set environment variable for the evaluators to use (only if not already set from config)
-    config_for_provider = PROVIDER_CONFIGS[selected_provider]
-    if not os.environ.get("EVAL_PROVIDER"):
-        os.environ["EVAL_PROVIDER"] = selected_provider.value
-    # Don't set OLLAMA_HOST to "ollama" placeholder - Ollama doesn't need it
-    from evalview.core.llm_provider import LLMProvider
-    if selected_provider != LLMProvider.OLLAMA:
-        os.environ[config_for_provider.env_var] = selected_api_key
+                if selected_provider == LLMProvider.ANTHROPIC:
+                    _anthropic.Anthropic(api_key=selected_api_key).models.list()
+                elif selected_provider == LLMProvider.OPENAI:
+                    _openai.OpenAI(api_key=selected_api_key).models.list()
+                # Other providers (Gemini, Grok, HF) are not probed — they are less
+                # common and their SDKs vary; auth errors there will surface normally.
+            except Exception as _probe_exc:
+                _probe_str = str(_probe_exc).lower()
+                _is_auth = (
+                    "authentication" in _probe_str
+                    or "401" in _probe_str
+                    or "invalid" in _probe_str
+                    or "unauthorized" in _probe_str
+                    or "api key" in _probe_str
+                )
+                if _is_auth:
+                    _provider_cfg = _PROVIDER_CONFIGS[selected_provider]
+                    console.print(f"\n[bold red]✗ LLM judge authentication failed[/bold red]")
+                    console.print(f"  Provider: [bold]{_provider_cfg.display_name}[/bold]")
+                    console.print(f"  Error:    {str(_probe_exc)[:120]}")
+                    console.print()
+                    console.print(f"  Fix one of the following:")
+                    console.print(f"    1. Set a valid key:   [cyan]export {_provider_cfg.env_var}='sk-...'[/cyan]")
+                    console.print(f"    2. Switch provider:   [cyan]evalview run --judge-provider openai[/cyan]")
+                    console.print(f"    3. Skip LLM judge:    [cyan]evalview run --no-judge[/cyan]")
+                    console.print()
+                    return
+                raise  # non-auth errors (network, etc.) propagate normally
+
+        # Save preference for future runs
+        save_provider_preference(selected_provider)
+
+        # Set environment variable for the evaluators to use (only if not already set from config)
+        config_for_provider = PROVIDER_CONFIGS[selected_provider]
+        if not os.environ.get("EVAL_PROVIDER"):
+            os.environ["EVAL_PROVIDER"] = selected_provider.value
+        # Don't set OLLAMA_HOST to "ollama" placeholder - Ollama doesn't need it
+        if selected_provider != LLMProvider.OLLAMA:
+            os.environ[config_for_provider.env_var] = selected_api_key
 
     if debug:
         console.print("[dim]🐛 Debug mode enabled - will show raw responses[/dim]\n")
@@ -2026,6 +2076,7 @@ async def _run_async(
 
     evaluator = Evaluator(
         default_weights=scoring_weights,
+        skip_llm_judge=no_judge,
     )
 
     # Setup retry config

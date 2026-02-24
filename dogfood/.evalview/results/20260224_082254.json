@@ -1,0 +1,981 @@
+[
+  {
+    "test_case": "correct_calculation",
+    "passed": true,
+    "score": 87.5,
+    "evaluations": {
+      "tool_accuracy": {
+        "accuracy": 1.0,
+        "missing": [],
+        "unexpected": [],
+        "correct": [
+          "calculator"
+        ],
+        "hints": [],
+        "category_results": [],
+        "categories_satisfied": 0,
+        "categories_total": 0,
+        "reason_codes": []
+      },
+      "sequence_correctness": {
+        "correct": true,
+        "expected_sequence": [],
+        "actual_sequence": [
+          "calculator"
+        ],
+        "violations": [],
+        "progress_score": 1.0,
+        "reason_codes": []
+      },
+      "output_quality": {
+        "score": 75.0,
+        "rationale": "[DETERMINISTIC] All expected strings found; Output has reasonable length",
+        "contains_checks": {
+          "passed": [
+            "105"
+          ],
+          "failed": []
+        },
+        "not_contains_checks": {
+          "passed": [
+            "error",
+            "wrong"
+          ],
+          "failed": []
+        }
+      },
+      "cost": {
+        "total_cost": 0.001,
+        "threshold": Infinity,
+        "passed": true,
+        "breakdown": [
+          {
+            "step_id": "step-0",
+            "cost": 0.0
+          }
+        ]
+      },
+      "latency": {
+        "total_latency": 546.584,
+        "threshold": Infinity,
+        "passed": true,
+        "breakdown": [
+          {
+            "step_id": "step-0",
+            "latency": 10.0
+          }
+        ]
+      },
+      "hallucination": null,
+      "safety": null
+    },
+    "trace": {
+      "session_id": "session-1771921372",
+      "start_time": "2026-02-24T08:22:52.819278",
+      "end_time": "2026-02-24T08:22:53.365862",
+      "steps": [
+        {
+          "step_id": "step-0",
+          "step_name": "calculator",
+          "tool_name": "calculator",
+          "parameters": {
+            "expression": "15 * 7"
+          },
+          "output": "105",
+          "success": true,
+          "error": null,
+          "metrics": {
+            "latency": 10.0,
+            "cost": 0.0,
+            "tokens": null
+          }
+        }
+      ],
+      "final_output": "The result of 15 * 7 is 105.",
+      "metrics": {
+        "total_cost": 0.001,
+        "total_latency": 546.584,
+        "total_tokens": {
+          "input_tokens": 4,
+          "output_tokens": 7,
+          "cached_tokens": 0
+        }
+      },
+      "trace_context": {
+        "trace_id": "74b73cb6d46e4f99",
+        "root_span_id": "18022333",
+        "spans": [
+          {
+            "span_id": "18022333",
+            "parent_span_id": null,
+            "trace_id": "74b73cb6d46e4f99",
+            "kind": "agent",
+            "name": "HTTP Agent",
+            "start_time": "2026-02-24T08:22:52.819339",
+            "end_time": "2026-02-24T08:22:53.365827",
+            "duration_ms": 546.4879999999999,
+            "status": "ok",
+            "error_message": null,
+            "llm": null,
+            "tool": null,
+            "cost": 0.0
+          },
+          {
+            "span_id": "c5de61af",
+            "parent_span_id": "18022333",
+            "trace_id": "74b73cb6d46e4f99",
+            "kind": "tool",
+            "name": "calculator",
+            "start_time": "2026-02-24T08:22:53.365786",
+            "end_time": "2026-02-24T08:22:53.365786",
+            "duration_ms": 10.0,
+            "status": "ok",
+            "error_message": null,
+            "llm": null,
+            "tool": {
+              "tool_name": "calculator",
+              "parameters": {
+                "expression": "15 * 7"
+              },
+              "result": "105"
+            },
+            "cost": 0.0
+          }
+        ],
+        "start_time": "2026-02-24T08:22:52.819339",
+        "end_time": "2026-02-24T08:22:53.365917",
+        "total_llm_calls": 0,
+        "total_tool_calls": 1,
+        "total_cost": 0.0
+      }
+    },
+    "timestamp": "2026-02-24T08:22:54.655042",
+    "adapter_name": "http",
+    "min_score": 80.0,
+    "input_query": "Calculate 15 * 7",
+    "actual_output": "The result of 15 * 7 is 105.",
+    "suite_type": null,
+    "difficulty": null
+  },
+  {
+    "test_case": "wrong_answer_detection",
+    "passed": false,
+    "score": 60.0,
+    "evaluations": {
+      "tool_accuracy": {
+        "accuracy": 1.0,
+        "missing": [],
+        "unexpected": [],
+        "correct": [
+          "calculator"
+        ],
+        "hints": [],
+        "category_results": [],
+        "categories_satisfied": 0,
+        "categories_total": 0,
+        "reason_codes": []
+      },
+      "sequence_correctness": {
+        "correct": true,
+        "expected_sequence": [],
+        "actual_sequence": [
+          "calculator"
+        ],
+        "violations": [],
+        "progress_score": 1.0,
+        "reason_codes": []
+      },
+      "output_quality": {
+        "score": 20.0,
+        "rationale": "[DETERMINISTIC] Missing: 15; Contains prohibited: 1014; Output has reasonable length",
+        "contains_checks": {
+          "passed": [],
+          "failed": [
+            "15"
+          ]
+        },
+        "not_contains_checks": {
+          "passed": [],
+          "failed": [
+            "1014"
+          ]
+        }
+      },
+      "cost": {
+        "total_cost": 0.001,
+        "threshold": Infinity,
+        "passed": true,
+        "breakdown": [
+          {
+            "step_id": "step-0",
+            "cost": 0.0
+          }
+        ]
+      },
+      "latency": {
+        "total_latency": 1183.616,
+        "threshold": Infinity,
+        "passed": true,
+        "breakdown": [
+          {
+            "step_id": "step-0",
+            "latency": 10.0
+          }
+        ]
+      },
+      "hallucination": null,
+      "safety": null
+    },
+    "trace": {
+      "session_id": "session-1771921372",
+      "start_time": "2026-02-24T08:22:52.995791",
+      "end_time": "2026-02-24T08:22:54.179407",
+      "steps": [
+        {
+          "step_id": "step-0",
+          "step_name": "calculator",
+          "tool_name": "calculator",
+          "parameters": {
+            "expression": "10 + 5"
+          },
+          "output": "15",
+          "success": true,
+          "error": null,
+          "metrics": {
+            "latency": 10.0,
+            "cost": 0.0,
+            "tokens": null
+          }
+        }
+      ],
+      "final_output": "The result of 10 + 5 is 1014.",
+      "metrics": {
+        "total_cost": 0.001,
+        "total_latency": 1183.616,
+        "total_tokens": {
+          "input_tokens": 5,
+          "output_tokens": 7,
+          "cached_tokens": 0
+        }
+      },
+      "trace_context": {
+        "trace_id": "de96d1d6238c4659",
+        "root_span_id": "66f72a5e",
+        "spans": [
+          {
+            "span_id": "66f72a5e",
+            "parent_span_id": null,
+            "trace_id": "de96d1d6238c4659",
+            "kind": "agent",
+            "name": "HTTP Agent",
+            "start_time": "2026-02-24T08:22:52.995871",
+            "end_time": "2026-02-24T08:22:54.179394",
+            "duration_ms": 1183.5230000000001,
+            "status": "ok",
+            "error_message": null,
+            "llm": null,
+            "tool": null,
+            "cost": 0.0
+          },
+          {
+            "span_id": "176fb55a",
+            "parent_span_id": "66f72a5e",
+            "trace_id": "de96d1d6238c4659",
+            "kind": "tool",
+            "name": "calculator",
+            "start_time": "2026-02-24T08:22:54.179339",
+            "end_time": "2026-02-24T08:22:54.179339",
+            "duration_ms": 10.0,
+            "status": "ok",
+            "error_message": null,
+            "llm": null,
+            "tool": {
+              "tool_name": "calculator",
+              "parameters": {
+                "expression": "10 + 5"
+              },
+              "result": "15"
+            },
+            "cost": 0.0
+          }
+        ],
+        "start_time": "2026-02-24T08:22:52.995871",
+        "end_time": "2026-02-24T08:22:54.179481",
+        "total_llm_calls": 0,
+        "total_tool_calls": 1,
+        "total_cost": 0.0
+      }
+    },
+    "timestamp": "2026-02-24T08:22:54.654038",
+    "adapter_name": "http",
+    "min_score": 80.0,
+    "input_query": "Calculate 10 + 5 wrong",
+    "actual_output": "The result of 10 + 5 is 1014.",
+    "suite_type": null,
+    "difficulty": null
+  },
+  {
+    "test_case": "correct_search",
+    "passed": true,
+    "score": 87.5,
+    "evaluations": {
+      "tool_accuracy": {
+        "accuracy": 1.0,
+        "missing": [],
+        "unexpected": [],
+        "correct": [
+          "search"
+        ],
+        "hints": [],
+        "category_results": [],
+        "categories_satisfied": 0,
+        "categories_total": 0,
+        "reason_codes": []
+      },
+      "sequence_correctness": {
+        "correct": true,
+        "expected_sequence": [],
+        "actual_sequence": [
+          "search"
+        ],
+        "violations": [],
+        "progress_score": 1.0,
+        "reason_codes": []
+      },
+      "output_quality": {
+        "score": 75.0,
+        "rationale": "[DETERMINISTIC] All expected strings found; Output has reasonable length; Output appears relevant to query",
+        "contains_checks": {
+          "passed": [
+            "Python",
+            "results"
+          ],
+          "failed": []
+        },
+        "not_contains_checks": {
+          "passed": [],
+          "failed": []
+        }
+      },
+      "cost": {
+        "total_cost": 0.001,
+        "threshold": Infinity,
+        "passed": true,
+        "breakdown": [
+          {
+            "step_id": "step-0",
+            "cost": 0.0
+          }
+        ]
+      },
+      "latency": {
+        "total_latency": 1182.963,
+        "threshold": Infinity,
+        "passed": true,
+        "breakdown": [
+          {
+            "step_id": "step-0",
+            "latency": 10.0
+          }
+        ]
+      },
+      "hallucination": null,
+      "safety": null
+    },
+    "trace": {
+      "session_id": "session-1771921373",
+      "start_time": "2026-02-24T08:22:53.065649",
+      "end_time": "2026-02-24T08:22:54.248612",
+      "steps": [
+        {
+          "step_id": "step-0",
+          "step_name": "search",
+          "tool_name": "search",
+          "parameters": {
+            "query": "python tutorials"
+          },
+          "output": "Found 3 results for 'python tutorials': Result 1, Result 2, Result 3",
+          "success": true,
+          "error": null,
+          "metrics": {
+            "latency": 10.0,
+            "cost": 0.0,
+            "tokens": null
+          }
+        }
+      ],
+      "final_output": "I found information about python tutorials. Here are the top results: Result 1, Result 2, Result 3.",
+      "metrics": {
+        "total_cost": 0.001,
+        "total_latency": 1182.963,
+        "total_tokens": {
+          "input_tokens": 6,
+          "output_tokens": 24,
+          "cached_tokens": 0
+        }
+      },
+      "trace_context": {
+        "trace_id": "22fded4bf36645d7",
+        "root_span_id": "61eabd96",
+        "spans": [
+          {
+            "span_id": "61eabd96",
+            "parent_span_id": null,
+            "trace_id": "22fded4bf36645d7",
+            "kind": "agent",
+            "name": "HTTP Agent",
+            "start_time": "2026-02-24T08:22:53.065709",
+            "end_time": "2026-02-24T08:22:54.248603",
+            "duration_ms": 1182.8939999999998,
+            "status": "ok",
+            "error_message": null,
+            "llm": null,
+            "tool": null,
+            "cost": 0.0
+          },
+          {
+            "span_id": "6ed259c4",
+            "parent_span_id": "61eabd96",
+            "trace_id": "22fded4bf36645d7",
+            "kind": "tool",
+            "name": "search",
+            "start_time": "2026-02-24T08:22:54.248570",
+            "end_time": "2026-02-24T08:22:54.248570",
+            "duration_ms": 10.0,
+            "status": "ok",
+            "error_message": null,
+            "llm": null,
+            "tool": {
+              "tool_name": "search",
+              "parameters": {
+                "query": "python tutorials"
+              },
+              "result": "Found 3 results for 'python tutorials': Result 1, Result 2, Result 3"
+            },
+            "cost": 0.0
+          }
+        ],
+        "start_time": "2026-02-24T08:22:53.065709",
+        "end_time": "2026-02-24T08:22:54.248657",
+        "total_llm_calls": 0,
+        "total_tool_calls": 1,
+        "total_cost": 0.0
+      }
+    },
+    "timestamp": "2026-02-24T08:22:54.647286",
+    "adapter_name": "http",
+    "min_score": 65.0,
+    "input_query": "Search for Python tutorials",
+    "actual_output": "I found information about python tutorials. Here are the top results: Result 1, Result 2, Result 3.",
+    "suite_type": null,
+    "difficulty": null
+  },
+  {
+    "test_case": "wrong_tool_detection",
+    "passed": false,
+    "score": 40.0,
+    "evaluations": {
+      "tool_accuracy": {
+        "accuracy": 0.0,
+        "missing": [
+          "calculator"
+        ],
+        "unexpected": [
+          "weather"
+        ],
+        "correct": [],
+        "hints": [
+          "The agent called different tools than expected. Consider using tool_categories for flexible matching."
+        ],
+        "category_results": [],
+        "categories_satisfied": 0,
+        "categories_total": 0,
+        "reason_codes": [
+          {
+            "code": "TOOL_MISSING",
+            "severity": "error",
+            "message": "Expected tool 'calculator' was not called",
+            "context": {
+              "expected_tool": "calculator",
+              "actual_tools": [
+                "weather"
+              ]
+            },
+            "remediation": "Ensure your agent has access to 'calculator' and the query triggers its use."
+          },
+          {
+            "code": "TOOL_UNEXPECTED",
+            "severity": "info",
+            "message": "Agent called unexpected tool 'weather'",
+            "context": {
+              "unexpected_tool": "weather",
+              "expected_tools": [
+                "calculator"
+              ]
+            },
+            "remediation": "If 'weather' is correct, add it to expected_tools in your test case."
+          }
+        ]
+      },
+      "sequence_correctness": {
+        "correct": true,
+        "expected_sequence": [],
+        "actual_sequence": [
+          "weather"
+        ],
+        "violations": [],
+        "progress_score": 1.0,
+        "reason_codes": []
+      },
+      "output_quality": {
+        "score": 40.0,
+        "rationale": "[DETERMINISTIC] Missing: 32; Output has reasonable length",
+        "contains_checks": {
+          "passed": [],
+          "failed": [
+            "32"
+          ]
+        },
+        "not_contains_checks": {
+          "passed": [],
+          "failed": []
+        }
+      },
+      "cost": {
+        "total_cost": 0.001,
+        "threshold": Infinity,
+        "passed": true,
+        "breakdown": [
+          {
+            "step_id": "step-0",
+            "cost": 0.0
+          }
+        ]
+      },
+      "latency": {
+        "total_latency": 1182.888,
+        "threshold": Infinity,
+        "passed": true,
+        "breakdown": [
+          {
+            "step_id": "step-0",
+            "latency": 10.0
+          }
+        ]
+      },
+      "hallucination": null,
+      "safety": null
+    },
+    "trace": {
+      "session_id": "session-1771921373",
+      "start_time": "2026-02-24T08:22:53.135432",
+      "end_time": "2026-02-24T08:22:54.318320",
+      "steps": [
+        {
+          "step_id": "step-0",
+          "step_name": "weather",
+          "tool_name": "weather",
+          "parameters": {
+            "location": "Paris"
+          },
+          "output": "Sunny, 22\u00b0C",
+          "success": true,
+          "error": null,
+          "metrics": {
+            "latency": 10.0,
+            "cost": 0.0,
+            "tokens": null
+          }
+        }
+      ],
+      "final_output": "The weather is nice today! By the way, 8 * 4 equals 42.",
+      "metrics": {
+        "total_cost": 0.001,
+        "total_latency": 1182.888,
+        "total_tokens": {
+          "input_tokens": 6,
+          "output_tokens": 13,
+          "cached_tokens": 0
+        }
+      },
+      "trace_context": {
+        "trace_id": "eaf86e6989174f25",
+        "root_span_id": "1216f9eb",
+        "spans": [
+          {
+            "span_id": "1216f9eb",
+            "parent_span_id": null,
+            "trace_id": "eaf86e6989174f25",
+            "kind": "agent",
+            "name": "HTTP Agent",
+            "start_time": "2026-02-24T08:22:53.135509",
+            "end_time": "2026-02-24T08:22:54.318311",
+            "duration_ms": 1182.802,
+            "status": "ok",
+            "error_message": null,
+            "llm": null,
+            "tool": null,
+            "cost": 0.0
+          },
+          {
+            "span_id": "c82417ac",
+            "parent_span_id": "1216f9eb",
+            "trace_id": "eaf86e6989174f25",
+            "kind": "tool",
+            "name": "weather",
+            "start_time": "2026-02-24T08:22:54.318282",
+            "end_time": "2026-02-24T08:22:54.318282",
+            "duration_ms": 10.0,
+            "status": "ok",
+            "error_message": null,
+            "llm": null,
+            "tool": {
+              "tool_name": "weather",
+              "parameters": {
+                "location": "Paris"
+              },
+              "result": "Sunny, 22\u00b0C"
+            },
+            "cost": 0.0
+          }
+        ],
+        "start_time": "2026-02-24T08:22:53.135509",
+        "end_time": "2026-02-24T08:22:54.318369",
+        "total_llm_calls": 0,
+        "total_tool_calls": 1,
+        "total_cost": 0.0
+      }
+    },
+    "timestamp": "2026-02-24T08:22:54.662779",
+    "adapter_name": "http",
+    "min_score": 80.0,
+    "input_query": "Calculate 8 * 4 wrong tool",
+    "actual_output": "The weather is nice today! By the way, 8 * 4 equals 42.",
+    "suite_type": null,
+    "difficulty": null
+  },
+  {
+    "test_case": "correct_sequence",
+    "passed": true,
+    "score": 87.5,
+    "evaluations": {
+      "tool_accuracy": {
+        "accuracy": 1.0,
+        "missing": [],
+        "unexpected": [],
+        "correct": [
+          "search",
+          "summarize"
+        ],
+        "hints": [],
+        "category_results": [],
+        "categories_satisfied": 0,
+        "categories_total": 0,
+        "reason_codes": []
+      },
+      "sequence_correctness": {
+        "correct": true,
+        "expected_sequence": [
+          "search",
+          "summarize"
+        ],
+        "actual_sequence": [
+          "search",
+          "summarize"
+        ],
+        "violations": [],
+        "progress_score": 1.0,
+        "reason_codes": []
+      },
+      "output_quality": {
+        "score": 75.0,
+        "rationale": "[DETERMINISTIC] All expected strings found; Output has reasonable length",
+        "contains_checks": {
+          "passed": [
+            "EvalView",
+            "testing"
+          ],
+          "failed": []
+        },
+        "not_contains_checks": {
+          "passed": [],
+          "failed": []
+        }
+      },
+      "cost": {
+        "total_cost": 0.002,
+        "threshold": Infinity,
+        "passed": true,
+        "breakdown": [
+          {
+            "step_id": "step-0",
+            "cost": 0.0
+          },
+          {
+            "step_id": "step-1",
+            "cost": 0.0
+          }
+        ]
+      },
+      "latency": {
+        "total_latency": 1183.4119999999998,
+        "threshold": Infinity,
+        "passed": true,
+        "breakdown": [
+          {
+            "step_id": "step-0",
+            "latency": 10.0
+          },
+          {
+            "step_id": "step-1",
+            "latency": 10.0
+          }
+        ]
+      },
+      "hallucination": null,
+      "safety": null
+    },
+    "trace": {
+      "session_id": "session-1771921373",
+      "start_time": "2026-02-24T08:22:53.205409",
+      "end_time": "2026-02-24T08:22:54.388821",
+      "steps": [
+        {
+          "step_id": "step-0",
+          "step_name": "search",
+          "tool_name": "search",
+          "parameters": {
+            "query": "EvalView features"
+          },
+          "output": "EvalView is an AI agent testing framework with evaluators for tool calls, sequences, and output quality.",
+          "success": true,
+          "error": null,
+          "metrics": {
+            "latency": 10.0,
+            "cost": 0.0,
+            "tokens": null
+          }
+        },
+        {
+          "step_id": "step-1",
+          "step_name": "summarize",
+          "tool_name": "summarize",
+          "parameters": {
+            "text": "EvalView is an AI agent testing framework..."
+          },
+          "output": "EvalView: AI agent testing with multiple evaluators.",
+          "success": true,
+          "error": null,
+          "metrics": {
+            "latency": 10.0,
+            "cost": 0.0,
+            "tokens": null
+          }
+        }
+      ],
+      "final_output": "EvalView is an AI agent testing framework that provides evaluators for tool calls, sequences, and output quality.",
+      "metrics": {
+        "total_cost": 0.002,
+        "total_latency": 1183.4119999999998,
+        "total_tokens": {
+          "input_tokens": 11,
+          "output_tokens": 28,
+          "cached_tokens": 0
+        }
+      },
+      "trace_context": {
+        "trace_id": "a1091358f9734eab",
+        "root_span_id": "cfdec0dd",
+        "spans": [
+          {
+            "span_id": "cfdec0dd",
+            "parent_span_id": null,
+            "trace_id": "a1091358f9734eab",
+            "kind": "agent",
+            "name": "HTTP Agent",
+            "start_time": "2026-02-24T08:22:53.205444",
+            "end_time": "2026-02-24T08:22:54.388811",
+            "duration_ms": 1183.367,
+            "status": "ok",
+            "error_message": null,
+            "llm": null,
+            "tool": null,
+            "cost": 0.0
+          },
+          {
+            "span_id": "5fe4b050",
+            "parent_span_id": "cfdec0dd",
+            "trace_id": "a1091358f9734eab",
+            "kind": "tool",
+            "name": "search",
+            "start_time": "2026-02-24T08:22:54.388731",
+            "end_time": "2026-02-24T08:22:54.388731",
+            "duration_ms": 10.0,
+            "status": "ok",
+            "error_message": null,
+            "llm": null,
+            "tool": {
+              "tool_name": "search",
+              "parameters": {
+                "query": "EvalView features"
+              },
+              "result": "EvalView is an AI agent testing framework with evaluators for tool calls, sequences, and output quality."
+            },
+            "cost": 0.0
+          },
+          {
+            "span_id": "36851fe1",
+            "parent_span_id": "cfdec0dd",
+            "trace_id": "a1091358f9734eab",
+            "kind": "tool",
+            "name": "summarize",
+            "start_time": "2026-02-24T08:22:54.388799",
+            "end_time": "2026-02-24T08:22:54.388799",
+            "duration_ms": 10.0,
+            "status": "ok",
+            "error_message": null,
+            "llm": null,
+            "tool": {
+              "tool_name": "summarize",
+              "parameters": {
+                "text": "EvalView is an AI agent testing framework..."
+              },
+              "result": "EvalView: AI agent testing with multiple evaluators."
+            },
+            "cost": 0.0
+          }
+        ],
+        "start_time": "2026-02-24T08:22:53.205444",
+        "end_time": "2026-02-24T08:22:54.388887",
+        "total_llm_calls": 0,
+        "total_tool_calls": 2,
+        "total_cost": 0.0
+      }
+    },
+    "timestamp": "2026-02-24T08:22:54.651320",
+    "adapter_name": "http",
+    "min_score": 80.0,
+    "input_query": "Search for EvalView and summarize the results",
+    "actual_output": "EvalView is an AI agent testing framework that provides evaluators for tool calls, sequences, and output quality.",
+    "suite_type": null,
+    "difficulty": null
+  },
+  {
+    "test_case": "missing_tool_detection",
+    "passed": false,
+    "score": 57.5,
+    "evaluations": {
+      "tool_accuracy": {
+        "accuracy": 0.0,
+        "missing": [
+          "calculator"
+        ],
+        "unexpected": [],
+        "correct": [],
+        "hints": [
+          "The agent did not call the expected tools. Check that your agent has access to these tools and the query triggers their use."
+        ],
+        "category_results": [],
+        "categories_satisfied": 0,
+        "categories_total": 0,
+        "reason_codes": [
+          {
+            "code": "TOOL_MISSING",
+            "severity": "error",
+            "message": "Expected tool 'calculator' was not called",
+            "context": {
+              "expected_tool": "calculator",
+              "actual_tools": []
+            },
+            "remediation": "Ensure your agent has access to 'calculator' and the query triggers its use."
+          }
+        ]
+      },
+      "sequence_correctness": {
+        "correct": true,
+        "expected_sequence": [],
+        "actual_sequence": [],
+        "violations": [],
+        "progress_score": 1.0,
+        "reason_codes": []
+      },
+      "output_quality": {
+        "score": 75.0,
+        "rationale": "[DETERMINISTIC] All expected strings found; Output has reasonable length",
+        "contains_checks": {
+          "passed": [
+            "answer"
+          ],
+          "failed": []
+        },
+        "not_contains_checks": {
+          "passed": [],
+          "failed": []
+        }
+      },
+      "cost": {
+        "total_cost": 0.0014399999999999999,
+        "threshold": Infinity,
+        "passed": true,
+        "breakdown": []
+      },
+      "latency": {
+        "total_latency": 1186.468,
+        "threshold": Infinity,
+        "passed": true,
+        "breakdown": []
+      },
+      "hallucination": null,
+      "safety": null
+    },
+    "trace": {
+      "session_id": "session-1771921373",
+      "start_time": "2026-02-24T08:22:53.278186",
+      "end_time": "2026-02-24T08:22:54.464654",
+      "steps": [],
+      "final_output": "I can answer this from my knowledge: The sky is blue because of Rayleigh scattering.",
+      "metrics": {
+        "total_cost": 0.0014399999999999999,
+        "total_latency": 1186.468,
+        "total_tokens": {
+          "input_tokens": 6,
+          "output_tokens": 21,
+          "cached_tokens": 0
+        }
+      },
+      "trace_context": {
+        "trace_id": "9e1441006ae045d6",
+        "root_span_id": "90c4da81",
+        "spans": [
+          {
+            "span_id": "90c4da81",
+            "parent_span_id": null,
+            "trace_id": "9e1441006ae045d6",
+            "kind": "agent",
+            "name": "HTTP Agent",
+            "start_time": "2026-02-24T08:22:53.278260",
+            "end_time": "2026-02-24T08:22:54.464640",
+            "duration_ms": 1186.3799999999999,
+            "status": "ok",
+            "error_message": null,
+            "llm": null,
+            "tool": null,
+            "cost": 0.0
+          }
+        ],
+        "start_time": "2026-02-24T08:22:53.278260",
+        "end_time": "2026-02-24T08:22:54.464707",
+        "total_llm_calls": 0,
+        "total_tool_calls": 0,
+        "total_cost": 0.0
+      }
+    },
+    "timestamp": "2026-02-24T08:22:54.655919",
+    "adapter_name": "http",
+    "min_score": 80.0,
+    "input_query": "Answer with no tools please",
+    "actual_output": "I can answer this from my knowledge: The sky is blue because of Rayleigh scattering.",
+    "suite_type": null,
+    "difficulty": null
+  }
+]

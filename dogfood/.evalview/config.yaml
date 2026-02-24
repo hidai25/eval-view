@@ -1,0 +1,11 @@
+# EvalView Dogfood Config
+# Tests EvalView chat mode using EvalView itself
+
+adapter: http
+endpoint: http://localhost:8001/execute
+timeout: 60.0
+
+# Judge uses OpenAI for LLM-as-judge evaluation
+judge:
+  provider: openai
+  model: gpt-4o
