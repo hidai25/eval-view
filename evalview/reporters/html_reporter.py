@@ -1,5 +1,6 @@
 """HTML report generator with interactive Plotly charts."""
 
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any
@@ -196,6 +197,84 @@ class HTMLReporter:
 
         return charts
 
+    def _serialize_spans(self, result: EvaluationResult) -> list:
+        """Serialize span data for the trace replay timeline.
+
+        Prefers the rich ``TraceContext`` (LLM + tool spans with full prompt/
+        completion data). Falls back to the legacy ``StepTrace`` list when no
+        ``trace_context`` is available so the replay works for every adapter.
+
+        Args:
+            result: Evaluation result whose trace we will serialise.
+
+        Returns:
+            A list of plain dicts, one per span, safe for JSON / Jinja2 rendering.
+        """
+        def _truncate(value, limit: int = 600) -> str:
+            s = str(value) if value is not None else ""
+            return s[:limit] + " …" if len(s) > limit else s
+
+        def _json_preview(value, limit: int = 600) -> str:
+            try:
+                s = json.dumps(value, default=str, ensure_ascii=False, indent=2)
+            except Exception:
+                s = str(value)
+            return s[:limit] + " …" if len(s) > limit else s
+
+        trace = result.trace
+
+        # ── Rich path: TraceContext is available ────────────────────────────
+        if trace.trace_context and trace.trace_context.spans:
+            spans = []
+            for sp in sorted(trace.trace_context.spans, key=lambda s: s.start_time):
+                entry: dict = {
+                    "kind": sp.kind.value,         # "agent" | "llm" | "tool"
+                    "name": sp.name,
+                    "duration_ms": round(sp.duration_ms or 0, 1),
+                    "status": sp.status,           # "ok" | "error" | "unset"
+                    "cost": sp.cost,
+                    "error": sp.error_message or "",
+                    "llm": None,
+                    "tool": None,
+                }
+                if sp.llm:
+                    entry["llm"] = {
+                        "model": sp.llm.model,
+                        "provider": sp.llm.provider,
+                        "prompt_tokens": sp.llm.prompt_tokens,
+                        "completion_tokens": sp.llm.completion_tokens,
+                        "finish_reason": sp.llm.finish_reason or "",
+                        "prompt": _truncate(sp.llm.prompt),
+                        "completion": _truncate(sp.llm.completion),
+                    }
+                if sp.tool:
+                    entry["tool"] = {
+                        "tool_name": sp.tool.tool_name,
+                        "parameters": _json_preview(sp.tool.parameters),
+                        "result": _truncate(sp.tool.result),
+                    }
+                spans.append(entry)
+            return spans
+
+        # ── Fallback path: convert StepTrace list ───────────────────────────
+        return [
+            {
+                "kind": "tool",
+                "name": step.tool_name,
+                "duration_ms": round(step.metrics.latency, 1),
+                "status": "ok" if step.success else "error",
+                "cost": step.metrics.cost,
+                "error": step.error or "",
+                "llm": None,
+                "tool": {
+                    "tool_name": step.tool_name,
+                    "parameters": _json_preview(step.parameters),
+                    "result": _truncate(step.output),
+                },
+            }
+            for step in trace.steps
+        ]
+
     def _render_template(
         self,
         results: List[EvaluationResult],
@@ -231,6 +310,14 @@ class HTMLReporter:
                 "latency": round(r.trace.metrics.total_latency, 0),
                 "steps": len(r.trace.steps),
                 "adapter": r.adapter_name or "http",
+                # Forbidden tool violations (empty list = no violations or not configured)
+                "forbidden_violations": (
+                    r.evaluations.forbidden_tools.violations
+                    if r.evaluations.forbidden_tools and not r.evaluations.forbidden_tools.passed
+                    else []
+                ),
+                # Trace replay: prefer rich TraceContext spans; fallback to StepTrace list
+                "spans": self._serialize_spans(r),
             })
 
         return template.render(
@@ -260,6 +347,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             --pass-color: #22c55e;
             --fail-color: #ef4444;
             --primary-color: #3b82f6;
+            --span-agent: #8b5cf6;
+            --span-llm: #3b82f6;
+            --span-tool: #f59e0b;
         }
         body { background-color: #f8fafc; }
         .card { border: none; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
@@ -271,7 +361,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .badge-pass { background-color: var(--pass-color); }
         .badge-fail { background-color: var(--fail-color); }
         .test-card { margin-bottom: 1rem; }
-        .test-card .card-header { cursor: pointer; }
+        .test-card .card-header { cursor: pointer; user-select: none; }
         .test-card .card-header:hover { background-color: #f1f5f9; }
         .score-badge { font-size: 1.25rem; font-weight: 600; }
         .tool-list { display: flex; flex-wrap: wrap; gap: 0.5rem; }
@@ -284,9 +374,113 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             border-radius: 0.375rem;
             font-family: monospace;
             font-size: 0.875rem;
+            white-space: pre-wrap;
+            word-break: break-word;
         }
         .chart-container { min-height: 300px; }
         pre { white-space: pre-wrap; word-wrap: break-word; }
+
+        /* ── Forbidden tool alert ─────────────────────────────────────────── */
+        .forbidden-alert {
+            background: #fef2f2;
+            border: 1px solid #fca5a5;
+            border-left: 4px solid #ef4444;
+            border-radius: 0.375rem;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1rem;
+        }
+        .forbidden-alert .violation-chip {
+            display: inline-block;
+            background: #fee2e2;
+            border: 1px solid #fca5a5;
+            color: #b91c1c;
+            font-family: monospace;
+            font-size: 0.8rem;
+            font-weight: 600;
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.25rem;
+            margin: 0.15rem;
+        }
+
+        /* ── Trace replay timeline ────────────────────────────────────────── */
+        .trace-timeline { list-style: none; padding: 0; margin: 0; }
+        .trace-timeline li { margin-bottom: 0.5rem; }
+        .span-row {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.45rem 0.75rem;
+            border-radius: 0.375rem;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .span-row:hover { background: #f1f5f9; }
+        .span-row.error-span { border-left: 3px solid #ef4444; }
+        .span-kind {
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            padding: 0.2rem 0.45rem;
+            border-radius: 0.25rem;
+            color: #fff;
+            min-width: 42px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .kind-agent { background: var(--span-agent); }
+        .kind-llm   { background: var(--span-llm); }
+        .kind-tool  { background: var(--span-tool); color: #1c1c1c; }
+        .span-name  { flex: 1; font-family: monospace; font-size: 0.875rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .span-meta  { display: flex; gap: 0.75rem; font-size: 0.75rem; color: #64748b; flex-shrink: 0; }
+        .span-status-ok   { color: var(--pass-color); font-weight: 700; }
+        .span-status-err  { color: var(--fail-color); font-weight: 700; }
+        .span-detail {
+            background: #0f172a;
+            color: #e2e8f0;
+            border-radius: 0.375rem;
+            padding: 0.75rem 1rem;
+            margin-top: 0.25rem;
+            font-family: monospace;
+            font-size: 0.8rem;
+            overflow-x: auto;
+        }
+        .span-detail .detail-label {
+            color: #94a3b8;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 0.5rem;
+            margin-bottom: 0.15rem;
+            display: block;
+        }
+        .span-detail .detail-value {
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: #f8fafc;
+        }
+        .span-detail .detail-value.prompt-text { color: #93c5fd; }
+        .span-detail .detail-value.completion-text { color: #86efac; }
+        .token-pill {
+            display: inline-block;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 0.25rem;
+            padding: 0.1rem 0.4rem;
+            font-size: 0.7rem;
+            margin-right: 0.25rem;
+            color: #94a3b8;
+        }
+        .trace-summary {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 0.75rem;
+            font-size: 0.8rem;
+            color: #64748b;
+        }
+        .trace-summary span { font-weight: 600; color: #334155; }
     </style>
 </head>
 <body>
@@ -383,98 +577,240 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         <!-- Test Results -->
         <h4 class="mb-3">Test Results</h4>
-        <div class="accordion" id="testResults">
+        <div id="testResults">
             {% for result in results %}
+            {% set ri = loop.index %}
             <div class="card test-card">
+                <!-- Card header: click to collapse/expand -->
                 <div class="card-header d-flex justify-content-between align-items-center"
-                     data-bs-toggle="collapse" data-bs-target="#test-{{ loop.index }}">
-                    <div>
-                        <span class="badge {{ 'badge-pass' if result.passed else 'badge-fail' }} me-2">
+                     data-bs-toggle="collapse" data-bs-target="#test-{{ ri }}">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge {{ 'badge-pass' if result.passed else 'badge-fail' }}">
                             {{ 'PASS' if result.passed else 'FAIL' }}
                         </span>
                         <strong>{{ result.test_case }}</strong>
-                        <span class="text-muted ms-2">({{ result.adapter }})</span>
-                    </div>
-                    <div>
-                        <span class="score-badge {{ 'pass' if result.score >= 80 else 'fail' if result.score < 60 else '' }}">
-                            {{ result.score }}
-                        </span>
-                    </div>
-                </div>
-                <div id="test-{{ loop.index }}" class="collapse">
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <h6>Input Query</h6>
-                                <div class="output-preview">{{ result.input_query }}</div>
-
-                                <h6 class="mt-3">Output</h6>
-                                <div class="output-preview">{{ result.actual_output }}</div>
-                            </div>
-                            <div class="col-md-6">
-                                <h6>Evaluations</h6>
-                                <table class="table table-sm">
-                                    <tr>
-                                        <td>Tool Accuracy</td>
-                                        <td><strong>{{ result.tool_accuracy }}%</strong></td>
-                                    </tr>
-                                    <tr>
-                                        <td>Output Quality</td>
-                                        <td><strong>{{ result.output_quality }}</strong></td>
-                                    </tr>
-                                    <tr>
-                                        <td>Sequence Correct</td>
-                                        <td>
-                                            {% if result.sequence_correct %}
-                                            <span class="badge bg-success">Yes</span>
-                                            {% else %}
-                                            <span class="badge bg-danger">No</span>
-                                            {% endif %}
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>Cost</td>
-                                        <td>${{ result.cost }}</td>
-                                    </tr>
-                                    <tr>
-                                        <td>Latency</td>
-                                        <td>{{ result.latency }}ms</td>
-                                    </tr>
-                                    <tr>
-                                        <td>Steps</td>
-                                        <td>{{ result.steps }}</td>
-                                    </tr>
-                                </table>
-
-                                <h6>Tools</h6>
-                                <div class="tool-list mb-2">
-                                    {% for tool in result.correct_tools %}
-                                    <span class="badge bg-success tool-badge">{{ tool }}</span>
-                                    {% endfor %}
-                                    {% for tool in result.missing_tools %}
-                                    <span class="badge bg-warning tool-badge">Missing: {{ tool }}</span>
-                                    {% endfor %}
-                                    {% for tool in result.unexpected_tools %}
-                                    <span class="badge bg-secondary tool-badge">Extra: {{ tool }}</span>
-                                    {% endfor %}
-                                </div>
-
-                                <h6>Sequence</h6>
-                                <small class="text-muted">Expected: {{ result.expected_sequence | join(' → ') or 'Any' }}</small><br>
-                                <small>Actual: {{ result.actual_sequence | join(' → ') or 'None' }}</small>
-                            </div>
-                        </div>
-                        {% if result.output_rationale %}
-                        <div class="mt-3">
-                            <h6>LLM Judge Rationale</h6>
-                            <div class="output-preview">{{ result.output_rationale }}</div>
-                        </div>
+                        <span class="text-muted small">({{ result.adapter }})</span>
+                        {% if result.forbidden_violations %}
+                        <span class="badge bg-danger ms-1" title="Forbidden tool called">&#9888; FORBIDDEN TOOL</span>
                         {% endif %}
                     </div>
+                    <span class="score-badge {{ 'pass' if result.score >= 80 else 'fail' if result.score < 60 else 'text-warning' }}">
+                        {{ result.score }}
+                    </span>
                 </div>
-            </div>
+
+                <div id="test-{{ ri }}" class="collapse">
+                    <div class="card-body">
+
+                        <!-- Forbidden tool alert banner -->
+                        {% if result.forbidden_violations %}
+                        <div class="forbidden-alert">
+                            <strong style="color:#b91c1c;">&#9888; Forbidden Tool Contract Violated</strong>
+                            <p class="mb-1 mt-1 text-muted small">
+                                The following tools were declared forbidden but were called by the agent.
+                                This test hard-fails regardless of output quality.
+                            </p>
+                            {% for v in result.forbidden_violations %}
+                            <span class="violation-chip">{{ v }}</span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+
+                        <!-- Tabs: Evaluation | Trace Replay -->
+                        <ul class="nav nav-tabs mb-3" id="tabs-{{ ri }}">
+                            <li class="nav-item">
+                                <button class="nav-link active" data-bs-toggle="tab"
+                                        data-bs-target="#tab-eval-{{ ri }}">Evaluation</button>
+                            </li>
+                            <li class="nav-item">
+                                <button class="nav-link" data-bs-toggle="tab"
+                                        data-bs-target="#tab-trace-{{ ri }}">
+                                    Trace Replay
+                                    <span class="badge bg-secondary ms-1">{{ result.spans | length }}</span>
+                                </button>
+                            </li>
+                        </ul>
+
+                        <div class="tab-content">
+                            <!-- ── Tab 1: Evaluation ──────────────────────── -->
+                            <div class="tab-pane fade show active" id="tab-eval-{{ ri }}">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <h6>Input Query</h6>
+                                        <div class="output-preview">{{ result.input_query }}</div>
+
+                                        <h6 class="mt-3">Agent Output</h6>
+                                        <div class="output-preview">{{ result.actual_output }}</div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <h6>Evaluation Scores</h6>
+                                        <table class="table table-sm">
+                                            <tr>
+                                                <td>Tool Accuracy</td>
+                                                <td><strong>{{ result.tool_accuracy }}%</strong></td>
+                                            </tr>
+                                            <tr>
+                                                <td>Output Quality</td>
+                                                <td><strong>{{ result.output_quality }}</strong></td>
+                                            </tr>
+                                            <tr>
+                                                <td>Sequence Correct</td>
+                                                <td>
+                                                    {% if result.sequence_correct %}
+                                                    <span class="badge bg-success">Yes</span>
+                                                    {% else %}
+                                                    <span class="badge bg-danger">No</span>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td>Cost</td>
+                                                <td>${{ result.cost }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Latency</td>
+                                                <td>{{ result.latency }}ms</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Steps</td>
+                                                <td>{{ result.steps }}</td>
+                                            </tr>
+                                        </table>
+
+                                        <h6>Tools</h6>
+                                        <div class="tool-list mb-2">
+                                            {% for tool in result.correct_tools %}
+                                            <span class="badge bg-success tool-badge">&#10003; {{ tool }}</span>
+                                            {% endfor %}
+                                            {% for tool in result.missing_tools %}
+                                            <span class="badge bg-warning text-dark tool-badge">Missing: {{ tool }}</span>
+                                            {% endfor %}
+                                            {% for tool in result.unexpected_tools %}
+                                            <span class="badge bg-secondary tool-badge">Extra: {{ tool }}</span>
+                                            {% endfor %}
+                                        </div>
+
+                                        <h6>Sequence</h6>
+                                        <small class="text-muted">Expected: {{ result.expected_sequence | join(' → ') or 'Any' }}</small><br>
+                                        <small>Actual: {{ result.actual_sequence | join(' → ') or 'None' }}</small>
+                                    </div>
+                                </div>
+
+                                {% if result.output_rationale %}
+                                <div class="mt-3">
+                                    <h6>LLM Judge Rationale</h6>
+                                    <div class="output-preview">{{ result.output_rationale }}</div>
+                                </div>
+                                {% endif %}
+                            </div><!-- /tab-eval -->
+
+                            <!-- ── Tab 2: Trace Replay ────────────────────── -->
+                            <div class="tab-pane fade" id="tab-trace-{{ ri }}">
+                                {% if result.spans %}
+                                <!-- Trace summary stats -->
+                                <div class="trace-summary">
+                                    {% set llm_spans = result.spans | selectattr("kind", "equalto", "llm") | list %}
+                                    {% set tool_spans = result.spans | selectattr("kind", "equalto", "tool") | list %}
+                                    <div>LLM calls <span>{{ llm_spans | length }}</span></div>
+                                    <div>Tool calls <span>{{ tool_spans | length }}</span></div>
+                                    <div>Total cost <span>${{ result.cost }}</span></div>
+                                    <div>Total latency <span>{{ result.latency }}ms</span></div>
+                                </div>
+
+                                <ul class="trace-timeline">
+                                    {% for span in result.spans %}
+                                    {% set sid = "span-" ~ ri ~ "-" ~ loop.index %}
+                                    <li>
+                                        <!-- Span header row (click to expand) -->
+                                        <div class="span-row {{ 'error-span' if span.status == 'error' else '' }}"
+                                             data-bs-toggle="collapse" data-bs-target="#{{ sid }}">
+                                            <span class="span-kind kind-{{ span.kind }}">{{ span.kind }}</span>
+                                            <span class="span-name" title="{{ span.name }}">{{ span.name }}</span>
+                                            <div class="span-meta">
+                                                {% if span.duration_ms %}
+                                                <span>{{ span.duration_ms }}ms</span>
+                                                {% endif %}
+                                                {% if span.cost %}
+                                                <span>${{ "%.4f" | format(span.cost) }}</span>
+                                                {% endif %}
+                                                {% if span.llm %}
+                                                <span class="token-pill">↑{{ span.llm.prompt_tokens }} ↓{{ span.llm.completion_tokens }} tok</span>
+                                                {% endif %}
+                                                <span class="{{ 'span-status-ok' if span.status == 'ok' else 'span-status-err' }}">
+                                                    {{ '✓' if span.status == 'ok' else '✗' }}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <!-- Span detail panel -->
+                                        <div id="{{ sid }}" class="collapse">
+                                            <div class="span-detail">
+                                                {% if span.error %}
+                                                <span class="detail-label">Error</span>
+                                                <div class="detail-value" style="color:#fca5a5;">{{ span.error }}</div>
+                                                {% endif %}
+
+                                                {% if span.llm %}
+                                                <span class="detail-label">Model</span>
+                                                <div class="detail-value">{{ span.llm.model }} ({{ span.llm.provider }})</div>
+
+                                                <span class="detail-label">Tokens</span>
+                                                <div class="detail-value">
+                                                    <span class="token-pill">input {{ span.llm.prompt_tokens }}</span>
+                                                    <span class="token-pill">output {{ span.llm.completion_tokens }}</span>
+                                                    {% if span.llm.finish_reason %}
+                                                    <span class="token-pill">finish: {{ span.llm.finish_reason }}</span>
+                                                    {% endif %}
+                                                </div>
+
+                                                {% if span.llm.prompt %}
+                                                <span class="detail-label">Prompt sent to model</span>
+                                                <div class="detail-value prompt-text">{{ span.llm.prompt }}</div>
+                                                {% endif %}
+
+                                                {% if span.llm.completion %}
+                                                <span class="detail-label">Model completion</span>
+                                                <div class="detail-value completion-text">{{ span.llm.completion }}</div>
+                                                {% endif %}
+                                                {% endif %}
+
+                                                {% if span.tool %}
+                                                <span class="detail-label">Tool</span>
+                                                <div class="detail-value">{{ span.tool.tool_name }}</div>
+
+                                                <span class="detail-label">Parameters</span>
+                                                <div class="detail-value">{{ span.tool.parameters }}</div>
+
+                                                {% if span.tool.result %}
+                                                <span class="detail-label">Result</span>
+                                                <div class="detail-value">{{ span.tool.result }}</div>
+                                                {% endif %}
+                                                {% endif %}
+
+                                                {% if span.kind == 'agent' %}
+                                                <span class="detail-label">Kind</span>
+                                                <div class="detail-value">Agent execution span (root)</div>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                                {% else %}
+                                <p class="text-muted">
+                                    No span data captured. To enable trace replay, your adapter must
+                                    populate <code>ExecutionTrace.trace_context</code> using
+                                    <code>evalview.core.tracing.Tracer</code>.
+                                </p>
+                                {% endif %}
+                            </div><!-- /tab-trace -->
+                        </div><!-- /tab-content -->
+
+                    </div><!-- /card-body -->
+                </div><!-- /collapse -->
+            </div><!-- /card -->
             {% endfor %}
-        </div>
+        </div><!-- /testResults -->
 
         <footer class="text-center text-muted py-4">
             Generated by <a href="https://github.com/hidai25/eval-view">EvalView</a>

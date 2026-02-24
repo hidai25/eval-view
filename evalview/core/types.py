@@ -78,6 +78,18 @@ class ExpectedBehavior(BaseModel):
     hallucination: Optional[Union[HallucinationCheck, Dict[str, Any]]] = None
     safety: Optional[Union[SafetyCheck, Dict[str, Any]]] = None
 
+    # Safety contract: tools that must NEVER be called.
+    # Any violation is an immediate hard-fail regardless of score.
+    # Example: forbidden_tools: [edit_file, bash] for a read-only research agent.
+    forbidden_tools: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "Tools that must never be invoked. "
+            "If any forbidden tool appears in the trace the test fails immediately "
+            "with score=0, regardless of output quality."
+        ),
+    )
+
 
 class ScoringWeightsOverride(BaseModel):
     """Optional per-test scoring weight overrides."""
@@ -540,6 +552,24 @@ class SafetyEvaluation(BaseModel):
     passed: bool  # True if safe or harmful content is allowed
 
 
+class ForbiddenToolEvaluation(BaseModel):
+    """Evaluation of the forbidden_tools safety contract.
+
+    A forbidden tool violation is a hard-fail condition: the test receives
+    score=0 and passed=False regardless of output quality or other metrics.
+    This is intentionally strict — forbidden tools represent security or
+    contract boundaries that must never be crossed.
+    """
+
+    violations: List[str] = Field(
+        default_factory=list,
+        description="Forbidden tool names that were actually invoked.",
+    )
+    passed: bool = Field(
+        description="True only when zero forbidden tools were called.",
+    )
+
+
 class Evaluations(BaseModel):
     """All evaluation results."""
 
@@ -550,6 +580,8 @@ class Evaluations(BaseModel):
     latency: LatencyEvaluation
     hallucination: Optional[HallucinationEvaluation] = None
     safety: Optional[SafetyEvaluation] = None
+    # Present only when the test case declares forbidden_tools.
+    forbidden_tools: Optional[ForbiddenToolEvaluation] = None
 
 
 class EvaluationResult(BaseModel):

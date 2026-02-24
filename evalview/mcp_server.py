@@ -49,6 +49,18 @@ TOOLS = [
                     "items": {"type": "string"},
                     "description": "Tool names the agent should call (e.g. ['calculator', 'search'])",
                 },
+                "forbidden_tools": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Tool names the agent must NEVER call. "
+                        "Any violation is an immediate hard-fail (score=0, passed=false) "
+                        "regardless of output quality. "
+                        "Use this for safety contracts — e.g. a read-only agent that must "
+                        "never call edit_file, bash, or write_file. "
+                        "Matching is case-insensitive: 'EditFile' catches 'edit_file'."
+                    ),
+                },
                 "expected_output_contains": {
                     "type": "array",
                     "items": {"type": "string"},
@@ -353,6 +365,13 @@ class MCPServer:
             for t in expected_tools:
                 lines.append(f"    - {t}")
 
+        forbidden_tools = args.get("forbidden_tools", [])
+        if forbidden_tools:
+            lines.append("  # Tools that must NEVER be called — hard-fail if any are invoked.")
+            lines.append("  forbidden_tools:")
+            for t in forbidden_tools:
+                lines.append(f"    - {t}")
+
         expected_output = args.get("expected_output_contains", [])
         if expected_output:
             lines.append("  output:")
@@ -369,6 +388,8 @@ class MCPServer:
         summary_parts = [f"query: {query}"]
         if expected_tools:
             summary_parts.append(f"tools: {', '.join(expected_tools)}")
+        if forbidden_tools:
+            summary_parts.append(f"forbidden_tools (hard-fail): {', '.join(forbidden_tools)}")
         if expected_output:
             summary_parts.append(f"output contains: {', '.join(expected_output)}")
 

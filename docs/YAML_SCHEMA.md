@@ -59,6 +59,7 @@ input:
 | `tools` | list[string] | No | `null` | Expected tools to be used (any order) |
 | `tool_sequence` | list[string] | No | `null` | Expected tools in specific order |
 | `sequence` | list[string] | No | `null` | Alias for `tool_sequence` |
+| `forbidden_tools` | list[string] | No | `null` | Tools that must **never** be called — hard-fail if violated |
 | `output` | object | No | `null` | Expected output criteria |
 | `metrics` | object | No | `null` | Expected metric thresholds |
 | `hallucination` | object | No | `null` | Hallucination detection config |
@@ -79,6 +80,40 @@ expected:
     not_contains:
       - "error"
 ```
+
+---
+
+### `expected.forbidden_tools` — Safety Contract
+
+`forbidden_tools` declares tools that must **never** appear in the execution trace.
+If any forbidden tool is called, the test **hard-fails immediately** — score is forced
+to 0 and `passed = false`, regardless of how good the output looks.
+
+This is intentionally stricter than a scoring penalty. It models a contract boundary
+(e.g. a read-only agent that must never write files) rather than a quality preference.
+
+```yaml
+expected:
+  tools:
+    - web_search
+    - summarize
+  forbidden_tools:
+    - edit_file    # Never write — this is a read-only research agent
+    - bash         # Never execute arbitrary shell commands
+    - write_file
+```
+
+**When to use `forbidden_tools` vs `tools`:**
+
+| Use case | Field to use |
+|----------|-------------|
+| Agent should call these tools | `tools` |
+| Agent must call them in this order | `tool_sequence` |
+| Agent must NEVER call these tools | `forbidden_tools` |
+
+**Matching is case-insensitive and separator-agnostic:** `"EditFile"` catches `"edit_file"` and `"edit-file"`.
+
+**Visible in reports:** Violations appear as a red alert banner in the HTML report and are printed prominently in console output before the failure reasons list.
 
 ---
 
@@ -252,6 +287,12 @@ expected:
   tool_sequence:
     - web_search
     - summarize
+  # Safety contract: these tools must never be called.
+  # Any violation is an immediate hard-fail (score=0) regardless of output quality.
+  forbidden_tools:
+    - edit_file
+    - bash
+    - write_file
   output:
     contains:
       - "quantum"

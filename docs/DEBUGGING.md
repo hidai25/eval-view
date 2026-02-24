@@ -2,6 +2,36 @@
 
 > This guide helps you troubleshoot issues when running EvalView tests, including "No response" errors, database issues, timeouts, and tool name mismatches.
 
+## HTML Trace Replay — Start Here
+
+The fastest way to debug a failing test is the **Trace Replay** tab in the HTML report.
+It shows every LLM call and tool invocation in execution order with full detail.
+
+```bash
+evalview run --output-format html   # Generates report, auto-opens in browser
+```
+
+In the report, click any test card → open the **Trace Replay** tab. Each span is clickable:
+
+| Span | Expandable detail |
+|------|-----------------|
+| **LLM** (blue) | Exact prompt sent to the model, full completion, token counts, finish reason |
+| **TOOL** (amber) | Parameters passed to the tool (JSON), full result returned |
+| **AGENT** (purple) | Root execution boundary, total duration |
+
+**Forbidden tool violations** appear as a red alert banner above the tabs — the exact
+tool name that violated the contract is shown, so there is no ambiguity.
+
+This replaces the "add a print statement and re-run" loop. You see what the model saw at
+step 3 without changing any code.
+
+> **Note:** The Trace Replay tab is richest when your adapter populates
+> `ExecutionTrace.trace_context` via `evalview.core.tracing.Tracer`. If it shows
+> "No span data captured", the fallback step list from `trace.steps` is used instead —
+> it still shows tool calls with parameters and results, but not LLM prompt/completion.
+
+---
+
 ## Common Issues
 
 ### 1. Tests Failing with "No response"
