@@ -161,6 +161,54 @@ Perfect for LLM-based agents with creative variation.
 
 ---
 
+## New: Forbidden Tool Contracts + HTML Trace Replay
+
+### `forbidden_tools` — Safety Contracts in One Line
+
+Declare tools that must **never** be called. If the agent touches one, the test hard-fails immediately — score 0, no partial credit — regardless of how good the output looks.
+
+```yaml
+# research-agent.yaml
+expected:
+  tools: [web_search, summarize]
+
+  # This agent is read-only. Any write/execute call is a contract violation.
+  forbidden_tools: [edit_file, bash, write_file, execute_code]
+```
+
+```
+FAIL  research-agent  (score: 91.2)
+  ✗ FORBIDDEN TOOL VIOLATION
+  ✗ edit_file was called but is declared forbidden
+  This test hard-fails regardless of output quality.
+```
+
+**Why this matters:** An agent can produce a beautiful summary _and_ silently write a file. Without `forbidden_tools`, that test passes. With it, the contract breach is caught on the first run and blocks CI.
+
+Matching is case-insensitive and separator-agnostic — `"EditFile"` catches `"edit_file"` and `"edit-file"`. Violations appear as a red alert banner in HTML reports.
+
+---
+
+### HTML Trace Replay — Full Forensic Debugging
+
+Every test result card in the HTML report now has a **Trace Replay** tab that shows exactly what happened, step by step:
+
+| Span | What it shows |
+|------|--------------|
+| **AGENT** (purple) | Root execution context |
+| **LLM** (blue) | Model name, token counts `↑1200 ↓250`, cost — click to expand the **exact prompt sent** and **model completion** |
+| **TOOL** (amber) | Tool name, parameters JSON, result — click to expand |
+
+```bash
+evalview run --output-format html   # Opens in browser automatically
+```
+
+The prompt/completion data comes from `ExecutionTrace.trace_context`, which adapters populate using `evalview.core.tracing.Tracer`. When `trace_context` isn't present, the tab falls back to the `StepTrace` list — so it works for all existing adapters with no changes required.
+
+This is the "what did the model actually see at step 3?" view that makes root-causing agent failures take seconds instead of hours.
+
+---
+
 ## New: Provider-Agnostic Skill Tests + Setup Wizard + 15 Templates
 
 **Run skill tests against any LLM provider** — Anthropic, OpenAI, DeepSeek, Kimi, Moonshot, or any OpenAI-compatible endpoint:
@@ -467,6 +515,8 @@ evalview mcp serve --test-path my_tests/  # Custom test directory
 
 | Feature | Description | Docs |
 |---------|-------------|------|
+| **`forbidden_tools`** | Declare tools that must never be called — hard-fail on any violation, score 0, no partial credit | [Docs](#new-forbidden-tool-contracts--html-trace-replay) |
+| **HTML Trace Replay** | Step-by-step replay of every LLM call and tool invocation — exact prompt, completion, tokens, params | [Docs](#html-trace-replay--full-forensic-debugging) |
 | **Snapshot/Check Workflow** | Simple `snapshot` then `check` commands for regression detection | [Docs](docs/GOLDEN_TRACES.md) |
 | **Visual Reports** | `evalview inspect` — interactive HTML with traces, diffs, cost-per-query | [Docs](#new-in-v03-visual-reports--claude-code-mcp) |
 | **Claude Code MCP** | 7 tools — run checks, generate tests, test skills inline | [Docs](#claude-code-integration-mcp) |
@@ -586,7 +636,7 @@ evalview skill test tests.yaml --agent langgraph
 
 ## Roadmap
 
-**Shipped:** Golden traces • **Snapshot/check workflow** • **Streak tracking & celebrations** • **Multi-reference goldens** • Tool categories • Statistical mode • Difficulty levels • Partial sequence credit • Skills validation • E2E agent testing • Build & smoke tests • Health checks • Safety guards (`no_sudo`, `git_clean`) • Claude Code & Codex adapters • **Opus 4.6 cost tracking** • MCP servers • HTML reports • Interactive chat mode • EvalView Gym • **Provider-agnostic skill tests** • **15-template pattern library** • **Personalized init wizard**
+**Shipped:** Golden traces • **Snapshot/check workflow** • **Streak tracking & celebrations** • **Multi-reference goldens** • Tool categories • Statistical mode • Difficulty levels • Partial sequence credit • Skills validation • E2E agent testing • Build & smoke tests • Health checks • Safety guards (`no_sudo`, `git_clean`) • Claude Code & Codex adapters • **Opus 4.6 cost tracking** • MCP servers • HTML reports • Interactive chat mode • EvalView Gym • **Provider-agnostic skill tests** • **15-template pattern library** • **Personalized init wizard** • **`forbidden_tools` safety contracts** • **HTML trace replay** (exact prompt/completion per step)
 
 **Coming:** Agent Teams trace analysis • Multi-turn conversations • Grounded hallucination detection • Error compounding metrics • Container isolation
 

@@ -153,13 +153,16 @@ class ToolCallEvaluator:
             return None
 
         forbidden_set: Set[str] = set(forbidden)
-        # Use the same normalisation as the rest of the evaluator so that
-        # casing / separator differences are caught too.
+        # Precompute the normalised forbidden set once so the per-step check
+        # is O(1) rather than O(|forbidden|). Normalisation strips casing and
+        # word separators so "EditFile" catches "edit_file" and "edit-file".
+        normalized_forbidden: Set[str] = {_normalize_tool_name(f) for f in forbidden_set}
         violations = [
             step.tool_name
             for step in trace.steps
+            # Exact match first (fast path), then normalised comparison.
             if step.tool_name in forbidden_set
-            or _normalize_tool_name(step.tool_name) in {_normalize_tool_name(f) for f in forbidden_set}
+            or _normalize_tool_name(step.tool_name) in normalized_forbidden
         ]
         # Deduplicate while preserving first-seen order.
         seen: Set[str] = set()

@@ -1,5 +1,6 @@
 """HTML report generator with interactive Plotly charts."""
 
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any
@@ -209,8 +210,6 @@ class HTMLReporter:
         Returns:
             A list of plain dicts, one per span, safe for JSON / Jinja2 rendering.
         """
-        import json
-
         def _truncate(value, limit: int = 600) -> str:
             s = str(value) if value is not None else ""
             return s[:limit] + " …" if len(s) > limit else s
