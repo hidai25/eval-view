@@ -2,7 +2,7 @@
 
 > **Problem:** How do you score an AI agent's quality? Output quality alone isn't enough — you need to verify it called the right tools, in the right order, under budget, and within latency limits.
 >
-> **Solution:** EvalView uses 5-dimensional scoring: tool accuracy, output quality, sequence correctness, cost, and latency. Each is independently configurable with weights and thresholds.
+> **Solution:** EvalView uses 6-dimensional evaluation: a hard-fail safety gate plus 5 scored/threshold dimensions (tool accuracy, output quality, sequence correctness, cost, and latency). Each is independently configurable.
 
 EvalView evaluates agents across multiple dimensions to give you a complete picture of agent quality.
 
@@ -12,6 +12,7 @@ EvalView evaluates agents across multiple dimensions to give you a complete pict
 
 | Metric | Weight | Description |
 |--------|--------|-------------|
+| **Forbidden Tools** | **Hard-fail** | Any violation → score=0, passed=false, checked first |
 | **Tool Accuracy** | 30% | Checks if expected tools were called |
 | **Output Quality** | 50% | LLM-as-judge evaluation |
 | **Sequence Correctness** | 20% | Validates tool call order (flexible matching) |
@@ -19,6 +20,34 @@ EvalView evaluates agents across multiple dimensions to give you a complete pict
 | **Latency Threshold** | Pass/Fail | Must complete under `max_latency` |
 
 Weights are configurable globally or per-test.
+
+> **Evaluation order matters:** Forbidden tools are checked first. A violation immediately
+> fails the test at score=0 before any other metric is computed, so you always know exactly
+> why a test failed.
+
+---
+
+## Forbidden Tools — Hard-Fail Safety Gate
+
+`forbidden_tools` enforces a binary contract: a list of tools that must **never** appear
+in the execution trace. This is not a score penalty — it is a circuit breaker.
+
+```yaml
+expected:
+  tools: [web_search, summarize]
+  forbidden_tools: [edit_file, bash, write_file]
+```
+
+**Why hard-fail instead of a penalty score?** Because a read-only agent that writes a file
+is a security violation, not a quality issue. A 91/100 score with a file write is worse than
+a 50/100 score with no file write. The contract must be binary.
+
+**Matching rules:**
+- Case-insensitive: `"EditFile"` catches `"edit_file"`
+- Separator-agnostic: `"edit_file"` and `"edit-file"` are the same
+- Deduplicated: calling a forbidden tool 3 times counts as one violation
+
+**Visible in:** Console output (red banner), HTML report (red alert in the test card).
 
 ---
 
@@ -204,6 +233,20 @@ Sequence:           100% (correct order)
 
 Cost:    $0.0234 (limit: $0.50) ✓
 Latency: 3.4s (limit: 5s) ✓
+```
+
+**With a forbidden tool violation:**
+
+```
+❌ Research Agent Test - FAILED
+
+  FORBIDDEN TOOL VIOLATION
+  ✗ edit_file was called but is declared forbidden
+  This test hard-fails regardless of output quality.
+
+Failure Reasons:
+  • Forbidden tools called: edit_file
+  • (score not computed — forbidden tool short-circuit)
 ```
 
 ---
