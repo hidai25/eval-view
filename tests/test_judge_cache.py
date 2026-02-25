@@ -4,8 +4,6 @@ import os
 import tempfile
 from unittest.mock import patch
 
-import pytest
-
 from evalview.core.judge_cache import JudgeCache
 
 

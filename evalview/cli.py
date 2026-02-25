@@ -2794,7 +2794,6 @@ async def _run_async(
         cs = _judge_cache.stats()
         if cs["total"] > 0:
             console.print(f"  [dim]Judge cache: {cs['hits']} hits / {cs['total']} lookups ({cs['hit_rate']:.0%} hit rate)[/dim]")
-            console.print()
 
     # Print summary
     console.print()

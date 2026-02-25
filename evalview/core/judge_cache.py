@@ -5,12 +5,6 @@ may be evaluated multiple times by the LLM judge. This module caches
 judge responses keyed on the full evaluation context — test name, query,
 output text, and all criteria — so identical evaluations are served from
 cache instead of making duplicate API calls.
-
-Inspired by tysoncung's PR #40. Corrections applied:
-- Cache key includes test_case.name (not a nonexistent .id field)
-- Cache key includes query and not_contains to prevent collisions
-- SQLite connections use context manager for proper cleanup
-- TTL tests use time mocking instead of sleep
 """
 
 import hashlib
@@ -18,7 +12,7 @@ import logging
 import sqlite3
 import time
 from contextlib import contextmanager
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +39,7 @@ class JudgeCache:
         self.ttl = ttl
 
         # In-memory cache: key -> (timestamp, value)
-        self._memory: Dict[str, tuple] = {}
+        self._memory: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 
         # Stats
         self.hits = 0
@@ -104,7 +98,7 @@ class JudgeCache:
         if self.persist_path:
             self._db_put(key, ts, value)
 
-    def stats(self) -> Dict[str, int]:
+    def stats(self) -> Dict[str, Union[int, float]]:
         """Return cache hit/miss statistics."""
         total = self.hits + self.misses
         return {
