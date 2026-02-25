@@ -1,0 +1,32 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.hidai25/evalview-mcp",
+  "description": "Regression testing for AI agents. Golden baselines, CI/CD, LangGraph, CrewAI, OpenAI, Claude.",
+  "repository": {
+    "url": "https://github.com/hidai25/eval-view",
+    "source": "github"
+  },
+  "version": "0.3.1",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "evalview",
+      "version": "0.3.1",
+      "installInstructions": "pip install evalview",
+      "transport": {
+        "type": "stdio",
+        "command": "evalview",
+        "args": ["mcp", "serve"]
+      },
+      "environmentVariables": [
+        {
+          "name": "OPENAI_API_KEY",
+          "description": "OpenAI API key for LLM-as-judge output quality scoring. Optional — deterministic tool/sequence evaluation works without it.",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}
