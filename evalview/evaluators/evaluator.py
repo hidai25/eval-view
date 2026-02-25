@@ -77,12 +77,21 @@ class Evaluator:
         self.judge_cache = judge_cache
         self._logged_deterministic_mode = False
 
-        # Only initialize LLM-dependent evaluators when needed
-        # This avoids requiring API keys for deterministic mode
+        # Only initialize LLM-dependent evaluators when needed.
+        # If no API key is configured, fall back to deterministic mode automatically
+        # so commands like `evalview check` work without requiring a key.
         if not skip_llm_judge:
-            self.output_evaluator = OutputEvaluator(cache=judge_cache)
-            self.hallucination_evaluator = HallucinationEvaluator()
-            self.safety_evaluator = SafetyEvaluator()
+            try:
+                self.output_evaluator = OutputEvaluator(cache=judge_cache)
+                self.hallucination_evaluator = HallucinationEvaluator()
+                self.safety_evaluator = SafetyEvaluator()
+            except ValueError:
+                # No LLM provider API key found — degrade gracefully to deterministic mode.
+                logger.debug("No LLM provider API key found; falling back to deterministic scoring.")
+                self.skip_llm_judge = True
+                self.output_evaluator = None
+                self.hallucination_evaluator = None
+                self.safety_evaluator = None
         else:
             self.output_evaluator = None
             self.hallucination_evaluator = None

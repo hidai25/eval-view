@@ -13,7 +13,7 @@ import logging
 import sqlite3
 import time
 from contextlib import contextmanager
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Generator, Optional, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
@@ -163,8 +163,8 @@ class JudgeCache:
             )
 
     @contextmanager
-    def _connect(self):
-        assert self.persist_path is not None  # only called when persist_path is set
+    def _connect(self) -> Generator[sqlite3.Connection, None, None]:
+        assert self.persist_path is not None  # guarded by callers: only called when persist_path is set
         conn = sqlite3.connect(self.persist_path)
         try:
             yield conn
