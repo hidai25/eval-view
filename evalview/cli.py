@@ -1501,6 +1501,12 @@ model:
     default=False,
     help="Skip LLM-as-judge evaluation. Uses deterministic scoring only (string matching + tool assertions). Scores capped at 75. No API key required.",
 )
+@click.option(
+    "--judge-cache",
+    is_flag=True,
+    default=False,
+    help="Cache LLM judge responses so identical outputs are not re-evaluated. Saves API costs in statistical mode (--runs).",
+)
 @track_command("run", lambda **kw: {"adapter": kw.get("adapter") or "auto", "has_path": bool(kw.get("path"))})
 def run(
     path: Optional[str],
@@ -1536,6 +1542,7 @@ def run(
     contracts: bool,
     save_golden: bool,
     no_judge: bool,
+    judge_cache: bool,
 ):
     """Run test cases against the agent.
 
@@ -1562,7 +1569,7 @@ def run(
         fail_on=fail_on, warn_on=warn_on, trace=trace, trace_out=trace_out,
         runs=runs, pass_rate=pass_rate, difficulty_filter=difficulty,
         contracts=contracts, save_golden=save_golden,
-        no_judge=no_judge,
+        no_judge=no_judge, judge_cache=judge_cache,
     ))
 
 
@@ -1621,6 +1628,7 @@ async def _run_async(
     contracts: bool = False,
     save_golden: bool = False,
     no_judge: bool = False,
+    judge_cache: bool = False,
 ):
     """Async implementation of run command."""
     import fnmatch
@@ -2074,9 +2082,18 @@ async def _run_async(
         except Exception as e:
             console.print(f"[yellow]⚠️  Invalid scoring weights in config: {e}. Using defaults.[/yellow]")
 
+    # Build judge cache if requested
+    _judge_cache = None
+    if judge_cache and not no_judge:
+        from evalview.core.judge_cache import JudgeCache
+        _judge_cache = JudgeCache()
+        if verbose:
+            console.print("[dim]Enabled LLM judge response cache[/dim]")
+
     evaluator = Evaluator(
         default_weights=scoring_weights,
         skip_llm_judge=no_judge,
+        judge_cache=_judge_cache,
     )
 
     # Setup retry config
@@ -2771,6 +2788,12 @@ async def _run_async(
             for pr in parallel_results:
                 if pr.success and pr.result:
                     results.append(pr.result)
+
+    # Print judge cache stats if cache was used
+    if _judge_cache is not None:
+        cs = _judge_cache.stats()
+        if cs["total"] > 0:
+            console.print(f"  [dim]Judge cache: {cs['hits']} hits / {cs['total']} lookups ({cs['hit_rate']:.0%} hit rate)[/dim]")
 
     # Print summary
     console.print()

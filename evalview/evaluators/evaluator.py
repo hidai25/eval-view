@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime
-from typing import Optional, Dict
+from typing import Optional, Dict, TYPE_CHECKING
 from evalview.core.types import (
     TestCase,
     ExecutionTrace,
@@ -20,6 +20,9 @@ from evalview.evaluators.latency_evaluator import LatencyEvaluator
 from evalview.evaluators.hallucination_evaluator import HallucinationEvaluator
 from evalview.evaluators.safety_evaluator import SafetyEvaluator
 
+if TYPE_CHECKING:
+    from evalview.core.judge_cache import JudgeCache
+
 logger = logging.getLogger(__name__)
 
 
@@ -34,6 +37,7 @@ class Evaluator:
         self,
         default_weights: Optional[ScoringWeights] = None,
         skip_llm_judge: bool = False,
+        judge_cache: Optional["JudgeCache"] = None,
     ):
         """
         Initialize evaluator.
@@ -42,6 +46,8 @@ class Evaluator:
             default_weights: Default scoring weights (can be overridden per test case)
             skip_llm_judge: If True, skip LLM-as-judge and use deterministic scoring.
                            Useful when no API key is available.
+            judge_cache: Optional JudgeCache instance for caching LLM judge results.
+                        Most useful in statistical mode (--runs) to avoid redundant calls.
 
         Note:
             LLM provider for evaluation is auto-detected from environment variables.
@@ -53,12 +59,13 @@ class Evaluator:
         self.latency_evaluator = LatencyEvaluator()
         self.default_weights = default_weights or DEFAULT_WEIGHTS
         self.skip_llm_judge = skip_llm_judge
+        self.judge_cache = judge_cache
         self._logged_deterministic_mode = False
 
         # Only initialize LLM-dependent evaluators when needed
         # This avoids requiring API keys for deterministic mode
         if not skip_llm_judge:
-            self.output_evaluator = OutputEvaluator()
+            self.output_evaluator = OutputEvaluator(cache=judge_cache)
             self.hallucination_evaluator = HallucinationEvaluator()
             self.safety_evaluator = SafetyEvaluator()
         else:
