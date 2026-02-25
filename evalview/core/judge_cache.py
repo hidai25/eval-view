@@ -8,6 +8,7 @@ cache instead of making duplicate API calls.
 """
 
 import hashlib
+import json
 import logging
 import sqlite3
 import time
@@ -34,6 +35,8 @@ class JudgeCache:
         persist_path: Optional[str] = None,
         ttl: int = 86400,
     ):
+        if ttl < 0:
+            raise ValueError(f"ttl must be >= 0 (0 = no expiry), got {ttl}")
         self.enabled = enabled
         self.persist_path = persist_path
         self.ttl = ttl
@@ -155,8 +158,7 @@ class JudgeCache:
                 """CREATE TABLE IF NOT EXISTS judge_cache (
                     key TEXT PRIMARY KEY,
                     timestamp REAL NOT NULL,
-                    score REAL NOT NULL,
-                    rationale TEXT NOT NULL
+                    value TEXT NOT NULL
                 )"""
             )
 
@@ -169,21 +171,21 @@ class JudgeCache:
         finally:
             conn.close()
 
-    def _db_get(self, key: str) -> Optional[tuple]:
+    def _db_get(self, key: str) -> Optional[Tuple[float, Dict[str, Any]]]:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT timestamp, score, rationale FROM judge_cache WHERE key = ?",
+                "SELECT timestamp, value FROM judge_cache WHERE key = ?",
                 (key,),
             ).fetchone()
         if row is None:
             return None
-        return (row[0], {"score": row[1], "rationale": row[2]})
+        return (row[0], json.loads(row[1]))
 
     def _db_put(self, key: str, ts: float, value: Dict[str, Any]) -> None:
         with self._connect() as conn:
             conn.execute(
-                "INSERT OR REPLACE INTO judge_cache (key, timestamp, score, rationale) VALUES (?, ?, ?, ?)",
-                (key, ts, value.get("score", 0), value.get("rationale", "")),
+                "INSERT OR REPLACE INTO judge_cache (key, timestamp, value) VALUES (?, ?, ?)",
+                (key, ts, json.dumps(value)),
             )
 
     def _db_delete(self, key: str) -> None:

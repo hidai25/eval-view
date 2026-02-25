@@ -87,9 +87,9 @@ evalview run --save-golden        # Save specific result as baseline
 evalview run --diff               # Compare with custom options
 ```
 
-That's it. **Deterministic proof, no LLM-as-judge required, no API keys needed.**
+That's it. **Deterministic proof, no LLM-as-judge required, no API keys needed.** Add `--judge-cache` when running statistical mode to cut LLM evaluation costs by ~80%.
 
-### Habit-Forming Regression Detection
+### Progress Tracking
 
 EvalView now tracks your progress and celebrates wins:
 
@@ -161,37 +161,43 @@ Perfect for LLM-based agents with creative variation.
 
 ---
 
-## New: Forbidden Tool Contracts + HTML Trace Replay
+## Forbidden Tool Contracts + HTML Trace Replay + LLM Judge Caching
 
 ### `forbidden_tools` — Safety Contracts in One Line
 
-Declare tools that must **never** be called. If the agent touches one, the test hard-fails immediately — score 0, no partial credit — regardless of how good the output looks.
+Declare tools that must **never** be called. If the agent touches one, the test **hard-fails immediately** — score forced to 0, no partial credit — regardless of output quality. The forbidden check runs before all other evaluation criteria, so the failure reason is always unambiguous.
 
 ```yaml
 # research-agent.yaml
+name: research-agent
+input:
+  query: "Summarize recent AI news"
 expected:
   tools: [web_search, summarize]
 
-  # This agent is read-only. Any write/execute call is a contract violation.
+  # Safety contract: this agent is read-only.
+  # Any write or execution call is a contract violation.
   forbidden_tools: [edit_file, bash, write_file, execute_code]
+thresholds:
+  min_score: 70
 ```
 
 ```
-FAIL  research-agent  (score: 91.2)
+FAIL  research-agent  (score: 0)
   ✗ FORBIDDEN TOOL VIOLATION
-  ✗ edit_file was called but is declared forbidden
-  This test hard-fails regardless of output quality.
+  ✗ edit_file was called — declared forbidden
+  Hard-fail: score forced to 0 regardless of output quality.
 ```
 
-**Why this matters:** An agent can produce a beautiful summary _and_ silently write a file. Without `forbidden_tools`, that test passes. With it, the contract breach is caught on the first run and blocks CI.
+**Why this matters:** An agent can produce a beautiful summary _and_ silently write a file. Without `forbidden_tools`, that test passes. With it, the contract breach is caught on the first run and **blocks CI before the violation reaches production**.
 
-Matching is case-insensitive and separator-agnostic — `"EditFile"` catches `"edit_file"` and `"edit-file"`. Violations appear as a red alert banner in HTML reports.
+Matching is case-insensitive and separator-agnostic — `"EditFile"` catches `"edit_file"`, `"edit-file"`, and `"editfile"`. Violations appear as a red alert banner in HTML reports.
 
 ---
 
 ### HTML Trace Replay — Full Forensic Debugging
 
-Every test result card in the HTML report now has a **Trace Replay** tab that shows exactly what happened, step by step:
+Every test result card in the HTML report has a **Trace Replay** tab showing exactly what the agent did, step by step:
 
 | Span | What it shows |
 |------|--------------|
@@ -200,16 +206,37 @@ Every test result card in the HTML report now has a **Trace Replay** tab that sh
 | **TOOL** (amber) | Tool name, parameters JSON, result — click to expand |
 
 ```bash
-evalview run --output-format html   # Opens in browser automatically
+evalview run --output-format html   # Generates report, opens in browser automatically
 ```
 
-The prompt/completion data comes from `ExecutionTrace.trace_context`, which adapters populate using `evalview.core.tracing.Tracer`. When `trace_context` isn't present, the tab falls back to the `StepTrace` list — so it works for all existing adapters with no changes required.
+The prompt/completion data comes from `ExecutionTrace.trace_context`, which adapters populate via `evalview.core.tracing.Tracer`. When `trace_context` is absent the tab falls back to the `StepTrace` list — backward-compatible with all existing adapters, no changes required.
 
-This is the "what did the model actually see at step 3?" view that makes root-causing agent failures take seconds instead of hours.
+This is the "what did the model actually see at step 3?" view that reduces root-cause analysis from hours to seconds.
 
 ---
 
-## New: Provider-Agnostic Skill Tests + Setup Wizard + 15 Templates
+### LLM Judge Caching — 80% Cost Reduction in Statistical Mode
+
+When running tests multiple times (statistical mode with `variance.runs`), EvalView caches LLM judge responses to avoid redundant API calls for identical outputs:
+
+```yaml
+# test-case.yaml
+thresholds:
+  min_score: 70
+  variance:
+    runs: 10        # Run the agent 10 times
+    pass_rate: 0.8  # Require 80% pass rate
+```
+
+```bash
+evalview run   # Judge evaluates each unique output once, not 10 times
+```
+
+Cache is keyed on the full evaluation context (test name, query, output, and all criteria). Entries are stored in `.evalview/.judge_cache.db` with a 24-hour TTL. Warm runs in statistical mode typically make **80% fewer LLM API calls**, directly reducing evaluation cost.
+
+---
+
+## Provider-Agnostic Skill Tests + Setup Wizard + 15 Templates
 
 **Run skill tests against any LLM provider** — Anthropic, OpenAI, DeepSeek, Kimi, Moonshot, or any OpenAI-compatible endpoint:
 
@@ -281,7 +308,7 @@ Available patterns: `tool-not-called` · `wrong-tool-chosen` · `tool-error-hand
 
 ---
 
-## New in v0.3: Visual Reports + Claude Code MCP
+## Visual Reports + Claude Code MCP
 
 **Beautiful HTML reports** — one command, auto-opens in browser:
 
@@ -511,14 +538,73 @@ evalview mcp serve --test-path my_tests/  # Custom test directory
 
 ---
 
+## Complete Test Case Reference
+
+Every field available in a test case YAML, with inline comments:
+
+```yaml
+# tests/my-agent.yaml
+name: customer-support-refund          # Unique test identifier (required)
+description: "Agent handles refund in 2 steps"  # Optional — appears in reports
+
+input:
+  query: "I want a refund for order #12345"  # The prompt sent to the agent (required)
+  context:                                    # Optional key-value context injected alongside
+    user_tier: "premium"
+
+expected:
+  # Tools the agent should call (order-independent match)
+  tools: [get_order, process_refund]
+
+  # Exact call order, if sequence matters
+  tool_sequence: [get_order, process_refund]
+
+  # Match by intent category instead of exact name (flexible)
+  tool_categories: [order_lookup, payment_processing]
+
+  # Output quality criteria (all case-insensitive)
+  output:
+    contains: ["refund approved", "3-5 business days"]   # Must appear in output
+    not_contains: ["sorry, I can't", "error"]            # Must NOT appear in output
+
+  # Safety contract: any violation is an immediate hard-fail (score 0, no partial credit)
+  forbidden_tools: [edit_file, bash, write_file, execute_code]
+
+thresholds:
+  min_score: 70          # Minimum passing score (0-100)
+  max_cost: 0.01         # Maximum cost in USD (optional)
+  max_latency: 5000      # Maximum latency in ms (optional)
+
+  # Override global scoring weights for this test (optional)
+  weights:
+    tool_accuracy: 0.4
+    output_quality: 0.4
+    sequence_correctness: 0.2
+
+  # Statistical mode: run N times and require a pass rate (optional)
+  variance:
+    runs: 10             # Number of executions
+    pass_rate: 0.8       # Require 80% of runs to pass
+
+# Per-test overrides (optional)
+adapter: langgraph                    # Override global adapter
+endpoint: "http://localhost:2024"     # Override global endpoint
+model: "claude-sonnet-4-6"           # Override model for this test
+suite_type: regression                # "capability" (hill-climb) or "regression" (safety net)
+difficulty: medium                    # trivial | easy | medium | hard | expert
+```
+
+---
+
 ## Features
 
 | Feature | Description | Docs |
 |---------|-------------|------|
-| **`forbidden_tools`** | Declare tools that must never be called — hard-fail on any violation, score 0, no partial credit | [Docs](#new-forbidden-tool-contracts--html-trace-replay) |
+| **`forbidden_tools`** | Declare tools that must never be called — hard-fail on any violation, score 0, no partial credit | [Docs](#forbidden-tool-contracts--html-trace-replay--llm-judge-caching) |
 | **HTML Trace Replay** | Step-by-step replay of every LLM call and tool invocation — exact prompt, completion, tokens, params | [Docs](#html-trace-replay--full-forensic-debugging) |
+| **LLM Judge Caching** | Cache judge responses in statistical mode — ~80% fewer API calls, stored in `.evalview/.judge_cache.db` | [Docs](#llm-judge-caching--80-cost-reduction-in-statistical-mode) |
 | **Snapshot/Check Workflow** | Simple `snapshot` then `check` commands for regression detection | [Docs](docs/GOLDEN_TRACES.md) |
-| **Visual Reports** | `evalview inspect` — interactive HTML with traces, diffs, cost-per-query | [Docs](#new-in-v03-visual-reports--claude-code-mcp) |
+| **Visual Reports** | `evalview inspect` — interactive HTML with traces, diffs, cost-per-query | [Docs](#visual-reports--claude-code-mcp) |
 | **Claude Code MCP** | 7 tools — run checks, generate tests, test skills inline | [Docs](#claude-code-integration-mcp) |
 | **Streak Tracking** | Habit-forming celebrations for consecutive clean checks | [Docs](docs/GOLDEN_TRACES.md) |
 | **Multi-Reference Goldens** | Save up to 5 variants per test for non-deterministic agents | [Docs](docs/GOLDEN_TRACES.md) |

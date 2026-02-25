@@ -3,6 +3,21 @@
 import logging
 from datetime import datetime
 from typing import Optional, Dict, TYPE_CHECKING
+
+# ---------------------------------------------------------------------------
+# Deterministic output scoring weights (must sum to 100)
+# ---------------------------------------------------------------------------
+# These control the fallback scorer used when no LLM judge is available.
+# Adjust here to rebalance; the cap prevents misleadingly high scores
+# since deterministic heuristics are inherently approximate.
+_DETO_CONTAINS_WEIGHT: float = 40.0      # % score for contains checks
+_DETO_NOT_CONTAINS_WEIGHT: float = 20.0  # % score for not_contains checks
+_DETO_LENGTH_WEIGHT: float = 20.0        # % score for non-empty output
+_DETO_RELEVANCE_WEIGHT: float = 20.0     # % score for query-term overlap
+_DETO_SCORE_CAP: float = 75.0           # max score; signals "approximate"
+_DETO_MIN_OUTPUT_LENGTH: int = 10        # chars below which output is "short"
+_DETO_MIN_QUERY_WORD_LENGTH: int = 3     # minimum chars to treat as a keyword
+
 from evalview.core.types import (
     TestCase,
     ExecutionTrace,
@@ -248,7 +263,7 @@ class Evaluator:
         score = 0.0
         rationale_parts = []
 
-        # Check string contains (40% of score)
+        # Check string contains
         contains_passed = []
         contains_failed = []
         if test_case.expected.output and test_case.expected.output.contains:
@@ -262,17 +277,17 @@ class Evaluator:
 
             if must_contain:
                 contains_ratio = len(contains_passed) / len(must_contain)
-                score += contains_ratio * 40
+                score += contains_ratio * _DETO_CONTAINS_WEIGHT
                 if contains_failed:
                     rationale_parts.append(f"Missing: {', '.join(contains_failed[:3])}")
                 else:
                     rationale_parts.append("All expected strings found")
         else:
-            # No contains check, give full points
-            score += 40
+            # No contains check — award full weight
+            score += _DETO_CONTAINS_WEIGHT
             rationale_parts.append("No contains check specified")
 
-        # Check string not_contains (20% of score)
+        # Check string not_contains
         not_contains_passed = []
         not_contains_failed = []
         if test_case.expected.output and test_case.expected.output.not_contains:
@@ -286,41 +301,36 @@ class Evaluator:
 
             if must_not_contain:
                 not_contains_ratio = len(not_contains_passed) / len(must_not_contain)
-                score += not_contains_ratio * 20
+                score += not_contains_ratio * _DETO_NOT_CONTAINS_WEIGHT
                 if not_contains_failed:
                     rationale_parts.append(f"Contains prohibited: {', '.join(not_contains_failed[:3])}")
         else:
-            # No not_contains check, give full points
-            score += 20
+            # No not_contains check — award full weight
+            score += _DETO_NOT_CONTAINS_WEIGHT
 
-        # Output length check (20% of score)
-        # Reasonable output should be non-empty and not too short
-        if len(output) > 10:
-            score += 20
+        # Output length check — penalise empty or very short responses
+        if len(output) > _DETO_MIN_OUTPUT_LENGTH:
+            score += _DETO_LENGTH_WEIGHT
             rationale_parts.append("Output has reasonable length")
         elif len(output) > 0:
-            score += 10
+            score += _DETO_LENGTH_WEIGHT / 2
             rationale_parts.append("Output is very short")
         else:
             rationale_parts.append("Output is empty")
 
-        # Basic quality check using similarity to query (20% of score)
-        # Higher score if output seems relevant to the query
+        # Basic relevance check — query-term overlap
         query = test_case.input.query.lower()
         output_lower = output.lower()
-
-        # Check if key words from query appear in output
-        query_words = [w for w in query.split() if len(w) > 3]
+        query_words = [w for w in query.split() if len(w) > _DETO_MIN_QUERY_WORD_LENGTH]
         if query_words:
             matches = sum(1 for w in query_words if w in output_lower)
             relevance_ratio = min(matches / len(query_words), 1.0)
-            score += relevance_ratio * 20
+            score += relevance_ratio * _DETO_RELEVANCE_WEIGHT
             if relevance_ratio > 0.5:
                 rationale_parts.append("Output appears relevant to query")
 
-        # Cap deterministic scores at 75 to signal "this is approximate"
-        # Prevents garbage output from scoring 80+ and misleading users
-        score = min(score, 75.0)
+        # Cap at _DETO_SCORE_CAP to signal this score is heuristic, not authoritative
+        score = min(score, _DETO_SCORE_CAP)
 
         return OutputEvaluation(
             score=round(score, 2),

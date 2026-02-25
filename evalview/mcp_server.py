@@ -84,9 +84,11 @@ TOOLS = [
         "name": "run_check",
         "description": (
             "Check for regressions against the golden baseline. "
-            "Returns diff output showing what changed vs the last snapshot. "
-            "A regression means the agent's behavior changed unexpectedly. "
-            "Use this after refactoring agent code to confirm nothing broke. "
+            "Returns a diff summary for each test: PASSED, OUTPUT_CHANGED, TOOLS_CHANGED, or REGRESSION. "
+            "REGRESSION means the score dropped significantly — treat this as a blocking failure. "
+            "TOOLS_CHANGED / OUTPUT_CHANGED are warnings: the agent's behavior shifted but may be intentional. "
+            "Use this after any code change (prompt, model, tools) to confirm nothing broke. "
+            "If you see a regression, show the diff to the user and offer to fix it before moving on. "
             "IMPORTANT: Automatically detect test_path by looking for a 'tests/evalview/' "
             "directory in the current project. If it exists, pass it as test_path. "
             "If the project has a custom test location, use that instead."
@@ -114,6 +116,10 @@ TOOLS = [
             "Run tests and save passing results as the new golden baseline. "
             "Use this to establish or update the expected behavior after an intentional change. "
             "Future `run_check` calls will compare against this snapshot. "
+            "Call this: (1) after creating a new test with create_test, "
+            "(2) after confirming a behavioral change is intentional, "
+            "(3) before making large refactors so you have a clean rollback point. "
+            "Only passing tests are saved — failing tests are skipped with a warning. "
             "IMPORTANT: Automatically detect test_path by looking for a 'tests/evalview/' "
             "directory in the current project. If it exists, pass it as test_path."
         ),
@@ -499,8 +505,8 @@ class MCPServer:
         try:
             from evalview.reporters.json_reporter import JSONReporter
             results = JSONReporter.load_as_results(results_file)
-        except Exception:
-            return "Failed to parse results — file may be in an unsupported format."
+        except Exception as exc:
+            return f"Failed to parse results — file may be in an unsupported format. ({exc})"
 
         try:
             from evalview.visualization import generate_visual_report

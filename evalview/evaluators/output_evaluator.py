@@ -139,6 +139,14 @@ class OutputEvaluator:
             2. Stripped of control characters
             3. Has common prompt delimiters escaped
             4. Wrapped in unique boundary markers
+
+        Cache Key Invariant:
+            Every field that influences the judge's scoring decision MUST be
+            included in the JudgeCache.make_key() call below. If a new criterion
+            is added to the evaluation prompt (e.g., a hallucination check or
+            JSON schema requirement), the cache key must be updated to include
+            it — otherwise cache hits will silently return stale scores for
+            evaluations with different criteria.
         """
         # Build cache key upfront so both the lookup and store use the same key.
         cache_key: Optional[str] = None
