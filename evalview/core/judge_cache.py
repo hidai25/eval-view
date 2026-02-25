@@ -164,6 +164,7 @@ class JudgeCache:
 
     @contextmanager
     def _connect(self):
+        assert self.persist_path is not None  # only called when persist_path is set
         conn = sqlite3.connect(self.persist_path)
         try:
             yield conn
