@@ -6061,6 +6061,7 @@ async def _skill_generate_tests_async(
         console.print("     export OPENAI_API_KEY=sk-...")
         console.print("     export ANTHROPIC_API_KEY=sk-ant-...")
         console.print("     export GEMINI_API_KEY=...")
+        console.print("     export DEEPSEEK_API_KEY=...")
         console.print()
         raise SystemExit(1)
 

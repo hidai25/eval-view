@@ -69,6 +69,10 @@ class SkillTestGenerator:
             ("gemini-2.0-flash", 0.001, "Free tier (recommended)"),
             ("gemini-1.5-pro", 0.015, "Higher quality"),
         ],
+        "deepseek": [
+            ("deepseek-chat", 0.0007, "Fast & ultra-cheap (recommended)"),
+            ("deepseek-reasoner", 0.0055, "Best quality, slower"),
+        ],
     }
 
     # Cost-optimized defaults (first model in each provider list)
@@ -76,6 +80,7 @@ class SkillTestGenerator:
         "anthropic": "claude-haiku-4-5-20251001",
         "openai": "gpt-4o-mini",
         "gemini": "gemini-2.0-flash",
+        "deepseek": "deepseek-chat",
     }
 
     def __init__(self, model: Optional[str] = None):
@@ -109,7 +114,7 @@ class SkillTestGenerator:
         providers = detect_available_providers()
         if not providers:
             raise ValueError(
-                "No LLM provider available. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY"
+                "No LLM provider available. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, or DEEPSEEK_API_KEY"
             )
 
         # Return first available (detect_available_providers already sorts by priority)
@@ -163,7 +168,7 @@ class SkillTestGenerator:
 
         if not options:
             raise ValueError(
-                "No LLM provider available. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY"
+                "No LLM provider available. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, or DEEPSEEK_API_KEY"
             )
 
         # If only one option, use it
@@ -727,6 +732,8 @@ Important:
             "gemini-2.0-flash": (0.0, 0.0),  # Free tier
             "gpt-4o": (2.50, 10.00),
             "claude-sonnet-4-5-20250929": (3.00, 15.00),
+            "deepseek-chat": (0.14, 0.28),
+            "deepseek-reasoner": (0.55, 2.19),
         }
 
         model = self.client.model

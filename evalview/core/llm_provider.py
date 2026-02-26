@@ -20,6 +20,7 @@ class LLMProvider(Enum):
     ANTHROPIC = "anthropic"
     GEMINI = "gemini"
     GROK = "grok"
+    DEEPSEEK = "deepseek"
     HUGGINGFACE = "huggingface"
     OLLAMA = "ollama"
 
@@ -75,6 +76,13 @@ PROVIDER_CONFIGS: Dict[LLMProvider, ProviderConfig] = {
         default_model="grok-2-latest",
         display_name="xAI Grok",
         api_key_url="https://console.x.ai/",
+    ),
+    LLMProvider.DEEPSEEK: ProviderConfig(
+        name="deepseek",
+        env_var="DEEPSEEK_API_KEY",
+        default_model="deepseek-chat",
+        display_name="DeepSeek",
+        api_key_url="https://platform.deepseek.com/api_keys",
     ),
     LLMProvider.HUGGINGFACE: ProviderConfig(
         name="huggingface",
@@ -277,6 +285,10 @@ class JudgeCostTracker:
             "gemini-2.0-flash": (0.10, 0.40),
             "gemini-1.5-pro": (1.25, 5.00),
         },
+        "deepseek": {
+            "deepseek-chat": (0.14, 0.28),
+            "deepseek-reasoner": (0.55, 2.19),
+        },
         "ollama": {},  # Free - local
         "huggingface": {
             "meta-llama/Llama-3.1-8B-Instruct": (0.05, 0.05),
@@ -399,7 +411,6 @@ class LLMClient:
             "phi",
             "gemma",
             "qwen",
-            "deepseek",
             "vicuna",
             "orca",
         ]
@@ -488,6 +499,12 @@ class LLMClient:
             # Grok uses OpenAI-compatible API
             async for chunk in self._openai_stream(
                 system_prompt, user_prompt, temperature, max_tokens, base_url="https://api.x.ai/v1"
+            ):
+                yield chunk
+        elif self.provider == LLMProvider.DEEPSEEK:
+            # DeepSeek uses OpenAI-compatible API
+            async for chunk in self._openai_stream(
+                system_prompt, user_prompt, temperature, max_tokens, base_url="https://api.deepseek.com/v1"
             ):
                 yield chunk
         elif self.provider == LLMProvider.HUGGINGFACE:
@@ -674,6 +691,10 @@ class LLMClient:
             )
         elif self.provider == LLMProvider.GROK:
             return await self._grok_completion(system_prompt, user_prompt, temperature, max_tokens)
+        elif self.provider == LLMProvider.DEEPSEEK:
+            return await self._deepseek_completion(
+                system_prompt, user_prompt, temperature, max_tokens
+            )
         elif self.provider == LLMProvider.HUGGINGFACE:
             return await self._huggingface_completion(
                 system_prompt, user_prompt, temperature, max_tokens
@@ -817,6 +838,31 @@ class LLMClient:
             api_key=self.api_key,
             base_url="https://api.x.ai/v1",
         )
+
+        response = await client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+        return json.loads(response.choices[0].message.content or "{}")
+
+    async def _deepseek_completion(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> Dict[str, Any]:
+        """DeepSeek chat completion (OpenAI-compatible API)."""
+        from openai import AsyncOpenAI
+
+        client = AsyncOpenAI(api_key=self.api_key, base_url="https://api.deepseek.com/v1")
 
         response = await client.chat.completions.create(
             model=self.model,
