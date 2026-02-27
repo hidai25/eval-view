@@ -5573,7 +5573,7 @@ def _run_agent_skill_test(
 
 @skill.command("test")
 @click.argument("test_file", type=click.Path(exists=True))
-@click.option("--model", "-m", default="claude-sonnet-4-20250514", help="Model to use")
+@click.option("--model", "-m", default=None, help="Model to use (default: claude-haiku-4-5-20251001 for Anthropic, gpt-4o-mini for OpenAI)")
 @click.option(
     "--provider",
     type=click.Choice(["anthropic", "openai", "openai-compatible"]),

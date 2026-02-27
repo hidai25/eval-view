@@ -172,7 +172,7 @@ class SkillTestSuite(BaseModel):
     skill: str = Field(description="Path to SKILL.md file")
 
     # Optional config
-    model: str = Field(default="claude-sonnet-4-20250514", description="Model to use")
+    model: Optional[str] = Field(default=None, description="Model to use (default: auto-selected based on provider)")
 
     # Test cases
     tests: List[SkillTest] = Field(description="List of test cases")

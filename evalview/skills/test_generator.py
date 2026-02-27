@@ -415,6 +415,10 @@ class SkillTestGenerator:
 - ONLY use output_contains and output_not_contains — never tool_calls_contain, files_created, or commands_ran
 - output_contains: key concepts, terms, or commands the response must mention
 - Negative tests: should_trigger: false, use output_not_contains
+  - IMPORTANT: For system-prompt agents the skill is ALWAYS loaded, so the agent may casually mention the skill's topic even for unrelated queries.
+  - For negative tests, assert on SPECIFIC multi-word phrases or detailed guidance that only appear when the skill is actively triggered, not single common words that might appear in passing (e.g. don't use "server" or "API" alone — use "wrangler deploy" or a specific workflow phrase instead)
+  - Prefer: output_not_contains with 2-3 word phrases unique to the skill's detailed guidance
+  - Avoid: single generic words like "server", "API", "model", "tool" that any response might include
 - Keep assertions focused on what the agent SAYS, not what it DOES"""
         )
 

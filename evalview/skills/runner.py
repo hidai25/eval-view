@@ -24,10 +24,16 @@ class SkillRunner:
     Loads a skill, sends test queries, and evaluates responses.
     """
 
+    # Default models per provider
+    _DEFAULT_MODELS = {
+        "anthropic": "claude-haiku-4-5-20251001",
+        "openai": "gpt-4o-mini",
+    }
+
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model: str = "claude-sonnet-4-20250514",
+        model: Optional[str] = None,
         provider: Optional[str] = None,
         base_url: Optional[str] = None,
     ):
@@ -36,16 +42,16 @@ class SkillRunner:
 
         Args:
             api_key: Provider API key (or uses env vars)
-            model: Model to use for testing
+            model: Model to use for testing (auto-selected based on provider if not set)
             provider: Provider name — "anthropic" or "openai" (covers all OpenAI-compatible APIs)
             base_url: Optional base URL for OpenAI-compatible providers
         """
-        self.model = model
         self.provider, self.api_key, self.base_url = self._resolve_provider_config(
             api_key=api_key,
             provider=provider,
             base_url=base_url,
         )
+        self.model = model or self._DEFAULT_MODELS.get(self.provider, "gpt-4o-mini")
         self._client: Optional[Any] = None
 
     @property
@@ -92,8 +98,18 @@ class SkillRunner:
         if provider in {"openai-compatible", "openai_compatible"}:
             provider = "openai"
 
+        # When running inside Claude Code, ANTHROPIC_API_KEY is a short-lived
+        # session token that is ONLY valid for the outer claude process.  It
+        # cannot be used for direct Anthropic API calls, so we ignore it and
+        # fall through to OpenAI-compatible providers.
+        _inside_claude_code = bool(
+            os.environ.get("CLAUDECODE") or os.environ.get("CLAUDE_CODE_ENTRYPOINT")
+        )
+
         if provider == "anthropic":
-            key = explicit_api_key or os.environ.get("ANTHROPIC_API_KEY")
+            key = explicit_api_key or (
+                None if _inside_claude_code else os.environ.get("ANTHROPIC_API_KEY")
+            )
             if not key:
                 raise ValueError(
                     "API key required for Anthropic. Set ANTHROPIC_API_KEY or SKILL_TEST_API_KEY."
@@ -130,7 +146,9 @@ class SkillRunner:
         # Auto-detect provider preference:
         # 1) If an Anthropic key exists and no OpenAI-compatible base URL/key is set, prefer Anthropic.
         # 2) Otherwise use OpenAI-compatible if any relevant key is present.
-        anthropic_key = explicit_api_key or os.environ.get("ANTHROPIC_API_KEY")
+        anthropic_key = explicit_api_key or (
+            None if _inside_claude_code else os.environ.get("ANTHROPIC_API_KEY")
+        )
         openai_key_source = None
         openai_key: Optional[str]
         if explicit_api_key:
@@ -257,9 +275,12 @@ class SkillRunner:
         # Pre-warm client so threads don't race on lazy init
         _ = self.client
 
+        # Resolve model: suite overrides runner default
+        effective_model = suite.model or self.model
+
         # Run all tests concurrently
         def _run_one(test: SkillTest) -> SkillTestResult:
-            return self.run_test(skill, test, model=suite.model)
+            return self.run_test(skill, test, model=effective_model)
 
         with concurrent.futures.ThreadPoolExecutor() as executor:
             results: List[SkillTestResult] = list(
