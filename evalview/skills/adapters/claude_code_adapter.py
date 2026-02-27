@@ -6,14 +6,14 @@ Uses `claude --print -p <query>` for non-interactive execution.
 
 import asyncio
 import json
+import logging
 import os
+import shutil
 import subprocess
 import tempfile
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-import logging
-import shutil
 
 from evalview.skills.adapters.base import (
     SkillAgentAdapter,
@@ -50,6 +50,7 @@ class ClaudeCodeAdapter(SkillAgentAdapter):
         """
         super().__init__(config)
         self.claude_path = self._find_claude_binary()
+        self._last_raw_output: str = ""
 
     @property
     def name(self) -> str:
@@ -158,8 +159,14 @@ class ClaudeCodeAdapter(SkillAgentAdapter):
             # 1. claude --print hangs when stdout is a pipe (asyncio creates pipes)
             # 2. asyncio subprocess behaves differently from shell subprocess for claude
             # Running in a thread via subprocess.run matches what works in a shell.
-            stdout_path = tempfile.mktemp(suffix=".stdout")
-            stderr_path = tempfile.mktemp(suffix=".stderr")
+            #
+            # mkstemp() is used instead of mktemp() to avoid the TOCTOU race:
+            # the file descriptor is opened atomically and then closed so the
+            # subprocess can write to it by path.
+            stdout_fd, stdout_path = tempfile.mkstemp(suffix=".stdout")
+            stderr_fd, stderr_path = tempfile.mkstemp(suffix=".stderr")
+            os.close(stdout_fd)
+            os.close(stderr_fd)
 
             timeout = self.config.timeout
 
@@ -182,10 +189,10 @@ class ClaudeCodeAdapter(SkillAgentAdapter):
                         proc.kill()
                         proc.wait()
                         raise
-                return proc.returncode or 0
+                return proc.returncode if proc.returncode is not None else 0
 
             try:
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 try:
                     returncode = await asyncio.wait_for(
                         loop.run_in_executor(None, _run_blocking),
@@ -196,8 +203,10 @@ class ClaudeCodeAdapter(SkillAgentAdapter):
                 except subprocess.TimeoutExpired:
                     raise AgentTimeoutError(self.name, timeout)
 
-                stdout = open(stdout_path, "r", errors="replace").read()
-                stderr = open(stderr_path, "r", errors="replace").read()
+                with open(stdout_path, "r", errors="replace") as f:
+                    stdout = f.read()
+                with open(stderr_path, "r", errors="replace") as f:
+                    stderr = f.read()
             finally:
                 for p in (stdout_path, stderr_path):
                     try:
@@ -404,100 +413,8 @@ to invoke this skill — the instructions are already loaded here as your guidel
             errors=errors,
         )
 
-    def _parse_json_output(
-        self, data: Dict[str, Any]
-    ) -> tuple:
-        """Parse JSON output from claude CLI.
-
-        Claude Code outputs a structured JSON with messages and tool calls.
-
-        Args:
-            data: Parsed JSON data
-
-        Returns:
-            Tuple of (final_output, events, tool_calls, files_created,
-                      files_modified, commands_ran, input_tokens, output_tokens)
-        """
-        events: List[TraceEvent] = []
-        tool_calls: List[str] = []
-        files_created: List[str] = []
-        files_modified: List[str] = []
-        commands_ran: List[str] = []
-        total_input_tokens = 0
-        total_output_tokens = 0
-        final_output = ""
-
-        # Extract from messages array if present
-        messages = data.get("messages", [])
-        if not messages and isinstance(data, dict):
-            # Maybe data itself is the message
-            messages = [data]
-
-        for msg in messages:
-            # Skip non-dict messages
-            if not isinstance(msg, dict):
-                continue
-            # Extract text content
-            if msg.get("role") == "assistant":
-                content = msg.get("content", [])
-                if isinstance(content, str):
-                    final_output = content
-                elif isinstance(content, list):
-                    for block in content:
-                        if isinstance(block, dict):
-                            if block.get("type") == "text":
-                                final_output = block.get("text", "")
-                            elif block.get("type") == "tool_use":
-                                tool_name = block.get("name", "unknown")
-                                tool_calls.append(tool_name)
-                                tool_input = block.get("input", {})
-
-                                # Create trace event
-                                event = TraceEvent(
-                                    type=TraceEventType.TOOL_CALL,
-                                    tool_name=tool_name,
-                                    tool_input=tool_input,
-                                )
-                                events.append(event)
-
-                                # Track file operations
-                                self._track_file_operations(
-                                    tool_name,
-                                    tool_input,
-                                    files_created,
-                                    files_modified,
-                                    commands_ran,
-                                )
-
-            # Extract usage info
-            if "usage" in msg and isinstance(msg.get("usage"), dict):
-                usage = msg["usage"]
-                total_input_tokens += usage.get("input_tokens", 0)
-                total_output_tokens += usage.get("output_tokens", 0)
-
-        # Also check top-level usage
-        if "usage" in data:
-            usage = data["usage"]
-            total_input_tokens += usage.get("input_tokens", 0)
-            total_output_tokens += usage.get("output_tokens", 0)
-
-        # Check for result/response field
-        if not final_output:
-            final_output = data.get("result", "") or data.get("response", "")
-
-        return (
-            final_output,
-            events,
-            tool_calls,
-            files_created,
-            files_modified,
-            commands_ran,
-            total_input_tokens,
-            total_output_tokens,
-        )
-
     def _check_for_missing_tools(
-        self, stdout: str, stderr: str, skill: "Skill"
+        self, stdout: str, stderr: str, skill: Skill
     ) -> None:
         """Log clear warnings when skill requires tools that aren't installed.
 
@@ -573,19 +490,3 @@ to invoke this skill — the instructions are already loaded here as your guidel
             command = tool_input.get("command", "")
             if command:
                 commands_ran.append(command)
-
-                # Check for file operations in commands
-                if "touch " in command or "mkdir " in command:
-                    # Extract paths (simple heuristic)
-                    parts = command.split()
-                    for i, part in enumerate(parts):
-                        if part in ("touch", "mkdir", ">") and i + 1 < len(parts):
-                            files_created.append(parts[i + 1])
-
-        # Read tool (just tracking, no modification)
-        elif tool_lower == "read":
-            pass  # Just reading, no modification
-
-        # Glob/Grep tools (search operations)
-        elif tool_lower in ("glob", "grep"):
-            pass  # Search operations, no modification

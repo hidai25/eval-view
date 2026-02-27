@@ -452,11 +452,11 @@ class MCPServer:
             cmd = ["evalview", "skill", "test", test_file, "--json"]
             if args.get("agent"):
                 cmd += ["--agent", args["agent"]]
-            if args.get("no_rubric"):
+            if args.get("no_rubric") is True:
                 cmd += ["--no-rubric"]
             if args.get("model"):
                 cmd += ["--model", args["model"]]
-            if args.get("verbose"):
+            if args.get("verbose") is True:
                 cmd += ["--verbose"]
 
         elif name == "generate_visual_report":
@@ -466,11 +466,14 @@ class MCPServer:
             return f"Unknown tool: {name}"
 
         env = {**os.environ, "NO_COLOR": "1", "FORCE_COLOR": "0"}
-        # Timeout: 600s for skill tests (many tests × ~15s each),
-        # 120s for other LLM-heavy commands, 30s for everything else.
-        if "skill" in cmd and "test" in cmd:
+        # Timeout tiers based on the subcommand, not substring matching on args:
+        # - skill test: 600s (N tests × ~15s each can easily exceed 2 min)
+        # - generate-tests / snapshot / run: 120s (single LLM call)
+        # - everything else (check, golden list, validate): 30s
+        subcommands = cmd[1:3]  # e.g. ["skill", "test"] or ["snapshot"]
+        if subcommands == ["skill", "test"]:
             timeout = 600
-        elif any(x in cmd for x in ["generate-tests", "run"]):
+        elif any(s in subcommands for s in ("generate-tests", "snapshot", "run")):
             timeout = 120
         else:
             timeout = 30

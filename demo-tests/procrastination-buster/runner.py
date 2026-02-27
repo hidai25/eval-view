@@ -4,7 +4,13 @@
 Uses the claude CLI instead of the Anthropic SDK so it works for
 both API key users and Claude Code OAuth users.
 """
-import json, os, sys, subprocess, tempfile, traceback, shutil
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import traceback
 
 try:
     claude_path = shutil.which("claude")
@@ -15,7 +21,12 @@ try:
     skill_path = os.environ.get("SKILL_PATH", "")
     query = os.environ.get("QUERY", "")
 
-    skill_content = open(skill_path).read() if skill_path and os.path.exists(skill_path) else ""
+    try:
+        with open(skill_path, encoding="utf-8") as f:
+            skill_content = f.read()
+    except (OSError, TypeError):
+        skill_content = ""
+
     system_prompt = (
         f"You have the following skill loaded:\n\n{skill_content}\n\n"
         "Apply this skill when responding."
@@ -28,8 +39,11 @@ try:
     env.pop("CLAUDE_CODE_ENTRYPOINT", None)
     env.pop("ANTHROPIC_API_KEY", None)
 
-    stdout_path = tempfile.mktemp(suffix=".stdout")
-    stderr_path = tempfile.mktemp(suffix=".stderr")
+    # mkstemp() opens the file atomically, avoiding the TOCTOU race of mktemp().
+    stdout_fd, stdout_path = tempfile.mkstemp(suffix=".stdout")
+    stderr_fd, stderr_path = tempfile.mkstemp(suffix=".stderr")
+    os.close(stdout_fd)
+    os.close(stderr_fd)
 
     try:
         with open(stdout_path, "wb") as out_f, open(stderr_path, "wb") as err_f:
@@ -48,9 +62,18 @@ try:
                 env=env,
                 start_new_session=True,
             )
-            proc.wait(timeout=60)
+            try:
+                proc.wait(timeout=60)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+                print("RUNNER ERROR: claude timed out after 60s", file=sys.stderr)
+                sys.exit(1)
 
-        stdout = open(stdout_path, "r", errors="replace").read()
+        with open(stdout_path, "r", errors="replace") as f:
+            stdout = f.read()
+        with open(stderr_path, "r", errors="replace") as f:
+            stderr = f.read()
     finally:
         for p in (stdout_path, stderr_path):
             try:
@@ -58,12 +81,15 @@ try:
             except OSError:
                 pass
 
-    # Parse stream-json to extract final output and token counts
+    if proc.returncode != 0 and stderr:
+        print(f"RUNNER ERROR: claude exited {proc.returncode}\n{stderr}", file=sys.stderr)
+
+    # Parse stream-json to extract final output and token counts.
     final_output = ""
     input_tokens = 0
     output_tokens = 0
 
-    for line in stdout.strip().split("\n"):
+    for line in stdout.splitlines():
         if not line.strip():
             continue
         try:
