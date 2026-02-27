@@ -466,12 +466,14 @@ class MCPServer:
             return f"Unknown tool: {name}"
 
         env = {**os.environ, "NO_COLOR": "1", "FORCE_COLOR": "0"}
-        # Timeout: 120s for LLM-heavy commands (generate-tests, run_skill_test),
-        # 30s for everything else. Prevents MCP from hanging indefinitely.
-        is_llm_command = any(
-            x in cmd for x in ["generate-tests", "skill", "run"]
-        )
-        timeout = 120 if is_llm_command else 30
+        # Timeout: 600s for skill tests (many tests × ~15s each),
+        # 120s for other LLM-heavy commands, 30s for everything else.
+        if "skill" in cmd and "test" in cmd:
+            timeout = 600
+        elif any(x in cmd for x in ["generate-tests", "run"]):
+            timeout = 120
+        else:
+            timeout = 30
         try:
             result = subprocess.run(
                 cmd, capture_output=True, text=True, env=env, timeout=timeout

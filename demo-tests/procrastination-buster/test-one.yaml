@@ -1,0 +1,17 @@
+name: test-procrastination-buster-smoke
+description: Single smoke test for procrastination-buster
+skill: /Users/hidaibar-mor/Downloads/eval-view/demo-tests/procrastination-buster/SKILL.md
+agent:
+  type: custom
+  script_path: /Users/hidaibar-mor/Downloads/eval-view/demo-tests/procrastination-buster/runner.py
+  timeout: 60.0
+
+tests:
+  - name: break-down-task
+    category: explicit
+    input: Break down writing a research paper into 5 startable steps.
+    should_trigger: true
+    expected:
+      output_contains:
+        - step
+      no_secrets_in_output: true
