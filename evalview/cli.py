@@ -5509,17 +5509,39 @@ def _run_agent_skill_test(
     print_evalview_banner(console, subtitle="[dim]Agent-Based Skill Testing[/dim]")
     print_suite_info(suite, trace_dir, console)
 
-    # 4. Run tests asynchronously with spinner
+    # 4. Run tests with live per-test progress printed as each test finishes.
+    # We run the event loop directly (no spinner) so console.print() in the
+    # callback doesn't conflict with a Rich Live context.
     start_time = time.time()
+    total_tests = len(suite.tests)
+    completed_count = [0]
 
-    async def run_tests_async():
-        return await runner.run_suite(suite)
+    console.print(f"[cyan]Running {total_tests} tests in parallel...[/cyan]\n")
 
-    result, run_error = run_async_with_spinner(
-        console,
-        "Running agent tests...",
-        run_tests_async
-    )
+    def on_test_complete(test_result) -> None:
+        completed_count[0] += 1
+        icon = "[green]✓[/green]" if test_result.passed else "[red]✗[/red]"
+        score_str = f"[dim]{test_result.score:.0f}%[/dim]"
+        latency_str = f"[dim]{test_result.latency_ms / 1000:.1f}s[/dim]"
+        console.print(
+            f"  {icon} [{completed_count[0]}/{total_tests}] "
+            f"[bold]{test_result.test_name}[/bold]  {score_str}  {latency_str}"
+        )
+
+    run_error = None
+    result = None
+    try:
+        loop = asyncio.new_event_loop()
+        try:
+            result = loop.run_until_complete(
+                runner.run_suite(suite, on_test_complete=on_test_complete)
+            )
+        finally:
+            loop.close()
+    except Exception as exc:
+        run_error = exc
+
+    console.print()  # blank line after per-test output
 
     if run_error:
         console.print(f"[red]Error running tests: {run_error}[/red]")

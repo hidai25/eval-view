@@ -82,6 +82,7 @@ class AgentConfig(BaseModel):
     cwd: Optional[str] = Field(default=None)
     env: Optional[Dict[str, str]] = Field(default=None)
     script_path: Optional[str] = Field(default=None)
+    model: Optional[str] = Field(default=None, description="Model override for agent execution")
 
     @field_validator("cwd", mode="before")
     @classmethod

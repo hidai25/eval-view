@@ -278,11 +278,16 @@ class ClaudeCodeAdapter(SkillAgentAdapter):
 You MUST follow the instructions above when responding. Do NOT use the Skill tool \
 to invoke this skill — the instructions are already loaded here as your guidelines."""
 
+        # Default to haiku for speed in skill tests; override via agent.model in YAML
+        model = self.config.model or "claude-haiku-4-5-20251001"
+
         cmd = [
             self.claude_path,
             "--print",
             "-p",
             query,
+            "--model",
+            model,
             "--append-system-prompt",
             skill_prompt,
             "--output-format",

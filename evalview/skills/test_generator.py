@@ -227,6 +227,38 @@ class SkillTestGenerator:
 
         return selected.provider, api_key, selected.model
 
+    # Keywords that indicate a skill performs real actions (file I/O, shell commands).
+    # Guidance/knowledge skills lack these and should use the system-prompt runner.
+    _ACTION_PHRASES = [
+        "use the write tool", "use write", "use the edit tool", "use edit",
+        "use the bash tool", "use bash", "run the command", "execute command",
+        "create a file", "write a file", "generate a file", "create the file",
+        "write to file", "save to file",
+    ]
+    _ACTION_TOOLS = {"write", "edit", "bash", "computer"}
+
+    def _detect_agent_type(self, skill: Skill) -> AgentType:
+        """Detect whether a skill needs real agent execution or just knowledge delivery.
+
+        Action skills (create files, run commands) → claude-code.
+        Guidance/knowledge skills (provide instructions, best practices) → system-prompt.
+        """
+        # Metadata tools are the most reliable signal
+        if skill.metadata.tools:
+            tools_lower = {t.lower() for t in skill.metadata.tools}
+            if tools_lower & self._ACTION_TOOLS:
+                return AgentType.CLAUDE_CODE
+
+        # Fall back to instruction content scanning
+        instructions_lower = (skill.instructions or "").lower()
+        action_count = sum(
+            1 for phrase in self._ACTION_PHRASES if phrase in instructions_lower
+        )
+        if action_count >= 2:
+            return AgentType.CLAUDE_CODE
+
+        return AgentType.SYSTEM_PROMPT
+
     async def generate_test_suite(
         self,
         skill: Skill,
@@ -264,12 +296,15 @@ class SkillTestGenerator:
                 TestCategory.NEGATIVE,
             ]
 
+        # Detect skill type: guidance skills use system-prompt (fast), action skills use claude-code
+        agent_type = self._detect_agent_type(skill)
+
         # Load golden example for few-shot learning
         golden_examples = self._load_golden_example()
 
         # Build prompts
-        system_prompt = self._build_system_prompt()
-        user_prompt = self._build_user_prompt(skill, count, categories, golden_examples)
+        system_prompt = self._build_system_prompt(agent_type)
+        user_prompt = self._build_user_prompt(skill, count, categories, golden_examples, agent_type)
 
         # Generate with retry logic and exponential backoff
         last_error = None
@@ -296,12 +331,12 @@ class SkillTestGenerator:
                 # Convert to SkillAgentTest objects
                 tests = [self._dict_to_test(t) for t in tests_data]
 
-                # Build suite
+                # Build suite with auto-detected agent type
                 suite = SkillAgentTestSuite(
                     name=f"test-{skill.metadata.name}",
                     description=f"Auto-generated tests for {skill.metadata.name}",
                     skill=skill.file_path or "./SKILL.md",
-                    agent=AgentConfig(type=AgentType.CLAUDE_CODE),
+                    agent=AgentConfig(type=agent_type),
                     tests=tests,
                     min_pass_rate=0.8,
                 )
@@ -364,57 +399,60 @@ class SkillTestGenerator:
         )
         return []
 
-    def _build_system_prompt(self) -> str:
-        """Build system prompt with category definitions and rules."""
-        return """You are an expert test engineer for Claude Code skills.
+    def _build_system_prompt(self, agent_type: AgentType) -> str:
+        """Build system prompt tailored to skill type (guidance vs action)."""
+        is_action = agent_type == AgentType.CLAUDE_CODE
 
-Generate comprehensive test cases across 4 categories per OpenAI eval guidelines:
+        assertion_rules = (
+            """Assertion rules for ACTION skills (agent creates files / runs commands):
+- tool_calls_contain: tools the agent must invoke (e.g. ["Write", "Bash"])
+- files_created: files that must exist after execution (e.g. ["report.md"])
+- commands_ran: shell commands that must have run (e.g. ["npm install"])
+- output_contains: key phrases in the final response
+- Negative tests: should_trigger: false, use output_not_contains"""
+            if is_action else
+            """Assertion rules for GUIDANCE/KNOWLEDGE skills (agent explains / advises):
+- ONLY use output_contains and output_not_contains — never tool_calls_contain, files_created, or commands_ran
+- output_contains: key concepts, terms, or commands the response must mention
+- Negative tests: should_trigger: false, use output_not_contains
+- Keep assertions focused on what the agent SAYS, not what it DOES"""
+        )
 
-1. EXPLICIT - Direct skill invocation
-   Example: "Use the code-reviewer skill to check this code"
+        return f"""You are an expert test engineer for Claude Code skills.
 
+Generate comprehensive test cases across 4 categories:
+
+1. EXPLICIT - Direct skill invocation ("Use the X skill to...")
 2. IMPLICIT - Natural language implying skill use
-   Example: "Can you review this code for bugs?"
-
-3. CONTEXTUAL - Realistic, noisy prompts with multiple concerns
-   Example: "I'm reviewing PR #123. Make sure it's secure. Also tests are failing."
-
-4. NEGATIVE - Should NOT trigger skill
-   Example: "How do I install Python?" (for code-reviewer skill)
+3. CONTEXTUAL - Realistic noisy prompts with multiple concerns
+4. NEGATIVE - Should NOT trigger the skill
 
 Output JSON with this exact structure:
-{
+{{
   "tests": [
-    {
+    {{
       "name": "test-name-kebab-case",
       "category": "explicit",
       "description": "What this tests",
       "input": "User query",
       "should_trigger": true,
-      "expected": {
-        "tool_calls_contain": ["Read", "Write"],
-        "files_created": ["code-review.md"],
-        "output_contains": ["security", "vulnerability"]
-      },
-      "rubric": {
-        "prompt": "Evaluate if the agent:\\n1. Found the issue\\n2. Explained it well",
+      "expected": {{
+        "output_contains": ["key phrase"]
+      }},
+      "rubric": {{
+        "prompt": "Evaluate if the agent:\\n1. Addressed the question\\n2. Was accurate",
         "min_score": 70
-      }
-    }
+      }}
+    }}
   ]
-}
+}}
 
-Assertion inference rules:
-- If skill uses Write tool → files_created: ["*.md"] or specific filename
-- If skill uses Bash tool → commands_ran: ["command"]
-- If skill mentions security → output_contains: ["security", "vulnerability"]
-- If skill mentions code review → output_contains: ["review"]
-- Negative tests MUST have should_trigger: false and use output_not_contains
+{assertion_rules}
 
-Important:
+Rules:
 - Test names must be kebab-case
-- Rubric prompts should be specific and measurable
-- Expected assertions should be realistic (don't over-specify)
+- Rubric prompts must be specific and measurable
+- Don't over-specify assertions — 1-3 checks per test is enough
 - Include both deterministic checks (expected) and quality checks (rubric)
 """
 
@@ -424,23 +462,34 @@ Important:
         count: int,
         categories: List[TestCategory],
         golden_examples: List[Dict[str, Any]],
+        agent_type: AgentType,
     ) -> str:
         """Build user prompt with skill details and few-shot examples."""
         # Calculate distribution (3-3-2-2 for 10 tests)
         distribution = self._calculate_distribution(count, categories)
 
-        # Truncate instructions to avoid token overflow
+        # Increased truncation limit: 8000 chars gives 4x more skill context
+        # while staying well within LLM context limits for test generation.
+        _TRUNCATION_LIMIT = 8000
         original_length = len(skill.instructions)
-        instructions = skill.instructions[:2000]
+        instructions = skill.instructions[:_TRUNCATION_LIMIT]
 
-        if original_length > 2000:
-            instructions += "\n\n[... truncated for brevity ...]"
+        if original_length > _TRUNCATION_LIMIT:
+            instructions += "\n\n[... truncated ...]"
             logger.warning(
-                f"Skill instructions truncated from {original_length} to 2000 chars. "
-                f"Consider simplifying SKILL.md for better test generation quality."
+                f"Skill instructions truncated from {original_length} to {_TRUNCATION_LIMIT} chars."
             )
 
+        skill_type_label = (
+            "ACTION skill (agent executes tools, creates files, runs commands)"
+            if agent_type == AgentType.CLAUDE_CODE
+            else "GUIDANCE/KNOWLEDGE skill (agent explains, advises, provides information)"
+        )
+
         prompt = f"""Generate {count} tests for this skill:
+
+## Skill Type
+{skill_type_label}
 
 ## Skill Metadata
 - Name: {skill.metadata.name}
@@ -593,15 +642,20 @@ Important:
             suite: Test suite to save
             path: Output path
         """
+        agent_block: Dict[str, Any] = {
+            "type": suite.agent.type.value,
+        }
+        # Only include claude-code-specific fields for agent types that need them
+        if suite.agent.type == AgentType.CLAUDE_CODE:
+            agent_block["model"] = suite.agent.model or "claude-haiku-4-5-20251001"
+            agent_block["max_turns"] = suite.agent.max_turns
+            agent_block["timeout"] = suite.agent.timeout
+
         output = {
             "name": suite.name,
             "description": suite.description,
             "skill": suite.skill,
-            "agent": {
-                "type": suite.agent.type.value,
-                "max_turns": suite.agent.max_turns,
-                "timeout": suite.agent.timeout,
-            },
+            "agent": agent_block,
             "min_pass_rate": suite.min_pass_rate,
             "tests": [self._serialize_test(t) for t in suite.tests],
         }

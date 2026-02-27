@@ -1,9 +1,10 @@
 """Skill test runner - executes skills against Anthropic or OpenAI-compatible APIs."""
 
+import concurrent.futures
 import os
 import time
 from pathlib import Path
-from typing import Any, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 import yaml  # type: ignore[import-untyped]
 
 from evalview.skills.types import (
@@ -253,11 +254,17 @@ class SkillRunner:
         # Load the skill
         skill = SkillParser.parse_file(suite.skill)
 
-        # Run each test
-        results = []
-        for test in suite.tests:
-            result = self.run_test(skill, test, model=suite.model)
-            results.append(result)
+        # Pre-warm client so threads don't race on lazy init
+        _ = self.client
+
+        # Run all tests concurrently
+        def _run_one(test: SkillTest) -> SkillTestResult:
+            return self.run_test(skill, test, model=suite.model)
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            results: List[SkillTestResult] = list(
+                executor.map(_run_one, suite.tests)
+            )
 
         # Calculate stats
         passed_tests = sum(1 for r in results if r.passed)

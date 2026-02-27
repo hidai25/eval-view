@@ -8,6 +8,7 @@ Orchestrates agent-based skill testing:
 5. Runs two-phase evaluation
 """
 
+import asyncio
 import json
 import os
 import logging
@@ -15,7 +16,7 @@ import tempfile
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import yaml  # type: ignore[import-untyped]
 
@@ -127,6 +128,7 @@ class SkillAgentRunner:
     async def run_suite(
         self,
         suite: SkillAgentTestSuite,
+        on_test_complete: Optional[Callable[[SkillAgentTestResult], None]] = None,
     ) -> SkillAgentTestSuiteResult:
         """Run all tests in a test suite.
 
@@ -149,40 +151,52 @@ class SkillAgentRunner:
         # Setup trace directory
         trace_dir = self._setup_trace_dir(suite.name)
 
-        # Create temp working directory for file isolation
-        # Use suite.agent.cwd if specified, otherwise create temp dir
+        # Create temp base directory; each test gets its own subdirectory to
+        # prevent parallel tests from stomping on each other's files.
         use_temp_dir = suite.agent.cwd is None
-        work_dir: Optional[str] = None
+        base_work_dir: Optional[str] = None
         if use_temp_dir:
-            work_dir = tempfile.mkdtemp(prefix=f"evalview-{suite.name}-")
-            logger.info(f"Created temp working directory: {work_dir}")
-            # Update the config with the temp directory
-            suite.agent = suite.agent.model_copy(update={"cwd": work_dir})
-        else:
-            work_dir = suite.agent.cwd
+            base_work_dir = tempfile.mkdtemp(prefix=f"evalview-{suite.name}-")
+            logger.info(f"Created temp working directory: {base_work_dir}")
 
-        # Run each test
+        async def _run_one(test: SkillAgentTest) -> SkillAgentTestResult:
+            if use_temp_dir and base_work_dir:
+                test_work_dir = tempfile.mkdtemp(
+                    prefix=f"{test.name}-", dir=base_work_dir
+                )
+                config = suite.agent.model_copy(update={"cwd": test_work_dir})
+            else:
+                config = suite.agent
+
+            if self.verbose:
+                logger.info(f"Running test: {test.name}")
+
+            result = await self._run_test(
+                adapter=adapter,
+                skill=skill,
+                test=test,
+                config=config,
+                trace_dir=trace_dir,
+            )
+
+            # Notify caller as soon as this test finishes (enables live progress display)
+            if on_test_complete is not None:
+                on_test_complete(result)
+
+            return result
+
+        # Run all tests concurrently
         results: List[SkillAgentTestResult] = []
         try:
-            for test in suite.tests:
-                if self.verbose:
-                    logger.info(f"Running test: {test.name}")
-
-                result = await self._run_test(
-                    adapter=adapter,
-                    skill=skill,
-                    test=test,
-                    config=suite.agent,
-                    trace_dir=trace_dir,
-                )
-                results.append(result)
-
+            results = list(
+                await asyncio.gather(*[_run_one(test) for test in suite.tests])
+            )
         finally:
-            # Cleanup temp directory if we created one
-            if use_temp_dir and work_dir and os.path.exists(work_dir):
+            # Cleanup base temp directory and all per-test subdirectories
+            if use_temp_dir and base_work_dir and os.path.exists(base_work_dir):
                 if self.verbose:
-                    logger.info(f"Cleaning up temp directory: {work_dir}")
-                shutil.rmtree(work_dir, ignore_errors=True)
+                    logger.info(f"Cleaning up temp directory: {base_work_dir}")
+                shutil.rmtree(base_work_dir, ignore_errors=True)
 
         # Calculate stats
         passed_tests = sum(1 for r in results if r.passed)
