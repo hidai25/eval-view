@@ -4,7 +4,7 @@ import concurrent.futures
 import os
 import time
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
+from typing import Any, Callable, List, Optional, Tuple
 import yaml  # type: ignore[import-untyped]
 
 from evalview.skills.types import (
@@ -259,12 +259,17 @@ class SkillRunner:
 
         return SkillTestSuite(**data)
 
-    def run_suite(self, suite: SkillTestSuite) -> SkillTestSuiteResult:
+    def run_suite(
+        self,
+        suite: SkillTestSuite,
+        on_test_complete: Optional[Callable[[SkillTestResult], None]] = None,
+    ) -> SkillTestSuiteResult:
         """
         Run all tests in a test suite.
 
         Args:
             suite: The test suite to run
+            on_test_complete: Optional callback invoked after each test finishes
 
         Returns:
             SkillTestSuiteResult with all results
@@ -280,7 +285,10 @@ class SkillRunner:
 
         # Run all tests concurrently
         def _run_one(test: SkillTest) -> SkillTestResult:
-            return self.run_test(skill, test, model=effective_model)
+            result = self.run_test(skill, test, model=effective_model)
+            if on_test_complete is not None:
+                on_test_complete(result)
+            return result
 
         with concurrent.futures.ThreadPoolExecutor() as executor:
             results: List[SkillTestResult] = list(

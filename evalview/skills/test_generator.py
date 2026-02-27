@@ -236,6 +236,9 @@ class SkillTestGenerator:
         "write to file", "save to file",
     ]
     _ACTION_TOOLS = {"write", "edit", "bash", "computer"}
+    # If a skill has this many ```bash code blocks it almost certainly requires
+    # real command execution (e.g. docx, git-helper, etc.)
+    _BASH_BLOCK_THRESHOLD = 3
 
     def _detect_agent_type(self, skill: Skill) -> AgentType:
         """Detect whether a skill needs real agent execution or just knowledge delivery.
@@ -249,8 +252,15 @@ class SkillTestGenerator:
             if tools_lower & self._ACTION_TOOLS:
                 return AgentType.CLAUDE_CODE
 
+        instructions = skill.instructions or ""
+        instructions_lower = instructions.lower()
+
+        # Skills with many bash code blocks require real execution (e.g. docx, git helpers)
+        bash_block_count = instructions_lower.count("```bash")
+        if bash_block_count >= self._BASH_BLOCK_THRESHOLD:
+            return AgentType.CLAUDE_CODE
+
         # Fall back to instruction content scanning
-        instructions_lower = (skill.instructions or "").lower()
         action_count = sum(
             1 for phrase in self._ACTION_PHRASES if phrase in instructions_lower
         )
@@ -413,13 +423,12 @@ class SkillTestGenerator:
             if is_action else
             """Assertion rules for GUIDANCE/KNOWLEDGE skills (agent explains / advises):
 - ONLY use output_contains and output_not_contains — never tool_calls_contain, files_created, or commands_ran
-- output_contains: key concepts, terms, or commands the response must mention
-- Negative tests: should_trigger: false, use output_not_contains
-  - IMPORTANT: For system-prompt agents the skill is ALWAYS loaded, so the agent may casually mention the skill's topic even for unrelated queries.
-  - For negative tests, assert on SPECIFIC multi-word phrases or detailed guidance that only appear when the skill is actively triggered, not single common words that might appear in passing (e.g. don't use "server" or "API" alone — use "wrangler deploy" or a specific workflow phrase instead)
-  - Prefer: output_not_contains with 2-3 word phrases unique to the skill's detailed guidance
-  - Avoid: single generic words like "server", "API", "model", "tool" that any response might include
-- Keep assertions focused on what the agent SAYS, not what it DOES"""
+- output_contains: copy SHORT EXACT phrases that LITERALLY APPEAR in the skill instructions (commands, config keys, option names). Do NOT invent paraphrased terms or describe what the response "should cover" — find the actual string in the skill text and use it verbatim. Good: "wrangler deploy", "compatibility_date", "hf download". Bad: "performance optimization" (paraphrase), "async-parallel" (invented term).
+- Negative tests (should_trigger: false):
+  - The skill is ALWAYS loaded as system prompt, so the model may mention its topic in passing even for unrelated queries. Do NOT assert on common single words that any response might include (e.g. "server", "API", "model", "tool").
+  - Instead, assert on DISTINCTIVE multi-word phrases that only appear when the skill is ACTIVELY providing detailed guidance: e.g. "wrangler deploy", "compatibility_date", "hf repo create" — terms specific enough that they won't appear in a brief off-topic reply.
+  - Use at most 2-3 output_not_contains items per negative test, all 2+ words long.
+- Keep assertions grounded in the actual skill content, not in your own knowledge of the topic."""
         )
 
         return f"""You are an expert test engineer for Claude Code skills.
@@ -458,6 +467,8 @@ Rules:
 - Rubric prompts must be specific and measurable
 - Don't over-specify assertions — 1-3 checks per test is enough
 - Include both deterministic checks (expected) and quality checks (rubric)
+- output_contains values MUST be short phrases that literally appear in the skill's instruction text — never invent or paraphrase
+- output_not_contains values MUST be 2+ word phrases specific to the skill's detailed guidance — never use single common words
 """
 
     def _build_user_prompt(
