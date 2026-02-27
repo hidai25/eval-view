@@ -8,6 +8,7 @@ import asyncio
 import json
 import os
 import subprocess
+import tempfile
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -143,36 +144,72 @@ class ClaudeCodeAdapter(SkillAgentAdapter):
 
         # Prepare environment
         env = os.environ.copy()
-        env.pop("CLAUDECODE", None)  # Allow nested invocation from within Claude Code
+        # Remove Claude Code session markers + any inherited auth token that may
+        # be a short-lived session value (not the user's real API key).
+        # The inner claude will fall back to ~/.claude.json credentials instead.
+        env.pop("CLAUDECODE", None)
+        env.pop("CLAUDE_CODE_ENTRYPOINT", None)
+        env.pop("ANTHROPIC_API_KEY", None)
         if self.config.env:
             env.update(self.config.env)
 
         try:
-            # Run claude CLI using asyncio subprocess (more reliable in threads)
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=cwd,
-                env=env,
-            )
+            # Use temp files + run_in_executor (thread pool) to avoid two issues:
+            # 1. claude --print hangs when stdout is a pipe (asyncio creates pipes)
+            # 2. asyncio subprocess behaves differently from shell subprocess for claude
+            # Running in a thread via subprocess.run matches what works in a shell.
+            stdout_path = tempfile.mktemp(suffix=".stdout")
+            stderr_path = tempfile.mktemp(suffix=".stderr")
+
+            timeout = self.config.timeout
+
+            def _run_blocking() -> int:
+                with open(stdout_path, "wb") as out_f, open(stderr_path, "wb") as err_f:
+                    proc = subprocess.Popen(
+                        cmd,
+                        stdin=subprocess.DEVNULL,
+                        stdout=out_f,
+                        stderr=err_f,
+                        cwd=cwd,
+                        env=env,
+                        # Detach from Claude Code's process group — otherwise
+                        # claude detects it's a child of Claude Code and fails.
+                        start_new_session=True,
+                    )
+                    try:
+                        proc.wait(timeout=timeout)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait()
+                        raise
+                return proc.returncode or 0
 
             try:
-                stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                    process.communicate(),
-                    timeout=self.config.timeout,
-                )
-            except asyncio.TimeoutError:
-                process.kill()
-                await process.wait()
-                raise AgentTimeoutError(self.name, self.config.timeout)
+                loop = asyncio.get_event_loop()
+                try:
+                    returncode = await asyncio.wait_for(
+                        loop.run_in_executor(None, _run_blocking),
+                        timeout=timeout + 5,
+                    )
+                except asyncio.TimeoutError:
+                    raise AgentTimeoutError(self.name, timeout)
+                except subprocess.TimeoutExpired:
+                    raise AgentTimeoutError(self.name, timeout)
 
-            stdout = stdout_bytes.decode("utf-8", errors="replace")
-            stderr = stderr_bytes.decode("utf-8", errors="replace")
-            returncode = process.returncode or 0  # Default to 0 if None
+                stdout = open(stdout_path, "r", errors="replace").read()
+                stderr = open(stderr_path, "r", errors="replace").read()
+            finally:
+                for p in (stdout_path, stderr_path):
+                    try:
+                        os.unlink(p)
+                    except OSError:
+                        pass
 
             end_time = datetime.now()
             self._last_raw_output = stdout + stderr
+
+            # Detect missing tool errors and surface them clearly
+            self._check_for_missing_tools(stdout, stderr, skill)
 
             # Parse output
             trace = self._parse_output(
@@ -216,21 +253,21 @@ class ClaudeCodeAdapter(SkillAgentAdapter):
         Returns:
             Command list for subprocess
         """
-        # Build skill injection prompt
-        skill_prompt = f"""You have the following skill loaded:
-
-# Skill: {skill.metadata.name}
+        # Build skill injection prompt.
+        # IMPORTANT: Do NOT say "you have the skill loaded" — claude will try to
+        # invoke it via the built-in Skill tool, which fails if the skill isn't
+        # installed, producing a misleading "Invalid API key" error.
+        # Instead, inject the skill content directly as behavioural instructions.
+        skill_prompt = f"""--- SKILL: {skill.metadata.name} ---
 
 {skill.metadata.description}
 
-## Instructions
-
 {skill.instructions}
 
----
+--- END SKILL ---
 
-Follow the skill instructions above when responding to user queries.
-"""
+You MUST follow the instructions above when responding. Do NOT use the Skill tool \
+to invoke this skill — the instructions are already loaded here as your guidelines."""
 
         cmd = [
             self.claude_path,
@@ -458,6 +495,47 @@ Follow the skill instructions above when responding to user queries.
             total_input_tokens,
             total_output_tokens,
         )
+
+    def _check_for_missing_tools(
+        self, stdout: str, stderr: str, skill: "Skill"
+    ) -> None:
+        """Log clear warnings when skill requires tools that aren't installed.
+
+        Detects common patterns like mcporter not found, openclaw missing, etc.
+        Logs actionable hints rather than raising — the test will still run and
+        fail with a meaningful message, but the user also sees a clear hint.
+        """
+        combined = (stdout + stderr).lower()
+
+        hints = []
+
+        if "mcporter" in combined and (
+            "command not found" in combined
+            or "no such file" in combined
+            or "not found" in combined
+        ):
+            hints.append(
+                "mcporter is not installed. This is an OpenClaw skill.\n"
+                "  Install OpenClaw: pip install openclaw\n"
+                "  Then configure Exa MCP: mcporter config add exa https://mcp.exa.ai/mcp"
+            )
+
+        if "openclaw" in combined and "command not found" in combined:
+            hints.append(
+                "openclaw CLI is not installed.\n"
+                "  Install: pip install openclaw"
+            )
+
+        if "invalid api key" in combined or "invalid_api_key" in combined:
+            # Could be an MCP server API key issue
+            skill_name = skill.metadata.name if skill and skill.metadata else "this skill"
+            hints.append(
+                f"An external API key required by '{skill_name}' is missing or invalid.\n"
+                "  Check the skill's SKILL.md for required API keys and MCP server setup."
+            )
+
+        for hint in hints:
+            logger.warning(f"\n⚠️  Skill testing hint:\n  {hint}")
 
     def _track_file_operations(
         self,

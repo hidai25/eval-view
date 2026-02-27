@@ -466,7 +466,22 @@ class MCPServer:
             return f"Unknown tool: {name}"
 
         env = {**os.environ, "NO_COLOR": "1", "FORCE_COLOR": "0"}
-        result = subprocess.run(cmd, capture_output=True, text=True, env=env)
+        # Timeout: 120s for LLM-heavy commands (generate-tests, run_skill_test),
+        # 30s for everything else. Prevents MCP from hanging indefinitely.
+        is_llm_command = any(
+            x in cmd for x in ["generate-tests", "skill", "run"]
+        )
+        timeout = 120 if is_llm_command else 30
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, env=env, timeout=timeout
+            )
+        except subprocess.TimeoutExpired:
+            return (
+                f"Error: Command timed out after {timeout}s.\n"
+                f"Command: {' '.join(cmd)}\n"
+                f"Tip: Check that your API key is set and the model is reachable."
+            )
         output = result.stdout
         if result.stderr:
             output += result.stderr

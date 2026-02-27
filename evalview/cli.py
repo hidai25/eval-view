@@ -6202,18 +6202,22 @@ async def _skill_generate_tests_async(
     # Determine output path
     output_path = Path(output) if output else Path.cwd() / "tests.yaml"
 
+    # In non-interactive mode (--auto or no TTY), skip all confirmation prompts
+    non_interactive = auto or not sys.stdin.isatty()
+
     # Check if file exists
-    if output_path.exists():
+    if output_path.exists() and not non_interactive:
         console.print(f"[yellow]⚠️  File already exists: {output_path}[/yellow]")
         if not click.confirm("Overwrite?", default=False):
             console.print("[yellow]Cancelled[/yellow]")
             return
 
-    # Confirm save
-    console.print(f"Save to: [cyan]{output_path}[/cyan]")
-    if not click.confirm("Save generated tests?", default=True):
-        console.print("[yellow]Cancelled[/yellow]")
-        return
+    # Confirm save (skip in non-interactive mode)
+    if not non_interactive:
+        console.print(f"Save to: [cyan]{output_path}[/cyan]")
+        if not click.confirm("Save generated tests?", default=True):
+            console.print("[yellow]Cancelled[/yellow]")
+            return
 
     # Save
     try:
@@ -6233,29 +6237,30 @@ async def _skill_generate_tests_async(
         )
         console.print()
 
-        # Prompt for feedback
-        try:
-            rating = click.prompt(
-                "Rate this generation (1-5)",
-                type=click.IntRange(1, 5),
-                default=4,
-                show_default=True,
-            )
-            would_use_again = click.confirm(
-                "Would you use auto-generation again?", default=True
-            )
-
-            track(
-                UserFeedbackEvent(
-                    skill_name=skill.metadata.name,
-                    rating=rating,
-                    would_use_again=would_use_again,
-                    feedback_text=None,
+        # Prompt for feedback (skip in non-interactive mode)
+        if not non_interactive:
+            try:
+                rating = click.prompt(
+                    "Rate this generation (1-5)",
+                    type=click.IntRange(1, 5),
+                    default=4,
+                    show_default=True,
                 )
-            )
-        except (KeyboardInterrupt, click.Abort):
-            # User skipped feedback
-            pass
+                would_use_again = click.confirm(
+                    "Would you use auto-generation again?", default=True
+                )
+
+                track(
+                    UserFeedbackEvent(
+                        skill_name=skill.metadata.name,
+                        rating=rating,
+                        would_use_again=would_use_again,
+                        feedback_text=None,
+                    )
+                )
+            except (KeyboardInterrupt, click.Abort):
+                # User skipped feedback
+                pass
 
     except Exception as e:
         console.print(f"[red]❌ Failed to save: {e}[/red]")

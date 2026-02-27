@@ -53,10 +53,24 @@ class Celebrations:
         console.print(f"  You've snapshotted {test_count} test(s).")
         console.print("  Regression detection is now [bold green]ACTIVE[/bold green]. ✅")
         console.print()
-        console.print("  Next time your agent changes behavior,")
-        console.print("  [cyan]evalview check[/cyan] will catch it.")
-        console.print()
         console.print("[bold cyan]" + "=" * BANNER_WIDTH + "[/bold cyan]")
+        console.print()
+        console.print(Panel(
+            "[bold]Make it stick — 3 steps:[/bold]\n\n"
+            "[bold]1.[/bold] Verify it works:\n"
+            "     [cyan]evalview check[/cyan]\n\n"
+            "[bold]2.[/bold] Commit your goldens so your team shares the baseline:\n"
+            "     [cyan]git add .evalview/golden/[/cyan]\n"
+            "     [cyan]git commit -m 'Add agent test baselines'[/cyan]\n\n"
+            "[bold]3.[/bold] Block regressions from merging (GitHub Actions):\n"
+            "     [dim]# .github/workflows/eval.yml[/dim]\n"
+            "     [cyan]- run: evalview check --fail-on REGRESSION[/cyan]\n"
+            "     [cyan]  env:[/cyan]\n"
+            "     [cyan]    OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}[/cyan]",
+            title="What's next",
+            border_style="cyan",
+            padding=(1, 2),
+        ))
         console.print()
 
     @staticmethod
@@ -223,8 +237,20 @@ class Celebrations:
         """Encourage on first check ever."""
         if _IS_DEMO:
             return
-        console.print("[cyan]This is your first check! 🎯[/cyan]")
-        console.print("[dim]From now on, I'll catch when your agent drifts.[/dim]\n")
+        console.print(Panel(
+            "You've completed the loop: [bold]snapshot → check[/bold] ✅\n\n"
+            "Now make it automatic so you never have to remember:\n\n"
+            "[bold]Pre-push hook[/bold] (catches it before you push):\n"
+            "  [cyan]echo 'evalview check' >> .git/hooks/pre-push[/cyan]\n"
+            "  [cyan]chmod +x .git/hooks/pre-push[/cyan]\n\n"
+            "[bold]GitHub Actions[/bold] (blocks the PR if agent regresses):\n"
+            "  [cyan]- run: evalview check --fail-on REGRESSION[/cyan]\n\n"
+            "[dim]That's it. You'll never ship a broken agent by accident.[/dim]",
+            title="First check done 🎯",
+            border_style="cyan",
+            padding=(1, 2),
+        ))
+        console.print()
 
     @staticmethod
     def health_summary(state: ProjectState) -> None:

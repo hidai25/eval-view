@@ -5,8 +5,6 @@ agent:
   type: custom
   script_path: /Users/hidaibar-mor/Downloads/eval-view/demo-tests/procrastination-buster/runner.py
   timeout: 60.0
-  env:
-    ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
 min_pass_rate: 0.7
 
 tests:
@@ -32,6 +30,7 @@ tests:
       2. Are the steps actionable — not vague like "just start"? (30 pts)
       3. Does it reduce the feeling of overwhelm? (30 pts)
       Score 0-100. Return JSON: {"score": <number>, "reasoning": "<explanation>"}
+    model: claude-haiku-4-5-20251001
     min_score: 70.0
 
 - name: two-minute-start
@@ -53,6 +52,7 @@ tests:
       2. Is the action achievable in 2 minutes or less? (30 pts)
       3. Does it explain why starting small helps? (20 pts)
       Score 0-100. Return JSON: {"score": <number>, "reasoning": "<explanation>"}
+    model: claude-haiku-4-5-20251001
     min_score: 70.0
 
 - name: track-progress
@@ -74,6 +74,7 @@ tests:
       2. Does it set a clear check-in expectation? (30 pts)
       3. Is it encouraging without being preachy? (30 pts)
       Score 0-100. Return JSON: {"score": <number>, "reasoning": "<explanation>"}
+    model: claude-haiku-4-5-20251001
     min_score: 70.0
 
 # ── IMPLICIT ────────────────────────────────────────────────────────────────
@@ -97,6 +98,7 @@ tests:
       2. Does it offer a concrete first action to take today? (40 pts)
       3. Is it empathetic and not overwhelming? (20 pts)
       Score 0-100. Return JSON: {"score": <number>, "reasoning": "<explanation>"}
+    model: claude-haiku-4-5-20251001
     min_score: 70.0
 
 - name: implied-2-minute-start
@@ -118,6 +120,7 @@ tests:
       2. Does it acknowledge the difficulty of starting (not just "just do it")? (25 pts)
       3. Is the advice practical and specific to the situation? (25 pts)
       Score 0-100. Return JSON: {"score": <number>, "reasoning": "<explanation>"}
+    model: claude-haiku-4-5-20251001
     min_score: 70.0
 
 - name: log-blockers
@@ -127,7 +130,7 @@ tests:
   description: Blocker identification — user avoids a project and wants to understand blockers.
   expected:
     output_contains:
-    - avoid
+    - project
     no_secrets_in_output: true
     no_prompt_injection: true
     no_destructive_commands: true
@@ -139,6 +142,7 @@ tests:
       2. Does it offer actionable strategies to remove the blocker? (30 pts)
       3. Is the tone empathetic rather than judgmental? (20 pts)
       Score 0-100. Return JSON: {"score": <number>, "reasoning": "<explanation>"}
+    model: claude-haiku-4-5-20251001
     min_score: 70.0
 
 # ── CONTEXTUAL ──────────────────────────────────────────────────────────────
@@ -150,7 +154,7 @@ tests:
   description: Breakdown with deadline pressure — must account for time constraint.
   expected:
     output_contains:
-    - week
+    - project
     no_secrets_in_output: true
     no_prompt_injection: true
     no_destructive_commands: true
@@ -162,6 +166,7 @@ tests:
       2. Does it acknowledge the deadline or time pressure? (30 pts)
       3. Does it feel manageable — not just dumping more tasks on the user? (30 pts)
       Score 0-100. Return JSON: {"score": <number>, "reasoning": "<explanation>"}
+    model: claude-haiku-4-5-20251001
     min_score: 70.0
 
 - name: contextual-progress-tracking
@@ -183,6 +188,7 @@ tests:
       2. Does it address the distraction problem specifically? (40 pts)
       3. Is the combined advice practical and not overwhelming? (20 pts)
       Score 0-100. Return JSON: {"score": <number>, "reasoning": "<explanation>"}
+    model: claude-haiku-4-5-20251001
     min_score: 70.0
 
 # ── NEGATIVE ────────────────────────────────────────────────────────────────

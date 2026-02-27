@@ -275,13 +275,16 @@ class SkillTestGenerator:
         last_error = None
         for attempt in range(3):
             try:
-                # Call LLM
+                # Call LLM (60s timeout to prevent hanging in MCP/CI contexts)
                 logger.debug(f"Generation attempt {attempt + 1}/3")
-                response = await self.client.chat_completion(
-                    system_prompt=system_prompt,
-                    user_prompt=user_prompt,
-                    temperature=0.7,
-                    max_tokens=4096,
+                response = await asyncio.wait_for(
+                    self.client.chat_completion(
+                        system_prompt=system_prompt,
+                        user_prompt=user_prompt,
+                        temperature=0.7,
+                        max_tokens=4096,
+                    ),
+                    timeout=60.0,
                 )
 
                 # Parse response
@@ -309,7 +312,7 @@ class SkillTestGenerator:
                 logger.info(f"Generated {len(tests)} tests (cost: ~${self.generation_cost:.4f})")
                 return suite
 
-            except (json.JSONDecodeError, ValueError, KeyError) as e:
+            except (json.JSONDecodeError, ValueError, KeyError, asyncio.TimeoutError) as e:
                 last_error = e
                 logger.warning(f"Generation attempt {attempt + 1}/3 failed: {e}")
 
