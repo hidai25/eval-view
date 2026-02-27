@@ -5308,8 +5308,9 @@ def skill_list(path: str, recursive: bool) -> None:
 @skill.command("doctor")
 @click.argument("path", type=click.Path(exists=True), default=".")
 @click.option("--recursive", "-r", is_flag=True, default=True, help="Search subdirectories")
+@click.option("--security-scan", "-s", is_flag=True, default=False, help="LLM-powered scan for harmful/malicious instructions")
 @track_command("skill_doctor")
-def skill_doctor(path: str, recursive: bool) -> None:
+def skill_doctor(path: str, recursive: bool, security_scan: bool) -> None:
     """Diagnose skill issues that cause Claude Code problems.
 
     Checks for common issues:
@@ -5464,6 +5465,53 @@ def skill_doctor(path: str, recursive: bool) -> None:
             console.print(f"[bold red]✗ {invisible_count} skill(s) are INVISIBLE to Claude - fix now[/bold red]")
         else:
             console.print("[bold red]✗ Issues found - fix before deploying[/bold red]")
+
+    # --- Security scan (opt-in) -------------------------------------------
+    if security_scan:
+        console.print()
+        console.print("[bold]Security Scan[/bold]  [dim](LLM-powered — semantic analysis)[/dim]")
+        console.print()
+
+        try:
+            from evalview.skills.security_scanner import SkillSecurityScanner
+            scanner = SkillSecurityScanner()
+            security_issues = 0
+
+            for s in skills_data:
+                if not s["valid"]:
+                    continue
+                skill_obj = SkillParser.parse_file(s["path"])
+                result = scanner.scan(skill_obj)
+                color = result.verdict_color
+                icon = result.verdict_icon
+
+                console.print(
+                    f"  [{color}]{icon}[/{color}] [bold]{s['name']}[/bold]  "
+                    f"[{color}]{result.verdict}[/{color}]  "
+                    f"[dim]{result.confidence}% confidence — {result.summary}[/dim]"
+                )
+
+                for finding in result.findings:
+                    sev_color = "red" if finding.severity == "high" else "yellow" if finding.severity == "medium" else "dim"
+                    console.print(
+                        f"      [{sev_color}]↳ [{finding.severity.upper()}] {finding.category}: {finding.description}[/{sev_color}]"
+                    )
+
+                if result.error:
+                    console.print(f"      [dim red]scan error: {result.error}[/dim red]")
+
+                if result.verdict != "SAFE":
+                    security_issues += 1
+
+            console.print()
+            if security_issues == 0:
+                console.print("[bold green]✓ No security issues found[/bold green]")
+            else:
+                console.print(f"[bold red]✗ {security_issues} skill(s) flagged — review before trusting[/bold red]")
+
+        except Exception as e:
+            console.print(f"[yellow]Security scan unavailable: {e}[/yellow]")
+            console.print("[dim]Set OPENAI_API_KEY or another provider key to enable[/dim]")
 
     console.print(f"\n[dim]Time: {elapsed_ms:.0f}ms[/dim]\n")
 
