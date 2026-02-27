@@ -17,6 +17,10 @@ _PROVIDER_ENV_VARS = [
     "SKILL_TEST_PROVIDER",
     "SKILL_TEST_API_KEY",
     "SKILL_TEST_BASE_URL",
+    # Claude Code detection vars — must also be cleared so tests aren't
+    # affected by the "inside Claude Code" ANTHROPIC_API_KEY bypass.
+    "CLAUDECODE",
+    "CLAUDE_CODE_ENTRYPOINT",
 ]
 
 

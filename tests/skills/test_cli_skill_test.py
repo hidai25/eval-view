@@ -36,26 +36,6 @@ def test_skill_test_cli_passes_provider_and_base_url_in_legacy_mode(tmp_path, mo
 
     captured = {}
 
-    class FakeSkillRunner:
-        def __init__(self, model, provider=None, base_url=None):
-            captured["model"] = model
-            captured["provider"] = provider
-            captured["base_url"] = base_url
-            self.provider = provider or "openai"
-            self.base_url = base_url
-
-        def load_test_suite(self, path):
-            captured["loaded_test_file"] = path
-            return SimpleNamespace(
-                name="cli-suite",
-                skill=str(skill_file),
-                tests=[SimpleNamespace(name="t1")],
-                min_pass_rate=1.0,
-            )
-
-        def run_suite(self, suite):
-            return SimpleNamespace()
-
     fake_result = SimpleNamespace(
         suite_name="cli-suite",
         skill_name="test-skill",
@@ -77,16 +57,35 @@ def test_skill_test_cli_passes_provider_and_base_url_in_legacy_mode(tmp_path, mo
                 contains_failed=[],
                 not_contains_failed=[],
                 latency_ms=10.0,
+                input_tokens=5,
+                output_tokens=5,
                 error=None,
             )
         ],
     )
 
+    class FakeSkillRunner:
+        def __init__(self, model, provider=None, base_url=None):
+            captured["model"] = model
+            captured["provider"] = provider
+            captured["base_url"] = base_url
+            self.provider = provider or "openai"
+            self.base_url = base_url
+            self.model = model or "gpt-4o-mini"
+
+        def load_test_suite(self, path):
+            captured["loaded_test_file"] = path
+            return SimpleNamespace(
+                name="cli-suite",
+                skill=str(skill_file),
+                tests=[SimpleNamespace(name="t1")],
+                min_pass_rate=1.0,
+            )
+
+        def run_suite(self, suite, on_test_complete=None):
+            return fake_result
+
     monkeypatch.setattr("evalview.skills.SkillRunner", FakeSkillRunner)
-    monkeypatch.setattr(
-        "evalview.skills.ui_utils.run_async_with_spinner",
-        lambda console, message, fn: (fake_result, None),
-    )
     monkeypatch.setattr("evalview.cli.print_evalview_banner", lambda *args, **kwargs: None)
 
     runner = CliRunner()
