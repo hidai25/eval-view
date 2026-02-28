@@ -8,7 +8,7 @@ The diff engine provides deterministic comparison that:
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Any
 from difflib import SequenceMatcher, unified_diff
 import logging
 

@@ -55,12 +55,11 @@ from __future__ import annotations
 
 import asyncio
 import os
-import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Final, List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Any, Dict, Final, List, Optional, TYPE_CHECKING
 import logging
 
 if TYPE_CHECKING:
@@ -69,7 +68,6 @@ if TYPE_CHECKING:
 from evalview.skills.adapters.base import (
     SkillAgentAdapter,
     SkillAgentAdapterError,
-    AgentNotFoundError,
     AgentTimeoutError,
 )
 from evalview.skills.agent_types import (

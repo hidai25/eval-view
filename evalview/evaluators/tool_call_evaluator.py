@@ -1,7 +1,7 @@
 """Tool call accuracy evaluator."""
 
 import re
-from typing import List, Set, Tuple, Optional, Dict
+from typing import List, Set, Tuple, Optional
 from evalview.core.types import (
     TestCase,
     ExecutionTrace,

@@ -8,9 +8,7 @@ import logging
 from typing import Optional
 
 from evalview.skills.agent_types import (
-    DeterministicExpected,
     DeterministicEvaluation,
-    RubricConfig,
     RubricEvaluation,
     SkillAgentTrace,
     SkillAgentTest,

@@ -16,7 +16,7 @@ import tempfile
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 import yaml  # type: ignore[import-untyped]
 

@@ -12,7 +12,6 @@ import uuid
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 # Environment variable to disable telemetry (always wins)
 TELEMETRY_DISABLED_ENV = "EVALVIEW_TELEMETRY_DISABLED"

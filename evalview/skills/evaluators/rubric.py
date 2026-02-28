@@ -5,7 +5,7 @@ based on a user-defined rubric prompt.
 """
 
 import logging
-from typing import Optional, Dict, Any, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 from evalview.skills.agent_types import (
     RubricConfig,

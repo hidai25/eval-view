@@ -16,7 +16,6 @@ from evalview.core.types import (
     StepMetrics,
     ExecutionMetrics,
     TokenUsage,
-    SpanKind,
 )
 from evalview.core.pricing import calculate_cost
 from evalview.core.tracing import Tracer

@@ -22,7 +22,6 @@ from pathlib import Path
 from typing import List, Tuple
 
 from evalview.skills.adapters.base import CLIAgentAdapter
-from evalview.skills.agent_types import AgentConfig
 from evalview.skills.types import Skill
 
 

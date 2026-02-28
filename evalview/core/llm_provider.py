@@ -342,7 +342,7 @@ class JudgeCostTracker:
             return "No judge calls yet"
 
         lines = []
-        lines.append(f"Judge LLM Usage:")
+        lines.append("Judge LLM Usage:")
         lines.append(f"  Calls:         {self.call_count}")
         lines.append(f"  Input tokens:  {self.total_input_tokens:,}")
         lines.append(f"  Output tokens: {self.total_output_tokens:,}")
@@ -351,7 +351,7 @@ class JudgeCostTracker:
         if self.total_cost > 0:
             lines.append(f"  Total cost:    ${self.total_cost:.4f}")
         else:
-            lines.append(f"  Total cost:    FREE (local model)")
+            lines.append("  Total cost:    FREE (local model)")
 
         return "\n".join(lines)
 
@@ -1255,9 +1255,9 @@ def get_or_select_provider(
                     return env_provider, "ollama"
                 else:
                     console.print(
-                        f"[yellow]EVAL_PROVIDER=ollama but Ollama is not running[/yellow]"
+                        "[yellow]EVAL_PROVIDER=ollama but Ollama is not running[/yellow]"
                     )
-                    console.print(f"[dim]Start Ollama with: ollama serve[/dim]")
+                    console.print("[dim]Start Ollama with: ollama serve[/dim]")
                     # Fall through to interactive selection
             else:
                 api_key = os.getenv(config.env_var)

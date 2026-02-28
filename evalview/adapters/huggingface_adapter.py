@@ -25,7 +25,6 @@ from evalview.core.types import (
     StepTrace,
     StepMetrics,
     ExecutionMetrics,
-    TokenUsage,
     SpanKind,
 )
 from evalview.core.tracing import Tracer
@@ -220,8 +219,8 @@ class HuggingFaceAdapter(AgentAdapter):
             return "0"
 
         raise RuntimeError(
-            f"No API endpoints found in Space. "
-            f"Ensure the Gradio app has at least one function exposed."
+            "No API endpoints found in Space. "
+            "Ensure the Gradio app has at least one function exposed."
         )
 
     async def execute(self, query: str, context: Optional[Dict[str, Any]] = None) -> ExecutionTrace:

@@ -412,6 +412,52 @@ def mock_async_subprocess_not_found():
 
 
 @pytest.fixture
+def mock_claude_popen():
+    """Mock subprocess.Popen for ClaudeCodeAdapter tests.
+
+    ClaudeCodeAdapter uses subprocess.Popen (not asyncio) — it writes
+    to temp files passed as stdout/stderr handles, then reads them back.
+    This fixture mimics that by writing JSONL output to the stdout handle.
+    """
+    import subprocess as _subprocess
+
+    jsonl_output = (
+        b'{"type": "assistant", "message": {"content": [{"type": "text", "text": "Task completed."}]}}\n'
+        b'{"type": "result", "result": "Task completed.", "usage": {"input_tokens": 100, "output_tokens": 50}}'
+    )
+
+    def _fake_popen(cmd, stdin=None, stdout=None, stderr=None, **kwargs):
+        if stdout is not None:
+            stdout.write(jsonl_output)
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.wait.return_value = None
+        return mock_proc
+
+    with patch("subprocess.Popen", side_effect=_fake_popen) as mock:
+        yield mock
+
+
+@pytest.fixture
+def mock_claude_popen_timeout():
+    """Mock subprocess.Popen for ClaudeCodeAdapter — simulate process timeout."""
+    import subprocess as _subprocess
+
+    def _fake_popen(cmd, stdin=None, stdout=None, stderr=None, **kwargs):
+        mock_proc = MagicMock()
+        mock_proc.returncode = None
+        # First wait() call (with timeout=) raises; second (after kill) returns.
+        mock_proc.wait = MagicMock(
+            side_effect=[_subprocess.TimeoutExpired(cmd, timeout=300), None]
+        )
+        mock_proc.kill = MagicMock()
+        return mock_proc
+
+    with patch("subprocess.Popen", side_effect=_fake_popen) as mock:
+        yield mock
+
+
+@pytest.fixture
 def mock_aiohttp_session():
     """Mock aiohttp.ClientSession for HTTP adapter tests."""
     with patch("aiohttp.ClientSession") as mock_class:

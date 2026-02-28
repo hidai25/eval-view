@@ -623,7 +623,7 @@ class TestClaudeCodeAdapter:
 
     @pytest.mark.asyncio
     async def test_execute_calls_claude_cli(
-        self, config, skill, mock_async_subprocess
+        self, config, skill, mock_claude_popen
     ):
         """Execute should call claude CLI with correct arguments."""
         from evalview.skills.adapters.claude_code_adapter import ClaudeCodeAdapter
@@ -633,11 +633,11 @@ class TestClaudeCodeAdapter:
             adapter = ClaudeCodeAdapter(config)
             trace = await adapter.execute(skill, "Test query")
 
-        mock_async_subprocess.assert_called_once()
+        mock_claude_popen.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_execute_returns_trace(
-        self, config, skill, mock_async_subprocess
+        self, config, skill, mock_claude_popen
     ):
         """Execute should return a valid SkillAgentTrace."""
         from evalview.skills.adapters.claude_code_adapter import ClaudeCodeAdapter
@@ -651,7 +651,7 @@ class TestClaudeCodeAdapter:
         assert trace.final_output == "Task completed."
 
     @pytest.mark.asyncio
-    async def test_execute_handles_timeout(self, config, skill, mock_async_subprocess_timeout):
+    async def test_execute_handles_timeout(self, config, skill, mock_claude_popen_timeout):
         """Timeout should raise AgentTimeoutError."""
         from evalview.skills.adapters.claude_code_adapter import ClaudeCodeAdapter
 
@@ -1189,8 +1189,10 @@ class TestOpenAIAssistantsAdapter:
             OpenAIAssistantsSkillAdapter,
         )
 
-        with pytest.raises(SkillAgentAdapterError) as exc_info:
-            OpenAIAssistantsSkillAdapter(config)
+        with patch.dict("os.environ", {}, clear=False):
+            os.environ.pop("OPENAI_API_KEY", None)
+            with pytest.raises(SkillAgentAdapterError) as exc_info:
+                OpenAIAssistantsSkillAdapter(config)
 
         assert "OPENAI_API_KEY" in str(exc_info.value)
 

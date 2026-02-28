@@ -132,18 +132,18 @@ class SkillSecurityScanner:
     def _build_prompt(self, skill: Skill) -> str:
         lines = [
             f"# Skill: {skill.metadata.name}",
-            f"",
-            f"## Description",
+            "",
+            "## Description",
             f"{skill.metadata.description}",
-            f"",
+            "",
         ]
         if skill.metadata.tools:
-            lines += [f"## Declared Tools", f"{', '.join(skill.metadata.tools)}", ""]
+            lines += ["## Declared Tools", f"{', '.join(skill.metadata.tools)}", ""]
         if skill.metadata.triggers:
-            lines += [f"## Triggers", f"{skill.metadata.triggers}", ""]
+            lines += ["## Triggers", f"{skill.metadata.triggers}", ""]
 
         lines += [
-            f"## Instructions",
+            "## Instructions",
             skill.instructions or "(no instructions)",
         ]
         return "\n".join(lines)

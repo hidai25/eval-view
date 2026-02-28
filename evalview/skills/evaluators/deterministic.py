@@ -23,7 +23,7 @@ import re
 import signal
 import subprocess
 import logging
-from typing import Any, List, Optional, Set, Tuple
+from typing import List, Optional, Set, Tuple
 
 from evalview.skills.agent_types import (
     DeterministicExpected,
@@ -308,7 +308,7 @@ class DeterministicEvaluator:
             passed=True,
             expected=expected_tools,
             actual=actual_tools,
-            message=f"All required tools were called",
+            message="All required tools were called",
         )
 
     def _check_tools_not_contain(
@@ -1279,7 +1279,7 @@ class DeterministicEvaluator:
         return DeterministicCheckResult(
             check_name="no_absolute_paths_outside_cwd",
             passed=True,
-            expected=f"all paths within sandbox",
+            expected="all paths within sandbox",
             actual="all paths within sandbox",
             message="All file paths are within the working directory",
         )
@@ -1458,7 +1458,7 @@ class DeterministicEvaluator:
                 passed=False,
                 expected="no injection markers in output",
                 actual=f"{len(injections)} injection patterns",
-                message=f"Prompt injection marker detected in agent output",
+                message="Prompt injection marker detected in agent output",
             )
 
         return DeterministicCheckResult(

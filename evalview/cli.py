@@ -2,11 +2,14 @@
 
 import asyncio
 import json
+import logging
 import os
 import re
 import sys
 import threading
 import time
+
+logger = logging.getLogger(__name__)
 from importlib.metadata import version as _pkg_version, PackageNotFoundError
 from pathlib import Path
 from datetime import datetime
@@ -21,7 +24,6 @@ import httpx
 import yaml
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.live import Live
 from rich.table import Table
 from rich.panel import Panel
 from dotenv import load_dotenv
@@ -29,7 +31,6 @@ from dotenv import load_dotenv
 from evalview.core.loader import TestCaseLoader
 from evalview.core.pricing import get_model_pricing_info
 from evalview.core.llm_provider import (
-    detect_available_providers,
     get_or_select_provider,
     save_provider_preference,
     PROVIDER_CONFIGS,
@@ -46,7 +47,6 @@ from evalview.reporters.console_reporter import ConsoleReporter
 
 # Telemetry (lazy imports for optional dependency)
 from evalview.telemetry.config import (
-    is_telemetry_enabled,
     should_show_first_run_notice,
     mark_first_run_notice_shown,
     set_telemetry_enabled,
@@ -67,9 +67,8 @@ from evalview.skills.constants import (
     CHAR_BUDGET_WARNING_PCT,
     CHAR_BUDGET_CRITICAL_PCT,
     MAX_DESCRIPTION_LENGTH,
-    MAX_PREVIEW_LINES,
 )
-from evalview.skills.ui_utils import print_evalview_banner, format_elapsed_time, run_async_with_spinner
+from evalview.skills.ui_utils import print_evalview_banner
 from evalview.skills.test_helpers import (
     validate_and_parse_agent_type,
     load_test_suite,
@@ -919,9 +918,9 @@ model:
             console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
             console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
             if failed == 0:
-                console.print(f"[bold cyan]║[/bold cyan]  [bold green]✓ AGENT HEALTHY[/bold green]                                               [bold cyan]║[/bold cyan]")
+                console.print("[bold cyan]║[/bold cyan]  [bold green]✓ AGENT HEALTHY[/bold green]                                               [bold cyan]║[/bold cyan]")
             else:
-                console.print(f"[bold cyan]║[/bold cyan]  [bold red]✗ REGRESSION DETECTED[/bold red]                                        [bold cyan]║[/bold cyan]")
+                console.print("[bold cyan]║[/bold cyan]  [bold red]✗ REGRESSION DETECTED[/bold red]                                        [bold cyan]║[/bold cyan]")
             console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
             console.print(f"[bold cyan]║[/bold cyan]  [green]✓ Passed:[/green] {passed:<4}  [red]✗ Failed:[/red] {failed:<4}  [dim]Time:[/dim] {final_elapsed}               [bold cyan]║[/bold cyan]")
             console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
@@ -1748,14 +1747,14 @@ async def _run_async(
                 )
                 if _is_auth:
                     _provider_cfg = _PROVIDER_CONFIGS[selected_provider]
-                    console.print(f"\n[bold red]✗ LLM judge authentication failed[/bold red]")
+                    console.print("\n[bold red]✗ LLM judge authentication failed[/bold red]")
                     console.print(f"  Provider: [bold]{_provider_cfg.display_name}[/bold]")
                     console.print(f"  Error:    {str(_probe_exc)[:120]}")
                     console.print()
-                    console.print(f"  Fix one of the following:")
+                    console.print("  Fix one of the following:")
                     console.print(f"    1. Set a valid key:   [cyan]export {_provider_cfg.env_var}='sk-...'[/cyan]")
-                    console.print(f"    2. Switch provider:   [cyan]evalview run --judge-provider openai[/cyan]")
-                    console.print(f"    3. Skip LLM judge:    [cyan]evalview run --no-judge[/cyan]")
+                    console.print("    2. Switch provider:   [cyan]evalview run --judge-provider openai[/cyan]")
+                    console.print("    3. Skip LLM judge:    [cyan]evalview run --no-judge[/cyan]")
                     console.print()
                     return
                 raise  # non-auth errors (network, etc.) propagate normally
@@ -2755,11 +2754,11 @@ async def _run_async(
             console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
             console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
             if execution_errors > 0:
-                console.print(f"[bold cyan]║[/bold cyan]  [bold red]⚠ EXECUTION ERRORS OCCURRED[/bold red]                                  [bold cyan]║[/bold cyan]")
+                console.print("[bold cyan]║[/bold cyan]  [bold red]⚠ EXECUTION ERRORS OCCURRED[/bold red]                                  [bold cyan]║[/bold cyan]")
             elif failed == 0:
-                console.print(f"[bold cyan]║[/bold cyan]  [bold green]✓ AGENT HEALTHY[/bold green]                                               [bold cyan]║[/bold cyan]")
+                console.print("[bold cyan]║[/bold cyan]  [bold green]✓ AGENT HEALTHY[/bold green]                                               [bold cyan]║[/bold cyan]")
             else:
-                console.print(f"[bold cyan]║[/bold cyan]  [bold red]✗ REGRESSION DETECTED[/bold red]                                        [bold cyan]║[/bold cyan]")
+                console.print("[bold cyan]║[/bold cyan]  [bold red]✗ REGRESSION DETECTED[/bold red]                                        [bold cyan]║[/bold cyan]")
             console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
             if execution_errors > 0:
                 console.print(f"[bold cyan]║[/bold cyan]  [green]✓ Passed:[/green] {passed:<4}  [red]✗ Failed:[/red] {failed:<4}  [red]⚠ Errors:[/red] {execution_errors:<4}         [bold cyan]║[/bold cyan]")
@@ -4691,7 +4690,6 @@ def demo():
     import socket
     import shutil
     import tempfile
-    import threading
     import subprocess as _subprocess
     from http.server import BaseHTTPRequestHandler, HTTPServer
     from rich.rule import Rule
@@ -4931,7 +4929,6 @@ def add(pattern: Optional[str], tool: Optional[str], query: Optional[str], list_
         evalview add cost-budget --output my-test.yaml
         evalview add tool-not-called --tool get_weather --query "What's the weather?"
     """
-    import shutil
 
     # Find templates directory
     templates_dir = Path(__file__).parent / "templates" / "patterns"
@@ -5029,7 +5026,7 @@ def add(pattern: Optional[str], tool: Optional[str], query: Optional[str], list_
     if len(content.split("\n")) > 20:
         console.print("[dim]...[/dim]")
 
-    console.print(f"\n[bold]Next steps:[/bold]")
+    console.print("\n[bold]Next steps:[/bold]")
     console.print(f"  1. Edit [cyan]{output_path}[/cyan] to match your agent")
     console.print(f"  2. Run: [green]evalview run {output_path}[/green]\n")
 
@@ -5066,7 +5063,7 @@ def judge(provider: Optional[str], model: Optional[str]):
     if not provider:
         current = config.get("judge", {})
         if current:
-            console.print(f"\n[bold]Current LLM-as-judge:[/bold]")
+            console.print("\n[bold]Current LLM-as-judge:[/bold]")
             console.print(f"  Provider: [cyan]{current.get('provider', 'not set')}[/cyan]")
             console.print(f"  Model: [cyan]{current.get('model', 'default')}[/cyan]\n")
         else:
@@ -5271,7 +5268,6 @@ def skill_list(path: str, recursive: bool) -> None:
         evalview skill list ./my-skills/
         evalview skill list ~/.claude/skills/
     """
-    from pathlib import Path as PathLib
     from evalview.skills import SkillParser, SkillValidator
 
     files = SkillParser.find_skills(path, recursive=recursive)
@@ -5328,7 +5324,6 @@ def skill_doctor(path: str, recursive: bool, security_scan: bool) -> None:
         evalview skill doctor .claude/skills/
         evalview skill doctor ./my-skills/ -r
     """
-    from pathlib import Path as PathLib
     from evalview.skills import SkillParser, SkillValidator
 
     start_time = time.time()
@@ -5683,57 +5678,22 @@ def skill_test(
 
     TEST_FILE is a YAML file defining test cases for a skill.
 
-    Args:
-        test_file: Path to YAML test file
-        model: Model to use for evaluation
-        provider: Provider override for legacy mode
-        base_url: Base URL override for legacy OpenAI-compatible providers
-        verbose: Show detailed output
-        output_json: Output as JSON
-        agent: Agent type override
-        trace: Directory to save traces
-        no_rubric: Skip rubric evaluation
-        cwd: Working directory override
-        max_turns: Max conversation turns
+    Legacy mode (system prompt + output matching):
 
-    Example test file (legacy mode):
-        name: test-code-reviewer
-        skill: ./skills/code-reviewer/SKILL.md
-        tests:
-          - name: detects-sql-injection
-            input: "Review: query = f'SELECT * FROM users WHERE id = {id}'"
-            expected:
-              output_contains: ["SQL injection", "parameterized"]
+      evalview skill test tests/code-reviewer.yaml
 
-    Example test file (agent mode):
-        name: test-code-reviewer
-        skill: ./skills/code-reviewer/SKILL.md
-        agent:
-          type: claude-code
-          max_turns: 10
-        tests:
-          - name: writes-review-file
-            input: "Review the code and save to review.md"
-            expected:
-              files_created: ["review.md"]
-              tool_calls_contain: ["Write"]
+    Agent mode with Claude Code:
 
-    Examples:
-        # Legacy mode (system prompt + string matching)
-        evalview skill test tests/code-reviewer.yaml
+      evalview skill test tests/my-skill.yaml --agent claude-code
 
-        # Agent mode with Claude Code
-        evalview skill test tests/my-skill.yaml --agent claude-code
+    Save traces for debugging:
 
-        # Save traces for debugging
-        evalview skill test tests/my-skill.yaml -a claude-code -t ./traces/
+      evalview skill test tests/my-skill.yaml -a claude-code -t ./traces/
 
-        # Deterministic checks only (skip rubric)
-        evalview skill test tests/my-skill.yaml -a claude-code --no-rubric
+    Deterministic checks only (no LLM judge cost):
+
+      evalview skill test tests/my-skill.yaml -a claude-code --no-rubric
     """
-    import json as json_module
-    import os
-    import asyncio
 
     # Determine whether to use agent mode
     # Load YAML to check for agent config
@@ -5794,7 +5754,6 @@ def skill_test(
     console.print()
 
     # Run tests with live per-test progress
-    import threading
 
     start_time = time.time()
     total_tests = len(suite.tests)
@@ -6088,7 +6047,7 @@ async def _skill_generate_tests_async(
                     f"[red]❌ Invalid category: {cat_name}[/red]",
                 )
                 console.print(
-                    f"[dim]Valid categories: explicit, implicit, contextual, negative[/dim]"
+                    "[dim]Valid categories: explicit, implicit, contextual, negative[/dim]"
                 )
                 raise SystemExit(1)
 
@@ -6623,7 +6582,8 @@ def _execute_snapshot_tests(
 
 def _save_snapshot_results(
     results: List["EvaluationResult"],
-    notes: Optional[str]
+    notes: Optional[str],
+    variant: Optional[str] = None,
 ) -> int:
     """Save passing test results as golden baselines.
 
@@ -6647,8 +6607,9 @@ def _save_snapshot_results(
     saved_count = 0
     for result in passing:
         try:
-            store.save_golden(result, notes=notes)
-            console.print(f"[green]✓ Snapshotted:[/green] {result.test_case}")
+            store.save_golden(result, notes=notes, variant_name=variant)
+            variant_label = f" (variant: {variant})" if variant else ""
+            console.print(f"[green]✓ Snapshotted:[/green] {result.test_case}{variant_label}")
             saved_count += 1
         except Exception as e:
             console.print(f"[red]❌ Failed to save {result.test_case}: {e}[/red]")
@@ -6660,8 +6621,9 @@ def _save_snapshot_results(
 @click.argument("test_path", default="tests", type=click.Path(exists=True))
 @click.option("--notes", "-n", help="Notes about this snapshot")
 @click.option("--test", "-t", help="Snapshot only this specific test (by name)")
+@click.option("--variant", help="Save as a named variant for non-deterministic agents (max 5 per test)")
 @track_command("snapshot")
-def snapshot(test_path: str, notes: str, test: str):
+def snapshot(test_path: str, notes: str, test: str, variant: str):
     """Run tests and snapshot passing results as baseline.
 
     This is the simple workflow: snapshot → check → fix → snapshot.
@@ -6669,9 +6631,10 @@ def snapshot(test_path: str, notes: str, test: str):
     TEST_PATH is the directory containing test cases (default: tests/).
 
     Examples:
-        evalview snapshot                    # Snapshot all passing tests
-        evalview snapshot --test "my-test"   # Snapshot one test only
-        evalview snapshot --notes "v2.0"     # Add notes to snapshot
+        evalview snapshot                         # Snapshot all passing tests
+        evalview snapshot --test "my-test"        # Snapshot one test only
+        evalview snapshot --notes "v2.0"          # Add notes to snapshot
+        evalview snapshot --variant variant1      # Save as alternate acceptable behavior
     """
     from evalview.core.project_state import ProjectStateStore
     from evalview.core.celebrations import Celebrations
@@ -6717,7 +6680,7 @@ def snapshot(test_path: str, notes: str, test: str):
     results = _execute_snapshot_tests(test_cases, config)
 
     # Save passing results as golden
-    saved_count = _save_snapshot_results(results, notes)
+    saved_count = _save_snapshot_results(results, notes, variant=variant)
 
     if saved_count == 0:
         return
@@ -7075,7 +7038,7 @@ def mcp_snapshot(endpoint: str, name: str, notes: str, timeout: float):
     from evalview.adapters.mcp_adapter import MCPAdapter
     from evalview.core.mcp_contract import ContractStore
 
-    console.print(f"\n[cyan]━━━ MCP Contract Snapshot ━━━[/cyan]\n")
+    console.print("\n[cyan]━━━ MCP Contract Snapshot ━━━[/cyan]\n")
     console.print(f"  Server: [bold]{name}[/bold]")
     console.print(f"  Endpoint: {endpoint}")
     console.print()
@@ -7151,7 +7114,7 @@ def mcp_check(name: str, endpoint: str, timeout: float):
     target_endpoint = endpoint or contract.metadata.endpoint
     adapter = MCPAdapter(endpoint=target_endpoint, timeout=timeout)
 
-    console.print(f"\n[cyan]━━━ MCP Contract Check ━━━[/cyan]\n")
+    console.print("\n[cyan]━━━ MCP Contract Check ━━━[/cyan]\n")
     console.print(f"  Contract: [bold]{name}[/bold]")
     console.print(f"  Endpoint: {target_endpoint}")
 
@@ -7267,7 +7230,6 @@ def mcp_show(name: str):
     NAME is the contract name.
     """
     from evalview.core.mcp_contract import ContractStore
-    from rich.panel import Panel
 
     store = ContractStore()
     contract = store.load_contract(name)
@@ -8162,7 +8124,6 @@ def gym(suite: str, endpoint: str, list_only: bool):
         evalview gym --suite security       # Security tests only
         evalview gym --list-only            # List without running
     """
-    import glob as glob_module
 
     console.print("[blue]━━━ EvalView Gym ━━━[/blue]\n")
     console.print("[dim]Practice environment for learning agent eval patterns[/dim]\n")
@@ -8271,7 +8232,7 @@ def gym(suite: str, endpoint: str, list_only: bool):
                     console.print(f"    [dim]{result['error']}[/dim]")
 
         except Exception as e:
-            console.print(f"[red]ERROR[/red]")
+            console.print("[red]ERROR[/red]")
             console.print(f"    [dim]{str(e)[:80]}[/dim]")
             errors += 1
 

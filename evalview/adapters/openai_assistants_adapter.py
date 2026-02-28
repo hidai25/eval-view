@@ -408,7 +408,7 @@ class OpenAIAssistantsAdapter(AgentAdapter):
             self._save_assistant_id(assistant_id)
 
             console.print(f"[green]✓ Created assistant: {assistant_id}[/green]")
-            console.print(f"[dim]Saved to .env.local[/dim]\n")
+            console.print("[dim]Saved to .env.local[/dim]\n")
 
             # Update environment for current session
             os.environ["OPENAI_ASSISTANT_ID"] = assistant_id

@@ -18,7 +18,7 @@ from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 import logging
 
-from evalview.core.types import EvaluationResult, ExecutionTrace, StepTrace
+from evalview.core.types import EvaluationResult, ExecutionTrace
 
 logger = logging.getLogger(__name__)
 

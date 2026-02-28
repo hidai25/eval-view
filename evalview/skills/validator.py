@@ -2,7 +2,7 @@
 
 import re
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 from evalview.skills.types import (
     Skill,

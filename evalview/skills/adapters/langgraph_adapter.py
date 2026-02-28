@@ -47,7 +47,6 @@ import asyncio
 import json
 import os
 import uuid
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 from typing import (
@@ -58,9 +57,6 @@ from typing import (
     List,
     Optional,
     Protocol,
-    Tuple,
-    TypeVar,
-    Union,
     runtime_checkable,
     TYPE_CHECKING,
 )
@@ -72,7 +68,6 @@ if TYPE_CHECKING:
 from evalview.skills.adapters.base import (
     SkillAgentAdapter,
     SkillAgentAdapterError,
-    AgentNotFoundError,
     AgentTimeoutError,
 )
 from evalview.skills.agent_types import (

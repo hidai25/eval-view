@@ -16,14 +16,12 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, AsyncGenerator
 
-from rich.console import Console, Group
+from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.live import Live
 from rich.text import Text
-from rich.style import Style
-from rich.layout import Layout
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.styles import Style as PromptStyle
@@ -31,7 +29,6 @@ from prompt_toolkit.history import FileHistory
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.filters import Condition
 
 
 SLASH_COMMANDS = [
@@ -55,7 +52,6 @@ SLASH_COMMANDS = [
 
 def show_slash_menu(console: Console, selected: int = 0) -> Optional[str]:
     """Show slash command dropdown and let user select. Returns selected command or None."""
-    import sys
     import tty
     import termios
 
@@ -1076,7 +1072,7 @@ async def run_chat(
         model_name = model or PROVIDER_CONFIGS[llm_provider].default_model
         if any(small in model_name.lower() for small in SMALL_OLLAMA_MODELS):
             console.print(f"[yellow]Warning:[/yellow] Small model '{model_name}' may give inaccurate suggestions.")
-            console.print(f"[dim]For better results, try: /model llama3:70b or /model mixtral[/dim]")
+            console.print("[dim]For better results, try: /model llama3:70b or /model mixtral[/dim]")
             console.print()
 
     # Show project context
@@ -1502,7 +1498,7 @@ async def run_chat(
                         live_trace_reporter.report_from_execution_trace(trace, test_case.name)
                         live_trace_reporter.close()
 
-                    console.print(f"\n[green]✓ Execution complete[/green]")
+                    console.print("\n[green]✓ Execution complete[/green]")
                     console.print(f"[dim]Latency: {trace.metrics.total_latency:.0f}ms[/dim]")
                     if trace.metrics.total_cost:
                         console.print(f"[dim]Cost: ${trace.metrics.total_cost:.4f}[/dim]")
@@ -1514,7 +1510,7 @@ async def run_chat(
                         reporter.print_trace(trace.trace_context)
 
                     # Show output
-                    console.print(f"\n[bold]Output:[/bold]")
+                    console.print("\n[bold]Output:[/bold]")
                     output_preview = trace.final_output[:500] if trace.final_output else "(empty)"
                     console.print(Panel(output_preview, title="Agent Response", border_style="green"))
 
@@ -1634,13 +1630,13 @@ async def run_chat(
                         reporter.print_trace(trace.trace_context)
 
                     # Show output
-                    console.print(f"\n[bold]Response:[/bold]")
+                    console.print("\n[bold]Response:[/bold]")
                     response_output = trace.final_output or "(empty)"
                     if len(response_output) > 1000:
                         response_output = response_output[:1000] + "..."
                     console.print(Panel(response_output, border_style="green"))
 
-                except ValueError as e:
+                except ValueError:
                     console.print(f"[red]Unknown adapter: {adapter_type}[/red]")
                     console.print("[dim]Run /adapters to see available adapters[/dim]")
                 except Exception as e:
@@ -1836,7 +1832,6 @@ async def run_chat(
             # /compare command - compare two test runs
             if user_input.lower().startswith("/compare"):
                 from rich.table import Table
-                from rich.columns import Columns
 
                 parts = user_input.split()
 
@@ -1879,7 +1874,7 @@ async def run_chat(
                     results1 = {r["test_case"]: EvaluationResult(**r) for r in data1} if data1 else {}
                     results2 = {r["test_case"]: EvaluationResult(**r) for r in data2} if data2 else {}
 
-                    console.print(f"\n[bold]Comparing Results[/bold]")
+                    console.print("\n[bold]Comparing Results[/bold]")
                     console.print(f"[dim]Old: {file1.name}[/dim]")
                     console.print(f"[dim]New: {file2.name}[/dim]\n")
 
@@ -2280,9 +2275,9 @@ async def run_chat(
                     # Ask for permission with 1/2/3 options
                     console.print()
                     console.print(f"[yellow]Run command?[/yellow] [bold]{cmd}[/bold]")
-                    console.print(f"  [cyan][1][/cyan] Yes, run once")
+                    console.print("  [cyan][1][/cyan] Yes, run once")
                     console.print(f"  [cyan][2][/cyan] Always allow '[bold]{cmd_key}[/bold]' commands")
-                    console.print(f"  [cyan][3][/cyan] Skip")
+                    console.print("  [cyan][3][/cyan] Skip")
                     
                     try:
                         choice = await prompt_session.prompt_async(HTML("<dim>Choice (1-3): </dim>"))
@@ -2361,8 +2356,8 @@ async def run_chat(
             for slash_cmd in slash_cmds:
                 console.print()
                 console.print(f"[yellow]Run command?[/yellow] [bold cyan]{slash_cmd}[/bold cyan]")
-                console.print(f"  [cyan][1][/cyan] Yes, run it")
-                console.print(f"  [cyan][2][/cyan] Skip")
+                console.print("  [cyan][1][/cyan] Yes, run it")
+                console.print("  [cyan][2][/cyan] Skip")
 
                 try:
                     choice = await prompt_session.prompt_async(HTML("<dim>Choice (1-2): </dim>"))
@@ -2451,13 +2446,13 @@ async def run_chat(
                                     reporter = TraceReporter()
                                     reporter.print_trace(trace.trace_context)
 
-                                console.print(f"\n[bold]Response:[/bold]")
+                                console.print("\n[bold]Response:[/bold]")
                                 test_output = trace.final_output or "(empty)"
                                 if len(test_output) > 1000:
                                     test_output = test_output[:1000] + "..."
                                 console.print(Panel(test_output, border_style="green"))
 
-                            except ValueError as e:
+                            except ValueError:
                                 console.print(f"[red]Unknown adapter: {adapter_type}[/red]")
                                 console.print("[dim]Run /adapters to see available adapters[/dim]")
                             except Exception as e:
@@ -2512,7 +2507,7 @@ async def run_chat(
                                             test_case.input.context,
                                         )
 
-                                    console.print(f"[green]✓ Execution complete[/green]")
+                                    console.print("[green]✓ Execution complete[/green]")
                                     console.print(f"[dim]Latency: {trace.metrics.total_latency:.0f}ms[/dim]")
                                     console.print()
 
@@ -2645,7 +2640,6 @@ async def run_demo(
     """
     import time
     from rich.live import Live
-    from rich.text import Text
 
     console = Console()
 
@@ -3053,7 +3047,7 @@ async def run_demo(
 
             # Type the text - FAST
             if typing:
-                console.print(f"[#22d3ee]│[/#22d3ee] ", end="")
+                console.print("[#22d3ee]│[/#22d3ee] ", end="")
                 for char in text:
                     console.print(char, end="", highlight=False)
                     time.sleep(0.012)  # Fast typing
@@ -3089,7 +3083,7 @@ async def run_demo(
                 ("/help", "Show help and tips"),
             ]
             console.print("[dim]─── Slash Commands ───[/dim]")
-            console.print(f"  [#22d3ee bold]▸ /model        [/#22d3ee bold] [dim]Switch to a different model[/dim]")
+            console.print("  [#22d3ee bold]▸ /model        [/#22d3ee bold] [dim]Switch to a different model[/dim]")
             for cmd, desc in commands[1:]:
                 console.print(f"    [dim]{cmd:<14} {desc}[/dim]")
 

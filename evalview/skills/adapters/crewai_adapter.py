@@ -43,18 +43,16 @@ from __future__ import annotations
 
 import asyncio
 import io
-import sys
 import uuid
 from contextlib import redirect_stdout, redirect_stderr
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Dict, Final, List, Optional, Tuple, Type
+from typing import Any, Dict, Final, List, Optional
 import logging
 import re
 
 from evalview.skills.adapters.base import (
     SkillAgentAdapter,
-    SkillAgentAdapterError,
     AgentNotFoundError,
     AgentTimeoutError,
 )
@@ -448,7 +446,7 @@ class CrewAISkillAdapter(SkillAgentAdapter):
         Returns:
             Crew execution result.
         """
-        from crewai import Agent, Task, Crew, Process
+        from crewai import Task, Crew, Process
 
         # Create skill-configured agent
         agent = self._create_skill_agent(skill)

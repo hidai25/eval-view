@@ -4,7 +4,6 @@ This module contains extracted helper functions from the CLI skill test commands
 to improve maintainability and testability.
 """
 
-import json
 from typing import Optional, Tuple, Dict, Any
 from rich.console import Console
 from rich.table import Table

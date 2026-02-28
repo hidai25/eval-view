@@ -22,8 +22,6 @@ from evalview.skills.adapters.base import (
 from evalview.skills.agent_types import (
     AgentConfig,
     SkillAgentTrace,
-    TraceEvent,
-    TraceEventType,
 )
 from evalview.skills.types import Skill
 
