@@ -16,7 +16,7 @@ import logging
 from pathlib import Path
 from typing import Optional, Tuple
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 from evalview.core.config import EvalViewConfig
 from evalview.core.diff import DiffEngine, TraceDiff
