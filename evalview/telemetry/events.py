@@ -11,6 +11,18 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 
 
+def _detect_github_repo() -> Optional[str]:
+    """Return the GitHub repo name if running in GitHub Actions, else None.
+
+    GITHUB_REPOSITORY is always set in GitHub Actions and contains the
+    public repo name (e.g. 'myorg/myrepo'). This is non-sensitive since
+    public repos are already public, and private repos only expose the name.
+    """
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        return os.environ.get("GITHUB_REPOSITORY")
+    return None
+
+
 def _detect_ci_environment() -> str:
     """Detect if running in CI and which provider.
 
@@ -70,6 +82,7 @@ class BaseEvent:
     os_info: str = field(default_factory=_get_os_info)
     python_version: str = field(default_factory=_get_python_version)
     ci_environment: str = field(default_factory=_detect_ci_environment)
+    github_repo: Optional[str] = field(default_factory=_detect_github_repo)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for sending."""

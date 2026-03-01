@@ -344,6 +344,13 @@ class AnthropicAdapter(AgentAdapter):
                 f"({len(steps)} tool calls, ${total_cost:.4f})"
             )
 
+        # Capture the resolved model ID from the last API response.
+        # Anthropic always returns the exact model string in response.model,
+        # which may differ from the requested model name if an alias was used.
+        # Storing this in the trace allows DiffEngine to detect silent model
+        # updates (e.g., when "claude-3-5-sonnet" resolves to a new version).
+        resolved_model_id = response.model if hasattr(response, "model") else model
+
         return ExecutionTrace(
             session_id=f"anthropic-{start_time.timestamp()}",
             start_time=start_time,
@@ -356,6 +363,8 @@ class AnthropicAdapter(AgentAdapter):
                 total_tokens=token_usage,
             ),
             trace_context=trace_context,
+            model_id=resolved_model_id,
+            model_provider="anthropic",
         )
 
     def _get_mock_response(self, tool_name: str, tools: List[Dict[str, Any]]) -> Any:

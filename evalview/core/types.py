@@ -404,6 +404,11 @@ class ExecutionTrace(BaseModel):
     # Defaults to None for backward compatibility with existing adapters
     trace_context: Optional[TraceContext] = None
 
+    # Model fingerprint — captured from the API response by the adapter.
+    # Optional so adapters that don't capture this field still work.
+    model_id: Optional[str] = None        # e.g. "claude-3-5-sonnet-20241022"
+    model_provider: Optional[str] = None  # e.g. "anthropic"
+
     @field_validator("start_time", "end_time", mode="before")
     @classmethod
     def coerce_datetime(cls, v, info: ValidationInfo):

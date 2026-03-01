@@ -84,6 +84,9 @@ dev = [
 [project.scripts]
 evalview = "evalview.cli:main"
 
+[project.entry-points."pytest11"]
+evalview = "evalview.pytest_plugin"
+
 [project.urls]
 Homepage = "https://github.com/hidai25/eval-view"
 Documentation = "https://github.com/hidai25/eval-view#readme"

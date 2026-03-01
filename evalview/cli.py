@@ -6532,6 +6532,7 @@ def _execute_snapshot_tests(
     from evalview.evaluators.evaluator import Evaluator
 
     results = []
+    evaluator = Evaluator()
 
     for tc in test_cases:
         try:
@@ -6562,7 +6563,6 @@ def _execute_snapshot_tests(
                 raise
 
             # Evaluate
-            evaluator = Evaluator()
             result = asyncio.run(evaluator.evaluate(tc, trace))
 
             results.append(result)
@@ -6711,72 +6711,95 @@ def _load_config_if_exists() -> Optional["EvalViewConfig"]:
 def _execute_check_tests(
     test_cases: List["TestCase"],
     config: Optional["EvalViewConfig"],
-    json_output: bool
-) -> Tuple[List[Tuple[str, "TraceDiff"]], List["EvaluationResult"]]:
+    json_output: bool,
+    semantic_diff: bool = False,
+) -> Tuple[List[Tuple[str, "TraceDiff"]], List["EvaluationResult"], "DriftTracker"]:
     """Execute tests and compare against golden variants.
 
+    Args:
+        test_cases: Test cases to run.
+        config: EvalView config (adapter, endpoint, thresholds).
+        json_output: Suppress non-JSON console output when True.
+        semantic_diff: Enable embedding-based semantic similarity (opt-in).
+
     Returns:
-        Tuple of (diffs, results) where diffs is [(test_name, TraceDiff)]
+        Tuple of (diffs, results, drift_tracker) where diffs is [(test_name, TraceDiff)].
+        The drift_tracker is returned so callers can reuse it for detection without
+        creating a second instance that would re-read the history file.
     """
     from evalview.core.golden import GoldenStore
     from evalview.core.diff import DiffEngine
+    from evalview.core.config import DiffConfig
+    from evalview.core.drift_tracker import DriftTracker
     from evalview.evaluators.evaluator import Evaluator
 
+    diff_config = config.get_diff_config() if config else DiffConfig()
+    # --semantic-diff flag overrides config file setting
+    if semantic_diff:
+        diff_config = DiffConfig(
+            **{**diff_config.model_dump(), "semantic_diff_enabled": True}
+        )
+
     store = GoldenStore()
-    diff_engine = DiffEngine()
+    diff_engine = DiffEngine(config=diff_config)
+    drift_tracker = DriftTracker()
     evaluator = Evaluator()
 
     results = []
     diffs = []
 
-    for tc in test_cases:
+    async def _run_one(tc) -> Optional[Tuple["EvaluationResult", "TraceDiff"]]:
+        """Run a single test: execute → evaluate → diff (async pipeline)."""
+        adapter_type = tc.adapter or (config.adapter if config else None)
+        endpoint = tc.endpoint or (config.endpoint if config else None)
+        if not adapter_type or not endpoint:
+            return None
+
+        allow_private = getattr(config, "allow_private_urls", True) if config else True
         try:
-            # Get adapter config
-            adapter_type = tc.adapter or (config.adapter if config else None)
-            endpoint = tc.endpoint or (config.endpoint if config else None)
-
-            if not adapter_type or not endpoint:
-                continue
-
-            # Create adapter
-            allow_private = getattr(config, "allow_private_urls", True) if config else True
-            try:
-                adapter = _create_adapter(adapter_type, endpoint, allow_private_urls=allow_private)
-            except ValueError as e:
-                import sys
-                print(f"warning: skipping {tc.name}: {e}", file=sys.stderr)
-                if not json_output:
-                    console.print(f"[yellow]⚠ Skipping {tc.name}: {e}[/yellow]")
-                continue
-
-            # Run test (wrap asyncio.run to catch async exceptions)
-            try:
-                trace = asyncio.run(adapter.execute(tc.input.query, tc.input.context))
-            except (asyncio.TimeoutError, asyncio.CancelledError) as e:
-                if not json_output:
-                    console.print(f"[red]✗ {tc.name}: Async execution failed - {e}[/red]")
-                continue
-            except Exception:
-                # Re-raise to be caught by outer exception handler
-                raise
-
-            # Evaluate
-            result = asyncio.run(evaluator.evaluate(tc, trace))
-            results.append(result)
-
-            # Compare against golden (use multi-reference)
-            golden_variants = store.load_all_golden_variants(tc.name)
-            if golden_variants:
-                # Use multi-reference comparison for best match
-                diff = diff_engine.compare_multi_reference(golden_variants, trace, result.score)
-                diffs.append((tc.name, diff))
-
-        except Exception as e:
+            adapter = _create_adapter(adapter_type, endpoint, allow_private_urls=allow_private)
+        except ValueError as e:
             if not json_output:
-                console.print(f"[red]✗ {tc.name}: Failed - {e}[/red]")
-            continue
+                console.print(f"[yellow]⚠ Skipping {tc.name}: {e}[/yellow]")
+            return None
 
-    return diffs, results
+        trace = await adapter.execute(tc.input.query, tc.input.context)
+        result = await evaluator.evaluate(tc, trace)
+
+        golden_variants = store.load_all_golden_variants(tc.name)
+        if not golden_variants:
+            return None
+
+        # Use async comparison to include semantic diff when enabled
+        diff = await diff_engine.compare_multi_reference_async(
+            golden_variants, trace, result.score
+        )
+        return result, diff
+
+    # Run all tests concurrently in a single event loop.
+    # return_exceptions=True means exceptions are returned as values (not raised),
+    # so one failing test does not cancel the others.
+    async def _run_all() -> List:
+        return await asyncio.gather(*[_run_one(tc) for tc in test_cases], return_exceptions=True)
+
+    outcomes = asyncio.run(_run_all())
+
+    for tc, outcome in zip(test_cases, outcomes):
+        if isinstance(outcome, BaseException):
+            if not json_output:
+                if isinstance(outcome, (asyncio.TimeoutError, asyncio.CancelledError)):
+                    console.print(f"[red]✗ {tc.name}: Async execution timed out — {outcome}[/red]")
+                else:
+                    console.print(f"[red]✗ {tc.name}: Failed — {outcome}[/red]")
+            continue
+        if outcome is None:
+            continue
+        result, diff = outcome
+        results.append(result)
+        diffs.append((tc.name, diff))
+        drift_tracker.record_check(tc.name, diff)
+
+    return diffs, results, drift_tracker
 
 
 def _analyze_check_diffs(diffs: List[Tuple[str, "TraceDiff"]]) -> Dict[str, Any]:
@@ -6805,15 +6828,25 @@ def _display_check_results(
     analysis: Dict[str, Any],
     state: "ProjectState",
     is_first_check: bool,
-    json_output: bool
+    json_output: bool,
+    drift_tracker: Optional["DriftTracker"] = None,
 ) -> None:
-    """Display check results in JSON or console format."""
+    """Display check results in JSON or console format.
+
+    Args:
+        drift_tracker: DriftTracker instance from _execute_check_tests. If None,
+                       a new instance is created (legacy behaviour). Pass the
+                       instance from _execute_check_tests to avoid reading the
+                       history file twice.
+    """
     from evalview.core.diff import DiffStatus
     from evalview.core.celebrations import Celebrations
+    from evalview.core.drift_tracker import DriftTracker
     from evalview.core.messages import get_random_clean_check_message
+    from rich.panel import Panel
 
     if json_output:
-        # JSON output for CI
+        # JSON output for CI — include model change and semantic similarity info
         output = {
             "summary": {
                 "total_tests": len(diffs),
@@ -6821,6 +6854,7 @@ def _display_check_results(
                 "regressions": sum(1 for _, d in diffs if d.overall_severity == DiffStatus.REGRESSION),
                 "tools_changed": sum(1 for _, d in diffs if d.overall_severity == DiffStatus.TOOLS_CHANGED),
                 "output_changed": sum(1 for _, d in diffs if d.overall_severity == DiffStatus.OUTPUT_CHANGED),
+                "model_changed": any(getattr(d, "model_changed", False) for _, d in diffs),
             },
             "diffs": [
                 {
@@ -6829,15 +6863,53 @@ def _display_check_results(
                     "score_delta": diff.score_diff,
                     "has_tool_diffs": len(diff.tool_diffs) > 0,
                     "output_similarity": diff.output_diff.similarity if diff.output_diff else 1.0,
+                    "semantic_similarity": (
+                        diff.output_diff.semantic_similarity if diff.output_diff else None
+                    ),
+                    "model_changed": getattr(diff, "model_changed", False),
+                    "golden_model_id": getattr(diff, "golden_model_id", None),
+                    "actual_model_id": getattr(diff, "actual_model_id", None),
                 }
                 for name, diff in diffs
-            ]
+            ],
         }
         print(json.dumps(output, indent=2))
     else:
         # Console output with personality
         if is_first_check:
             Celebrations.first_check()
+
+        # Model version change warning — shown before pass/fail output so it
+        # frames the context for any regressions the user is about to see.
+        model_changed_diffs = [
+            (name, d) for name, d in diffs if getattr(d, "model_changed", False)
+        ]
+        if model_changed_diffs:
+            name, d = model_changed_diffs[0]
+            golden_m = getattr(d, "golden_model_id", "unknown")
+            actual_m = getattr(d, "actual_model_id", "unknown")
+            console.print(
+                Panel(
+                    f"[yellow]Model changed:[/yellow] "
+                    f"[dim]{golden_m}[/dim] → [bold]{actual_m}[/bold]\n\n"
+                    "Baselines were captured with a different model version. "
+                    "Output changes below may be caused by the model update rather "
+                    "than your code. If the new behavior looks correct, run "
+                    "[bold]evalview snapshot[/bold] to update the baseline.",
+                    title="⚠  Model Version Change Detected",
+                    border_style="yellow",
+                )
+            )
+            console.print()
+
+        # Gradual drift warnings — check each test for slow-burning decline.
+        # Use the passed tracker (same instance used for recording) to avoid
+        # a redundant instantiation and second read of the history file.
+        _drift = drift_tracker if drift_tracker is not None else DriftTracker()
+        for name, _ in diffs:
+            warning = _drift.detect_gradual_drift(name)
+            if warning:
+                console.print(f"[yellow]📉 {name}:[/yellow] {warning}\n")
 
         if analysis["all_passed"]:
             # Clean check!
@@ -6916,8 +6988,15 @@ def _compute_check_exit_code(
 @click.option("--json", "json_output", is_flag=True, help="Output JSON for CI")
 @click.option("--fail-on", help="Comma-separated statuses to fail on (default: REGRESSION)")
 @click.option("--strict", is_flag=True, help="Fail on any change (REGRESSION, TOOLS_CHANGED, OUTPUT_CHANGED)")
+@click.option(
+    "--semantic-diff",
+    "semantic_diff",
+    is_flag=True,
+    default=False,
+    help="Enable embedding-based semantic similarity (requires OPENAI_API_KEY, adds ~$0.00004/test)",
+)
 @track_command("check")
-def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bool):
+def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bool, semantic_diff: bool):
     """Check current behavior against snapshot baseline.
 
     This command runs tests and compares them against your saved baselines,
@@ -6979,8 +7058,23 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
     # Load config
     config = _load_config_if_exists()
 
+    # Semantic diff notice — shown once before execution so users know outputs
+    # are sent to the OpenAI embedding API and can abort if undesired.
+    if semantic_diff and not json_output:
+        from evalview.core.semantic_diff import SemanticDiff
+        if SemanticDiff.is_available():
+            console.print(
+                f"[dim]ℹ  Semantic diff enabled. {SemanticDiff.cost_notice()} "
+                "Agent outputs are sent to OpenAI for embedding comparison.[/dim]\n"
+            )
+        else:
+            console.print(
+                "[yellow]⚠  --semantic-diff requested but OPENAI_API_KEY is not set. "
+                "Falling back to lexical comparison.[/yellow]\n"
+            )
+
     # Execute tests and compare against golden
-    diffs, results = _execute_check_tests(test_cases, config, json_output)
+    diffs, results, drift_tracker = _execute_check_tests(test_cases, config, json_output, semantic_diff)
 
     # Analyze diffs
     analysis = _analyze_check_diffs(diffs)
@@ -6991,8 +7085,8 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
         status="passed" if analysis["all_passed"] else "regression"
     )
 
-    # Display results
-    _display_check_results(diffs, analysis, state, is_first_check, json_output)
+    # Display results (reuse drift_tracker instance to avoid re-reading history file)
+    _display_check_results(diffs, analysis, state, is_first_check, json_output, drift_tracker=drift_tracker)
 
     # Compute and exit with code
     exit_code = _compute_check_exit_code(diffs, fail_on, strict)

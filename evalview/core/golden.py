@@ -34,6 +34,11 @@ class GoldenMetadata(BaseModel):
     notes: Optional[str] = None
     version: int = 1  # For future format migrations
 
+    # Model fingerprint — captured from the API response at snapshot time.
+    # Both fields are Optional so existing .golden.json files load without error.
+    model_id: Optional[str] = None        # e.g. "claude-3-5-sonnet-20241022"
+    model_provider: Optional[str] = None  # e.g. "anthropic"
+
 
 class GoldenTrace(BaseModel):
     """A golden trace with metadata."""
@@ -127,6 +132,8 @@ class GoldenStore:
                 source_result_file=source_file,
                 score=result.score,
                 notes=notes,
+                model_id=getattr(result.trace, "model_id", None),
+                model_provider=getattr(result.trace, "model_provider", None),
             ),
             trace=result.trace,
             tool_sequence=tool_sequence,

@@ -125,6 +125,79 @@ Perfect for LLM-based agents with creative variation.
 
 ---
 
+### Detecting Silent Model Updates
+
+LLM providers silently update the model behind the same API name — `claude-3-5-sonnet-latest`, `gpt-4o`, and `gemini-pro` all quietly point to new versions over time. You can't tell from the API response whether your baseline was captured on last month's model or this week's. Your agent may be "breaking" from a model update, not from your code.
+
+EvalView captures the model version at snapshot time and alerts you when it changes:
+
+```
+evalview check
+
+╭─ ⚠  Model Version Change Detected ──────────────────────────────────────────╮
+│                                                                               │
+│  Model changed: claude-3-5-sonnet-20241022 → claude-3-5-sonnet-20250219      │
+│                                                                               │
+│  Baselines were captured with a different model version. Output changes       │
+│  below may be caused by the model update rather than your code. If the new   │
+│  behavior looks correct, run evalview snapshot to update the baseline.        │
+╰───────────────────────────────────────────────────────────────────────────────╯
+```
+
+**No configuration needed.** Works automatically with any Anthropic adapter — `response.model` is captured from the API response and stored in the golden baseline. HTTP adapters capture model ID from response metadata when the provider returns it.
+
+---
+
+### Gradual Drift Detection
+
+Your agent passed 30 consecutive checks. But over the past month, output similarity quietly slid from 97% to 83% — each individual check passed because it was above threshold. No single check failed. No alarm fired.
+
+EvalView's drift tracker detects this slow-burning pattern and warns you before it becomes a production incident:
+
+```
+evalview check
+
+📉 summarize-test: Output similarity declining over last 10 checks: 97% → 83%
+   (slope: −1.4%/check). May indicate gradual model drift.
+   Run 'evalview check' more frequently or inspect recent changes.
+```
+
+**Automatic — nothing to configure.** Every `evalview check` appends to `.evalview/history.jsonl`. Trend detection uses OLS regression slope across the last 10 checks, so a single outlier won't trigger a false alarm. Add `.evalview/history.jsonl` to git to share drift history across your team.
+
+---
+
+### Semantic Similarity (`--semantic-diff`)
+
+Lexical diff compares text character by character. "The answer is 4" vs "Four is the answer" scores 43% similar by lexical measure — but they're semantically identical.
+
+Enable embedding-based comparison to correctly distinguish wording changes from meaning changes:
+
+```bash
+evalview check --semantic-diff    # Requires OPENAI_API_KEY
+```
+
+EvalView scores outputs by meaning, not just wording:
+
+```
+✗ weather-lookup: OUTPUT_CHANGED
+  Lexical similarity:    43%
+  Semantic similarity:   91%   ← meaning preserved, wording changed
+  Combined score:         74%
+```
+
+**Cost:** ~$0.00004/test (2 embeddings via `text-embedding-3-small`, batched). Off by default — enable per run with `--semantic-diff` or permanently:
+
+```yaml
+# .evalview/config.yaml
+diff:
+  semantic_diff_enabled: true
+  semantic_similarity_weight: 0.7   # 70% semantic, 30% lexical
+```
+
+> ⚠️ When enabled, agent outputs are sent to OpenAI's embedding API. EvalView prints a cost notice before running. Do not use on tests containing confidential data.
+
+---
+
 ## Quick Start
 
 1. **Install EvalView**
@@ -605,6 +678,9 @@ difficulty: medium                    # trivial | easy | medium | hard | expert
 | **HTML Trace Replay** | Step-by-step replay of every LLM call and tool invocation — exact prompt, completion, tokens, params | [Docs](#html-trace-replay--full-forensic-debugging) |
 | **LLM Judge Caching** | Cache judge responses in statistical mode — ~80% fewer API calls, stored in `.evalview/.judge_cache.db` | [Docs](#llm-judge-caching--80-cost-reduction-in-statistical-mode) |
 | **Snapshot/Check Workflow** | Simple `snapshot` then `check` commands for regression detection | [Docs](docs/GOLDEN_TRACES.md) |
+| **Silent Model Update Detection** | Captures model version at snapshot time; alerts when provider silently swaps the model | [Docs](#detecting-silent-model-updates) |
+| **Gradual Drift Detection** | OLS regression over 10-check window catches slow similarity decline that single-threshold checks miss | [Docs](#gradual-drift-detection) |
+| **Semantic Similarity** | `--semantic-diff` uses OpenAI embeddings to score outputs by meaning, not wording | [Docs](#semantic-similarity---semantic-diff) |
 | **Visual Reports** | `evalview inspect` — interactive HTML with traces, diffs, cost-per-query | [Docs](#visual-reports--claude-code-mcp) |
 | **Claude Code MCP** | 7 tools — run checks, generate tests, test skills inline | [Docs](#claude-code-integration-mcp) |
 | **Streak Tracking** | Habit-forming celebrations for consecutive clean checks | [Docs](docs/GOLDEN_TRACES.md) |
@@ -623,6 +699,70 @@ difficulty: medium                    # trivial | easy | medium | hard | expert
 | **Provider-Agnostic Skill Tests** | Run skill tests against Anthropic, OpenAI, DeepSeek, or any OpenAI-compatible API | [Docs](docs/SKILLS_TESTING.md#provider-agnostic-api-keys) |
 | **Test Pattern Library** | 15 ready-made YAML patterns — copy to your project with `evalview add` | [Docs](#new-provider-agnostic-skill-tests--setup-wizard--15-templates) |
 | **Personalized Init Wizard** | `evalview init --wizard` — generates a config + first test tailored to your agent | [Docs](#new-provider-agnostic-skill-tests--setup-wizard--15-templates) |
+| **Pytest Plugin** | `evalview_check` fixture for regression assertions inside standard pytest suites | [Docs](#pytest-plugin) |
+| **Programmatic API** | `run_single_test` / `check_single_test` for notebook and custom CI integration | [Docs](#programmatic-api) |
+
+---
+
+## Pytest Plugin
+
+Use EvalView's regression detection directly inside your existing pytest suite — no separate CLI step required.
+
+```bash
+pip install evalview    # registers pytest11 entry point automatically
+```
+
+```python
+# test_my_agent.py
+def test_weather_agent_regression(evalview_check):
+    diff = evalview_check("weather-lookup")   # runs test, diffs against golden
+    assert diff.overall_severity.value in ("passed", "output_changed"), diff.summary()
+
+@pytest.mark.model_sensitive   # log a warning if the model version changed
+def test_summarize(evalview_check):
+    diff = evalview_check("summarize-test")
+    assert diff.overall_severity.value != "regression"
+```
+
+The `evalview_check` fixture:
+- Automatically skips (not fails) if no golden baseline exists yet — safe to add before snapshotting
+- Returns a `TraceDiff` with `overall_severity`, `tool_diffs`, `output_diff`, and `score_diff`
+- Integrates with `--semantic-diff` by respecting the project's `.evalview/config.yaml`
+
+```bash
+pytest                        # runs your whole suite including regression checks
+pytest -m agent_regression   # run only EvalView-marked tests
+```
+
+---
+
+## Programmatic API
+
+Run individual tests from notebooks, scripts, or custom CI pipelines without the CLI:
+
+```python
+import asyncio
+from evalview.core.runner import run_single_test, check_single_test
+
+# Run a test and get the full evaluation result
+result = asyncio.run(run_single_test("weather-lookup"))
+print(f"Score: {result.score}/100")
+
+# Run and diff against the golden baseline
+result, diff = asyncio.run(check_single_test("weather-lookup"))
+print(f"Status: {diff.overall_severity.value}")   # passed / output_changed / regression
+print(f"Output similarity: {diff.output_diff.similarity:.0%}")
+```
+
+Both functions respect your `.evalview/config.yaml` by default. Pass `config_path` and `test_path` to override:
+
+```python
+result = asyncio.run(run_single_test(
+    "weather-lookup",
+    test_path=Path("tests/regression"),
+    config_path=Path(".evalview/config.yaml"),
+))
+```
 
 ---
 
@@ -723,7 +863,7 @@ evalview skill test tests.yaml --agent langgraph
 
 ## Roadmap
 
-**Shipped:** Golden traces • **Snapshot/check workflow** • **Streak tracking & celebrations** • **Multi-reference goldens** • Tool categories • Statistical mode • Difficulty levels • Partial sequence credit • Skills validation • E2E agent testing • Build & smoke tests • Health checks • Safety guards (`no_sudo`, `git_clean`) • Claude Code & Codex adapters • **Opus 4.6 cost tracking** • MCP servers • HTML reports • Interactive chat mode • EvalView Gym • **Provider-agnostic skill tests** • **15-template pattern library** • **Personalized init wizard** • **`forbidden_tools` safety contracts** • **HTML trace replay** (exact prompt/completion per step)
+**Shipped:** Golden traces • **Snapshot/check workflow** • **Streak tracking & celebrations** • **Multi-reference goldens** • Tool categories • Statistical mode • Difficulty levels • Partial sequence credit • Skills validation • E2E agent testing • Build & smoke tests • Health checks • Safety guards (`no_sudo`, `git_clean`) • Claude Code & Codex adapters • **Opus 4.6 cost tracking** • MCP servers • HTML reports • Interactive chat mode • EvalView Gym • **Provider-agnostic skill tests** • **15-template pattern library** • **Personalized init wizard** • **`forbidden_tools` safety contracts** • **HTML trace replay** (exact prompt/completion per step) • **Silent model update detection** (model fingerprinting + version change panel) • **Gradual drift detection** (OLS trend analysis over JSONL history) • **Semantic diff** (`--semantic-diff`, embedding-based output comparison)
 
 **Coming:** Agent Teams trace analysis • Multi-turn conversations • Grounded hallucination detection • Error compounding metrics • Container isolation
 

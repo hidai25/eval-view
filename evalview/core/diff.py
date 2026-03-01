@@ -77,11 +77,14 @@ class ToolDiff:
 class OutputDiff:
     """Difference in output."""
 
-    similarity: float  # 0.0 to 1.0
+    similarity: float  # 0.0 to 1.0 (lexical, always present)
     golden_preview: str
     actual_preview: str
     diff_lines: List[str]  # Unified diff lines
     severity: DiffSeverity
+    # Embedding-based semantic similarity (opt-in via DiffConfig.semantic_diff_enabled).
+    # None when semantic diff is disabled or OPENAI_API_KEY is not set.
+    semantic_similarity: Optional[float] = None
 
 
 @dataclass
@@ -96,6 +99,13 @@ class TraceDiff:
     latency_diff: float  # actual_latency - golden_latency (ms)
     overall_severity: DiffSeverity
     matched_variant: Optional[str] = None  # Which golden variant was matched (for multi-reference)
+
+    # Model version tracking — populated when the golden metadata and the
+    # actual trace both carry model_id. Allows the CLI to alert users when
+    # output changes are likely caused by a silent model update.
+    model_changed: bool = False
+    golden_model_id: Optional[str] = None
+    actual_model_id: Optional[str] = None
 
     def summary(self) -> str:
         """Human-readable summary of differences."""
@@ -152,6 +162,69 @@ class DiffEngine:
         self.score_regression_threshold = config.score_regression_threshold
         self.ignore_whitespace = config.ignore_whitespace
         self.ignore_case_in_output = config.ignore_case_in_output
+        self._config = config
+
+        # SemanticDiff is opt-in: only created when semantic_diff_enabled=True
+        # and OPENAI_API_KEY is available. Falls back gracefully to None.
+        self._semantic_diff = None
+        if config.semantic_diff_enabled:
+            try:
+                from evalview.core.semantic_diff import SemanticDiff
+                self._semantic_diff = SemanticDiff()
+            except (ImportError, ValueError) as e:
+                logger.warning(
+                    f"Semantic diff requested but unavailable: {e}. "
+                    "Falling back to lexical comparison."
+                )
+
+    async def compare_multi_reference_async(
+        self,
+        golden_variants: List[GoldenTrace],
+        actual: ExecutionTrace,
+        actual_score: float = 0.0,
+    ) -> "TraceDiff":
+        """Async version of compare_multi_reference — includes semantic similarity.
+
+        Runs the full comparison pipeline including embedding-based semantic
+        similarity when semantic_diff_enabled=True. Use this from async contexts
+        (e.g., inside a coroutine that also calls adapter.execute()).
+
+        Args:
+            golden_variants: List of golden trace variants to compare against.
+            actual: The actual trace from the test run.
+            actual_score: Score from the test run.
+
+        Returns:
+            TraceDiff with overall_severity, tool_diffs, output_diff
+            (including semantic_similarity when enabled), and model change info.
+        """
+        diff = self.compare_multi_reference(golden_variants, actual, actual_score)
+        if self._semantic_diff is not None and diff.output_diff is not None:
+            # Best-matched golden is the one the sync comparison selected
+            best_golden = golden_variants[0]  # default; will be overwritten below
+            if diff.matched_variant and diff.matched_variant != "default":
+                # Attempt to find the variant by index
+                try:
+                    idx = int(diff.matched_variant.replace("variant_", ""))
+                    if 0 <= idx < len(golden_variants):
+                        best_golden = golden_variants[idx]
+                except (ValueError, IndexError):
+                    pass
+
+            try:
+                semantic_sim = await self._semantic_diff.similarity(
+                    best_golden.trace.final_output,
+                    actual.final_output,
+                )
+                diff.output_diff.semantic_similarity = semantic_sim
+                # Blend: weighted average of semantic and lexical scores
+                weight = self._config.semantic_similarity_weight
+                lexical = diff.output_diff.similarity
+                diff.output_diff.similarity = weight * semantic_sim + (1 - weight) * lexical
+            except Exception as e:
+                logger.warning(f"Semantic similarity computation failed: {e}")
+
+        return diff
 
     def compare(
         self,
@@ -216,6 +289,16 @@ class DiffEngine:
             # No significant differences - PASSED
             overall_severity = DiffStatus.PASSED
 
+        # Detect model version change between snapshot and current run.
+        # Requires both the golden metadata and the actual trace to carry model_id.
+        golden_model_id = golden.metadata.model_id
+        actual_model_id = getattr(actual, "model_id", None)
+        model_changed = bool(
+            golden_model_id
+            and actual_model_id
+            and golden_model_id != actual_model_id
+        )
+
         return TraceDiff(
             test_name=golden.metadata.test_name,
             has_differences=has_differences,
@@ -224,6 +307,9 @@ class DiffEngine:
             score_diff=score_diff,
             latency_diff=latency_diff,
             overall_severity=overall_severity,
+            model_changed=model_changed,
+            golden_model_id=golden_model_id,
+            actual_model_id=actual_model_id,
         )
 
     def compare_multi_reference(

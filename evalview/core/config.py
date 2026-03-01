@@ -106,6 +106,28 @@ class DiffConfig(BaseModel):
         description="Ignore case differences in output comparison"
     )
 
+    # Semantic similarity via embeddings (opt-in — requires OPENAI_API_KEY)
+    # When enabled, blends cosine similarity of embeddings with lexical similarity
+    # to catch semantic drift that SequenceMatcher misses (e.g. same meaning,
+    # different wording after a model update).
+    semantic_diff_enabled: bool = Field(
+        default=False,
+        description=(
+            "Enable embedding-based semantic similarity comparison (opt-in). "
+            "Requires OPENAI_API_KEY. Adds ~$0.00004 per check."
+        ),
+    )
+    semantic_similarity_weight: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Weight of semantic (embedding) similarity vs lexical similarity. "
+            "0.0 = lexical only, 1.0 = semantic only. Default 0.7 means "
+            "70% semantic + 30% lexical."
+        ),
+    )
+
 
 class EvalViewConfig(BaseModel):
     """Complete EvalView configuration (loaded from config.yaml)."""

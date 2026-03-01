@@ -219,6 +219,32 @@ class HTTPAdapter(AgentAdapter):
             )
             logger.info(f"💰 Calculated cost from tokens: ${total_cost:.4f} ({model_name})")
 
+        # Extract model identifier from response if the agent reports it.
+        # Checks common field names across different agent frameworks.
+        model_id = (
+            data.get("model")
+            or data.get("model_id")
+            or data.get("model_name")
+            or metadata.get("model")
+            or metadata.get("model_id")
+            or self.model_config.get("name")  # fall back to configured model name
+        ) or None  # coerce empty string to None
+
+        # Infer model_provider from the model_id string when possible.
+        # This covers the common case where the response includes the model name.
+        model_provider = (
+            data.get("model_provider")
+            or metadata.get("model_provider")
+            or self.model_config.get("provider")
+        )
+        if model_provider is None and model_id:
+            if model_id.startswith("claude"):
+                model_provider = "anthropic"
+            elif model_id.startswith(("gpt-", "o1", "o3", "o4")):
+                model_provider = "openai"
+            elif model_id.startswith("gemini"):
+                model_provider = "google"
+
         return ExecutionTrace(
             session_id=session_id,
             start_time=start_time,
@@ -230,6 +256,8 @@ class HTTPAdapter(AgentAdapter):
                 total_latency=total_latency,
                 total_tokens=total_tokens,
             ),
+            model_id=model_id,
+            model_provider=model_provider or None,
         )
 
     def _parse_steps(self, steps_data: List[Dict[str, Any]]) -> List[StepTrace]:
