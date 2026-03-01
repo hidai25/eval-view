@@ -152,3 +152,9 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = "evalview.pytest_plugin"
 ignore_errors = true
+
+# _pytest internals use match statements (Python 3.10+). mypy can't parse
+# them under python_version = "3.9" — skip following imports into them entirely.
+[[tool.mypy.overrides]]
+module = "_pytest.*"
+follow_imports = "skip"
