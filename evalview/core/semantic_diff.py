@@ -18,17 +18,11 @@ Or per-run:
     evalview check --semantic-diff
 """
 
+import math
 import os
 from typing import List, Optional
 
 import httpx
-
-try:
-    import numpy as np  # type: ignore
-
-    HAS_NUMPY = True
-except ImportError:
-    HAS_NUMPY = False
 
 
 class SemanticDiff:
@@ -64,14 +58,7 @@ class SemanticDiff:
 
         Raises:
             ValueError: If no API key is available.
-            ImportError: If numpy is not installed.
         """
-        if not HAS_NUMPY:
-            raise ImportError(
-                "numpy is required for semantic diff. "
-                "Install with: pip install numpy"
-            )
-
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
         if not self.api_key:
             raise ValueError(
@@ -94,13 +81,13 @@ class SemanticDiff:
         """
         # Truncate to stay within embedding model token limits (8192 tokens)
         embeddings = await self._embed([text_a[:8192], text_b[:8192]])
-        a = np.array(embeddings[0])
-        b = np.array(embeddings[1])
-        norm_a = float(np.linalg.norm(a))
-        norm_b = float(np.linalg.norm(b))
+        a, b = embeddings[0], embeddings[1]
+        dot = sum(x * y for x, y in zip(a, b))
+        norm_a = math.sqrt(sum(x * x for x in a))
+        norm_b = math.sqrt(sum(x * x for x in b))
         if norm_a == 0.0 or norm_b == 0.0:
             return 0.0
-        return float(np.dot(a, b) / (norm_a * norm_b))
+        return dot / (norm_a * norm_b)
 
     async def _embed(self, texts: List[str]) -> List[List[float]]:
         """Call OpenAI embeddings API (single batched call for both texts).
@@ -130,8 +117,6 @@ class SemanticDiff:
     @classmethod
     def is_available(cls) -> bool:
         """Check if semantic diff can be used without raising errors."""
-        if not HAS_NUMPY:
-            return False
         return bool(os.environ.get("OPENAI_API_KEY"))
 
     @classmethod
