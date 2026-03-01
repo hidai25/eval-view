@@ -94,6 +94,13 @@ def is_telemetry_enabled() -> bool:
     Environment variable EVALVIEW_TELEMETRY_DISABLED=1 always wins.
     Otherwise, check the config file.
     """
+    # Never fire telemetry during pytest runs — PYTEST_CURRENT_TEST is set
+    # automatically by pytest when a test is executing. Without this guard,
+    # tests that invoke CLI commands via CliRunner (e.g. test_cli_skill_test.py)
+    # would fire real PostHog events, polluting analytics with test noise.
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return False
+
     # Environment override always wins
     env_disabled = os.environ.get(TELEMETRY_DISABLED_ENV, "").lower()
     if env_disabled in ("1", "true", "yes"):
