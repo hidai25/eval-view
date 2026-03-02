@@ -1026,6 +1026,55 @@ class TestCostEvaluator:
         assert result.passed is True  # Zero cost is within threshold
         assert result.total_cost == 0.0
 
+    positive_edge_cost_testdata =  [
+        (Thresholds(min_score=70.0, max_cost=1.0), 1.0),
+        (Thresholds(min_score=70.0, max_cost=float("inf")), 100.0),
+    ]
+    @pytest.mark.parametrize("thresholds, total_cost", positive_edge_cost_testdata, ids=["cost_equals_threshold", "infinite_cost_threshold"])
+    def test_positive_edge_cases(self, thresholds, total_cost, sample_test_case, sample_execution_trace):
+        """Test that all positive edge cases should pass."""
+        sample_test_case.thresholds = thresholds
+        sample_execution_trace.metrics.total_cost = total_cost
+        evaluator = CostEvaluator()
+
+        result = evaluator.evaluate(sample_test_case, sample_execution_trace)
+        assert result.passed is True  # Positive edge cases should pass
+    
+    negative_edge_cost_testdata =  [
+        (Thresholds(min_score=70.0, max_cost=100.0), float("inf"))
+    ]
+    @pytest.mark.parametrize("thresholds, total_cost", negative_edge_cost_testdata, ids=["infinite_cost"])
+    def test_negative_edge_cases(self, thresholds, total_cost, sample_test_case, sample_execution_trace):
+        """Test that all negative edge cases should pass."""
+        sample_test_case.thresholds = thresholds
+        sample_execution_trace.metrics.total_cost = total_cost
+        evaluator = CostEvaluator()
+
+        result = evaluator.evaluate(sample_test_case, sample_execution_trace)
+        assert result.passed is False  # Negative edge cases should not pass
+
+    @pytest.mark.xfail(reason="Negative cost should not pass, but handled gracefully")
+    @pytest.mark.parametrize("thresholds, total_cost", [(Thresholds(min_score=70.0, max_cost=0.0), -1.0)], ids=["negative_cost"])
+    def test_negative_cost(self, thresholds, total_cost, sample_test_case, sample_execution_trace):
+        """Test that that negative total cost should not pass."""
+        sample_test_case.thresholds = thresholds
+        sample_execution_trace.metrics.total_cost = total_cost
+        evaluator = CostEvaluator()
+
+        result = evaluator.evaluate(sample_test_case, sample_execution_trace)
+        assert result.passed is False  # Negative cost should not pass
+
+    @pytest.mark.xfail(reason="Any cost should not pass with zero threshold")
+    @pytest.mark.parametrize("thresholds, total_cost", [(Thresholds(min_score=70.0, max_cost=0.0), 100.0)], ids=["zero_cost_threshold"])
+    def test_zero_cost_threshold(self, thresholds, total_cost, sample_test_case, sample_execution_trace):
+        """Test that any cost with zero threshold should not pass."""
+        sample_test_case.thresholds = thresholds
+        sample_execution_trace.metrics.total_cost = total_cost
+        evaluator = CostEvaluator()
+
+        result = evaluator.evaluate(sample_test_case, sample_execution_trace)
+        assert result.passed is False # Zero cost threshold should not pass
+
 
 # ============================================================================
 # Latency Evaluator Tests
@@ -1156,3 +1205,49 @@ class TestLatencyEvaluator:
         assert result.passed is True  # Exactly at threshold should pass
         assert result.total_latency == 1000.0
         assert result.threshold == 1000.0
+
+    positive_edge_latency_testdata =  [(Thresholds(min_score=70.0, max_latency=0.01), 0.0)]
+    @pytest.mark.parametrize("thresholds, total_latency", positive_edge_latency_testdata, ids=["zero_latency"])
+    def test_positive_edge_cases(self, thresholds, total_latency, sample_test_case, sample_execution_trace):
+        """Test that all positive edge cases should pass."""
+        sample_test_case.thresholds = thresholds
+        sample_execution_trace.metrics.total_latency = total_latency
+        evaluator = LatencyEvaluator()
+
+        result = evaluator.evaluate(sample_test_case, sample_execution_trace)
+        assert result.passed is True  # Positive edge cases should pass
+    
+    negative_edge_latency_testdata =  [
+        (Thresholds(min_score=70.0, max_latency=0.01), float("inf"))
+    ]
+    @pytest.mark.parametrize("thresholds, total_latency", negative_edge_latency_testdata, ids=["infinite_latency"])
+    def test_negative_edge_cases(self, thresholds, total_latency, sample_test_case, sample_execution_trace):
+        """Test that all negative edge cases should pass."""
+        sample_test_case.thresholds = thresholds
+        sample_execution_trace.metrics.total_latency = total_latency
+        evaluator = LatencyEvaluator()
+
+        result = evaluator.evaluate(sample_test_case, sample_execution_trace)
+        assert result.passed is False  # Negative edge cases should not pass
+
+    @pytest.mark.xfail(reason="Negative cost should not pass, but handled gracefully")
+    @pytest.mark.parametrize("thresholds, total_latency", [(Thresholds(min_score=70.0, max_latency=0.0), -1.0)], ids=["negative_latency"])
+    def test_negative_latency(self, thresholds, total_latency, sample_test_case, sample_execution_trace):
+        """Test that that negative total cost should not pass."""
+        sample_test_case.thresholds = thresholds
+        sample_execution_trace.metrics.total_latency = total_latency
+        evaluator = LatencyEvaluator()
+
+        result = evaluator.evaluate(sample_test_case, sample_execution_trace)
+        assert result.passed is False  # Negative latency should not pass    
+
+    @pytest.mark.xfail(reason="Any latency should not pass with zero threshold")
+    @pytest.mark.parametrize("thresholds, total_latency", [(Thresholds(min_score=70.0, max_latency=0.0), float("inf"))], ids=["zero_latency_threshold"])
+    def test_zero_latency_threshold(self, thresholds, total_latency, sample_test_case, sample_execution_trace):
+        """Test that any latency with zero threshold should not pass."""
+        sample_test_case.thresholds = thresholds
+        sample_execution_trace.metrics.total_latency = total_latency
+        evaluator = LatencyEvaluator()
+
+        result = evaluator.evaluate(sample_test_case, sample_execution_trace)
+        assert result.passed is False  # Negative cost should not pass
