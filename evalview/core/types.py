@@ -5,6 +5,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Optional, List, Dict, Union, Literal
 from pydantic import BaseModel, Field, field_validator, ValidationInfo
+import re
 
 
 # ============================================================================
@@ -180,6 +181,38 @@ class TestCase(BaseModel):
         description="Task difficulty: 'trivial', 'easy', 'medium', 'hard', or 'expert'"
     )
 
+    # ----- Validators -----
+    @field_validator("name", mode="before")
+    def validate_name(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("name must be non-empty")
+        if not re.match(r"^[a-zA-Z0-9_-]+$", v):
+            raise ValueError(
+                "name must contain only alphanumeric characters, hyphens, and underscores"
+            )
+        return v
+
+    @field_validator("suite_type", mode="before")
+    def validate_suite_type(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        allowed = {"capability", "regression"}
+        if v not in allowed:
+            raise ValueError(
+                f"suite_type must be either None or one of: {', '.join(allowed)}"
+            )
+        return v
+
+    @field_validator("adapter", mode="before")
+    def validate_adapter(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        allowed = {"http", "langgraph", "anthropic", "openai", "ollama", "crewai"}
+        if v not in allowed:
+            raise ValueError(
+                f"adapter must be either None or one of: {', '.join(allowed)}"
+            )
+        return v
 
 # ============================================================================
 # Execution Trace Types

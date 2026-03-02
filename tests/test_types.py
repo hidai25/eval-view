@@ -198,6 +198,116 @@ class TestTestCase:
         errors_str = str(exc_info.value)
         assert "input" in errors_str or "expected" in errors_str or "thresholds" in errors_str
 
+    # ----- Name validator tests -----
+    def test_name_validator_valid(self):
+        """Test that valid names are accepted."""
+        valid_names = [
+            "simple",
+            "test-case",
+            "test_case",
+            "test123",
+            "TEST",
+            "a" * 100,
+            "a-b_c",
+        ]
+        for name in valid_names:
+            # No exception should be raised
+            TestCaseModel(
+                name=name,
+                input=TestInputModel(query="test"),
+                expected=ExpectedBehavior(),
+                thresholds=Thresholds(min_score=0)
+            )
+
+    def test_name_validator_invalid(self):
+        """Test that invalid names raise clear errors."""
+        invalid_names = [
+            ("", "non-empty"),                  # empty string
+            ("   ", "non-empty"),                # only spaces
+            ("test name", "alphanumeric"),       # space
+            ("test@name", "alphanumeric"),       # special char
+            ("test.name", "alphanumeric"),       # dot
+            ("test/name", "alphanumeric"),       # slash
+            ("test\\name", "alphanumeric"),      # backslash
+        ]
+        for name, expected_substring in invalid_names:
+            with pytest.raises(ValidationError) as exc_info:
+                TestCaseModel(
+                    name=name,
+                    input=TestInputModel(query="test"),
+                    expected=ExpectedBehavior(),
+                    thresholds=Thresholds(min_score=0)
+                )
+            error_msg = str(exc_info.value)
+            assert expected_substring in error_msg.lower()
+
+    # ----- Suite type validator tests -----
+    def test_suite_type_validator_valid(self):
+        """Test that valid suite_type values (or None) are accepted."""
+        valid_suite_types = [None, "capability", "regression"]
+        for suite_type in valid_suite_types:
+            tc = TestCaseModel(
+                name="test",
+                input=TestInputModel(query="test"),
+                expected=ExpectedBehavior(),
+                thresholds=Thresholds(min_score=0),
+                suite_type=suite_type
+            )
+            assert tc.suite_type == suite_type
+
+    def test_suite_type_validator_invalid(self):
+        """Test that invalid suite_type values raise errors listing allowed options."""
+        invalid_types = ["unknown", "performance", "regress", 123, True]
+        for suite_type in invalid_types:
+            with pytest.raises(ValidationError) as exc_info:
+                TestCaseModel(
+                    name="test",
+                    input=TestInputModel(query="test"),
+                    expected=ExpectedBehavior(),
+                    thresholds=Thresholds(min_score=0),
+                    suite_type=suite_type
+                )
+            error_msg = str(exc_info.value)
+            assert "capability" in error_msg
+            assert "regression" in error_msg
+
+    # ----- Adapter validator tests -----
+    def test_adapter_validator_valid(self):
+        """Test that valid adapter values (or None) are accepted."""
+        valid_adapters = [
+            None,
+            "http",
+            "langgraph",
+            "anthropic",
+            "openai",
+            "ollama",
+            "crewai",
+        ]
+        for adapter in valid_adapters:
+            tc = TestCaseModel(
+                name="test",
+                input=TestInputModel(query="test"),
+                expected=ExpectedBehavior(),
+                thresholds=Thresholds(min_score=0),
+                adapter=adapter
+            )
+            assert tc.adapter == adapter
+
+    def test_adapter_validator_invalid(self):
+        """Test that invalid adapter values raise errors listing allowed options."""
+        invalid_adapters = ["fake", "unknown", "", "custom", 42]
+        for adapter in invalid_adapters:
+            with pytest.raises(ValidationError) as exc_info:
+                TestCaseModel(
+                    name="test",
+                    input=TestInputModel(query="x"),
+                    expected=ExpectedBehavior(),
+                    thresholds=Thresholds(min_score=0),
+                    adapter=adapter
+                )
+            error_msg = str(exc_info.value)
+            for allowed in ["http", "langgraph", "anthropic", "openai", "ollama", "crewai"]:
+                assert allowed in error_msg
 
 # ============================================================================
 # Execution Trace Types Tests
