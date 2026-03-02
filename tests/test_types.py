@@ -209,6 +209,9 @@ class TestTestCase:
             "TEST",
             "a" * 100,
             "a-b_c",
+            "Hello World - Calculator",  # spaces allowed
+            "test.name",                 # dots allowed
+            "My First Test",             # natural language names
         ]
         for name in valid_names:
             # No exception should be raised
@@ -224,11 +227,9 @@ class TestTestCase:
         invalid_names = [
             ("", "non-empty"),                  # empty string
             ("   ", "non-empty"),                # only spaces
-            ("test name", "alphanumeric"),       # space
-            ("test@name", "alphanumeric"),       # special char
-            ("test.name", "alphanumeric"),       # dot
-            ("test/name", "alphanumeric"),       # slash
-            ("test\\name", "alphanumeric"),      # backslash
+            ("test@name", "alphanumeric"),       # @ not allowed
+            ("test/name", "alphanumeric"),       # slash not allowed
+            ("test\\name", "alphanumeric"),      # backslash not allowed
         ]
         for name, expected_substring in invalid_names:
             with pytest.raises(ValidationError) as exc_info:
@@ -282,6 +283,12 @@ class TestTestCase:
             "openai",
             "ollama",
             "crewai",
+            "tapescope",
+            "openai-assistants",
+            "streaming",
+            "huggingface",
+            "goose",
+            "mcp",
         ]
         for adapter in valid_adapters:
             tc = TestCaseModel(

@@ -186,9 +186,9 @@ class TestCase(BaseModel):
     def validate_name(cls, v: str) -> str:
         if not v or not v.strip():
             raise ValueError("name must be non-empty")
-        if not re.match(r"^[a-zA-Z0-9_-]+$", v):
+        if not re.match(r"^[a-zA-Z0-9 _\-\.]+$", v):
             raise ValueError(
-                "name must contain only alphanumeric characters, hyphens, and underscores"
+                "name must contain only alphanumeric characters, spaces, hyphens, underscores, and dots"
             )
         return v
 
@@ -207,7 +207,10 @@ class TestCase(BaseModel):
     def validate_adapter(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
             return v
-        allowed = {"http", "langgraph", "anthropic", "openai", "ollama", "crewai"}
+        allowed = {
+            "http", "langgraph", "anthropic", "openai", "ollama", "crewai",
+            "tapescope", "openai-assistants", "streaming", "huggingface", "goose", "mcp",
+        }
         if v not in allowed:
             raise ValueError(
                 f"adapter must be either None or one of: {', '.join(allowed)}"
