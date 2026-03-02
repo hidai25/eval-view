@@ -263,8 +263,66 @@ jobs:
     console.print("[dim]  3. EvalView will check agent health on every PR[/dim]\n")
 
 
+def _detect_agent_endpoint() -> Optional[str]:
+    """Scan common ports and paths for a running agent. Returns URL or None."""
+    import socket
+
+    ports = [8090, 8000, 8080, 3000, 3001, 5000, 5001, 8888, 8081, 4000]
+    paths = ["/invoke", "/api/chat", "/api/agent", "/run", "/chat", "/", "/health"]
+
+    # Fast port scan first (connect only, no HTTP)
+    open_ports = []
+    for port in ports:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.2)
+            if s.connect_ex(("127.0.0.1", port)) == 0:
+                open_ports.append(port)
+
+    if not open_ports:
+        return None
+
+    # Try HTTP on open ports
+    for port in open_ports:
+        for path in paths:
+            url = f"http://localhost:{port}{path}"
+            try:
+                r = httpx.get(url, timeout=1.0)
+                if r.status_code < 500:
+                    return url
+            except Exception:
+                continue
+            try:
+                r = httpx.post(url, json={"query": "ping"}, timeout=1.0)
+                if r.status_code < 500:
+                    return url
+            except Exception:
+                continue
+
+    # Fall back to base URL of first open port
+    return f"http://localhost:{open_ports[0]}"
+
+
+def _detect_model() -> Optional[str]:
+    """Infer model from environment variables."""
+    env = os.environ
+
+    # Anthropic key → Claude
+    if env.get("ANTHROPIC_API_KEY"):
+        return "claude-sonnet-4-6"
+
+    # OpenAI key → GPT
+    if env.get("OPENAI_API_KEY"):
+        return "gpt-4o-mini"
+
+    # Google key → Gemini
+    if env.get("GEMINI_API_KEY") or env.get("GOOGLE_API_KEY"):
+        return "gemini-2.0-flash"
+
+    return None
+
+
 def _init_standard(dir: str, interactive: bool):
-    """Standard init flow (non-wizard)."""
+    """Standard init flow — auto-detects agent and model, asks only when needed."""
     console.print("[blue]━━━ EvalView Setup ━━━[/blue]\n")
 
     base_path = Path(dir)
@@ -273,77 +331,35 @@ def _init_standard(dir: str, interactive: bool):
     (base_path / ".evalview").mkdir(exist_ok=True)
     (base_path / "tests" / "test-cases").mkdir(parents=True, exist_ok=True)
 
-    # Interactive configuration
+    # ── Auto-detect ──────────────────────────────────────────────────────────
+    console.print("[dim]Scanning for running agents...[/dim]")
+    detected_endpoint = _detect_agent_endpoint()
+    detected_model = _detect_model()
+
     adapter_type = "http"
-    endpoint = "http://localhost:3000/api/agent"
     timeout = 30.0
-    model_name = "gpt-5-mini"
     custom_pricing = None
 
-    if interactive:
-        console.print("[bold]Step 1: API Configuration[/bold]")
+    if detected_endpoint:
+        console.print(f"[green]✓ Found agent at {detected_endpoint}[/green]")
+        endpoint = detected_endpoint
+    else:
+        console.print("[yellow]  No agent found running locally.[/yellow]")
+        endpoint = click.prompt(
+            "  Agent URL", default="http://localhost:8000"
+        )
 
-        # Ask adapter type
-        console.print("\nWhat type of API does your agent use?")
-        console.print("  1. Standard REST API (returns complete JSON)")
-        console.print("  2. Streaming API (JSONL/Server-Sent Events)")
-        adapter_choice = click.prompt("Choice", type=int, default=1)
-        adapter_type = "streaming" if adapter_choice == 2 else "http"
+    if detected_model:
+        console.print(f"[green]✓ Detected model: {detected_model}[/green]")
+        model_name = detected_model
+    else:
+        console.print("[yellow]  Could not detect model from environment.[/yellow]")
+        model_name = click.prompt(
+            "  Model name (e.g. claude-sonnet-4-6, gpt-4o-mini)",
+            default="gpt-4o-mini",
+        )
 
-        # Ask endpoint
-        endpoint = click.prompt("\nAPI endpoint URL", default=endpoint)
-        timeout = click.prompt("Timeout (seconds)", type=float, default=timeout)
-
-        console.print("\n[bold]Step 2: Model & Pricing Configuration[/bold]")
-        console.print("\nWhich model does your agent use?")
-        console.print("  1. gpt-5-mini (recommended for testing)")
-        console.print("  2. gpt-5")
-        console.print("  3. gpt-5-nano")
-        console.print("  4. gpt-4o or gpt-4o-mini")
-        console.print("  5. Custom model")
-
-        model_choice = click.prompt("Choice", type=int, default=1)
-
-        model_map = {
-            1: "gpt-5-mini",
-            2: "gpt-5",
-            3: "gpt-5-nano",
-            4: "gpt-4o-mini",
-        }
-
-        if model_choice == 5:
-            model_name = click.prompt("Model name")
-        else:
-            model_name = model_map.get(model_choice, "gpt-5-mini")
-
-        # Show pricing
-        pricing = get_model_pricing_info(model_name)
-        console.print(f"\n[cyan]Pricing for {model_name}:[/cyan]")
-        console.print(f"  • Input tokens:  ${pricing['input_price_per_1m']:.2f} per 1M tokens")
-        console.print(f"  • Output tokens: ${pricing['output_price_per_1m']:.2f} per 1M tokens")
-        console.print(f"  • Cached tokens: ${pricing['cached_price_per_1m']:.3f} per 1M tokens")
-
-        # Ask if pricing is correct
-        if click.confirm("\nIs this pricing correct for your use case?", default=True):
-            console.print("[green]✅ Using standard pricing[/green]")
-        else:
-            console.print("\n[yellow]Let's set custom pricing:[/yellow]")
-            input_price = click.prompt(
-                "Input tokens ($ per 1M)", type=float, default=pricing["input_price_per_1m"]
-            )
-            output_price = click.prompt(
-                "Output tokens ($ per 1M)", type=float, default=pricing["output_price_per_1m"]
-            )
-            cached_price = click.prompt(
-                "Cached tokens ($ per 1M)", type=float, default=pricing["cached_price_per_1m"]
-            )
-
-            custom_pricing = {
-                "input": input_price,
-                "output": output_price,
-                "cached": cached_price,
-            }
-            console.print("[green]✅ Custom pricing saved[/green]")
+    console.print("[dim]  Change these anytime in .evalview/config.yaml[/dim]\n")
 
     # Create config file
     config_path = base_path / ".evalview" / "config.yaml"
