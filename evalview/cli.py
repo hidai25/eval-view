@@ -586,26 +586,24 @@ pydantic>=2.0.0
     from evalview.cloud.auth import CloudAuth
     logged_in = CloudAuth().is_logged_in()
 
-    snapshot_line = (
-        "   [cyan]evalview snapshot[/cyan]   [dim]← captures baseline + syncs to cloud[/dim]"
-        if logged_in else
-        "   [cyan]evalview snapshot[/cyan]"
-    )
+    # Build context-aware next steps
+    if detected_endpoint:
+        step1 = f"[bold]✓[/bold] Agent detected at [cyan]{detected_endpoint}[/cyan]"
+    else:
+        step1 = "[bold]1.[/bold] Start your agent, then run [cyan]evalview init[/cyan] again"
 
-    console.print(Panel(
-        "[bold]1.[/bold] Start the demo agent\n"
-        "   [cyan]pip install fastapi uvicorn[/cyan]\n"
-        "   [cyan]python demo-agent/agent.py[/cyan]\n\n"
-        "[bold]2.[/bold] Set an API key\n"
-        "   [cyan]export OPENAI_API_KEY='sk-...'[/cyan]\n\n"
-        "[bold]3.[/bold] Capture a baseline\n"
-        f"{snapshot_line}\n\n"
-        "[bold]4.[/bold] Check for regressions anytime\n"
-        "   [cyan]evalview check[/cyan]\n\n"
-        "[dim]Edit tests/test-cases/example.yaml to test your own agent[/dim]",
-        title="Quick Start",
-        border_style="blue",
-    ))
+    if detected_model:
+        step2 = f"[bold]✓[/bold] Model detected: [cyan]{detected_model}[/cyan]"
+    else:
+        step2 = "[bold]2.[/bold] Set an API key\n   [cyan]export ANTHROPIC_API_KEY='sk-...'[/cyan]"
+
+    snapshot_suffix = "   [dim]← syncs to cloud[/dim]" if logged_in else ""
+    step3 = f"[bold]→[/bold] Capture a baseline\n   [cyan]evalview snapshot[/cyan]{snapshot_suffix}"
+    step4 = "[bold]→[/bold] Check for regressions anytime\n   [cyan]evalview check[/cyan]"
+
+    body = f"{step1}\n{step2}\n\n{step3}\n\n{step4}\n\n[dim]Edit tests/test-cases/example.yaml to match your agent's queries[/dim]"
+
+    console.print(Panel(body, title="You're set up", border_style="green"))
 
 
 @main.command()
