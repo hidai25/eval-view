@@ -264,6 +264,32 @@ class ConsoleReporter:
             table.add_row(*row)
 
         self.console.print(table)
+
+        # For passing tests with a notably low score, show which sub-score
+        # pulled it down so users understand what happened at a glance.
+        low_score_notes = []
+        for result in results:
+            if result.passed and result.score < 75:
+                output_score = result.evaluations.output_quality.score if result.evaluations.output_quality else None
+                tool_accuracy = result.evaluations.tool_accuracy.accuracy if result.evaluations.tool_accuracy else None
+                if output_score is not None and output_score < 50:
+                    low_score_notes.append(
+                        f"[dim]  {result.test_case}: score {result.score:.0f} — "
+                        f"output quality {output_score:.0f}/100"
+                        + (" (tools were correct)" if tool_accuracy and tool_accuracy >= 0.8 else "")
+                        + "[/dim]"
+                    )
+                elif tool_accuracy is not None and tool_accuracy < 0.8:
+                    low_score_notes.append(
+                        f"[dim]  {result.test_case}: score {result.score:.0f} — "
+                        f"tool accuracy {tool_accuracy*100:.0f}%[/dim]"
+                    )
+
+        if low_score_notes:
+            self.console.print("[dim]Low scores:[/dim]")
+            for note in low_score_notes:
+                self.console.print(note)
+
         self.console.print()
 
         # Calculate suite-type breakdowns
