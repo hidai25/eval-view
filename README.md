@@ -420,6 +420,7 @@ EvalView fills a gap that observability and evaluation platforms don't cover:
 | Works without API keys | No | No | Partial | **Yes** |
 | Free & open source | No | No | Yes | **Yes** |
 | Works fully offline (Ollama) | No | Partial | Partial | **Yes** |
+| Team baseline sync (cloud) | Paid | Paid | No | **Yes (free, opt-in)** |
 | Agent framework adapters | LangChain only | Generic | Generic | **LangGraph, CrewAI, OpenAI, Claude, HF, Ollama, MCP** |
 | Skills testing (SKILL.md) | No | No | No | **Yes** |
 | Statistical mode (pass@k) | No | No | No | **Yes** |
@@ -534,6 +535,77 @@ PRs with regressions get blocked. Add a PR comment showing exactly what changed:
 ```
 
 [Full CI/CD setup →](docs/CI_CD.md)
+
+---
+
+## EvalView Cloud — Team Baseline Sync
+
+**Share golden baselines across your entire team.** When you log in to EvalView Cloud, every `evalview snapshot` automatically pushes your golden baselines to secure cloud storage. Every `evalview check` silently pulls any baselines you don't have locally — so a new teammate clones the repo and immediately has regression detection, with zero manual baseline sharing.
+
+Opt-in. Offline-first. Cloud errors are dim warnings — your local workflow is never blocked.
+
+### Setup (one command)
+
+```bash
+evalview login
+```
+
+This opens GitHub OAuth in your browser. The entire flow takes about 10 seconds. After that, `snapshot` and `check` sync automatically — no other configuration needed.
+
+```
+╭─ EvalView Cloud ─────────────────────────────────────────────────────────────╮
+│                                                                               │
+│  ✓ Logged in as you@example.com                                               │
+│                                                                               │
+│  Your golden baselines will now sync to cloud automatically.                  │
+│                                                                               │
+│  Next step:                                                                   │
+│    evalview snapshot   push your existing baselines to cloud                  │
+╰───────────────────────────────────────────────────────────────────────────────╯
+```
+
+### Commands
+
+| Command | What it does |
+|---------|-------------|
+| `evalview login` | Authenticate with GitHub and enable automatic sync |
+| `evalview logout` | Disconnect — local baselines are untouched |
+| `evalview whoami` | Show currently logged-in account and user ID |
+
+### How Sync Works
+
+```
+Developer A                                   Developer B
+───────────────────────────────               ──────────────────────────────────
+evalview snapshot                             git clone <repo>
+  ✅ Baseline saved: weather-lookup           evalview check
+  ☁  Synced to cloud                           → pulls weather-lookup from cloud
+                                               ✅ All clean! No regressions.
+```
+
+**After `evalview snapshot`** — all passing golden baselines are pushed to cloud storage via upsert. A passing `☁  Synced to cloud` note is printed below the snapshot summary. If you're offline, `⚠  Cloud sync skipped (offline?)` is printed instead — the local baseline is still saved and your streak continues uninterrupted.
+
+**Before `evalview check`** — EvalView pulls any baselines that exist in the cloud but not locally. This is a fill-in-the-gaps pull: existing local baselines are never overwritten. The pull is completely silent — nothing is printed unless there's an error.
+
+### Security Model
+
+| Concern | How EvalView handles it |
+|---------|------------------------|
+| **Token storage** | Saved to `~/.evalview/auth.json` with `chmod 600` — readable only by you, never by other system users |
+| **Data isolation** | Every golden is stored under your user ID path (`{user_id}/test-name.golden.json`). Supabase RLS policies enforce that users can only access their own folder — not other users' baselines, even with a valid token |
+| **What's uploaded** | Only golden baseline JSON: tool names, output text, and scores. Source code, prompts, and agent secrets are never uploaded |
+| **Opt-in only** | Zero cloud calls are made unless you're logged in. Run `evalview logout` to stop all sync immediately |
+
+### Troubleshooting
+
+**`⚠  Cloud sync skipped (offline?)`**
+Your machine couldn't reach the cloud. The local baseline was saved normally. Sync resumes automatically on your next online `evalview snapshot`.
+
+**`Unauthorized — token may be expired`**
+Run `evalview logout && evalview login` to refresh your session. This takes about 10 seconds.
+
+**Switching accounts?**
+`evalview logout` then `evalview login`. Local baselines are never deleted on logout.
 
 ---
 
@@ -677,6 +749,7 @@ difficulty: medium                    # trivial | easy | medium | hard | expert
 | **`forbidden_tools`** | Declare tools that must never be called — hard-fail on any violation, score 0, no partial credit | [Docs](#forbidden-tool-contracts--html-trace-replay--llm-judge-caching) |
 | **HTML Trace Replay** | Step-by-step replay of every LLM call and tool invocation — exact prompt, completion, tokens, params | [Docs](#html-trace-replay--full-forensic-debugging) |
 | **LLM Judge Caching** | Cache judge responses in statistical mode — ~80% fewer API calls, stored in `.evalview/.judge_cache.db` | [Docs](#llm-judge-caching--80-cost-reduction-in-statistical-mode) |
+| **Cloud Baseline Sync** | `evalview login` — golden baselines sync to cloud automatically after every snapshot; new teammates pull them before every check | [Docs](#evalview-cloud--team-baseline-sync) |
 | **Snapshot/Check Workflow** | Simple `snapshot` then `check` commands for regression detection | [Docs](docs/GOLDEN_TRACES.md) |
 | **Silent Model Update Detection** | Captures model version at snapshot time; alerts when provider silently swaps the model | [Docs](#detecting-silent-model-updates) |
 | **Gradual Drift Detection** | OLS regression over 10-check window catches slow similarity decline that single-threshold checks miss | [Docs](#gradual-drift-detection) |
@@ -863,7 +936,7 @@ evalview skill test tests.yaml --agent langgraph
 
 ## Roadmap
 
-**Shipped:** Golden traces • **Snapshot/check workflow** • **Streak tracking & celebrations** • **Multi-reference goldens** • Tool categories • Statistical mode • Difficulty levels • Partial sequence credit • Skills validation • E2E agent testing • Build & smoke tests • Health checks • Safety guards (`no_sudo`, `git_clean`) • Claude Code & Codex adapters • **Opus 4.6 cost tracking** • MCP servers • HTML reports • Interactive chat mode • EvalView Gym • **Provider-agnostic skill tests** • **15-template pattern library** • **Personalized init wizard** • **`forbidden_tools` safety contracts** • **HTML trace replay** (exact prompt/completion per step) • **Silent model update detection** (model fingerprinting + version change panel) • **Gradual drift detection** (OLS trend analysis over JSONL history) • **Semantic diff** (`--semantic-diff`, embedding-based output comparison)
+**Shipped:** Golden traces • **Snapshot/check workflow** • **Cloud baseline sync (login/logout/whoami + silent push/pull)** • **Streak tracking & celebrations** • **Multi-reference goldens** • Tool categories • Statistical mode • Difficulty levels • Partial sequence credit • Skills validation • E2E agent testing • Build & smoke tests • Health checks • Safety guards (`no_sudo`, `git_clean`) • Claude Code & Codex adapters • **Opus 4.6 cost tracking** • MCP servers • HTML reports • Interactive chat mode • EvalView Gym • **Provider-agnostic skill tests** • **15-template pattern library** • **Personalized init wizard** • **`forbidden_tools` safety contracts** • **HTML trace replay** (exact prompt/completion per step) • **Silent model update detection** (model fingerprinting + version change panel) • **Gradual drift detection** (OLS trend analysis over JSONL history) • **Semantic diff** (`--semantic-diff`, embedding-based output comparison)
 
 **Coming:** Agent Teams trace analysis • Multi-turn conversations • Grounded hallucination detection • Error compounding metrics • Container isolation
 
