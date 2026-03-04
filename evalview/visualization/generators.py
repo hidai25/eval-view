@@ -36,7 +36,7 @@ def _mermaid_trace(result: "EvaluationResult") -> str:
         pass
 
     if not steps:
-        return "sequenceDiagram\n    Note over Agent: No tool calls"
+        return "sequenceDiagram\n    Note over Agent: Direct response — no tools used"
 
     lines = ["sequenceDiagram"]
     lines.append("    participant User")
@@ -48,7 +48,7 @@ def _mermaid_trace(result: "EvaluationResult") -> str:
         if tool not in seen_tools:
             alias = f"T{len(seen_tools)}"
             seen_tools[tool] = alias
-            short = tool[:20]
+            short = tool[:32]
             lines.append(f"    participant {alias} as {short}")
 
     # Input
@@ -75,6 +75,15 @@ def _mermaid_trace(result: "EvaluationResult") -> str:
     lines.append(f"    Agent-->>User: {_safe_mermaid(short_out)}")
 
     return "\n".join(lines)
+
+
+def _strip_markdown(text: str) -> str:
+    """Remove common markdown symbols for clean display in HTML."""
+    import re
+    text = re.sub(r'\*{1,3}(.+?)\*{1,3}', r'\1', text)   # bold / italic
+    text = re.sub(r'`(.+?)`', r'\1', text)                 # inline code
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)  # headings
+    return text
 
 
 def _safe_mermaid(s: str) -> str:
@@ -213,7 +222,7 @@ def generate_visual_report(
             "tokens": f"{tokens:,} tokens" if tokens else "",
             "score": round(r.score, 1),
             "query": getattr(r, "input_query", "") or "",
-            "output": getattr(r, "actual_output", "") or "",
+            "output": _strip_markdown(getattr(r, "actual_output", "") or ""),
         })
     diff_rows = _diff_rows(diffs or [])
     timeline = _timeline_data(results)
@@ -560,13 +569,14 @@ table tr:hover td{background:rgba(255,255,255,.02)}
 
     <!-- Cost per query breakdown -->
     <div class="card">
-      <div class="card-title">Cost per Query (LLM API cost to serve each user request)</div>
+      <div class="card-title">Cost per Query</div>
       <table style="width:100%;border-collapse:collapse;font-size:13px">
+        {% set has_tokens = traces | selectattr('tokens') | list | length > 0 %}
         <thead>
           <tr>
             <th style="text-align:left;padding:8px 12px;color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)">Test</th>
             <th style="text-align:left;padding:8px 12px;color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)">LLM Cost</th>
-            <th style="text-align:left;padding:8px 12px;color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)">Tokens</th>
+            {% if has_tokens %}<th style="text-align:left;padding:8px 12px;color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)">Tokens</th>{% endif %}
             <th style="text-align:left;padding:8px 12px;color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)">Latency</th>
             <th style="text-align:left;padding:8px 12px;color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)">Score</th>
           </tr>
@@ -576,7 +586,7 @@ table tr:hover td{background:rgba(255,255,255,.02)}
           <tr>
             <td style="padding:10px 12px;border-bottom:1px solid var(--border);font-weight:500">{{ t.name }}</td>
             <td style="padding:10px 12px;border-bottom:1px solid var(--border);font-family:monospace;color:{% if t.cost == '$0' %}var(--muted){% else %}var(--blue){% endif %};font-weight:600">{{ t.cost }}</td>
-            <td style="padding:10px 12px;border-bottom:1px solid var(--border);color:var(--muted)">{{ t.tokens or '—' }}</td>
+            {% if has_tokens %}<td style="padding:10px 12px;border-bottom:1px solid var(--border);color:var(--muted)">{{ t.tokens or '—' }}</td>{% endif %}
             <td style="padding:10px 12px;border-bottom:1px solid var(--border);color:var(--muted)">{{ t.latency }}</td>
             <td style="padding:10px 12px;border-bottom:1px solid var(--border);font-weight:700;color:{% if t.score >= 80 %}var(--green){% elif t.score >= 60 %}var(--yellow){% else %}var(--red){% endif %}">{{ t.score }}</td>
           </tr>
@@ -584,7 +594,7 @@ table tr:hover td{background:rgba(255,255,255,.02)}
           <tr style="background:rgba(255,255,255,.02)">
             <td style="padding:10px 12px;font-weight:700;color:var(--text)">Total</td>
             <td style="padding:10px 12px;font-family:monospace;font-weight:700;color:var(--blue)">${{ kpis.total_cost }}</td>
-            <td colspan="3" style="padding:10px 12px;font-size:11px;color:var(--muted)">avg ${{ '%.6f'|format(kpis.total_cost / kpis.total) if kpis.total else '0' }} per query</td>
+            <td colspan="{{ 3 if has_tokens else 2 }}" style="padding:10px 12px;font-size:11px;color:var(--muted)">avg ${{ '%.6f'|format(kpis.total_cost / kpis.total) if kpis.total else '0' }} per query</td>
           </tr>
         </tbody>
       </table>
