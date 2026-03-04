@@ -38,10 +38,6 @@ pip install evalview && evalview demo   # Uses your configured API key
   <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
 </p>
 
-<p align="center">
-  Like it? Give us a star — it helps more devs discover EvalView.
-</p>
-
 ---
 
 ## What is EvalView?
@@ -434,15 +430,16 @@ Available patterns: `tool-not-called` · `wrong-tool-chosen` · `tool-error-hand
 
 ## Visual Reports & Claude Code MCP
 
-**Beautiful HTML reports** — one command, auto-opens in browser:
+**Every `evalview run` automatically opens an interactive HTML report in your browser.** No flag needed.
+
+The report includes tabbed **Overview** (KPI cards, score charts, cost-per-query table), **Execution Trace** (Mermaid sequence diagrams per test with full query/response), **Diffs** (golden vs actual with similarity scores), and **Timeline** (per-step latencies). Glassmorphism dark theme, fully self-contained HTML — safe to attach to PRs or Slack.
 
 ```bash
-evalview inspect                          # Latest run → visual report
-evalview inspect latest --notes "PR #42"  # With context
-evalview visualize --compare run1.json --compare run2.json  # Side-by-side runs
+evalview run                              # Runs tests and opens report automatically
+evalview run --no-open                    # Run without opening browser (CI-safe; CI env auto-detected)
+evalview inspect latest --notes "PR #42" # Regenerate report for a past run
+evalview visualize --compare run1.json --compare run2.json  # Side-by-side comparison
 ```
-
-The report includes tabbed **Overview** (KPI cards, score charts, cost-per-query table), **Execution Trace** (Mermaid sequence diagrams with full query/response), **Diffs** (golden vs actual), and **Timeline** (step latencies). Glassmorphism dark theme, auto-opens in browser, fully self-contained HTML.
 
 **Claude Code MCP** — ask Claude inline without leaving your conversation:
 
@@ -511,6 +508,25 @@ Also works with: AutoGen • Dify • Ollama • HuggingFace • Any HTTP API
 ---
 
 ## CI/CD Integration
+
+### The easiest path — git hooks
+
+Run `evalview check` automatically before every push, with zero CI configuration:
+
+```bash
+evalview install-hooks          # Adds evalview check to your pre-push hook
+evalview install-hooks --hook pre-commit   # Or on every commit instead
+```
+
+The hook is safe by default: if no golden baseline exists yet, it exits silently and never blocks a push. When baselines exist, it runs `evalview check --fail-on REGRESSION` and blocks the push only on regressions.
+
+```bash
+evalview uninstall-hooks        # Remove cleanly — other hook content preserved
+```
+
+Works in worktrees. No CI account, no YAML, no secrets needed.
+
+---
 
 ### GitHub Actions
 
@@ -797,7 +813,8 @@ difficulty: medium                    # trivial | easy | medium | hard | expert
 | **Silent Model Update Detection** | Captures model version at snapshot time; alerts when provider silently swaps the model | [Docs](#detecting-silent-model-updates) |
 | **Gradual Drift Detection** | OLS regression over 10-check window catches slow similarity decline that single-threshold checks miss | [Docs](#gradual-drift-detection) |
 | **Semantic Similarity** | `--semantic-diff` uses OpenAI embeddings to score outputs by meaning, not wording | [Docs](#semantic-similarity---semantic-diff) |
-| **Visual Reports** | `evalview inspect` — interactive HTML with traces, diffs, cost-per-query | [Docs](#visual-reports--claude-code-mcp) |
+| **Auto-Open Visual Reports** | Every `evalview run` opens an interactive HTML report — KPI cards, Mermaid trace diagrams, diffs, cost-per-query. `--no-open` for CI. | [Docs](#visual-reports--claude-code-mcp) |
+| **Git Hook Integration** | `evalview install-hooks` — injects `evalview check` into pre-push (or pre-commit). Automatic regression blocking with zero CI config. | [Docs](#cicd-integration) |
 | **Claude Code MCP** | 8 tools — run checks, generate tests, test skills, generate visual reports inline | [Docs](#claude-code-integration-mcp) |
 | **Streak Tracking** | Habit-forming celebrations for consecutive clean checks | [Docs](docs/GOLDEN_TRACES.md) |
 | **Multi-Reference Goldens** | Save up to 5 variants per test for non-deterministic agents | [Docs](docs/GOLDEN_TRACES.md) |
