@@ -7845,6 +7845,169 @@ def visualize_cmd(target: str, compare: tuple, title: Optional[str], notes: str,
         console.print(f"  {passed}/{total} tests passing ({rate}%)\n")
 
 
+# ── compare command ────────────────────────────────────────────────────────────
+
+async def _compare_async(
+    v1: str,
+    v2: str,
+    tests_path: str,
+    adapter_type: Optional[str],
+    label_v1: str,
+    label_v2: str,
+    no_open: bool,
+    no_judge: bool,
+) -> None:
+    """Run same tests against two endpoints and generate a side-by-side comparison."""
+    from evalview.core.parallel import execute_tests_parallel
+    from evalview.reporters.json_reporter import JSONReporter
+    from evalview.visualization import generate_visual_report
+    from rich.table import Table
+    from datetime import datetime as _dt
+
+    print_evalview_banner(console, subtitle="[dim]A/B Endpoint Comparison[/dim]")
+
+    # Load config for adapter type / timeout fallback
+    config_path = Path(".evalview/config.yaml")
+    config: Dict[str, Any] = {}
+    if config_path.exists():
+        with open(config_path) as f:
+            config = yaml.safe_load(f) or {}
+
+    _adapter_type = adapter_type or config.get("adapter", "http")
+    timeout = float(config.get("timeout", 30.0))
+
+    # Provider selection (once, shared across both runs)
+    if no_judge:
+        console.print("[yellow]⚠  --no-judge: skipping LLM-as-judge. Deterministic scoring only.[/yellow]\n")
+    else:
+        result = get_or_select_provider(console)
+        if result is None:
+            return
+
+    evaluator = Evaluator(skip_llm_judge=no_judge)
+
+    # Load test cases
+    tests_dir = Path(tests_path)
+    if not tests_dir.exists():
+        console.print(f"[red]❌ Tests directory not found: {tests_path}[/red]")
+        return
+
+    test_cases = TestCaseLoader.load_from_directory(tests_dir, "*.yaml")
+    if not test_cases:
+        console.print(f"[yellow]⚠  No test cases found in {tests_path}[/yellow]")
+        return
+
+    console.print(f"[blue]Loaded {len(test_cases)} test case(s)[/blue]\n")
+
+    # Run tests against one endpoint, return results
+    async def _run_endpoint(endpoint: str, label: str) -> List[Any]:
+        console.print(f"[cyan]◈ Running against {label}:[/cyan] [dim]{endpoint}[/dim]")
+        adapter = _create_adapter(_adapter_type, endpoint, timeout=timeout, allow_private_urls=True)
+
+        async def _execute(test_case: Any) -> Any:
+            context = dict(test_case.input.context) if test_case.input.context else {}
+            trace = await adapter.execute(test_case.input.query, context)
+            return await evaluator.evaluate(test_case, trace, adapter_name=getattr(adapter, "name", None))
+
+        parallel_results = await execute_tests_parallel(
+            test_cases,
+            _execute,
+            max_workers=8,
+            on_complete=lambda name, _ok, res: console.print(
+                f"  {'[green]✓[/green]' if (res and res.passed) else '[red]✗[/red]'} {name}"
+            ),
+        )
+        results = [pr.result for pr in parallel_results if pr.result is not None]
+        passed_count = sum(1 for r in results if r.passed)
+        console.print(f"  [dim]{passed_count}/{len(results)} passing[/dim]\n")
+        return results
+
+    results_v1 = await _run_endpoint(v1, label_v1)
+    results_v2 = await _run_endpoint(v2, label_v2)
+
+    if not results_v1 or not results_v2:
+        console.print("[red]❌ No results to compare.[/red]")
+        return
+
+    # Save both result sets
+    ts = _dt.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = Path(".evalview/results")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    file_v1 = output_dir / f"compare_{ts}_{label_v1}.json"
+    file_v2 = output_dir / f"compare_{ts}_{label_v2}.json"
+    JSONReporter.save(results_v1, file_v1)
+    JSONReporter.save(results_v2, file_v2)
+
+    # Generate comparison visual report
+    report_path = generate_visual_report(
+        results=results_v1,
+        compare_results=[results_v2],
+        compare_labels=[label_v1, label_v2],
+        title=f"Comparison: {label_v1} vs {label_v2}",
+        notes=f"{v1}  →  {v2}",
+        auto_open=not no_open and not os.environ.get("CI"),
+    )
+    console.print(f"[green]✓ Comparison report:[/green] {report_path}\n")
+
+    # Summary table
+    table = Table(show_header=True, header_style="bold cyan")
+    table.add_column("Test", style="dim", min_width=20)
+    table.add_column(label_v1, justify="center")
+    table.add_column(label_v2, justify="center")
+    table.add_column("Δ Score", justify="right")
+
+    v1_by_name = {r.test_case: r for r in results_v1}
+    v2_by_name = {r.test_case: r for r in results_v2}
+    for name in sorted(v1_by_name):
+        r1 = v1_by_name[name]
+        r2 = v2_by_name.get(name)
+        if r2 is None:
+            continue
+        delta = r2.score - r1.score
+        delta_str = (
+            f"[green]+{delta:.1f}[/green]" if delta > 1
+            else f"[red]{delta:.1f}[/red]" if delta < -1
+            else "[dim]≈0[/dim]"
+        )
+        s1 = f"[green]{r1.score:.1f}[/green]" if r1.passed else f"[red]{r1.score:.1f}[/red]"
+        s2 = f"[green]{r2.score:.1f}[/green]" if r2.passed else f"[red]{r2.score:.1f}[/red]"
+        table.add_row(name, s1, s2, delta_str)
+
+    console.print(table)
+    console.print()
+
+
+@main.command("compare")
+@click.option("--v1", required=True, help="Baseline agent endpoint URL")
+@click.option("--v2", required=True, help="Candidate agent endpoint URL")
+@click.option("--tests", "tests_path", default="tests", show_default=True, help="Test directory")
+@click.option("--adapter", "adapter_type", default=None, help="Adapter type (default: from config or http)")
+@click.option("--label-v1", default="baseline", show_default=True, help="Label for v1 in the report")
+@click.option("--label-v2", default="candidate", show_default=True, help="Label for v2 in the report")
+@click.option("--no-open", is_flag=True, help="Don't auto-open report in browser")
+@click.option("--no-judge", is_flag=True, help="Skip LLM-as-judge, use deterministic scoring only")
+@track_command("compare")
+def compare_cmd(
+    v1: str,
+    v2: str,
+    tests_path: str,
+    adapter_type: Optional[str],
+    label_v1: str,
+    label_v2: str,
+    no_open: bool,
+    no_judge: bool,
+) -> None:
+    """Run the same tests against two agent endpoints and compare results.
+
+    \b
+    Examples:
+        evalview compare --v1 http://localhost:8000 --v2 http://localhost:8001
+        evalview compare --v1 http://staging-v1/agent --v2 http://staging-v2/agent --label-v1 gpt4o --label-v2 o3
+        evalview compare --v1 http://old --v2 http://new --no-judge --no-open
+    """
+    asyncio.run(_compare_async(v1, v2, tests_path, adapter_type, label_v1, label_v2, no_open, no_judge))
+
+
 @main.command()
 @click.option(
     "--provider",
