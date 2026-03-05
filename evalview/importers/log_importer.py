@@ -266,7 +266,6 @@ def entries_to_yaml(
             if numbers:
                 test["expected"]["output"] = {"contains": numbers}
 
-        # Remove empty expected dict
         if not test["expected"]:
             test["expected"] = {}
 

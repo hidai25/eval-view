@@ -10224,15 +10224,12 @@ def benchmark_cmd(
 
     for d in domains_to_run:
         cases = get_pack(d)
-        dest = Path(output_dir) if output_dir else Path("tests") / "benchmarks" / d
-
         console.print(f"\n[cyan]◈ Benchmark: {d}[/cyan]  ({len(cases)} tests)\n")
 
-        written = write_pack_yaml(d, dest)
-        console.print(f"  [dim]Tests written to {dest}/[/dim]")
-
         if export_only:
-            console.print(f"  [green]✓ {len(written)} files exported[/green]")
+            dest = Path(output_dir) if output_dir else Path("tests") / "benchmarks" / d
+            written = write_pack_yaml(d, dest)
+            console.print(f"  [green]✓ {len(written)} files exported to {dest}/[/green]")
             console.print(f"  [dim]Run: evalview snapshot --test-path {dest}[/dim]\n")
             continue
 
@@ -10246,13 +10243,16 @@ def benchmark_cmd(
             )
             continue
 
-        # Load the written YAML files as TestCase objects and run them
-        loader = TestCaseLoader()
-        try:
-            test_cases = loader.load_from_directory(dest)
-        except Exception as e:
-            console.print(f"  [red]❌ Failed to load benchmark tests: {e}[/red]\n")
-            continue
+        # Write to a temp dir so benchmark YAMLs don't pollute the user's tests/
+        with tempfile.TemporaryDirectory() as _tmpdir:
+            tmp_dest = Path(_tmpdir)
+            write_pack_yaml(d, tmp_dest)
+            loader = TestCaseLoader()
+            try:
+                test_cases = loader.load_from_directory(tmp_dest)
+            except Exception as e:
+                console.print(f"  [red]❌ Failed to load benchmark tests: {e}[/red]\n")
+                continue
 
         if not test_cases:
             console.print("  [yellow]No test cases loaded.[/yellow]\n")
