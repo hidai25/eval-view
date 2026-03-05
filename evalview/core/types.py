@@ -167,9 +167,10 @@ class TestCase(BaseModel):
 
     name: str
     description: Optional[str] = None
-    # Single-turn: set ``input``.  Multi-turn: set ``turns`` (``input`` is
-    # auto-populated from the first turn so downstream code always has it).
-    input: Optional[TestInput] = None
+    # Single-turn: provide ``input``.  Multi-turn: provide ``turns`` — ``input``
+    # is auto-populated from the first turn before field validation so that all
+    # downstream code can access ``test_case.input.query`` unconditionally.
+    input: TestInput
     turns: Optional[List["ConversationTurn"]] = None
     expected: ExpectedBehavior
     thresholds: Thresholds
@@ -224,21 +225,32 @@ class TestCase(BaseModel):
         return bool(self.turns)
 
     # ----- Validators -----
+    @model_validator(mode="before")
+    @classmethod
+    def _populate_input_from_first_turn(cls, data: Any) -> Any:
+        """Pre-populate ``input`` from ``turns[0]`` before field validation.
+
+        This runs before Pydantic validates individual fields, so ``input``
+        arrives as a real value and its type stays ``TestInput`` (not Optional).
+        Downstream code can therefore access ``test_case.input.query`` safely
+        without None guards.
+        """
+        if not isinstance(data, dict):
+            return data
+        turns = data.get("turns")
+        if turns and "input" not in data:
+            first = turns[0]
+            if isinstance(first, dict):
+                data = {**data, "input": {"query": first["query"], "context": first.get("context")}}
+            elif hasattr(first, "query"):
+                data = {**data, "input": {"query": first.query, "context": getattr(first, "context", None)}}
+        return data
+
     @model_validator(mode="after")
-    def validate_input_or_turns(self) -> "TestCase":
-        """Ensure exactly one of ``input`` or ``turns`` is provided."""
-        if self.turns is not None:
-            if len(self.turns) < 2:
-                raise ValueError("Multi-turn tests require at least 2 turns")
-            # Auto-populate ``input`` from first turn so all downstream code
-            # that accesses test_case.input.query continues to work unchanged.
-            if self.input is None:
-                self.input = TestInput(
-                    query=self.turns[0].query,
-                    context=self.turns[0].context,
-                )
-        elif self.input is None:
-            raise ValueError("Either 'input' (single-turn) or 'turns' (multi-turn) must be provided")
+    def _validate_turns(self) -> "TestCase":
+        """Enforce multi-turn constraints after all fields are set."""
+        if self.turns is not None and len(self.turns) < 2:
+            raise ValueError("Multi-turn tests require at least 2 turns")
         return self
 
     @field_validator("name", mode="before")
