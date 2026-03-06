@@ -100,7 +100,7 @@ class TestExecuteCheckTestsReturnType:
         return tmp_path
 
     def test_returns_three_tuple(self, project, monkeypatch):
-        from evalview.cli import _execute_check_tests
+        from evalview.commands.check_cmd import _execute_check_tests
         from evalview.core.config import EvalViewConfig
         from evalview.core.drift_tracker import DriftTracker
 
@@ -122,8 +122,8 @@ class TestExecuteCheckTestsReturnType:
         config = EvalViewConfig(adapter="http", endpoint="http://example.com")
 
         with (
-            patch("evalview.cli._create_adapter", return_value=mock_adapter),
-            patch("evalview.cli.Evaluator", return_value=mock_evaluator),
+            patch("evalview.commands.check_cmd._create_adapter", return_value=mock_adapter),
+            patch("evalview.evaluators.evaluator.Evaluator", return_value=mock_evaluator),
         ):
             result = _execute_check_tests(test_cases, config, json_output=False)
 
@@ -137,7 +137,7 @@ class TestExecuteCheckTestsReturnType:
 
     def test_drift_tracker_is_populated(self, project, monkeypatch):
         """DriftTracker returned from _execute_check_tests must have history for the test."""
-        from evalview.cli import _execute_check_tests
+        from evalview.commands.check_cmd import _execute_check_tests
         from evalview.core.config import EvalViewConfig
 
         monkeypatch.chdir(project)
@@ -158,8 +158,8 @@ class TestExecuteCheckTestsReturnType:
         config = EvalViewConfig(adapter="http", endpoint="http://example.com")
 
         with (
-            patch("evalview.cli._create_adapter", return_value=mock_adapter),
-            patch("evalview.cli.Evaluator", return_value=mock_evaluator),
+            patch("evalview.commands.check_cmd._create_adapter", return_value=mock_adapter),
+            patch("evalview.evaluators.evaluator.Evaluator", return_value=mock_evaluator),
         ):
             _, _, drift_tracker = _execute_check_tests(test_cases, config, json_output=False)
 
@@ -185,7 +185,7 @@ class TestConcurrentExecution:
 
     def test_one_failure_does_not_cancel_others(self, multi_test_project, monkeypatch):
         """If test-a raises, test-b should still complete and appear in results."""
-        from evalview.cli import _execute_check_tests
+        from evalview.commands.check_cmd import _execute_check_tests
         from evalview.core.config import EvalViewConfig
 
         monkeypatch.chdir(multi_test_project)
@@ -216,8 +216,8 @@ class TestConcurrentExecution:
         config = EvalViewConfig(adapter="http", endpoint="http://example.com")
 
         with (
-            patch("evalview.cli._create_adapter", return_value=mock_adapter),
-            patch("evalview.cli.Evaluator", return_value=mock_evaluator),
+            patch("evalview.commands.check_cmd._create_adapter", return_value=mock_adapter),
+            patch("evalview.evaluators.evaluator.Evaluator", return_value=mock_evaluator),
         ):
             diffs, results, _ = _execute_check_tests(test_cases, config, json_output=True)
 
@@ -235,7 +235,7 @@ class TestDriftTrackerReuse:
     """_display_check_results must use the passed tracker, not create a new one."""
 
     def test_display_uses_passed_drift_tracker(self, tmp_path):
-        from evalview.cli import _display_check_results
+        from evalview.commands.check_cmd import _display_check_results
         from evalview.core.diff import TraceDiff, DiffStatus, OutputDiff
         from evalview.core.drift_tracker import DriftTracker
 
