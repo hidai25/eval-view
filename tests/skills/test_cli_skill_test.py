@@ -86,7 +86,7 @@ def test_skill_test_cli_passes_provider_and_base_url_in_legacy_mode(tmp_path, mo
             return fake_result
 
     monkeypatch.setattr("evalview.skills.SkillRunner", FakeSkillRunner)
-    monkeypatch.setattr("evalview.cli.print_evalview_banner", lambda *args, **kwargs: None)
+    monkeypatch.setattr("evalview.commands.skill_cmd.print_evalview_banner", lambda *args, **kwargs: None)
 
     runner = CliRunner()
     result = runner.invoke(

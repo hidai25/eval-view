@@ -57,12 +57,17 @@ watch = [
 telemetry = [
     "posthog>=3.0.0",
 ]
+# Cohere adapter
+cohere = [
+    "cohere>=5.0.0",
+]
 # All optional features
 all = [
     "jinja2>=3.0",
     "plotly>=5.0",
     "watchdog>=3.0",
     "posthog>=3.0.0",
+    "cohere>=5.0.0",
 ]
 # Development dependencies
 dev = [
@@ -71,6 +76,7 @@ dev = [
     "pytest-cov>=4.1.0",
     "black==24.10.0",
     "mypy>=1.7.0",
+    "types-PyYAML>=6.0",
     "ruff>=0.1.0",
     "jinja2>=3.0",
     "plotly>=5.0",

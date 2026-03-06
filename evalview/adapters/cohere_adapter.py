@@ -1,5 +1,4 @@
 import os
-import cohere
 import logging
 from datetime import datetime
 from typing import Any, Optional, Dict
@@ -16,16 +15,24 @@ from evalview.core.tracing import Tracer
 
 logger = logging.getLogger(__name__)
 
+
 class CohereAdapter(AgentAdapter):
     """Adapter for Cohere API models."""
 
-    def __init__(self, api_key: str = None, model: str = None):
-        self.api_key = api_key or os.getenv("COHERE_API_KEY") 
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
+        try:
+            import cohere as _cohere
+        except ImportError:
+            raise ImportError(
+                "The 'cohere' package is required for CohereAdapter. "
+                "Install it with: pip install cohere"
+            )
+        self.api_key = api_key or os.getenv("COHERE_API_KEY")
         if not self.api_key:
-            raise ValueError("Cohere API key is required. Please set it in .env.local.")
-        
+            raise ValueError("Cohere API key is required. Set COHERE_API_KEY in your environment or .env.local.")
+
         # Use AsyncClientV2 for non-blocking calls
-        self.client = cohere.AsyncClientV2(api_key=self.api_key) 
+        self.client = _cohere.AsyncClientV2(api_key=self.api_key)
         self.model = model or "command-r-plus-08-2024"
 
     @property
