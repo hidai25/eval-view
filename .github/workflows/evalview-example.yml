@@ -30,7 +30,7 @@ jobs:
 
       - name: Run EvalView
         id: evalview
-        uses: hidai25/eval-view@v0.1.3
+        uses: hidai25/eval-view@v0.4.0
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           filter: ${{ github.event.inputs.filter }}
