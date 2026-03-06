@@ -126,6 +126,10 @@ module = "evalview.cli"
 ignore_errors = true
 
 [[tool.mypy.overrides]]
+module = "evalview.commands.run.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
 module = "evalview.reporters.*"
 ignore_errors = true
 

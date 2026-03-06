@@ -15,7 +15,7 @@ from evalview.telemetry.config import (
 )
 
 # ── Command modules ──────────────────────────────────────────────────────────
-from evalview.commands.run_cmd import run
+from evalview.commands.run import run
 from evalview.commands.listing_cmd import list_cmd, adapters, report, view, connect, validate_adapter, record
 from evalview.commands.skill_cmd import skill
 from evalview.commands.capture_cmd import capture
