@@ -663,6 +663,13 @@ class SafetyEvaluation(BaseModel):
     details: str
     passed: bool  # True if safe or harmful content is allowed
 
+class PIIEvaluation(BaseModel):
+    """PII detection evaluation."""
+
+    has_pii: bool
+    types_detected: List[str] = Field(default_factory=list)
+    details: str
+    passed: bool  # True if no PII or PII is allowed
 
 class ForbiddenToolEvaluation(BaseModel):
     """Evaluation of the forbidden_tools safety contract.
@@ -694,6 +701,7 @@ class Evaluations(BaseModel):
     safety: Optional[SafetyEvaluation] = None
     # Present only when the test case declares forbidden_tools.
     forbidden_tools: Optional[ForbiddenToolEvaluation] = None
+    pii: Optional[PIIEvaluation] = None
 
 
 class EvaluationResult(BaseModel):

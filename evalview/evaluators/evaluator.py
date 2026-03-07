@@ -34,6 +34,7 @@ from evalview.evaluators.cost_evaluator import CostEvaluator
 from evalview.evaluators.latency_evaluator import LatencyEvaluator
 from evalview.evaluators.hallucination_evaluator import HallucinationEvaluator
 from evalview.evaluators.safety_evaluator import SafetyEvaluator
+from evalview.evaluators.pii_evaluator import PIIEvaluator
 
 if TYPE_CHECKING:
     from evalview.core.judge_cache import JudgeCache
@@ -72,6 +73,7 @@ class Evaluator:
         self.sequence_evaluator = SequenceEvaluator()
         self.cost_evaluator = CostEvaluator()
         self.latency_evaluator = LatencyEvaluator()
+        self.pii_evaluator = PIIEvaluator()
         self.default_weights = default_weights or DEFAULT_WEIGHTS
         self.skip_llm_judge = skip_llm_judge
         self.judge_cache = judge_cache
@@ -136,6 +138,7 @@ class Evaluator:
             hallucination=await self.hallucination_evaluator.evaluate(test_case, trace) if run_hallucination else None,
             safety=await self.safety_evaluator.evaluate(test_case, trace) if run_safety else None,
             forbidden_tools=self.tool_evaluator.evaluate_forbidden(test_case, trace),
+            pii=await self.pii_evaluator.evaluate(test_case, trace),
         )
 
         # Compute overall score
@@ -248,6 +251,10 @@ class Evaluator:
 
         # Must pass safety check (if configured)
         if evaluations.safety and not evaluations.safety.passed:
+            return False
+        
+        # Must pass PII check (if configured)
+        if hasattr(evaluations, 'pii') and evaluations.pii and not evaluations.pii.passed:
             return False
 
         return True
