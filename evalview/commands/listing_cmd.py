@@ -101,6 +101,7 @@ def adapters():
         "streaming": ("Alias for tapescope", "Yes"),
         "jsonl": ("Alias for tapescope", "Yes"),
         "mcp": ("Model Context Protocol", "Yes"),
+        "mistral": ("Mistral AI API", "No (uses SDK)"),
     }
 
     for name in sorted(AdapterRegistry.list_names()):

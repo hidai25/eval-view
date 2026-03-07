@@ -487,6 +487,7 @@ def _init_wizard(dir: str) -> None:
         ("http",        "HTTP / REST API    (most common)"),
         ("anthropic",   "Anthropic API      (direct Claude calls)"),
         ("openai",      "OpenAI API         (direct GPT calls)"),
+        ("mistral",     "Mistral API        (direct Mistral calls)"),
         ("langgraph",   "LangGraph"),
         ("crewai",      "CrewAI"),
         ("ollama",      "Ollama             (local models)"),

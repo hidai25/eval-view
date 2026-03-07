@@ -40,6 +40,10 @@ def _create_adapter(adapter_type: str, endpoint: str, timeout: float = 30.0, all
         from evalview.adapters.cohere_adapter import CohereAdapter
         return CohereAdapter()
 
+    if adapter_type == "mistral":
+        from evalview.adapters.mistral_adapter import MistralAdapter
+        return MistralAdapter()
+
     adapter_map = {
         "http": HTTPAdapter,
         "langgraph": LangGraphAdapter,

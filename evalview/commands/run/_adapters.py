@@ -165,6 +165,12 @@ def build_adapter(
         cohere_model = model_config.get("name") if isinstance(model_config, dict) else model_config
         return CohereAdapter(model=cohere_model)
 
+    if adapter_type == "mistral":
+        from evalview.adapters.mistral_adapter import MistralAdapter
+
+        mistral_model = model_config.get("name") if isinstance(model_config, dict) else model_config
+        return MistralAdapter(model=mistral_model)
+
     # Default: generic HTTP adapter
     return HTTPAdapter(
         endpoint=resolved_endpoint,
@@ -192,7 +198,7 @@ def get_test_adapter(
     Raises:
         ValueError: When neither a test-specific nor global adapter is available.
     """
-    API_ONLY_ADAPTERS = {"openai-assistants", "goose"}
+    API_ONLY_ADAPTERS = {"openai-assistants", "goose", "mistral"}
 
     test_adapter_type = test_case.adapter
     test_endpoint = test_case.endpoint

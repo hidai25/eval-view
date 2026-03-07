@@ -86,7 +86,7 @@ def _display_no_agent_guide(endpoint: Optional[str] = None) -> None:
 )
 @click.option(
     "--adapter",
-    type=click.Choice(["http", "langgraph", "crewai", "anthropic", "openai-assistants", "tapescope", "huggingface", "goose", "ollama", "mcp", "cohere"]),
+    type=click.Choice(["http", "langgraph", "crewai", "anthropic", "openai-assistants", "tapescope", "huggingface", "goose", "ollama", "mcp", "cohere", "mistral"]),
     help="Override adapter type (e.g., goose, langgraph, mcp). Overrides config file.",
 )
 @click.option("--diff", is_flag=True, help="Compare against golden baselines. Shows REGRESSION/TOOLS_CHANGED/OUTPUT_CHANGED/PASSED status.")
@@ -249,7 +249,7 @@ async def _run_async(
 
     # ── Connectivity check ────────────────────────────────────────────────────
     ec_adapter = (adapter_override or early_config.get("adapter", "http")).lower()
-    no_http_adapters = {"openai-assistants", "anthropic", "ollama", "goose", "cohere"}
+    no_http_adapters = {"openai-assistants", "anthropic", "ollama", "goose", "cohere", "mistral"}
     ec_endpoint = early_config.get("endpoint") if ec_adapter not in no_http_adapters else None
 
     if ec_endpoint and ec_adapter not in no_http_adapters:
@@ -467,7 +467,7 @@ async def _run_async(
         console.print(f"[dim]🔌 Adapter override: {adapter_override}[/dim]")
 
     has_endpoint = "endpoint" in config
-    is_api_adapter = adapter_type in ("openai-assistants", "anthropic", "ollama", "cohere")
+    is_api_adapter = adapter_type in ("openai-assistants", "anthropic", "ollama", "cohere", "mistral")
     is_cli_adapter = adapter_type == "goose"
 
     if has_endpoint or is_api_adapter or is_cli_adapter:
