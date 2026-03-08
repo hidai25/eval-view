@@ -79,10 +79,10 @@ async def _execute_multi_turn_trace(test_case: TestCase, adapter: AgentAdapter) 
             turn_context["conversation_history"] = list(conversation_history)
 
         trace = await adapter.execute(turn.query, turn_context)
-        
+
         # Annotate each step with turn index for better traceability
         for step in trace.steps:
-            step.turn_index = turn_index + 1 
+            step.turn_index = turn_index + 1
             step.turn_query = turn.query
 
         turn_traces.append(trace)
@@ -94,7 +94,7 @@ async def _execute_multi_turn_trace(test_case: TestCase, adapter: AgentAdapter) 
     # 2. Merge metrics across turns
     total_cost = sum(t.metrics.total_cost for t in turn_traces)
     total_latency = sum(t.metrics.total_latency for t in turn_traces)
-    
+
     merged_tokens: Optional[TokenUsage] = None
     if any(t.metrics.total_tokens for t in turn_traces):
         merged_tokens = TokenUsage(

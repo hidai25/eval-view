@@ -361,7 +361,7 @@ class StepTrace(BaseModel):
     error: Optional[str] = None
     metrics: StepMetrics
     turn_index: Optional[int] = None
-    turn_query: Optional[str] = None 
+    turn_query: Optional[str] = None
 
 
 class ExecutionMetrics(BaseModel):

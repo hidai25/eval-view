@@ -53,15 +53,15 @@ def _mermaid_from_steps(steps: List[Any], query: str = "", output: str = "") -> 
     for step in steps:
         step_turn = getattr(step, "turn_index", None)
 
-        # Add a turn note if this step belongs to a new turn.  This helps visually group steps by turn in the diagram.
+        # Add a turn separator when the turn index changes
         if step_turn is not None and step_turn != current_turn:
-          step_query = getattr(step, "turn_query", "") or ""
-          short_step_query = (step_query[:57] + "...") if len(step_query) > 60 else step_query
-          if short_step_query:
-                lines.append(f"    Note over User,Agent: Turn {step_turn} - {short_step_query}")
-          else:
-              lines.append(f"    Note over User,Agent: Turn {step_turn}")
-          current_turn = step_turn
+            step_query = getattr(step, "turn_query", "") or ""
+            safe_query = _safe_mermaid((step_query[:57] + "...") if len(step_query) > 60 else step_query)
+            if safe_query:
+                lines.append(f"    Note over User,Agent: Turn {step_turn} - {safe_query}")
+            else:
+                lines.append(f"    Note over User,Agent: Turn {step_turn}")
+            current_turn = step_turn
 
         tool = str(getattr(step, "tool_name", None) or getattr(step, "step_name", None) or "unknown")
         alias = seen_tools.get(tool, tool)
@@ -303,20 +303,20 @@ def generate_visual_report(
             current_t_idx = None
             current_turn_data = None
             for step in r.trace.steps:
-              t_idx = getattr(step, "turn_index", None)
-              if t_idx is not None:
-                  if t_idx != current_t_idx:
-                      current_t_idx = t_idx
-                      current_turn_data = {
-                          "index": t_idx, 
-                          "query": getattr(step, "turn_query", ""), 
-                          "tools": []
-                      }
-                      turn_list.append(current_turn_data)
-                  
-                  if current_turn_data is not None:
-                    tool_name = str(getattr(step, "tool_name", None) or getattr(step, "step_name", None) or "unknown")
-                    current_turn_data["tools"].append(tool_name)
+                t_idx = getattr(step, "turn_index", None)
+                if t_idx is not None:
+                    if t_idx != current_t_idx:
+                        current_t_idx = t_idx
+                        current_turn_data = {
+                            "index": t_idx,
+                            "query": getattr(step, "turn_query", ""),
+                            "tools": [],
+                        }
+                        turn_list.append(current_turn_data)
+
+                    if current_turn_data is not None:
+                        tool_name = str(getattr(step, "tool_name", None) or getattr(step, "step_name", None) or "unknown")
+                        current_turn_data["tools"].append(tool_name)
 
         traces.append({
             "name": r.test_case,
