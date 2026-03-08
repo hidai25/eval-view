@@ -15,21 +15,17 @@
   detect prompt regression, AI agent observability alternative, open source eval framework
 -->
 
-# EvalView — The open-source testing framework for AI agents
+# EvalView — Regression testing for AI agents
 
-> **Ship AI agents without the fear of silent regressions.** Save a golden baseline of your agent's behavior. Detect when it breaks. Block regressions in CI. Works with LangGraph, CrewAI, OpenAI, Claude, and any HTTP API.
+> Your agent works today. Will it work after the next prompt tweak, model swap, or tool change? EvalView tells you in one command.
 
 <p align="center">
   <img src="assets/demo.gif" alt="EvalView Demo - AI Agent Testing Framework" width="700">
 </p>
 
-<p align="center">
-
 ```bash
-pip install evalview && evalview demo   # Uses your configured API key
+pip install evalview && evalview demo   # See regression detection live, ~30 seconds
 ```
-
-</p>
 
 <p align="center">
   <a href="https://pypi.org/project/evalview/"><img src="https://img.shields.io/pypi/dm/evalview.svg?label=downloads" alt="PyPI downloads"></a>
@@ -38,55 +34,54 @@ pip install evalview && evalview demo   # Uses your configured API key
   <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
 </p>
 
+### The workflow
+
+```bash
+evalview capture --agent http://localhost:8000/invoke   # 1. Record real interactions
+evalview snapshot                                        # 2. Save as baseline
+evalview check                                           # 3. Catch regressions
+# ✅ All clean — or ❌ REGRESSION: score 85 → 71
+```
+
+That's it. No LLM-as-judge required. No API keys needed. Works with **LangGraph, CrewAI, OpenAI, Claude, Mistral, HuggingFace, Ollama, and any HTTP API**.
+
 <p align="center">
-  <img src="docs/report-screenshot.png" alt="EvalView HTML Report — 100% pass rate, 92.5 avg score, cost and latency per test" width="860">
+  <img src="docs/report-screenshot.png" alt="EvalView HTML Report — pass rate, scores, cost, latency" width="860">
   <br>
-  <sub>Auto-generated HTML report after every run — pass rate, quality scores, cost per query, latency, and full execution traces</sub>
+  <sub>Auto-generated HTML report — pass rate, quality scores, cost per query, latency, and full execution traces</sub>
 </p>
 
 ---
 
-## What is EvalView?
+## Why EvalView?
 
-**EvalView is a pytest-style testing framework for AI agents** that detects when your agent's behavior changes after you modify prompts, swap models, or update tools. It's the missing CI/CD layer for AI agent development.
+LangSmith answers "what did my agent do?" Braintrust answers "how good is my agent?" Promptfoo answers "which prompt is better?"
 
-Unlike observability platforms (LangSmith) that show you *what happened*, or eval platforms (Braintrust) that score *how good* your agent is, EvalView answers: **"Did my agent break?"**
-
-**Key capabilities:**
-- **Automatic regression detection** — Golden baseline diffing catches behavioral drift
-- **Works without API keys** — Deterministic tool-call and sequence scoring, no LLM-as-judge needed
-- **Framework-native adapters** — LangGraph, CrewAI, OpenAI Assistants, Anthropic Claude, HuggingFace, Ollama, MCP
-- **CI/CD-ready** — GitHub Action, exit codes, PR comments, JSON output
-- **Free and open source** — Apache 2.0, no vendor lock-in, works fully offline with Ollama
-
----
-
-## EvalView vs LangSmith, Braintrust & Promptfoo
-
-EvalView fills a gap that the major platforms don't cover. LangSmith answers "what did my agent do?" — observability and tracing. Braintrust answers "how good is my agent?" — evaluation scoring. Promptfoo answers "which prompt is better?" — prompt comparison. EvalView answers a different question: **"Did my agent break?"**
+**EvalView answers: "Did my agent break?"**
 
 |  | LangSmith | Braintrust | Promptfoo | **EvalView** |
 |---|:---:|:---:|:---:|:---:|
-| **Core question** | "What did my agent do?" | "How good is my agent?" | "Which prompt is better?" | **"Did my agent break?"** |
-| **Primary purpose** | Observability/tracing | Evaluation platform | Prompt testing | Agent regression testing |
 | Automatic regression detection | No | Manual | No | **Yes** |
 | Golden baseline diffing | No | No | No | **Yes** |
 | Works without API keys | No | No | Partial | **Yes** |
 | Free & open source | No | No | Yes | **Yes** |
 | Works fully offline (Ollama) | No | Partial | Partial | **Yes** |
-| Team baseline sync (cloud) | Paid | Paid | No | **Yes (free, opt-in)** |
-| Agent framework adapters | LangChain only | Generic | Generic | **LangGraph, CrewAI, OpenAI, Claude, HF, Ollama, MCP** |
-| Skills testing (SKILL.md) | No | No | No | **Yes** |
-| Statistical mode (pass@k) | No | No | No | **Yes** |
-| MCP contract testing | No | No | No | **Yes** |
+| Agent framework adapters | LangChain only | Generic | Generic | **7 frameworks + any HTTP** |
 
-**Use observability tools to see what happened. Use EvalView to prove it didn't break.**
+---
+
+## What EvalView Catches
+
+| Status | Meaning | Action |
+|--------|---------|--------|
+| ✅ **PASSED** | Behavior matches baseline | Ship with confidence |
+| ⚠️ **TOOLS_CHANGED** | Different tools called | Review the diff |
+| ⚠️ **OUTPUT_CHANGED** | Same tools, output shifted | Review the diff |
+| ❌ **REGRESSION** | Score dropped significantly | Fix before shipping |
 
 ---
 
 ## Who Is EvalView For?
-
-EvalView is built for developers and teams shipping AI agents to production:
 
 - **LangGraph and CrewAI developers** — confidence that refactoring agent graphs doesn't silently change behavior
 - **Claude Code and Codex skill authors** — validate that automation workflows do exactly what they're supposed to, every time
