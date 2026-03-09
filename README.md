@@ -53,7 +53,7 @@ EvalView sends test queries to your agent's API and records everything: which to
       Score: 85 → 55  Output similarity: 35%
 ```
 
-**Three scoring layers, each one optional:**
+**Four scoring layers, each one optional:**
 
 | Layer | What it checks | Needs API key? | Cost |
 |-------|---------------|:--------------:|------|
@@ -141,6 +141,8 @@ Specifically, EvalView diffs the full agent trajectory — tool calls, parameter
 If you run `evalview snapshot` today and `evalview check` after every change, you're using EvalView correctly.
 
 ---
+
+## Advanced Features
 
 ### Multi-Reference Goldens (for non-deterministic agents)
 
@@ -979,7 +981,7 @@ safety-refusal              95         95         ✓  same
 | **Silent Model Update Detection** | Captures model version at snapshot time; alerts when provider silently swaps the model | [Docs](#detecting-silent-model-updates) |
 | **Gradual Drift Detection** | OLS regression over 10-check window catches slow similarity decline that single-threshold checks miss | [Docs](#gradual-drift-detection) |
 | **Semantic Similarity** | Auto-enabled when `OPENAI_API_KEY` is set — scores outputs by meaning, not wording. One-time notice on first run. Opt out with `--no-semantic-diff` or `semantic_diff_enabled: false` | [Docs](#semantic-similarity) |
-| **Auto-Open Visual Reports** | Every `evalview run` opens an interactive HTML report — KPI cards, Mermaid trace diagrams, diffs, cost-per-query. `--no-open` for CI. | [Docs](#visual-reports--claude-code-mcp) |
+| **Auto-Open Visual Reports** | Every `evalview run` opens an interactive HTML report — KPI cards, Mermaid trace diagrams, diffs, cost-per-query. `--no-open` for CI. | [Docs](#visual-reports) |
 | **Git Hook Integration** | `evalview install-hooks` — injects `evalview check` into pre-push (or pre-commit). Automatic regression blocking with zero CI config. | [Docs](#cicd-integration) |
 | **Claude Code MCP** | 8 tools — run checks, generate tests, test skills, generate visual reports inline | [Docs](#claude-code-integration-mcp) |
 | **Streak Tracking** | Habit-forming celebrations for consecutive clean checks | [Docs](docs/GOLDEN_TRACES.md) |
