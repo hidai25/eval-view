@@ -16,12 +16,22 @@
 -->
 
 <p align="center">
-  <img src="assets/logo.png" alt="EvalView" width="300">
+  <img src="assets/logo.png" alt="EvalView" width="400">
 </p>
 
-<p align="center"><strong>Regression testing for AI agents.</strong></p>
+<p align="center"><strong>Regression testing for AI agents.</strong><br>
+Snapshot your agent's behavior. Detect when it breaks. Block regressions in CI.</p>
 
-> Your agent works today. Will it work after the next prompt tweak, model swap, or tool change? EvalView tells you in one command.
+<p align="center">
+  <a href="https://pypi.org/project/evalview/"><img src="https://img.shields.io/pypi/dm/evalview.svg?label=downloads" alt="PyPI downloads"></a>
+  <a href="https://github.com/hidai25/eval-view/stargazers"><img src="https://img.shields.io/github/stars/hidai25/eval-view?style=social" alt="GitHub stars"></a>
+  <a href="https://github.com/hidai25/eval-view/actions/workflows/ci.yml"><img src="https://github.com/hidai25/eval-view/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
+</p>
+
+<p align="center">If this catches a regression for you, please ⭐ <a href="https://github.com/hidai25/eval-view/stargazers">star the repo</a> — it helps others find it.</p>
+
+---
 
 <p align="center">
   <img src="assets/demo.gif" alt="EvalView Demo - AI Agent Testing Framework" width="700">
@@ -30,13 +40,6 @@
 ```bash
 pip install evalview && evalview demo   # See regression detection live, ~30 seconds
 ```
-
-<p align="center">
-  <a href="https://pypi.org/project/evalview/"><img src="https://img.shields.io/pypi/dm/evalview.svg?label=downloads" alt="PyPI downloads"></a>
-  <a href="https://github.com/hidai25/eval-view/stargazers"><img src="https://img.shields.io/github/stars/hidai25/eval-view?style=social" alt="GitHub stars"></a>
-  <a href="https://github.com/hidai25/eval-view/actions/workflows/ci.yml"><img src="https://github.com/hidai25/eval-view/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
-</p>
 
 ### The workflow
 
