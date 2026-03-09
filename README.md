@@ -35,12 +35,26 @@
 ---
 
 <p align="center">
-  <img src="assets/demo.gif" alt="EvalView Demo - AI Agent Testing Framework" width="700">
+  <img src="assets/hero.jpg" alt="EvalView — multi-turn execution trace with sequence diagram" width="860">
+  <br>
+  <sub>Auto-generated HTML report — execution traces, sequence diagrams, scores, cost, and latency per test</sub>
 </p>
 
-```bash
-pip install evalview && evalview demo   # See regression detection live, ~30 seconds
+### How it works
+
 ```
+┌─────────┐      ┌──────────┐      ┌─────────────┐
+│ Your App │ ──── │ EvalView │ ──── │  Your Agent  │
+└─────────┘      └──────────┘      └─────────────┘
+                       │
+          ┌────────────┼────────────┐
+          │            │            │
+      Captures    Compares     Reports
+     execution    against     regressions
+       trace      baseline     + diffs
+```
+
+**Your data stays local.** EvalView sits between your test cases and your agent's API. It sends test queries to your agent, captures the execution trace (tools called, outputs, cost, latency), and compares against your saved baseline. Nothing is sent to EvalView servers — all processing happens on your machine.
 
 ### The workflow
 
@@ -53,11 +67,17 @@ evalview check                                           # 3. Catch regressions
 
 That's it. No LLM-as-judge required. No API keys needed. Works with **LangGraph, CrewAI, OpenAI, Claude, Mistral, HuggingFace, Ollama, and any HTTP API**.
 
+```bash
+pip install evalview && evalview demo   # See regression detection live, ~30 seconds
+```
+
+<details>
+<summary><strong>See it in action</strong> (CLI demo)</summary>
+<br>
 <p align="center">
-  <img src="docs/report-screenshot.png" alt="EvalView HTML Report — pass rate, scores, cost, latency" width="860">
-  <br>
-  <sub>Auto-generated HTML report — pass rate, quality scores, cost per query, latency, and full execution traces</sub>
+  <img src="assets/demo.gif" alt="EvalView CLI Demo" width="700">
 </p>
+</details>
 
 ---
 
@@ -176,7 +196,7 @@ Perfect for LLM-based agents with creative variation.
 
 ### Detecting Silent Model Updates
 
-LLM providers silently update the model behind the same API name — `claude-3-5-sonnet-latest`, `gpt-4o`, and `gemini-pro` all quietly point to new versions over time. You can't tell from the API response whether your baseline was captured on last month's model or this week's. Your agent may be "breaking" from a model update, not from your code.
+LLM providers silently update the model behind the same API name — `claude-sonnet-4-5-latest`, `gpt-4o`, and `gemini-pro` all quietly point to new versions over time. You can't tell from the API response whether your baseline was captured on last month's model or this week's. Your agent may be "breaking" from a model update, not from your code.
 
 EvalView captures the model version at snapshot time and alerts you when it changes:
 
@@ -185,7 +205,7 @@ evalview check
 
 ╭─ ⚠  Model Version Change Detected ──────────────────────────────────────────╮
 │                                                                               │
-│  Model changed: claude-3-5-sonnet-20241022 → claude-3-5-sonnet-20250219      │
+│  Model changed: claude-sonnet-4-5-20250514 → claude-sonnet-4-6-20250715      │
 │                                                                               │
 │  Baselines were captured with a different model version. Output changes       │
 │  below may be caused by the model update rather than your code. If the new   │
