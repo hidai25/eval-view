@@ -16,11 +16,11 @@
 -->
 
 <p align="center">
-  <img src="assets/logo.png" alt="EvalView" width="400">
+  <img src="assets/logo.png" alt="EvalView" width="450">
+  <br><br>
+  <strong>Regression testing for AI agents.</strong><br>
+  Snapshot your agent's behavior. Detect when it breaks. Block regressions in CI.
 </p>
-
-<p align="center"><strong>Regression testing for AI agents.</strong><br>
-Snapshot your agent's behavior. Detect when it breaks. Block regressions in CI.</p>
 
 <p align="center">
   <a href="https://pypi.org/project/evalview/"><img src="https://img.shields.io/pypi/dm/evalview.svg?label=downloads" alt="PyPI downloads"></a>
