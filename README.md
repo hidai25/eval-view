@@ -42,19 +42,35 @@
 
 ### How it works
 
+EvalView sends test queries to your agent's API and records everything: which tools were called, in what order, with what parameters, the final output, cost, and latency. You save this as a **golden baseline** with `evalview snapshot`. After any change, `evalview check` replays the same queries and diffs the new trace against the baseline:
+
+```
+  ✓ login-flow           PASSED
+  ⚠ refund-request       TOOLS_CHANGED
+      - lookup_order → check_policy → process_refund
+      + lookup_order → check_policy → process_refund → escalate_to_human
+  ✗ billing-dispute      REGRESSION  -30 pts
+      Score: 85 → 55  Output similarity: 35%
+```
+
+**Three scoring layers, each one optional:**
+
+| Layer | What it checks | Needs API key? | Cost |
+|-------|---------------|:--------------:|------|
+| **Tool calls + sequence** | Exact tool names, order, parameters | No | Free |
+| **Semantic similarity** | Output meaning via embeddings | `OPENAI_API_KEY` | ~$0.00004/test |
+| **LLM-as-judge** | Output quality scored by GPT | `OPENAI_API_KEY` | ~$0.01/test |
+
+The first layer alone catches most regressions — fully offline, zero cost. Add the API key when you need deeper evaluation. LLM-as-judge includes **statistical mode (pass@k)**: run N times, require a pass rate, so a single non-deterministic score can't fail your CI. Judge responses are cached to cut costs by ~80%.
+
 ```
 ┌────────────┐      ┌──────────┐      ┌──────────────┐
 │ Test Cases  │ ──→  │ EvalView │ ──→  │  Your Agent   │
 │   (YAML)   │      │          │ ←──  │ local / cloud │
 └────────────┘      └──────────┘      └──────────────┘
-                          │
-                ┌─────────┼─────────┐
-                │         │         │
-            Captures   Compares   Reports
-            the trace  to golden  regressions
 ```
 
-**Your data stays local.** EvalView sends your test queries to your agent's API, captures the execution trace (tools called, outputs, cost, latency), and compares against your saved baseline. Nothing is sent to EvalView servers — all processing happens on your machine.
+**Your data stays local.** Nothing is sent to EvalView servers — all processing happens on your machine.
 
 ### The workflow
 
@@ -65,7 +81,7 @@ evalview check                                           # 3. Catch regressions
 # ✅ All clean — or ❌ REGRESSION: score 85 → 71
 ```
 
-That's it. No LLM-as-judge required. No API keys needed. Works with **LangGraph, CrewAI, OpenAI, Claude, Mistral, HuggingFace, Ollama, and any HTTP API**.
+Works with **LangGraph, CrewAI, OpenAI, Claude, Mistral, HuggingFace, Ollama, and any HTTP API**.
 
 **Ready to try it?**
 
@@ -87,17 +103,17 @@ pip install evalview && evalview demo   # See regression detection live, ~30 sec
 
 ## Why EvalView?
 
-LangSmith answers "what did my agent do?" Braintrust answers "how good is my agent?" Promptfoo answers "which prompt is better?"
+Promptfoo compares prompts. LangSmith traces what happened. Braintrust scores how good your agent is. **EvalView answers a different question: "Did my agent break?"**
 
-**EvalView answers: "Did my agent break?"**
+Specifically, EvalView diffs the full agent trajectory — tool calls, parameters, sequence, output, cost — against a golden baseline. Promptfoo tests prompt→output; EvalView tests the entire agent execution path. They complement each other.
 
 |  | LangSmith | Braintrust | Promptfoo | **EvalView** |
 |---|:---:|:---:|:---:|:---:|
-| Automatic regression detection | No | Manual | No | **Yes** |
-| Golden baseline diffing | No | No | No | **Yes** |
+| Tool call + parameter diffing | No | No | No | **Yes** |
+| Golden baseline regression detection | No | Manual | No | **Yes** |
 | Works without API keys | No | No | Partial | **Yes** |
-| Free & open source | No | No | Yes | **Yes** |
-| Works fully offline (Ollama) | No | Partial | Partial | **Yes** |
+| LLM-as-judge with pass@k | No | Yes | Yes | **Yes** |
+| Cost + latency tracking per test | No | No | No | **Yes** |
 | Agent framework adapters | LangChain only | Generic | Generic | **7 frameworks + any HTTP** |
 
 ---
