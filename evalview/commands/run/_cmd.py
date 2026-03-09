@@ -283,13 +283,20 @@ async def _run_async(
         return
 
     # ── Judge / provider setup ────────────────────────────────────────────────
-    judge_cfg = early_config.get("judge", {})
-    if judge_cfg:
-        if judge_cfg.get("provider"):
-            os.environ["EVAL_PROVIDER"] = judge_cfg["provider"]
-        if judge_cfg.get("model"):
-            from evalview.core.llm_provider import resolve_model_alias
-            os.environ["EVAL_MODEL"] = resolve_model_alias(judge_cfg["model"])
+    judge_cfg_raw = early_config.get("judge", {})
+    if judge_cfg_raw:
+        from evalview.core.config import JudgeConfig, apply_judge_config, EvalViewConfig
+        _jc = JudgeConfig(
+            provider=judge_cfg_raw.get("provider"),
+            model=judge_cfg_raw.get("model"),
+        )
+        # Build a minimal EvalViewConfig just to pass to apply_judge_config
+        _tmp_cfg = EvalViewConfig(
+            adapter=early_config.get("adapter", "http"),
+            endpoint=early_config.get("endpoint", ""),
+            judge=_jc,
+        )
+        apply_judge_config(_tmp_cfg)
 
     if no_judge:
         console.print(
@@ -592,7 +599,13 @@ async def _run_async(
         total_judge_calls = 0
         for tc in test_cases:
             tc_adapter = tc.adapter or adapter_type
-            judge_calls = 0 if no_judge else 1
+            # Account for statistical mode: each run may trigger a judge call
+            tc_runs = 1
+            if runs:
+                tc_runs = runs
+            elif tc.thresholds and hasattr(tc.thresholds, 'variance') and tc.thresholds.variance:
+                tc_runs = getattr(tc.thresholds.variance, 'runs', 1) or 1
+            judge_calls = 0 if no_judge else tc_runs
             total_judge_calls += judge_calls
             table.add_row(tc.name, tc_adapter, str(judge_calls))
 
@@ -668,6 +681,7 @@ async def _run_async(
             console.print(
                 f"  [red]⚠  Budget exceeded: ${total_cost:.4f} > ${budget:.2f} limit[/red]"
             )
+            raise SystemExit(1)
 
     # ── Summary / coverage / regression analysis ──────────────────────────────
     console.print()

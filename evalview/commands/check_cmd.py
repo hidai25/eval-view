@@ -638,15 +638,8 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
     config = _load_config_if_exists()
 
     # Apply judge config from config.yaml (env vars / CLI flags take priority)
-    if config:
-        judge_cfg = config.get_judge_config()
-        if judge_cfg:
-            import os
-            if judge_cfg.provider and not os.environ.get("EVAL_PROVIDER"):
-                os.environ["EVAL_PROVIDER"] = judge_cfg.provider
-            if judge_cfg.model and not os.environ.get("EVAL_MODEL"):
-                from evalview.core.llm_provider import resolve_model_alias
-                os.environ["EVAL_MODEL"] = resolve_model_alias(judge_cfg.model)
+    from evalview.core.config import apply_judge_config
+    apply_judge_config(config)
 
     # Resolve semantic diff: explicit flag > config file > auto-enable.
     # Priority (highest to lowest):
@@ -727,6 +720,7 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
             console.print(
                 f"[red]⚠  Budget exceeded: ${total_cost:.4f} > ${budget:.2f} limit[/red]\n"
             )
+            sys.exit(1)
 
     # Display results (reuse drift_tracker instance to avoid re-reading history file)
     _display_check_results(

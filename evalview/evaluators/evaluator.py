@@ -307,13 +307,19 @@ class Evaluator:
         """
         import signal
         import sys
+        import threading
 
         truncated = output[:Evaluator._MAX_CHECK_OUTPUT_LEN]
         passed: List[str] = []
         failed: List[str] = []
 
-        # signal.alarm is Unix-only; on Windows we skip the timeout guard.
-        can_alarm = hasattr(signal, "SIGALRM") and sys.platform != "win32"
+        # signal.alarm is Unix-only and process-global — only safe on the
+        # main thread. On Windows or worker threads we skip the timeout guard.
+        can_alarm = (
+            hasattr(signal, "SIGALRM")
+            and sys.platform != "win32"
+            and threading.current_thread() is threading.main_thread()
+        )
 
         for pattern in patterns:
             compiled = Evaluator._compile_regex(pattern)
@@ -345,6 +351,7 @@ class Evaluator:
             except Exception as e:
                 if can_alarm:
                     signal.alarm(0)
+                    signal.signal(signal.SIGALRM, old_handler)
                 logger.warning("Regex match error for %r: %s", pattern, e)
                 failed.append(pattern)
 
@@ -356,6 +363,47 @@ class Evaluator:
         raise _RegexTimeoutError()
 
     @staticmethod
+    def _extract_first_json_object(text: str) -> Any:
+        """Extract the first valid JSON object from surrounding text.
+
+        Uses bracket counting to support arbitrary nesting depth.
+        Returns the parsed object, or None if no valid JSON is found.
+        """
+        in_string = False
+        escape_next = False
+        for i, ch in enumerate(text):
+            if ch != '{' or in_string:
+                continue
+            # Found a '{' — try bracket counting from here
+            depth = 0
+            in_str = False
+            esc = False
+            for j in range(i, len(text)):
+                c = text[j]
+                if esc:
+                    esc = False
+                    continue
+                if c == '\\' and in_str:
+                    esc = True
+                    continue
+                if c == '"' and not esc:
+                    in_str = not in_str
+                    continue
+                if in_str:
+                    continue
+                if c == '{':
+                    depth += 1
+                elif c == '}':
+                    depth -= 1
+                    if depth == 0:
+                        candidate = text[i:j + 1]
+                        try:
+                            return _json.loads(candidate)
+                        except (ValueError, _json.JSONDecodeError):
+                            break  # malformed, try next '{'
+        return None
+
+    @staticmethod
     def _check_json_schema(output: str, schema: Dict[str, Any]) -> Tuple[bool, str]:
         """Validate output against JSON schema. Returns (passed, error_message)."""
         truncated = output[:Evaluator._MAX_CHECK_OUTPUT_LEN]
@@ -364,15 +412,9 @@ class Evaluator:
         try:
             data = _json.loads(truncated)
         except (ValueError, _json.JSONDecodeError):
-            # Try to extract JSON object from surrounding text.
-            # Use a non-greedy match to get the FIRST complete JSON object,
-            # not a greedy span from first '{' to last '}'.
-            for match in _re.finditer(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', truncated):
-                try:
-                    data = _json.loads(match.group())
-                    break  # found valid JSON
-                except (ValueError, _json.JSONDecodeError):
-                    continue
+            # Extract JSON objects from surrounding text using bracket counting.
+            # Handles arbitrary nesting depth (unlike the previous regex approach).
+            data = Evaluator._extract_first_json_object(truncated)
 
         if data is None:
             return False, "Output does not contain valid JSON"
@@ -415,7 +457,7 @@ class Evaluator:
                     value = data[prop_name]
                     if prop_type == "string" and not isinstance(value, str):
                         errors.append(f"{prop_name}: expected string")
-                    elif prop_type == "number" and not isinstance(value, (int, float)):
+                    elif prop_type == "number" and (not isinstance(value, (int, float)) or isinstance(value, bool)):
                         errors.append(f"{prop_name}: expected number")
                     elif prop_type == "boolean" and not isinstance(value, bool):
                         errors.append(f"{prop_name}: expected boolean")

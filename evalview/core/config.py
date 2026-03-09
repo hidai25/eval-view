@@ -208,5 +208,25 @@ class EvalViewConfig(BaseModel):
         return self.judge
 
 
+def apply_judge_config(config: Optional[EvalViewConfig]) -> None:
+    """Apply judge config from config.yaml to environment variables.
+
+    Sets EVAL_PROVIDER and EVAL_MODEL if configured and not already set
+    by CLI flags or env vars. Safe to call multiple times — existing env
+    vars always take priority.
+    """
+    if config is None:
+        return
+    judge_cfg = config.get_judge_config()
+    if judge_cfg is None:
+        return
+    import os
+    if judge_cfg.provider and not os.environ.get("EVAL_PROVIDER"):
+        os.environ["EVAL_PROVIDER"] = judge_cfg.provider
+    if judge_cfg.model and not os.environ.get("EVAL_MODEL"):
+        from evalview.core.llm_provider import resolve_model_alias
+        os.environ["EVAL_MODEL"] = resolve_model_alias(judge_cfg.model)
+
+
 # Default weights for backward compatibility
 DEFAULT_WEIGHTS = ScoringWeights()
