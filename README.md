@@ -115,12 +115,11 @@ LangSmith answers "what did my agent do?" Braintrust answers "how good is my age
 
 ## Who Is EvalView For?
 
-- **LangGraph and CrewAI developers** — confidence that refactoring agent graphs doesn't silently change behavior
-- **Claude Code and Codex skill authors** — validate that automation workflows do exactly what they're supposed to, every time
-- **AI/ML engineers running CI/CD** — a deterministic pass/fail signal that blocks regressions before they reach production
-- **Teams building multi-agent and agentic AI systems** — catch cascading behavior changes before they reach downstream agents
-- **Developers using Ollama or local LLMs** — fully offline, zero API-key regression detection
-- **Anyone doing vibe coding or rapid iteration** — know instantly whether a prompt or model swap broke something
+- **Anyone building AI agents** — know instantly if a prompt tweak, model swap, or tool change broke something
+- **AI/ML engineers running CI/CD** — a deterministic pass/fail signal that blocks regressions before production
+- **Teams shipping multi-agent systems** — catch cascading behavior changes before they reach downstream agents
+- **Skill and workflow authors** — validate that automation does exactly what it's supposed to, every time
+- **Developers using local models** — fully offline, zero API-key regression detection with Ollama or any local LLM
 
 If you run `evalview snapshot` today and `evalview check` after every change, you're using EvalView correctly.
 
