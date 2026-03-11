@@ -30,6 +30,7 @@ def _execute_check_tests(
     config: Optional["EvalViewConfig"],
     json_output: bool,
     semantic_diff: bool = False,
+    timeout: float = 30.0,
 ) -> Tuple[List[Tuple[str, "TraceDiff"]], List["EvaluationResult"], "DriftTracker", Dict[str, "GoldenTrace"]]:
     """Execute tests and compare against golden variants.
 
@@ -76,7 +77,7 @@ def _execute_check_tests(
 
         allow_private = getattr(config, "allow_private_urls", True) if config else True
         try:
-            adapter = _create_adapter(adapter_type, endpoint, allow_private_urls=allow_private)
+            adapter = _create_adapter(adapter_type, endpoint, timeout=timeout, allow_private_urls=allow_private)
         except ValueError as e:
             if not json_output:
                 console.print(f"[yellow]⚠ Skipping {tc.name}: {e}[/yellow]")
@@ -561,9 +562,10 @@ def _compute_check_exit_code(
     ),
 )
 @click.option("--budget", type=float, default=None, help="Maximum total budget in dollars.")
+@click.option("--timeout", type=float, default=30.0, help="Timeout per test in seconds (default: 30.0).")
 @click.option("--dry-run", "dry_run", is_flag=True, default=False, help="Preview test plan without executing.")
 @track_command("check")
-def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bool, report_path: Optional[str], semantic_diff: Optional[bool], budget: Optional[float], dry_run: bool):
+def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bool, report_path: Optional[str], semantic_diff: Optional[bool], budget: Optional[float], timeout: float, dry_run: bool):
     """Check current behavior against snapshot baseline.
 
     This command runs tests and compares them against your saved baselines,
@@ -581,6 +583,7 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
         evalview check --no-semantic-diff                # Opt out of semantic diff
         evalview check --dry-run                         # Preview plan, no API calls
         evalview check --budget 0.50                     # Cap spend at $0.50
+        evalview check --timeout 60                      # 60 second timeout per test
     """
     if budget is not None and budget <= 0:
         click.echo("Error: --budget must be a positive number.", err=True)
@@ -697,7 +700,7 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
         sys.exit(0)
 
     # Execute tests and compare against golden
-    diffs, results, drift_tracker, golden_traces = _execute_check_tests(test_cases, config, json_output, semantic_diff)
+    diffs, results, drift_tracker, golden_traces = _execute_check_tests(test_cases, config, json_output, semantic_diff, timeout)
 
     # Analyze diffs
     analysis = _analyze_check_diffs(diffs)
