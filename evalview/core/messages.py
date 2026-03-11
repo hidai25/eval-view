@@ -76,6 +76,43 @@ def get_random_clean_check_message() -> str:
     return random.choice(CLEAN_CHECK_MESSAGES)
 
 
+# Monitor messages (rotate for long-running sessions)
+MONITOR_START_MESSAGES: List[str] = [
+    "👁️  Monitor active — watching for regressions...",
+    "👁️  Standing guard over your agent...",
+    "👁️  Continuous regression detection started...",
+]
+
+MONITOR_CYCLE_MESSAGES: List[str] = [
+    "🔄 Running check cycle...",
+    "🔄 Checking for drift...",
+    "🔄 Verifying agent behavior...",
+    "🔄 Regression sweep...",
+]
+
+MONITOR_CLEAN_MESSAGES: List[str] = [
+    "✅ All clear",
+    "✅ No regressions",
+    "✅ Agent stable",
+    "✅ Looking good",
+]
+
+
+def get_random_monitor_start_message() -> str:
+    """Get a random monitor startup message."""
+    return random.choice(MONITOR_START_MESSAGES)
+
+
+def get_random_monitor_cycle_message() -> str:
+    """Get a random monitor cycle message."""
+    return random.choice(MONITOR_CYCLE_MESSAGES)
+
+
+def get_random_monitor_clean_message() -> str:
+    """Get a random monitor clean message."""
+    return random.choice(MONITOR_CLEAN_MESSAGES)
+
+
 def get_error_message(error_type: str) -> str:
     """Get a helpful error message.
 

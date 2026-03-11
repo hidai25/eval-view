@@ -82,6 +82,7 @@ The first two layers alone catch most regressions — fully offline, zero cost. 
 evalview capture --agent http://localhost:8000/invoke   # 1. Record real interactions
 evalview snapshot                                        # 2. Save as baseline
 evalview check                                           # 3. Catch regressions
+evalview monitor                                         # 4. Watch continuously (+ Slack alerts)
 # ✅ All clean — or ❌ REGRESSION: score 85 → 71
 ```
 
@@ -118,6 +119,7 @@ Specifically, EvalView diffs the full agent trajectory — tool calls, parameter
 | Works without API keys | No | No | Partial | **Yes** |
 | LLM-as-judge with pass@k | No | Yes | Yes | **Yes** |
 | Cost + latency tracking per test | No | No | No | **Yes** |
+| Continuous monitoring + Slack alerts | No | No | No | **Yes** |
 | Agent framework adapters | LangChain only | Generic | Generic | **7 frameworks + any HTTP** |
 
 ---
@@ -661,6 +663,33 @@ PRs with regressions get blocked. Add a PR comment showing exactly what changed:
 
 ---
 
+## Production Monitoring
+
+Run regression checks continuously and get alerted the moment your agent drifts:
+
+```bash
+evalview monitor                                         # Check every 5 minutes
+evalview monitor --interval 60                           # Check every minute
+evalview monitor --slack-webhook https://hooks.slack.com/services/...  # Slack alerts
+evalview monitor --test "critical-flow" --interval 30    # Watch one test closely
+```
+
+When a regression appears, you get a Slack notification with the failing tests. When it's resolved, you get an all-clear. Only new regressions trigger alerts — no spam.
+
+**Configuration via `config.yaml`:**
+
+```yaml
+monitor:
+  interval: 300
+  slack_webhook: https://hooks.slack.com/services/T00/B00/xxx
+  fail_on: [REGRESSION]
+  timeout: 60
+```
+
+Or set `EVALVIEW_SLACK_WEBHOOK` as an environment variable. Priority: CLI flag > config.yaml > env var.
+
+---
+
 ## EvalView Cloud — Team Baseline Sync
 
 **Share golden baselines across your entire team.** When you log in to EvalView Cloud, every `evalview snapshot` automatically pushes your golden baselines to secure cloud storage. Every `evalview check` silently pulls any baselines you don't have locally — so a new teammate clones the repo and immediately has regression detection, with zero manual baseline sharing.
@@ -1008,6 +1037,7 @@ safety-refusal              95         95         ✓  same
 | **Production Log Import** | `evalview import prod.jsonl` — auto-detect JSONL/OpenAI/EvalView formats, generate test YAMLs from real traffic | [Docs](#production-log-import) |
 | **Benchmark Packs** | 30 portable tests across RAG, coding, support, research — comparable scores per domain and difficulty tier | [Docs](#benchmark-packs) |
 | **Trajectory Diff (`evalview replay`)** | Step-by-step terminal + side-by-side HTML diff of baseline vs. current agent path — pinpoints where behavior diverged | [Docs](#evalview-replay--trajectory-diff-debugging) |
+| **Production Monitoring** | `evalview monitor` — continuous regression checks with Slack alerts, recovery notifications, configurable interval | [Docs](#production-monitoring) |
 
 ---
 
@@ -1170,7 +1200,7 @@ evalview skill test tests.yaml --agent langgraph
 
 ## Roadmap
 
-**Shipped:** Golden traces • **Snapshot/check workflow** • **Cloud baseline sync (login/logout/whoami + silent push/pull)** • **Streak tracking & celebrations** • **Multi-reference goldens** • Tool categories • Statistical mode • Difficulty levels • Partial sequence credit • Skills validation • E2E agent testing • Build & smoke tests • Health checks • Safety guards (`no_sudo`, `git_clean`) • Claude Code & Codex adapters • **Opus 4.6 cost tracking** • MCP servers • HTML reports • Interactive chat mode • EvalView Gym • **Provider-agnostic skill tests** • **15-template pattern library** • **Personalized init wizard** • **`forbidden_tools` safety contracts** • **HTML trace replay** (exact prompt/completion per step) • **Silent model update detection** (model fingerprinting + version change panel) • **Gradual drift detection** (OLS trend analysis over JSONL history) • **Semantic diff** (`--semantic-diff`, embedding-based output comparison) • **Multi-turn conversation testing** (sequential turns with injected history, per-turn `expected` assertions) • **A/B endpoint comparison** (`evalview compare --v1 <url> --v2 <url>`)
+**Shipped:** Golden traces • **Snapshot/check workflow** • **Cloud baseline sync (login/logout/whoami + silent push/pull)** • **Streak tracking & celebrations** • **Multi-reference goldens** • Tool categories • Statistical mode • Difficulty levels • Partial sequence credit • Skills validation • E2E agent testing • Build & smoke tests • Health checks • Safety guards (`no_sudo`, `git_clean`) • Claude Code & Codex adapters • **Opus 4.6 cost tracking** • MCP servers • HTML reports • Interactive chat mode • EvalView Gym • **Provider-agnostic skill tests** • **15-template pattern library** • **Personalized init wizard** • **`forbidden_tools` safety contracts** • **HTML trace replay** (exact prompt/completion per step) • **Silent model update detection** (model fingerprinting + version change panel) • **Gradual drift detection** (OLS trend analysis over JSONL history) • **Semantic diff** (`--semantic-diff`, embedding-based output comparison) • **Multi-turn conversation testing** (sequential turns with injected history, per-turn `expected` assertions) • **A/B endpoint comparison** (`evalview compare --v1 <url> --v2 <url>`) • **Production monitoring** (`evalview monitor` — continuous regression checks with Slack alerts)
 
 **Coming:** Agent Teams trace analysis • Grounded hallucination detection • Error compounding metrics • Container isolation
 

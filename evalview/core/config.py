@@ -156,6 +156,37 @@ class JudgeConfig(BaseModel):
     )
 
 
+class MonitorConfig(BaseModel):
+    """Configuration for continuous monitoring.
+
+    Example in config.yaml:
+        monitor:
+          interval: 300
+          slack_webhook: https://hooks.slack.com/services/...
+          fail_on: [REGRESSION]
+          timeout: 60
+    """
+
+    interval: int = Field(
+        default=300,
+        ge=10,
+        description="Seconds between check cycles"
+    )
+    slack_webhook: Optional[str] = Field(
+        default=None,
+        description="Slack incoming webhook URL for regression alerts"
+    )
+    fail_on: list = Field(
+        default=["REGRESSION"],
+        description="Diff statuses that trigger alerts"
+    )
+    timeout: float = Field(
+        default=30.0,
+        ge=1.0,
+        description="Timeout per test in seconds"
+    )
+
+
 class EvalViewConfig(BaseModel):
     """Complete EvalView configuration (loaded from config.yaml)."""
 
@@ -178,6 +209,7 @@ class EvalViewConfig(BaseModel):
     ci: Optional[CIConfig] = None
     diff: Optional[DiffConfig] = None
     judge: Optional[JudgeConfig] = None
+    monitor: Optional[MonitorConfig] = None
 
     def get_scoring_weights(self) -> ScoringWeights:
         """Get scoring weights with defaults."""
@@ -206,6 +238,12 @@ class EvalViewConfig(BaseModel):
     def get_judge_config(self) -> Optional[JudgeConfig]:
         """Get judge config if set."""
         return self.judge
+
+    def get_monitor_config(self) -> MonitorConfig:
+        """Get monitor config with defaults."""
+        if self.monitor:
+            return self.monitor
+        return MonitorConfig()
 
 
 def apply_judge_config(config: Optional[EvalViewConfig]) -> None:

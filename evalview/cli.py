@@ -34,6 +34,7 @@ from evalview.commands.hooks_cmd import install_hooks, uninstall_hooks
 from evalview.commands.import_cmd import import_logs
 from evalview.commands.snapshot_cmd import snapshot
 from evalview.commands.check_cmd import check, replay
+from evalview.commands.monitor_cmd import monitor
 from evalview.commands.benchmark_cmd import benchmark_cmd
 from evalview.commands.mcp_cmd import mcp
 from evalview.commands.visual_cmd import inspect_cmd, visualize_cmd, compare_cmd
@@ -77,6 +78,10 @@ def main(ctx: click.Context) -> None:
       report <file>           Generate report from results
       view                    View specific test results
       trends                  Performance trends over time
+
+    \b
+    Production:
+      monitor                 Continuous regression detection (+ Slack alerts)
 
     \b
     CI/CD:
@@ -143,6 +148,7 @@ main.add_command(chat)
 main.add_command(trace_cmd, name="trace")
 main.add_command(traces)
 main.add_command(baseline)
+main.add_command(monitor)
 
 
 if __name__ == "__main__":
