@@ -1,8 +1,10 @@
 """Check and replay commands — regression detection against golden baselines."""
 from __future__ import annotations
 
+import csv
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
@@ -551,6 +553,7 @@ def _compute_check_exit_code(
 @click.option("--fail-on", help="Comma-separated statuses to fail on (default: REGRESSION)")
 @click.option("--strict", is_flag=True, help="Fail on any change (REGRESSION, TOOLS_CHANGED, OUTPUT_CHANGED)")
 @click.option("--report", "report_path", default=None, type=click.Path(), help="Generate HTML report at this path (auto-opens in browser)")
+@click.option("--csv", "csv_path", default=None, type=click.Path(), help="Export results to a CSV file")
 @click.option(
     "--semantic-diff/--no-semantic-diff",
     "semantic_diff",
@@ -565,7 +568,7 @@ def _compute_check_exit_code(
 @click.option("--timeout", type=float, default=30.0, help="Timeout per test in seconds (default: 30.0).")
 @click.option("--dry-run", "dry_run", is_flag=True, default=False, help="Preview test plan without executing.")
 @track_command("check")
-def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bool, report_path: Optional[str], semantic_diff: Optional[bool], budget: Optional[float], timeout: float, dry_run: bool):
+def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bool, report_path: Optional[str], csv_path: Optional[str], semantic_diff: Optional[bool], budget: Optional[float], timeout: float, dry_run: bool):
     """Check current behavior against snapshot baseline.
 
     This command runs tests and compares them against your saved baselines,
@@ -577,6 +580,7 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
         evalview check                                   # Check all tests
         evalview check --test "my-test"                  # Check one test
         evalview check --json                            # JSON output for CI
+        evalview check --csv results.csv                 # Export results to CSV
         evalview check --report report.html              # Generate HTML report
         evalview check --fail-on REGRESSION,TOOLS_CHANGED
         evalview check --strict                          # Fail on any change
@@ -751,6 +755,34 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
         )
         if not json_output:
             console.print(f"[green]◈ Report:[/green] {path}\n")
+
+    # Export results to CSV if requested
+    if csv_path and diffs:
+        result_lookup: Dict[str, "EvaluationResult"] = {}
+        if results:
+            for r in results:
+                result_lookup[r.test_case] = r
+
+        timestamp = datetime.now(timezone.utc).isoformat()
+        csv_file_path = Path(csv_path)
+        with open(csv_file_path, "w", newline="") as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(["test_name", "status", "score", "baseline_score", "diff", "timestamp"])
+            for name, diff in diffs:
+                current_result = result_lookup.get(name)
+                current_score = current_result.score if current_result else ""
+                baseline_score = (current_score - diff.score_diff) if current_result and diff.score_diff is not None else ""
+                score_diff = diff.score_diff if diff.score_diff is not None else ""
+                writer.writerow([
+                    name,
+                    diff.overall_severity.value,
+                    current_score,
+                    baseline_score,
+                    score_diff,
+                    timestamp,
+                ])
+        if not json_output:
+            console.print(f"[green]◈ CSV exported:[/green] {csv_file_path}\n")
 
     # Compute and exit with code
     exit_code = _compute_check_exit_code(diffs, fail_on, strict)
