@@ -589,6 +589,10 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
         click.echo("Error: --budget must be a positive number.", err=True)
         sys.exit(1)
 
+    if timeout <= 0:
+        click.echo("Error: --timeout must be a positive number.", err=True)
+        sys.exit(1)
+
     from evalview.core.loader import TestCaseLoader
     from evalview.core.golden import GoldenStore
     from evalview.core.project_state import ProjectStateStore
