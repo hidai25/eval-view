@@ -5,7 +5,7 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 
-from evalview.adapters.http_adapter import HTTPAdapter
+from evalview.adapters.http_adapter import HTTPAdapter, AgentConnectionError
 from evalview.adapters.ollama_adapter import OllamaAdapter
 from evalview.core.types import ExecutionTrace
 
@@ -433,8 +433,9 @@ class TestHTTPAdapter:
             mock_client.__aexit__.return_value = None
             mock_client_class.return_value = mock_client
 
-            with pytest.raises(httpx.HTTPStatusError):
+            with pytest.raises(AgentConnectionError) as exc_info:
                 await adapter.execute("test query")
+            assert exc_info.value.error_type == "http"
 
     @pytest.mark.asyncio
     async def test_health_check_success(self):

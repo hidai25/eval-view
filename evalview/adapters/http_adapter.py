@@ -20,11 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class AgentConnectionError(Exception):
-    """Raised when connection to agent endpoint fails.
-
-    This exception provides user-friendly error messages for common connection
-    issues like connection refused, timeout, DNS resolution failure, and protocol errors.
-    """
+    """Raised when connection to the agent endpoint fails."""
 
     def __init__(self, message: str, endpoint: str, error_type: str = "connection"):
         self.endpoint = endpoint
@@ -32,7 +28,7 @@ class AgentConnectionError(Exception):
         super().__init__(message)
 
     def __str__(self) -> str:
-        return f"[{self.error_type.upper()}] {self.endpoint}: {self.args[0]}"
+        return f"{self.args[0]}\n  Endpoint: {self.endpoint}"
 
 
 class HTTPAdapter(AgentAdapter):
@@ -109,51 +105,45 @@ class HTTPAdapter(AgentAdapter):
                     api_end = datetime.now()
                     api_latency = (api_end - api_start).total_seconds() * 1000
         except httpx.ConnectError as e:
-            # Connection refused or DNS resolution failure
             error_msg = str(e)
             if "Name or service not known" in error_msg or "nodename nor servname" in error_msg:
                 raise AgentConnectionError(
-                    f"DNS解析失败: 无法解析主机名。请检查endpoint URL是否正确。",
+                    "DNS resolution failed. Check that the hostname is correct.",
                     endpoint=self.endpoint,
-                    error_type="dns"
+                    error_type="dns",
                 ) from None
-            else:
-                raise AgentConnectionError(
-                    f"连接被拒绝: 无法连接到服务器。请确认服务正在运行且URL正确。",
-                    endpoint=self.endpoint,
-                    error_type="refused"
-                ) from None
-
-        except httpx.TimeoutException as e:
-            # Request timeout
             raise AgentConnectionError(
-                f"请求超时: 服务器在 {self.timeout} 秒内未响应。请稍后重试或检查服务状态。",
+                "Connection refused. Is your agent running?",
                 endpoint=self.endpoint,
-                error_type="timeout"
+                error_type="refused",
             ) from None
 
-        except httpx.RemoteProtocolError as e:
-            # Protocol error
+        except httpx.TimeoutException:
             raise AgentConnectionError(
-                f"协议错误: 与服务器的通信出现异常。请检查API端点是否正确。",
+                f"Request timed out after {self.timeout}s. Try increasing --timeout.",
                 endpoint=self.endpoint,
-                error_type="protocol"
+                error_type="timeout",
             ) from None
 
-        except httpx.StreamError as e:
-            # Stream error (e.g., connection closed unexpectedly)
+        except httpx.RemoteProtocolError:
             raise AgentConnectionError(
-                f"连接中断: 与服务器的连接意外关闭。请检查网络连接后重试。",
+                "Protocol error. Check that the endpoint URL is correct.",
                 endpoint=self.endpoint,
-                error_type="stream"
+                error_type="protocol",
             ) from None
 
-        except httpx.HTTPError as e:
-            # Generic HTTP errors - wrap in friendly message
+        except httpx.StreamError:
             raise AgentConnectionError(
-                f"HTTP错误: {str(e)}",
+                "Connection closed unexpectedly. Check your network and try again.",
                 endpoint=self.endpoint,
-                error_type="http"
+                error_type="stream",
+            ) from None
+
+        except httpx.HTTPStatusError as e:
+            raise AgentConnectionError(
+                f"HTTP {e.response.status_code}: {e.response.reason_phrase}",
+                endpoint=self.endpoint,
+                error_type="http",
             ) from None
 
         # Record the API call as an LLM span if model info is available
