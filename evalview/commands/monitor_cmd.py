@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json as _json
 import os
 import signal
 import sys
@@ -38,6 +39,17 @@ def _resolve_slack_webhook(
     return os.environ.get("EVALVIEW_SLACK_WEBHOOK")
 
 
+def _append_history(history_path: Path, record: dict) -> None:
+    """Append one JSON record to the JSONL history file.
+
+    Creates parent directories and the file if they do not exist.
+    Each call appends a single newline-terminated JSON object.
+    """
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    with history_path.open("a", encoding="utf-8") as f:
+        f.write(_json.dumps(record) + "\n")
+
+
 def _run_monitor_loop(
     test_path: str,
     interval: int,
@@ -45,6 +57,7 @@ def _run_monitor_loop(
     fail_on: str,
     timeout: float,
     test_filter: Optional[str],
+    history_path: Optional[Path] = None,
 ) -> None:
     """Main monitor loop. Runs check cycles until Ctrl+C.
 
@@ -83,7 +96,8 @@ def _run_monitor_loop(
             raise MonitorError(f"No test found with name: {test_filter}")
 
     console.print(f"\n[cyan]{get_random_monitor_start_message()}[/cyan]")
-    console.print(f"[dim]  Tests: {len(test_cases)}  |  Interval: {interval}s  |  Slack: {'✓' if notifier else '—'}[/dim]")
+    history_hint = f"  |  History: {history_path}" if history_path else ""
+    console.print(f"[dim]  Tests: {len(test_cases)}  |  Interval: {interval}s  |  Slack: {'✓' if notifier else '—'}{history_hint}[/dim]")
     console.print(f"[dim]  Press Ctrl+C to stop.[/dim]\n")
 
     # Track state across cycles
@@ -129,6 +143,12 @@ def _run_monitor_loop(
                 if diff.overall_severity.value.upper() in fail_statuses:
                     currently_failing.add(name)
 
+            # Count severity buckets for history record
+            regressions = sum(1 for _, d in diffs if d.overall_severity.value == "REGRESSION")
+            tools_changed = sum(1 for _, d in diffs if d.overall_severity.value == "TOOLS_CHANGED")
+            output_changed = sum(1 for _, d in diffs if d.overall_severity.value == "OUTPUT_CHANGED")
+            passed = len(diffs) - len(currently_failing)
+
             if not currently_failing:
                 cost_part = f"  [dim]${cycle_cost:.4f}[/dim]" if cycle_cost > 0 else ""
                 console.print(f"[green]  {get_random_monitor_clean_message()} ({len(diffs)} tests){cost_part}[/green]")
@@ -141,14 +161,11 @@ def _run_monitor_loop(
                 # Show summary using analysis dict
                 parts = []
                 if analysis["has_regressions"]:
-                    count = sum(1 for _, d in diffs if d.overall_severity.value == "REGRESSION")
-                    parts.append(f"[red]{count} regression{'s' if count > 1 else ''}[/red]")
+                    parts.append(f"[red]{regressions} regression{'s' if regressions > 1 else ''}[/red]")
                 if analysis["has_tools_changed"]:
-                    count = sum(1 for _, d in diffs if d.overall_severity.value == "TOOLS_CHANGED")
-                    parts.append(f"[yellow]{count} tool change{'s' if count > 1 else ''}[/yellow]")
+                    parts.append(f"[yellow]{tools_changed} tool change{'s' if tools_changed > 1 else ''}[/yellow]")
                 if analysis["has_output_changed"]:
-                    count = sum(1 for _, d in diffs if d.overall_severity.value == "OUTPUT_CHANGED")
-                    parts.append(f"[dim]{count} output change{'s' if count > 1 else ''}[/dim]")
+                    parts.append(f"[dim]{output_changed} output change{'s' if output_changed > 1 else ''}[/dim]")
 
                 console.print(f"  ⚠  {', '.join(parts)}")
 
@@ -163,6 +180,21 @@ def _run_monitor_loop(
                     asyncio.run(notifier.send_regression_alert(alert_diffs, analysis))
                     console.print(f"[dim]  📤 Slack: alerted on {len(new_failures)} new failure(s)[/dim]")
 
+            # Append cycle record to JSONL history file if requested
+            if history_path is not None:
+                record = {
+                    "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "cycle": cycle_count,
+                    "total_tests": len(diffs),
+                    "passed": passed,
+                    "regressions": regressions,
+                    "tools_changed": tools_changed,
+                    "output_changed": output_changed,
+                    "cost": round(cycle_cost, 6),
+                    "failing_tests": sorted(currently_failing),
+                }
+                _append_history(history_path, record)
+
             previously_failing = currently_failing
 
             _sleep_interruptible(interval, lambda: shutdown)
@@ -173,6 +205,8 @@ def _run_monitor_loop(
     console.print(f"\n[cyan]Monitor stopped after {cycle_count} cycle(s).[/cyan]")
     if total_cost > 0:
         console.print(f"[dim]  Total cost: ${total_cost:.4f}[/dim]")
+    if history_path is not None and cycle_count > 0:
+        console.print(f"[dim]  History written to: {history_path}[/dim]")
     console.print()
 
 
@@ -191,6 +225,13 @@ def _sleep_interruptible(seconds: int, should_stop: Any) -> None:
 @click.option("--fail-on", default=None, help="Comma-separated statuses that trigger alerts (default: REGRESSION)")
 @click.option("--timeout", type=float, default=None, help="Timeout per test in seconds (default: 30)")
 @click.option("--test", "-t", "test_filter", default=None, help="Monitor only this specific test")
+@click.option(
+    "--history",
+    "history_path",
+    default=None,
+    type=click.Path(),
+    help="Append each cycle's results to a JSONL file (default: .evalview/monitor_history.jsonl)",
+)
 @track_command("monitor")
 def monitor(
     test_path: str,
@@ -199,6 +240,7 @@ def monitor(
     fail_on: Optional[str],
     timeout: Optional[float],
     test_filter: Optional[str],
+    history_path: Optional[str],
 ) -> None:
     """Continuously check for regressions with optional Slack alerts.
 
@@ -212,6 +254,7 @@ def monitor(
         evalview monitor --slack-webhook https://...    # Alert to Slack
         evalview monitor --test "weather-lookup"        # Monitor one test
         evalview monitor --fail-on REGRESSION,TOOLS_CHANGED
+        evalview monitor --history monitor_log.jsonl    # Persist cycle history
 
     \b
     Configuration (config.yaml):
@@ -240,6 +283,14 @@ def monitor(
         click.echo("Error: --timeout must be a positive number.", err=True)
         sys.exit(1)
 
+    resolved_history = (
+        Path(history_path) if history_path else None
+    )
+    # Default path if the flag was passed without a value is handled by click;
+    # callers that want the default can pass --history without an argument by
+    # using the documented default explicitly:
+    #   evalview monitor --history .evalview/monitor_history.jsonl
+
     try:
         _run_monitor_loop(
             test_path=test_path,
@@ -248,6 +299,7 @@ def monitor(
             fail_on=resolved_fail_on,
             timeout=resolved_timeout,
             test_filter=test_filter,
+            history_path=resolved_history,
         )
     except MonitorError as e:
         console.print(f"[red]❌ {e}[/red]")
