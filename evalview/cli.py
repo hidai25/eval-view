@@ -41,6 +41,7 @@ from evalview.commands.visual_cmd import inspect_cmd, visualize_cmd, compare_cmd
 from evalview.commands.chat_cmd import chat, trace_cmd
 from evalview.commands.traces_cmd import traces
 from evalview.commands.baseline_cmd import baseline
+from evalview.commands.feedback_cmd import feedback
 
 
 @click.group(context_settings={"allow_interspersed_args": False})
@@ -149,6 +150,7 @@ main.add_command(trace_cmd, name="trace")
 main.add_command(traces)
 main.add_command(baseline)
 main.add_command(monitor)
+main.add_command(feedback)
 
 
 if __name__ == "__main__":
