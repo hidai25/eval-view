@@ -4,8 +4,8 @@
 <p align="center">
   <img src="assets/logo.png" alt="EvalView" width="350">
   <br>
-  <strong>Regression testing for AI agents.</strong><br>
-  AI agent testing for CI/CD: generate tests, snapshot behavior, detect regressions, and block broken tool-calling agents before production.
+  <strong>Regression guardrails for agents.</strong><br>
+  Generate tests, snapshot behavior, and catch silent regressions in CI before they hit production.
 </p>
 
 <p align="center">
@@ -23,10 +23,10 @@
 
 ---
 
-EvalView is an **AI agent testing** and **LLM agent regression testing** tool for teams shipping tool-calling agents. It helps you:
+EvalView is a **regression guardrail** for teams shipping agents, especially tool-calling agents. It helps you:
 - generate your first agent test suite from a URL or traffic logs
 - snapshot a golden baseline for agent behavior
-- detect tool-call, sequence, output, cost, and latency regressions
+- detect tool-call, sequence, output, cost, latency, and multi-turn regressions
 - run AI agent tests in CI/CD before shipping changes
 
 Use EvalView when you need:
@@ -74,6 +74,24 @@ The first two layers alone catch most regressions — fully offline, zero cost. 
 ```
 
 **Your data stays local.** Nothing is sent to EvalView servers — all processing happens on your machine.
+
+### Multi-turn regressions are first-class
+
+EvalView does not stop at single prompt/output checks. It can catch regressions where an agent skips a clarification question, asks the wrong follow-up, or takes the wrong tool path on turn two.
+
+```yaml
+tests:
+  - name: refund_flow_requires_clarification
+    conversation:
+      - user: "I want a refund"
+        expected:
+          assistant_contains: ["order number"]
+      - user: "Order 4812"
+        expected:
+          tools_called: ["lookup_order", "check_policy"]
+```
+
+That matters because many real agent failures happen after the first turn, when the agent has to remember context, ask a clarifying question, or decide whether to act.
 
 ### The workflow
 
