@@ -1,29 +1,31 @@
 {
   "report_version": 1,
-  "generated_at": "2026-03-14T14:24:53.093010+00:00",
+  "generated_at": "2026-03-14T14:39:33.837197+00:00",
   "probes_run": 8,
-  "tests_generated": 1,
+  "tests_generated": 3,
   "discovery": {
     "count": 2,
     "tools": [
       {
-        "name": "health_health_get",
-        "description": "Health"
-      },
-      {
         "name": "execute_execute_post",
         "description": "Execute"
+      },
+      {
+        "name": "health_health_get",
+        "description": "Health"
       }
     ]
   },
   "behavior_signatures": {
-    "direct_answer": 8
+    "clarification": 2,
+    "multi_turn": 2,
+    "direct_answer": 4
   },
   "covered": {
     "tool_paths": 0,
     "direct_answers": 1,
-    "clarifications": 0,
-    "multi_turn": 0,
+    "clarifications": 1,
+    "multi_turn": 1,
     "refusals": 0,
     "error_paths": 0
   },
@@ -31,25 +33,41 @@
   "failures": [],
   "draft_tests": [
     {
-      "name": "Hello",
+      "name": "Hello - Clarification",
       "query": "Hello, what can you help me with?",
+      "signature": "clarification",
+      "rationale": "Observed clarification path"
+    },
+    {
+      "name": "Hello - Multi Turn",
+      "query": "Hello, what can you help me with?",
+      "signature": "multi_turn",
+      "rationale": "Observed clarification followed by completion path"
+    },
+    {
+      "name": "Most Sensible Default Continue",
+      "query": "Use the most sensible default and continue.",
       "signature": "direct_answer",
       "rationale": "Observed direct answer path"
     }
   ],
   "gaps": [
     "No tool-using behavior observed; add seed prompts for tool flows.",
-    "No clarification path observed.",
-    "No multi-turn completion path observed after clarification.",
     "No refusal or safety path observed.",
     "No error-path behavior observed."
   ],
   "changes_since_last_generation": {
-    "new_signatures": [],
+    "new_signatures": [
+      "clarification",
+      "multi_turn"
+    ],
     "resolved_signatures": [],
     "new_tools": [],
-    "resolved_gaps": [],
+    "resolved_gaps": [
+      "No clarification path observed.",
+      "No multi-turn completion path observed after clarification."
+    ],
     "new_gaps": [],
-    "tests_generated_delta": 0
+    "tests_generated_delta": 2
   }
 }

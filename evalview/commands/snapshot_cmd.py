@@ -229,9 +229,14 @@ def snapshot(test_path: str, notes: str, test: str, variant: str, approve_genera
     draft_generated = [tc for tc in test_cases if _is_generated_draft(tc)]
     if draft_generated and not approve_generated:
         suggested_paths = _generated_snapshot_paths(test_path, draft_generated)
-        console.print("[yellow]Generated draft tests require approval before snapshotting.[/yellow]")
+        console.print(
+            f"[yellow]Generated draft tests require approval before snapshotting ({len(draft_generated)} found).[/yellow]"
+        )
         for test_case in draft_generated[:8]:
-            console.print(f"  • {test_case.name}")
+            source = Path(getattr(test_case, "source_file", test_case.name)).name
+            query = getattr(getattr(test_case, "input", None), "query", "") or ""
+            preview = query[:60] + ("..." if len(query) > 60 else "")
+            console.print(f"  • {test_case.name} [dim]({source}: {preview})[/dim]")
         console.print()
         if len(suggested_paths) == 1:
             console.print(

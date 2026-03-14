@@ -13,9 +13,13 @@ def test_init_generate_path_uses_isolated_onboarding_folder(monkeypatch, tmp_pat
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("evalview.commands.init_cmd._detect_agent_endpoint", lambda: "http://localhost:8000/execute")
     monkeypatch.setattr("evalview.commands.init_cmd._detect_model", lambda: "claude-sonnet-4-6")
-    monkeypatch.setattr(
-        "evalview.commands.init_cmd._generate_init_draft_suite",
-        lambda endpoint, out_dir: (
+    def _fake_generate(endpoint, out_dir):
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "preview.yaml").write_text(
+            "name: preview\ninput:\n  query: hi\nexpected:\n  tools: []\nthresholds:\n  min_score: 0\n",
+            encoding="utf-8",
+        )
+        return (
             2,
             {
                 "covered": {
@@ -24,8 +28,9 @@ def test_init_generate_path_uses_isolated_onboarding_folder(monkeypatch, tmp_pat
                     "multi_turn": 0,
                 }
             },
-        ),
-    )
+        )
+
+    monkeypatch.setattr("evalview.commands.init_cmd._generate_init_draft_suite", _fake_generate)
     monkeypatch.setattr("evalview.commands.init_cmd._create_demo_agent", lambda base_path: None)
 
     runner = CliRunner()
@@ -37,6 +42,7 @@ def test_init_generate_path_uses_isolated_onboarding_folder(monkeypatch, tmp_pat
     assert "evalview check tests/generated-from-init" in result.output
     assert "tests/test-cases/" not in result.output
     assert "Only 2 distinct behavior path was discovered" not in result.output
+    assert "Generated Test Preview" in result.output
     state = (tmp_path / ".evalview" / "state.json").read_text(encoding="utf-8")
     assert "tests/generated-from-init" in state
 

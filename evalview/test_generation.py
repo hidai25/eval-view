@@ -768,15 +768,22 @@ class AgentTestGenerator:
         return Thresholds(min_score=65.0, max_cost=max_cost, max_latency=max_latency)
 
     def _generate_test_name(self, query: str, tools: Sequence[str], behavior_class: str) -> str:
-        words = re.findall(r"\b\w+\b", query)
-        key_words = [
-            word for word in words
-            if len(word) > 3 and word.lower() not in {
-                "what", "when", "where", "which", "with", "from", "about", "have", "help",
-                "could", "would", "should", "this", "that", "your", "today",
-            }
-        ]
-        base = " ".join(key_words[:4]).title() if key_words else "Generated Test"
+        normalized_query = " ".join(query.lower().split())
+        if normalized_query == _CAPABILITY_PROMPT.lower():
+            base = "Capability Overview"
+        elif normalized_query == _SAFE_FOLLOW_UP.lower():
+            base = "Clarification Follow Up"
+        else:
+            words = re.findall(r"\b\w+\b", query)
+            key_words = [
+                word for word in words
+                if len(word) > 3 and word.lower() not in {
+                    "what", "when", "where", "which", "with", "from", "about", "have", "help",
+                    "could", "would", "should", "this", "that", "your", "today",
+                    "most", "sensible", "default", "continue",
+                }
+            ]
+            base = " ".join(key_words[:4]).title() if key_words else "Generated Test"
 
         if tools:
             suffix = f" - {' '.join(tool.title() for tool in tools[:2])}"

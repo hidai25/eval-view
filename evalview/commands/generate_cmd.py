@@ -43,6 +43,22 @@ def _print_generate_failure_guidance(
         console.print("[dim]  • If your config is stale, run evalview init to refresh .evalview/config.yaml[/dim]")
 
 
+def _print_generated_test_preview(output_dir: Path, max_files: int = 2) -> None:
+    """Print generated YAML inline so users can inspect drafts without context-switching."""
+    yaml_files = sorted([path for path in output_dir.glob("*.yaml") if path.is_file()])
+    if not yaml_files:
+        return
+
+    console.print()
+    console.print("[bold]Generated Test Preview[/bold]")
+    for path in yaml_files[:max_files]:
+        console.print(f"[dim]{path}[/dim]")
+        console.print(path.read_text(encoding="utf-8").rstrip())
+        console.print()
+    if len(yaml_files) > max_files:
+        console.print(f"[dim]+ {len(yaml_files) - max_files} more generated test file(s)[/dim]")
+
+
 @click.command("generate")
 @click.option("--agent", "agent_url", help="Agent endpoint URL. Defaults to config or auto-detect.")
 @click.option("--adapter", "adapter_type", default=None, help="Adapter type (default: config or http).")
@@ -193,6 +209,7 @@ def generate(
         console.print(f"[green]✓ Generated {len(result.tests)} draft tests[/green]")
         console.print(f"[dim]Output:[/dim] {output_dir}")
         console.print(f"[dim]Files written:[/dim] {len(written)}")
+        _print_generated_test_preview(output_dir)
 
     covered = result.report.get("covered", {})
     discovery = result.report.get("discovery", {})

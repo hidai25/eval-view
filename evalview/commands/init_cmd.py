@@ -219,6 +219,24 @@ def _generate_init_draft_suite(endpoint: str, out_dir: Path) -> tuple[int, dict[
     return len(result.tests), result.report
 
 
+def _print_generated_test_preview(tests_dir: Path, max_files: int = 1) -> None:
+    """Print generated YAML inline so users can see the draft immediately."""
+    yaml_files = sorted(
+        [path for path in tests_dir.glob("*.yaml") if path.is_file()]
+    )
+    if not yaml_files:
+        return
+
+    console.print()
+    console.print("[bold]Generated Test Preview[/bold]")
+    for path in yaml_files[:max_files]:
+        console.print(f"[dim]{path}[/dim]")
+        console.print(path.read_text(encoding="utf-8").rstrip())
+        console.print()
+    if len(yaml_files) > max_files:
+        console.print(f"[dim]+ {len(yaml_files) - max_files} more generated test file(s)[/dim]\n")
+
+
 def _sync_existing_config(
     config_path: Path,
     *,
@@ -772,14 +790,17 @@ model:
                 console.print(
                     "[dim]   Use evalview generate --budget 20 for broader coverage.[/dim]"
                 )
+            _print_generated_test_preview(init_generated_dir, max_files=1)
         else:
             console.print("[yellow]⚠️  Could not reach agent to generate draft tests.[/yellow]")
             console.print("[dim]   Creating a blank template in tests/generated-from-init/ instead.[/dim]")
             _write_blank_template(init_generated_dir, endpoint)
             state_store.set_active_test_path("tests/generated-from-init")
+            _print_generated_test_preview(init_generated_dir, max_files=1)
     else:
         _write_blank_template(init_generated_dir, endpoint)
         state_store.set_active_test_path("tests/generated-from-init")
+        _print_generated_test_preview(init_generated_dir, max_files=1)
 
     demo_agent_dir = base_path / "demo-agent"
     if not demo_agent_dir.exists():

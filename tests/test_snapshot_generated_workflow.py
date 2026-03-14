@@ -87,7 +87,9 @@ thresholds:
 
     assert result.exit_code == 0
     assert "require approval" in result.output.lower()
+    assert "(1 found)" in result.output
     assert "--approve-generated" in result.output
+    assert "generated.yaml: hi" in result.output
 
 
 def test_snapshot_suggests_generated_subfolder_when_default_path_is_too_broad(monkeypatch, tmp_path):

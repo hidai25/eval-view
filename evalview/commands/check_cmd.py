@@ -79,6 +79,20 @@ def _print_check_failure_guidance(test_cases: List[Any], config: Any) -> None:
         console.print("[dim]Fix the failing test connections or narrow the test path, then rerun evalview check.[/dim]\n")
 
 
+def _should_auto_generate_report(
+    *,
+    report_path: Optional[str],
+    json_output: bool,
+    analysis: Dict[str, Any],
+    results: List[Any],
+) -> bool:
+    if report_path or json_output or not results:
+        return False
+    if bool(__import__("os").environ.get("CI")):
+        return False
+    return (not analysis.get("all_passed", False)) or bool(analysis.get("execution_failures", 0))
+
+
 def _resolve_default_test_path(test_path: str) -> str:
     """Use the active onboarding/generation folder when the user omitted a path."""
     if test_path != "tests":
@@ -299,20 +313,34 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
     if execution_failures > 0 and not json_output:
         _print_check_failure_guidance(baseline_test_cases, config)
 
-    # Generate HTML report if requested
-    if report_path and results:
+    auto_report = _should_auto_generate_report(
+        report_path=report_path,
+        json_output=json_output,
+        analysis=analysis,
+        results=results,
+    )
+    effective_report_path = report_path
+    if auto_report:
+        effective_report_path = str(Path(".evalview") / "latest-check.html")
+
+    # Generate HTML report if requested or auto-enabled
+    if effective_report_path and results:
         from evalview.visualization import generate_visual_report
         diff_list = [d for _, d in diffs]
         path = generate_visual_report(
             results=results,
             diffs=diff_list,
             golden_traces=golden_traces,
-            output_path=report_path,
+            output_path=effective_report_path,
             auto_open=not json_output,
             title="EvalView Check Report",
         )
         if not json_output:
-            console.print(f"[green]◈ Report:[/green] {path}\n")
+            if auto_report:
+                console.print(f"[green]◈ Failure report:[/green] {path}")
+                console.print("[dim]Opened automatically because this check found changes or execution failures.[/dim]\n")
+            else:
+                console.print(f"[green]◈ Report:[/green] {path}\n")
 
     # Export results to CSV if requested
     if csv_path and diffs:
