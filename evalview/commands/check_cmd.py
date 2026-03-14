@@ -105,6 +105,13 @@ def _resolve_default_test_path(test_path: str) -> str:
     return test_path
 
 
+def _format_snapshot_timestamp(snapshot_at: datetime) -> str:
+    """Format the last snapshot timestamp for human-facing check output."""
+    if snapshot_at.tzinfo is not None:
+        snapshot_at = snapshot_at.astimezone().replace(tzinfo=None)
+    return snapshot_at.strftime("%Y-%m-%d %H:%M")
+
+
 @click.command("check")
 @click.argument("test_path", default="tests", type=click.Path(exists=True))
 @click.option("--test", "-t", help="Check only this specific test")
@@ -169,6 +176,8 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
     state_store = ProjectStateStore()
     test_path = _resolve_default_test_path(test_path)
 
+    state = state_store.load()
+
     # Check if this is the first check
     is_first_check = state_store.is_first_check()
 
@@ -187,6 +196,11 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
         if not json_output:
             Celebrations.no_snapshot_found()
         sys.exit(1)
+
+    if state.last_snapshot_at and not json_output:
+        console.print(
+            f"[dim]Last baseline snapshot: {_format_snapshot_timestamp(state.last_snapshot_at)}[/dim]\n"
+        )
 
     # Show status message
     if not json_output:

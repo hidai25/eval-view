@@ -265,3 +265,39 @@ def test_check_auto_generates_html_report_on_failures(monkeypatch, tmp_path):
     assert result.exit_code == 1
     assert called["path"] == ".evalview/latest-check.html"
     assert "Failure report:" in result.output
+
+
+def test_check_shows_last_snapshot_timestamp(monkeypatch, tmp_path):
+    """Human check output should show when the current baseline was last snapshotted."""
+    from evalview.commands.check_cmd import check
+    from evalview.core.golden import GoldenMetadata
+    from evalview.core.project_state import ProjectState
+
+    monkeypatch.chdir(tmp_path)
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "sample.yaml").write_text(
+        "name: sample\ninput:\n  query: hi\nexpected:\n  tools: []\nthresholds:\n  min_score: 0\n",
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+
+    monkeypatch.setattr("evalview.commands.check_cmd._cloud_pull", lambda store: None)
+    monkeypatch.setattr("evalview.commands.check_cmd._load_config_if_exists", lambda: None)
+    monkeypatch.setattr(
+        "evalview.core.golden.GoldenStore.list_golden",
+        lambda self: [GoldenMetadata(test_name="sample", blessed_at="2026-03-13T00:00:00Z", score=95.0)],
+    )
+    monkeypatch.setattr(
+        "evalview.core.project_state.ProjectStateStore.load",
+        lambda self: ProjectState(
+            last_snapshot_at=datetime(2026, 3, 14, 9, 45),
+            total_snapshots=1,
+        ),
+    )
+
+    result = runner.invoke(check, ["tests", "--dry-run"])
+
+    assert result.exit_code == 0
+    assert "Last baseline snapshot: 2026-03-14 09:45" in result.output
