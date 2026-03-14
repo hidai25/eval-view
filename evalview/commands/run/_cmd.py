@@ -40,6 +40,7 @@ def _display_no_agent_guide(endpoint: Optional[str] = None) -> None:
         console.print(f"  [yellow]No agent at[/yellow] [bold]{endpoint}[/bold] [yellow]— is it running?[/yellow]")
         console.print()
         console.print("  Start your agent server, then re-run [cyan]evalview run[/cyan].")
+        console.print("  [dim]If you recently switched agents, run [cyan]evalview init[/cyan] to refresh .evalview/config.yaml.[/dim]")
     else:
         console.print("  [yellow]No agent configured.[/yellow]")
         console.print()
@@ -48,9 +49,9 @@ def _display_no_agent_guide(endpoint: Optional[str] = None) -> None:
         console.print("    [dim]adapter: http[/dim]")
         console.print("    [dim]endpoint: http://localhost:8080/execute[/dim]")
     console.print()
-    console.print("  [dim]Need a running agent?[/dim]")
-    console.print("  [dim]HTTP:      https://github.com/hidai25/eval-view/blob/main/demo-agent/agent.py[/dim]")
-    console.print("  [dim]LangGraph: https://github.com/hidai25/eval-view/tree/main/examples/langgraph[/dim]")
+    console.print("  [dim]Need a working path?[/dim]")
+    console.print("  [dim]Connect your current agent: evalview init[/dim]")
+    console.print("  [dim]Use isolated onboarding tests: evalview snapshot tests/generated-from-init[/dim]")
     console.print()
     console.print("  Or see EvalView catch a real regression right now:")
     console.print("  [bold cyan]→ evalview demo[/bold cyan]   [dim](no setup, 30 seconds)[/dim]")
@@ -1083,4 +1084,3 @@ async def _run_watch_mode(
         console.print("\n[yellow]Watch mode stopped.[/yellow]")
     finally:
         watcher.stop()
-

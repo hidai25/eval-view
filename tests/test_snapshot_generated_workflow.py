@@ -18,6 +18,7 @@ from evalview.core.types import (
     SequenceEvaluation,
     ToolEvaluation,
 )
+from evalview.core.types import ExpectedBehavior, TestCase, TestInput, Thresholds
 
 
 def _passing_result(test_case_name: str) -> EvaluationResult:
@@ -148,3 +149,186 @@ thresholds:
     updated = generated_file.read_text(encoding="utf-8")
     assert "review_status: approved" in updated
     assert "approved_at:" in updated
+
+
+def test_snapshot_uses_snapshot_specific_status_copy(monkeypatch, tmp_path):
+    """Snapshot should not reuse check-mode comparison copy."""
+    from evalview.commands.snapshot_cmd import snapshot
+
+    monkeypatch.chdir(tmp_path)
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "basic.yaml").write_text(
+        """name: Basic Case
+input:
+  query: hi
+expected:
+  output:
+    contains:
+      - ok
+thresholds:
+  min_score: 0
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "evalview.commands.snapshot_cmd._load_config_if_exists",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        "evalview.commands.snapshot_cmd._execute_snapshot_tests",
+        lambda test_cases, config: [_passing_result(test_cases[0].name)],
+    )
+    monkeypatch.setattr(
+        "evalview.commands.snapshot_cmd._cloud_push",
+        lambda saved_names: None,
+    )
+    monkeypatch.setattr(
+        "evalview.core.golden.GoldenStore.save_golden",
+        lambda self, result, notes=None, variant_name=None: None,
+    )
+    monkeypatch.setattr(
+        "evalview.core.project_state.ProjectStateStore.is_first_snapshot",
+        lambda self: False,
+    )
+    monkeypatch.setattr(
+        "evalview.core.project_state.ProjectStateStore.update_snapshot",
+        lambda self, test_count=1: None,
+    )
+    monkeypatch.setattr(
+        "evalview.core.messages.random.choice",
+        lambda messages: messages[0],
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(snapshot, ["tests"])
+
+    assert result.exit_code == 0, result.output
+    assert "Capturing a fresh baseline" in result.output
+    assert "Comparing against your baseline" not in result.output
+
+
+def test_snapshot_warns_when_only_subset_is_snapshotted(monkeypatch, tmp_path):
+    """Snapshot should warn clearly when only passing tests are saved."""
+    from evalview.commands.snapshot_cmd import snapshot
+
+    monkeypatch.chdir(tmp_path)
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    for name in ("one", "two"):
+        (tests_dir / f"{name}.yaml").write_text(
+            f"""name: {name}
+input:
+  query: hi
+expected:
+  output:
+    contains:
+      - ok
+thresholds:
+  min_score: 0
+""",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        "evalview.commands.snapshot_cmd._load_config_if_exists",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        "evalview.commands.snapshot_cmd._execute_snapshot_tests",
+        lambda test_cases, config: [_passing_result(test_cases[0].name)],
+    )
+    monkeypatch.setattr(
+        "evalview.commands.snapshot_cmd._cloud_push",
+        lambda saved_names: None,
+    )
+    monkeypatch.setattr(
+        "evalview.core.golden.GoldenStore.save_golden",
+        lambda self, result, notes=None, variant_name=None: None,
+    )
+    monkeypatch.setattr(
+        "evalview.core.project_state.ProjectStateStore.is_first_snapshot",
+        lambda self: False,
+    )
+    monkeypatch.setattr(
+        "evalview.core.project_state.ProjectStateStore.update_snapshot",
+        lambda self, test_count=1: None,
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(snapshot, ["tests"])
+
+    assert result.exit_code == 0, result.output
+    assert "Only 1 of 2 selected test(s) were snapshotted" in result.output
+    assert "saves baselines only for passing tests" in result.output
+
+
+def test_snapshot_warns_about_mixed_endpoints_or_adapters(monkeypatch, tmp_path):
+    """Snapshot should flag obviously mixed stale test folders."""
+    from evalview.commands.snapshot_cmd import snapshot
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "tests").mkdir()
+
+    test_cases = [
+        TestCase(
+            name="current-http",
+            input=TestInput(query="hi"),
+            expected=ExpectedBehavior(),
+            thresholds=Thresholds(min_score=0),
+            adapter="http",
+            endpoint="http://localhost:8000/execute",
+        ),
+        TestCase(
+            name="stale-langgraph",
+            input=TestInput(query="hi"),
+            expected=ExpectedBehavior(),
+            thresholds=Thresholds(min_score=0),
+            adapter="langgraph",
+            endpoint="http://localhost:8090/invoke",
+        ),
+    ]
+
+    monkeypatch.setattr(
+        "evalview.core.loader.TestCaseLoader.load_from_directory",
+        lambda self, path: test_cases,
+    )
+    monkeypatch.setattr(
+        "evalview.commands.snapshot_cmd._load_config_if_exists",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        "evalview.commands.snapshot_cmd._execute_snapshot_tests",
+        lambda loaded_cases, config: [_passing_result(loaded_cases[0].name)],
+    )
+    monkeypatch.setattr(
+        "evalview.commands.snapshot_cmd._cloud_push",
+        lambda saved_names: None,
+    )
+    monkeypatch.setattr(
+        "evalview.core.golden.GoldenStore.save_golden",
+        lambda self, result, notes=None, variant_name=None: None,
+    )
+    monkeypatch.setattr(
+        "evalview.core.project_state.ProjectStateStore.is_first_snapshot",
+        lambda self: False,
+    )
+    monkeypatch.setattr(
+        "evalview.core.project_state.ProjectStateStore.update_snapshot",
+        lambda self, test_count=1: None,
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(snapshot, ["tests"])
+
+    assert result.exit_code == 0, result.output
+    assert "mixes multiple endpoints or adapters" in result.output
+    assert "http://localhost:8000/execute" in result.output
+    assert "http://localhost:8090/invoke" in result.output
+    assert "http, langgraph" in result.output
+    assert "Tests grouped by target" in result.output
+    assert "current-http" in result.output
+    assert "stale-langgraph" in result.output
+    assert "Run evalview init" in result.output
+    assert "tests/current-agent" in result.output

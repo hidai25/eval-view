@@ -120,6 +120,11 @@ class _FakeAdapter:
         )
 
 
+class _FakeAdapterThatFails:
+    async def execute(self, query: str, context=None):  # pragma: no cover - exercised via command
+        raise RuntimeError("Connection refused. Is your agent running?\nEndpoint: http://localhost:8090/execute")
+
+
 def test_generate_writes_clustered_draft_suite(monkeypatch, tmp_path):
     """Generate should write one draft test per distinct behavior path."""
     from evalview.commands.generate_cmd import generate
@@ -265,3 +270,32 @@ def test_generate_report_tracks_changes_since_last_generation(monkeypatch, tmp_p
     delta = report["changes_since_last_generation"]
     assert "tests_generated_delta" in delta
     assert isinstance(delta["new_signatures"], list)
+
+
+def test_generate_suggests_live_endpoint_when_config_is_stale(monkeypatch, tmp_path):
+    """Generate should explain stale config and suggest the detected live agent."""
+    from evalview.commands.generate_cmd import generate
+
+    class _Config:
+        endpoint = "http://localhost:8090/execute"
+        adapter = "http"
+        allow_private_urls = True
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("evalview.commands.generate_cmd._load_config_if_exists", lambda: _Config())
+    monkeypatch.setattr(
+        "evalview.commands.generate_cmd.create_adapter",
+        lambda **kwargs: _FakeAdapterThatFails(),
+    )
+    monkeypatch.setattr(
+        "evalview.commands.generate_cmd._detect_agent_endpoint",
+        lambda: "http://localhost:8000/execute",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(generate, [])
+
+    assert result.exit_code != 0
+    assert "A different local agent is running at http://localhost:8000/execute" in result.output
+    assert "evalview init" in result.output
+    assert "evalview generate --agent http://localhost:8000/execute" in result.output

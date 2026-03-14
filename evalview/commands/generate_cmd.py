@@ -11,6 +11,37 @@ from evalview.telemetry.decorators import track_command
 from evalview.test_generation import AgentTestGenerator, load_seed_prompts, run_generation
 
 
+def _print_generate_failure_guidance(
+    *,
+    endpoint: str | None,
+    agent_url: str | None,
+    from_log: str | None,
+) -> None:
+    """Print actionable guidance when live probing produced no draft tests."""
+    if from_log:
+        return
+
+    detected_endpoint = _detect_agent_endpoint()
+    if detected_endpoint and endpoint and detected_endpoint != endpoint and not agent_url:
+        console.print()
+        console.print(
+            f"[yellow]A different local agent is running at {detected_endpoint}.[/yellow]"
+        )
+        console.print(
+            f"[dim]Your current config still points at {endpoint}. "
+            "Run one of these:[/dim]"
+        )
+        console.print("[dim]  • evalview init[/dim]")
+        console.print(f"[dim]  • evalview generate --agent {detected_endpoint}[/dim]")
+        return
+
+    if endpoint:
+        console.print()
+        console.print("[dim]Next steps:[/dim]")
+        console.print("[dim]  • Start the agent at the endpoint above, then rerun evalview generate[/dim]")
+        console.print("[dim]  • If your config is stale, run evalview init to refresh .evalview/config.yaml[/dim]")
+
+
 @click.command("generate")
 @click.option("--agent", "agent_url", help="Agent endpoint URL. Defaults to config or auto-detect.")
 @click.option("--adapter", "adapter_type", default=None, help="Adapter type (default: config or http).")
@@ -136,6 +167,11 @@ def generate(
             console.print("[dim]Probe failures:[/dim]")
             for failure in result.failures[:5]:
                 console.print(f"[dim]  • {failure}[/dim]")
+        _print_generate_failure_guidance(
+            endpoint=endpoint,
+            agent_url=agent_url,
+            from_log=from_log,
+        )
         raise click.Abort()
 
     generator = AgentTestGenerator(

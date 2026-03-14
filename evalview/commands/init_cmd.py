@@ -10,9 +10,12 @@ from typing import Any, Dict, List, Optional
 
 import click
 import httpx
+import yaml
 
 from evalview.commands.shared import console, _detect_agent_endpoint
 from evalview.telemetry.decorators import track_command
+from evalview.core.adapter_factory import create_adapter
+from evalview.test_generation import AgentTestGenerator, run_generation
 
 
 # ---------------------------------------------------------------------------
@@ -183,6 +186,82 @@ thresholds:
     return generated
 
 
+def _generate_init_draft_suite(endpoint: str, out_dir: Path) -> tuple[int, dict[str, Any]]:
+    """Generate an isolated draft suite for onboarding.
+
+    Uses the same generation engine as `evalview generate`, but writes into a
+    dedicated folder so first-run onboarding does not mix with stale tests.
+    """
+    adapter = create_adapter(
+        adapter_type="http",
+        endpoint=endpoint,
+        timeout=30.0,
+        allow_private_urls=True,
+    )
+    result = run_generation(
+        adapter=adapter,
+        endpoint=endpoint,
+        adapter_type="http",
+        budget=8,
+        allow_live_side_effects=False,
+    )
+    if not result.tests:
+        return 0, result.report
+
+    generator = AgentTestGenerator(
+        adapter=adapter,
+        endpoint=endpoint,
+        adapter_type="http",
+        allow_live_side_effects=False,
+    )
+    generator.write_suite(result, out_dir)
+    return len(result.tests), result.report
+
+
+def _sync_existing_config(
+    config_path: Path,
+    *,
+    endpoint: str,
+    adapter_type: str,
+    timeout: float,
+    model_name: str,
+) -> bool:
+    """Update an existing config when init detects a different live agent.
+
+    Returns True when the file was changed.
+    """
+    try:
+        data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return False
+
+    changed = False
+    if data.get("endpoint") != endpoint:
+        data["endpoint"] = endpoint
+        changed = True
+    if data.get("adapter") != adapter_type:
+        data["adapter"] = adapter_type
+        changed = True
+    if data.get("timeout") != timeout:
+        data["timeout"] = timeout
+        changed = True
+
+    model = data.get("model")
+    if not isinstance(model, dict):
+        model = {}
+    if model_name and model.get("name") != model_name:
+        model["name"] = model_name
+        data["model"] = model
+        changed = True
+
+    if changed:
+        config_path.write_text(
+            yaml.safe_dump(data, sort_keys=False, allow_unicode=False),
+            encoding="utf-8",
+        )
+    return changed
+
+
 def _write_blank_template(tests_dir: Path, endpoint: str) -> None:
     """Write a minimal blank test template when auto-gen is not possible."""
     tests_dir.mkdir(parents=True, exist_ok=True)
@@ -208,7 +287,7 @@ thresholds:
   min_score: 70
   max_latency: 10000
 """)
-        console.print("[green]✅ Created tests/test-cases/my-first-test.yaml[/green]")
+        console.print(f"[green]✅ Created {path}[/green]")
         console.print("[dim]   Edit the query to match what your agent actually does[/dim]")
 
 
@@ -611,8 +690,19 @@ model:
         console.print("\n[green]✅ Created .evalview/config.yaml[/green]")
     else:
         console.print("\n[yellow]⚠️  .evalview/config.yaml already exists[/yellow]")
+        if _sync_existing_config(
+            config_path,
+            endpoint=endpoint,
+            adapter_type=adapter_type,
+            timeout=timeout,
+            model_name=model_name,
+        ):
+            console.print(f"[green]✓ Updated .evalview/config.yaml to use {endpoint}[/green]")
+        else:
+            console.print("[dim]Keeping existing config values.[/dim]")
 
     tests_dir = base_path / "tests" / "test-cases"
+    init_generated_dir = base_path / "tests" / "generated-from-init"
 
     if detected_endpoint:
         console.print("\n[bold]How would you like to create your first tests?[/bold]\n")
@@ -622,8 +712,9 @@ model:
             f"     [cyan]evalview capture --agent {endpoint}[/cyan]\n"
         )
         console.print(
-            "  [bold]2. Auto-probe agent[/bold]\n"
-            "     EvalView sends example queries now and saves the responses.\n"
+            "  [bold]2. Generate a draft suite[/bold]\n"
+            "     EvalView probes the agent and writes draft regression tests now.\n"
+            f"     [dim]Equivalent to: evalview generate --agent {endpoint}[/dim]\n"
         )
         console.print(
             "  [bold]3. Blank template[/bold]\n"
@@ -644,17 +735,31 @@ model:
             f"Tests are saved to tests/test-cases/ automatically.[/dim]"
         )
     elif path_choice == 2:
-        console.print("\n[cyan]Generating test cases from your agent...[/cyan]")
-        n = _autogen_tests(endpoint, tests_dir)
+        console.print("\n[cyan]Generating a draft suite from your agent...[/cyan]")
+        console.print(f"[dim]  Writing onboarding drafts to {init_generated_dir}/[/dim]")
+        n, report = _generate_init_draft_suite(endpoint, init_generated_dir)
         if n > 0:
-            console.print(f"[green]✅ Generated {n} test case(s) in tests/test-cases/[/green]")
-            console.print("[dim]   Review and edit them, then run evalview snapshot[/dim]")
+            covered = report.get("covered", {})
+            console.print(f"[green]✅ Generated {n} draft test case(s) in tests/generated-from-init/[/green]")
+            console.print(
+                "[dim]   This folder is isolated from your existing tests so snapshot only targets these drafts.[/dim]"
+            )
+            console.print(
+                f"[dim]   Coverage: tool paths={covered.get('tool_paths', 0)}, "
+                f"direct answers={covered.get('direct_answers', 0)}, "
+                f"multi-turn={covered.get('multi_turn', 0)}[/dim]"
+            )
+            if n == 1:
+                console.print(
+                    "[dim]   Only one distinct behavior path was discovered. "
+                    "Use evalview generate --budget 20 for broader coverage.[/dim]"
+                )
         else:
-            console.print("[yellow]⚠️  Could not reach agent to auto-generate tests.[/yellow]")
-            console.print("[dim]   Creating blank template instead.[/dim]")
-            _write_blank_template(tests_dir, endpoint)
+            console.print("[yellow]⚠️  Could not reach agent to generate draft tests.[/yellow]")
+            console.print("[dim]   Creating a blank template in tests/generated-from-init/ instead.[/dim]")
+            _write_blank_template(init_generated_dir, endpoint)
     else:
-        _write_blank_template(tests_dir, endpoint)
+        _write_blank_template(init_generated_dir, endpoint)
 
     demo_agent_dir = base_path / "demo-agent"
     if not demo_agent_dir.exists():
@@ -691,12 +796,37 @@ model:
         )
         step5 = "[bold]→[/bold] Check for regressions anytime\n   [cyan]evalview check[/cyan]"
         body = f"{step1}\n{step2}\n\n{step3}\n\n{step4}\n\n{step5}"
+    elif detected_endpoint and path_choice == 2:
+        step3 = (
+            "[bold]→[/bold] Review the isolated draft suite\n"
+            "   [cyan]tests/generated-from-init/[/cyan]\n"
+            "   [dim]These drafts were generated from live probing and kept separate from older tests.[/dim]"
+        )
+        step4 = (
+            f"[bold]→[/bold] Capture a baseline for just these drafts\n"
+            f"   [cyan]evalview snapshot tests/generated-from-init[/cyan]{snapshot_suffix}"
+        )
+        step5 = (
+            "[bold]→[/bold] Check these drafts for regressions anytime\n"
+            "   [cyan]evalview check tests/generated-from-init[/cyan]"
+        )
+        body = f"{step1}\n{step2}\n\n{step3}\n\n{step4}\n\n{step5}"
     else:
-        step3 = f"[bold]→[/bold] Capture a baseline\n   [cyan]evalview snapshot[/cyan]{snapshot_suffix}"
-        step4 = "[bold]→[/bold] Check for regressions anytime\n   [cyan]evalview check[/cyan]"
+        step3 = (
+            "[bold]→[/bold] Review your starter test\n"
+            "   [cyan]tests/generated-from-init/my-first-test.yaml[/cyan]"
+        )
+        step4 = (
+            f"[bold]→[/bold] Capture a baseline for this starter test\n"
+            f"   [cyan]evalview snapshot tests/generated-from-init[/cyan]{snapshot_suffix}"
+        )
+        step5 = (
+            "[bold]→[/bold] Check this starter test for regressions anytime\n"
+            "   [cyan]evalview check tests/generated-from-init[/cyan]"
+        )
         body = (
-            f"{step1}\n{step2}\n\n{step3}\n\n{step4}\n\n"
-            f"[dim]Edit tests/test-cases/my-first-test.yaml to match your agent's queries[/dim]"
+            f"{step1}\n{step2}\n\n{step3}\n\n{step4}\n\n{step5}\n\n"
+            f"[dim]Edit tests/generated-from-init/my-first-test.yaml to match your agent's queries[/dim]"
         )
 
     console.print(Panel(body, title="You're set up", border_style="green"))

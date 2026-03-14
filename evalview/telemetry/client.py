@@ -16,6 +16,7 @@ Developer filtering:
 import os
 import platform
 import sys
+import logging
 from typing import Optional
 
 from evalview.telemetry.config import (
@@ -32,6 +33,16 @@ POSTHOG_HOST = "https://us.i.posthog.com"
 
 # Singleton client
 _client: Optional["TelemetryClient"] = None
+
+
+def _silence_telemetry_network_loggers() -> None:
+    """Keep telemetry network failures out of normal CLI output."""
+    for logger_name in (
+        "posthog",
+        "backoff",
+        "urllib3.connectionpool",
+    ):
+        logging.getLogger(logger_name).setLevel(logging.CRITICAL)
 
 
 def _is_developer() -> bool:
@@ -77,6 +88,7 @@ class TelemetryClient:
         if self._posthog is not None:
             return True
         try:
+            _silence_telemetry_network_loggers()
             from posthog import Posthog
             self._posthog = Posthog(
                 project_api_key=POSTHOG_API_KEY,

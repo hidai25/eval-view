@@ -14,6 +14,12 @@ CHECKING_MESSAGES: List[str] = [
     "🔍 Looking for what changed...",
 ]
 
+SNAPSHOT_MESSAGES: List[str] = [
+    "🔍 Capturing a fresh baseline...",
+    "🔍 Saving current behavior as baseline...",
+    "🔍 Recording today's behavior as the baseline...",
+]
+
 # Demo-specific messages — used when EVALVIEW_DEMO=1
 # Phase 1 (snapshot): clean and purposeful, no randomness
 DEMO_SNAPSHOT_MESSAGE = "🔍 Locking in baseline behavior..."
@@ -57,6 +63,19 @@ def get_random_checking_message() -> str:
     if phase == "check":
         return random.choice(DEMO_CHECK_MESSAGES)
     return random.choice(CHECKING_MESSAGES)
+
+
+def get_random_snapshot_message() -> str:
+    """Get a snapshot status message.
+
+    When EVALVIEW_DEMO_PHASE is set to snapshot, preserves the demo-specific
+    narrative. Otherwise returns a snapshot-oriented message instead of a
+    comparison-oriented check message.
+    """
+    phase = os.environ.get("EVALVIEW_DEMO_PHASE")
+    if phase == "snapshot":
+        return DEMO_SNAPSHOT_MESSAGE
+    return random.choice(SNAPSHOT_MESSAGES)
 
 
 def get_random_clean_check_message() -> str:

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional, TYPE_CHECKING
+from typing import Dict, List, Optional, TYPE_CHECKING
 
 import click
 import yaml
@@ -101,6 +101,43 @@ def _approve_generated_tests(test_cases: List) -> None:
         path.write_text(serialized, encoding="utf-8")
 
 
+def _summarize_mixed_targets(test_cases: List, config) -> tuple[list[str], list[str]]:
+    """Return distinct endpoints and adapters represented in the selected tests."""
+    config_endpoint = getattr(config, "endpoint", None) if config else None
+    config_adapter = getattr(config, "adapter", None) if config else None
+
+    endpoints = sorted(
+        {
+            endpoint
+            for endpoint in ((tc.endpoint or config_endpoint) for tc in test_cases)
+            if endpoint
+        }
+    )
+    adapters = sorted(
+        {
+            adapter
+            for adapter in ((tc.adapter or config_adapter) for tc in test_cases)
+            if adapter
+        }
+    )
+    return endpoints, adapters
+
+
+def _group_tests_by_target(test_cases: List, config) -> Dict[tuple[str, str], list[str]]:
+    """Group tests by their effective adapter/endpoint target."""
+    config_endpoint = getattr(config, "endpoint", None) if config else None
+    config_adapter = getattr(config, "adapter", None) if config else None
+
+    groups: Dict[tuple[str, str], list[str]] = {}
+    for test_case in test_cases:
+        adapter = test_case.adapter or config_adapter or "<unknown-adapter>"
+        endpoint = test_case.endpoint or config_endpoint or "<unknown-endpoint>"
+        source = getattr(test_case, "source_file", None)
+        label = Path(source).name if source else test_case.name
+        groups.setdefault((adapter, endpoint), []).append(label)
+    return groups
+
+
 @click.command("snapshot")
 @click.argument("test_path", default="tests", type=click.Path(exists=True))
 @click.option("--notes", "-n", help="Notes about this snapshot")
@@ -124,7 +161,7 @@ def snapshot(test_path: str, notes: str, test: str, variant: str, approve_genera
     from evalview.core.loader import TestCaseLoader
     from evalview.core.project_state import ProjectStateStore
     from evalview.core.celebrations import Celebrations
-    from evalview.core.messages import get_random_checking_message
+    from evalview.core.messages import get_random_snapshot_message
     from evalview.skills.ui_utils import print_evalview_banner
 
     print_evalview_banner(console, subtitle="[dim]Catch agent regressions before you ship[/dim]")
@@ -135,7 +172,7 @@ def snapshot(test_path: str, notes: str, test: str, variant: str, approve_genera
     # Check if this is the first snapshot ever
     is_first = state_store.is_first_snapshot()
 
-    console.print(f"\n[cyan]▶ {get_random_checking_message()}[/cyan]\n")
+    console.print(f"\n[cyan]▶ {get_random_snapshot_message()}[/cyan]\n")
 
     # Load test cases
     loader = TestCaseLoader()
@@ -183,14 +220,51 @@ def snapshot(test_path: str, notes: str, test: str, variant: str, approve_genera
     from evalview.core.config import apply_judge_config
     apply_judge_config(config)
 
+    endpoints, adapters = _summarize_mixed_targets(test_cases, config)
+    target_groups = _group_tests_by_target(test_cases, config)
+
     # Execute tests
     results = _execute_snapshot_tests(test_cases, config)
+    failed_count = len(test_cases) - len(results)
 
     # Save passing results as golden
     saved_count = _save_snapshot_results(results, notes, variant=variant)
 
     if saved_count == 0:
         return
+
+    if failed_count > 0:
+        console.print(
+            f"\n[yellow]Only {saved_count} of {len(test_cases)} selected test(s) were snapshotted.[/yellow]"
+        )
+        console.print("[dim]EvalView saves baselines only for passing tests.[/dim]")
+        if len(endpoints) > 1 or len(adapters) > 1:
+            console.print("[yellow]This test selection mixes multiple endpoints or adapters.[/yellow]")
+            if endpoints:
+                console.print(f"[dim]Endpoints: {', '.join(endpoints)}[/dim]")
+            if adapters:
+                console.print(f"[dim]Adapters: {', '.join(adapters)}[/dim]")
+            if len(target_groups) > 1:
+                console.print("[dim]Tests grouped by target:[/dim]")
+                for (adapter, endpoint), files in sorted(target_groups.items()):
+                    listed = ", ".join(files[:4])
+                    if len(files) > 4:
+                        listed += f", +{len(files) - 4} more"
+                    console.print(f"[dim]  • {adapter} @ {endpoint}: {listed}[/dim]")
+            console.print(
+                "[dim]To clean this up:[/dim]"
+            )
+            console.print(
+                "[dim]  1. Run evalview init if .evalview/config.yaml still points at an old agent.[/dim]"
+            )
+            console.print(
+                "[dim]  2. Move or delete tests that target other adapters/endpoints before snapshotting.[/dim]"
+            )
+            console.print(
+                "[dim]  3. Or snapshot a clean subfolder only, for example: evalview snapshot tests/current-agent[/dim]"
+            )
+        else:
+            console.print("[dim]Fix the failing tests, then rerun evalview snapshot for a complete baseline.[/dim]")
 
     # Update project state
     state_store.update_snapshot(test_count=saved_count)
