@@ -20,6 +20,7 @@ from evalview.core.types import (
     StepTrace,
     StepMetrics,
     ExecutionMetrics,
+    TokenUsage,
     ForbiddenToolEvaluation,
     TraceContext,
     Span,
@@ -488,3 +489,25 @@ class TestHTMLReporterSpanSerialisation:
         llm_spans = [s for s in spans if s["kind"] == "llm"]
         # Truncation limit is 600 chars + " …"
         assert len(llm_spans[0]["llm"]["prompt"]) <= 605
+
+    def test_report_includes_model_and_token_totals(self, tmp_path):
+        from evalview.reporters.html_reporter import HTMLReporter
+
+        reporter = HTMLReporter()
+        result = self._make_result_with_trace_context()
+        result.trace.model_id = "claude-sonnet-4-6"
+        result.trace.model_provider = "anthropic"
+        result.trace.metrics.total_tokens = TokenUsage(
+            input_tokens=123,
+            output_tokens=45,
+            cached_tokens=6,
+        )
+
+        output_path = tmp_path / "report.html"
+        reporter.generate([result], str(output_path))
+        html = output_path.read_text(encoding="utf-8")
+
+        assert "anthropic/claude-sonnet-4-6" in html
+        assert "Total Tokens" in html
+        assert "174" in html
+        assert "in 123 / out 45 / cached 6" in html

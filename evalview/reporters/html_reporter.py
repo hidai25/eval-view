@@ -1,6 +1,7 @@
 """HTML report generator with interactive Plotly charts."""
 
 import json
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any
@@ -76,6 +77,9 @@ class HTMLReporter:
                 "total_cost": 0,
                 "total_latency": 0,
                 "avg_latency": 0,
+                "total_tokens": 0,
+                "models": [],
+                "models_display": "Unknown",
             }
 
         passed = sum(1 for r in results if r.passed)
@@ -83,6 +87,12 @@ class HTMLReporter:
         scores = [r.score for r in results]
         costs = [r.trace.metrics.total_cost for r in results]
         latencies = [r.trace.metrics.total_latency for r in results]
+        total_tokens = sum(
+            r.trace.metrics.total_tokens.total_tokens
+            for r in results
+            if r.trace.metrics.total_tokens
+        )
+        models = self._collect_models(results)
 
         return {
             "total": len(results),
@@ -96,7 +106,36 @@ class HTMLReporter:
             "avg_cost": round(sum(costs) / len(costs), 4) if costs else 0,
             "total_latency": round(sum(latencies), 0),
             "avg_latency": round(sum(latencies) / len(latencies), 0) if latencies else 0,
+            "total_tokens": total_tokens,
+            "models": models,
+            "models_display": ", ".join(models) if models else "Unknown",
         }
+
+    def _collect_models(self, results: List[EvaluationResult]) -> List[str]:
+        """Collect model fingerprints used across results."""
+        counts: Counter[str] = Counter()
+        for result in results:
+            for model_name in self._extract_models(result):
+                counts[model_name] += 1
+        return [model for model, _ in counts.most_common()]
+
+    def _extract_models(self, result: EvaluationResult) -> List[str]:
+        """Extract best-effort model labels from a result."""
+        models: list[str] = []
+        trace = result.trace
+        if trace.model_id:
+            if trace.model_provider:
+                models.append(f"{trace.model_provider}/{trace.model_id}")
+            else:
+                models.append(trace.model_id)
+        if trace.trace_context:
+            for span in trace.trace_context.spans:
+                if span.llm and span.llm.model:
+                    provider = span.llm.provider or trace.model_provider
+                    label = f"{provider}/{span.llm.model}" if provider else span.llm.model
+                    models.append(label)
+        # Preserve order while removing duplicates.
+        return list(dict.fromkeys(models))
 
     def _generate_charts(self, results: List[EvaluationResult]) -> Dict[str, str]:
         """Generate Plotly charts as JSON strings."""
@@ -291,6 +330,9 @@ class HTMLReporter:
         # Convert results to serializable format
         results_data = []
         for r in results:
+            total_tokens = r.trace.metrics.total_tokens
+            tokens_total = total_tokens.total_tokens if total_tokens else 0
+            models = self._extract_models(r)
             results_data.append({
                 "test_case": r.test_case,
                 "passed": r.passed,
@@ -310,6 +352,11 @@ class HTMLReporter:
                 "latency": round(r.trace.metrics.total_latency, 0),
                 "steps": len(r.trace.steps),
                 "adapter": r.adapter_name or "http",
+                "model": ", ".join(models) if models else "Unknown",
+                "tokens_total": tokens_total,
+                "tokens_input": total_tokens.input_tokens if total_tokens else 0,
+                "tokens_output": total_tokens.output_tokens if total_tokens else 0,
+                "tokens_cached": total_tokens.cached_tokens if total_tokens else 0,
                 # Forbidden tool violations (empty list = no violations or not configured)
                 "forbidden_violations": (
                     r.evaluations.forbidden_tools.violations
@@ -356,6 +403,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .stat-card { text-align: center; padding: 1.5rem; }
         .stat-value { font-size: 2.5rem; font-weight: 700; }
         .stat-label { color: #64748b; font-size: 0.875rem; text-transform: uppercase; }
+        .meta-card { padding: 1rem 1.25rem; }
+        .meta-key { color: #64748b; font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.25rem; }
+        .meta-value { font-weight: 600; color: #0f172a; }
         .pass { color: var(--pass-color); }
         .fail { color: var(--fail-color); }
         .badge-pass { background-color: var(--pass-color); }
@@ -531,6 +581,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 </div>
             </div>
         </div>
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card meta-card">
+                    <div class="meta-key">Models Used</div>
+                    <div class="meta-value">{{ summary.models_display }}</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card meta-card">
+                    <div class="meta-key">Total Tokens</div>
+                    <div class="meta-value">{{ "{:,}".format(summary.total_tokens) if summary.total_tokens else "0" }}</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card meta-card">
+                    <div class="meta-key">Avg Latency</div>
+                    <div class="meta-value">{{ summary.avg_latency }}ms</div>
+                </div>
+            </div>
+        </div>
 
         {% if plotly_available and charts %}
         <!-- Charts -->
@@ -668,6 +738,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                                                 <td>${{ result.cost }}</td>
                                             </tr>
                                             <tr>
+                                                <td>Model</td>
+                                                <td><strong>{{ result.model }}</strong></td>
+                                            </tr>
+                                            <tr>
+                                                <td>Tokens</td>
+                                                <td>
+                                                    <strong>{{ "{:,}".format(result.tokens_total) }}</strong>
+                                                    {% if result.tokens_total %}
+                                                    <div class="small text-muted">
+                                                        in {{ result.tokens_input }} / out {{ result.tokens_output }}{% if result.tokens_cached %} / cached {{ result.tokens_cached }}{% endif %}
+                                                    </div>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                            <tr>
                                                 <td>Latency</td>
                                                 <td>{{ result.latency }}ms</td>
                                             </tr>
@@ -713,6 +798,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                                     {% set tool_spans = result.spans | selectattr("kind", "equalto", "tool") | list %}
                                     <div>LLM calls <span>{{ llm_spans | length }}</span></div>
                                     <div>Tool calls <span>{{ tool_spans | length }}</span></div>
+                                    <div>Model <span>{{ result.model }}</span></div>
+                                    <div>Tokens <span>{{ "{:,}".format(result.tokens_total) }}</span></div>
                                     <div>Total cost <span>${{ result.cost }}</span></div>
                                     <div>Total latency <span>{{ result.latency }}ms</span></div>
                                 </div>
