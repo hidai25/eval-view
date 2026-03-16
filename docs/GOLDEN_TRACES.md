@@ -110,7 +110,7 @@ Add `evalview run --diff` to CI to block deploys when behavior regresses:
 
 ```yaml
 - name: Run EvalView
-  uses: hidai25/eval-view@v0.5.1
+  uses: hidai25/eval-view@v0.5.2
   with:
     openai-api-key: ${{ secrets.OPENAI_API_KEY }}
     diff: true

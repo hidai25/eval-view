@@ -84,7 +84,7 @@ Yes. EvalView works fully offline when using Ollama as the LLM-as-judge and test
 ## Setup & Configuration
 
 ### Can I run EvalView in CI/CD?
-Yes. EvalView has a GitHub Action (`hidai25/eval-view@v0.5.1`), proper exit codes, JSON output mode, and PR comment support. It also works with GitLab CI, CircleCI, and any CI system that runs Python. See [CI/CD Integration](CI_CD.md).
+Yes. EvalView has a GitHub Action (`hidai25/eval-view@v0.5.2`), proper exit codes, JSON output mode, and PR comment support. It also works with GitLab CI, CircleCI, and any CI system that runs Python. See [CI/CD Integration](CI_CD.md).
 
 ### Does EvalView require a database?
 No. EvalView runs without any database. Results print to console and save as JSON files. No external dependencies required.

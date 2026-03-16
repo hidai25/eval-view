@@ -6,12 +6,12 @@
     "url": "https://github.com/hidai25/eval-view",
     "source": "github"
   },
-  "version": "0.5.1",
+  "version": "0.5.2",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "evalview",
-      "version": "0.5.1",
+      "version": "0.5.2",
       "installInstructions": "pip install evalview",
       "transport": {
         "type": "stdio",

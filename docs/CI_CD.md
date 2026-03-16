@@ -52,7 +52,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run EvalView
-        uses: hidai25/eval-view@v0.5.1
+        uses: hidai25/eval-view@v0.5.2
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           diff: true
@@ -109,7 +109,7 @@ jobs:
 
       - name: Run EvalView
         id: evalview
-        uses: hidai25/eval-view@v0.5.1
+        uses: hidai25/eval-view@v0.5.2
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
 
@@ -194,7 +194,7 @@ Block deploys when behavior regresses:
 
 ```yaml
 - name: Run EvalView
-  uses: hidai25/eval-view@v0.5.1
+  uses: hidai25/eval-view@v0.5.2
   with:
     openai-api-key: ${{ secrets.OPENAI_API_KEY }}
     diff: true              # Compare against golden baselines
