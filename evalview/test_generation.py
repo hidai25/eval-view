@@ -351,7 +351,12 @@ class AgentTestGenerator:
             for candidate in reversed(prioritized_candidates):
                 if candidate not in seen_queries:
                     self.prompt_sources.setdefault(candidate, "follow_up")
-                    queue_text.appendleft(candidate)
+                    # When synthesis succeeded, don't let heuristic follow-ups
+                    # jump ahead of synthesized prompts in the queue.
+                    if self._synthesis_succeeded:
+                        queue_text.append(candidate)
+                    else:
+                        queue_text.appendleft(candidate)
 
         tests = [self._build_test_case(probe, clustered) for probe in clustered.values()]
 
@@ -583,8 +588,15 @@ class AgentTestGenerator:
 
     def _expand_probe_candidates(self, probe: ProbeResult) -> List[str]:
         candidates = []
-        output = probe.trace.final_output or ""
-        candidates.extend(self._extract_example_queries(output))
+
+        # Only extract example queries from the agent's response when
+        # synthesis didn't fire.  When synthesis succeeded, the LLM already
+        # generated better prompts — raw response fragments like
+        # "Competitors mentioned: LangSmith, Langfuse" read as mined topic
+        # text, not real user requests.
+        if not self._synthesis_succeeded:
+            output = probe.trace.final_output or ""
+            candidates.extend(self._extract_example_queries(output))
 
         # Only inject generic library prompts when LLM synthesis didn't
         # produce domain-specific alternatives — otherwise the library
@@ -789,9 +801,16 @@ class AgentTestGenerator:
     def _build_test_case(self, probe: ProbeResult, clustered: Dict[str, ProbeResult]) -> TestCase:
         expected = ExpectedBehavior()
         if probe.tools:
-            expected.tools = list(probe.tools)
-            if len(probe.tools) > 1:
-                expected.sequence = list(probe.tools)
+            # Assert which tools should be used (unique set), not exact
+            # sequence or call count.  Agents legitimately vary how many
+            # times they call search or in what order — that's orchestration,
+            # not a regression.
+            unique_tools = list(dict.fromkeys(probe.tools))  # dedupe, preserve order
+            expected.tools = unique_tools
+            # Only assert sequence when tools are meaningfully ordered
+            # (e.g., search → escalate), not repeated calls to the same tool.
+            if len(unique_tools) > 1:
+                expected.sequence = unique_tools
 
         phrases = self._extract_stable_phrases(
             probe.trace.final_output,
@@ -834,13 +853,13 @@ class AgentTestGenerator:
         )
         if probe.behavior_class == "multi_turn" and probe.conversation_history:
             follow_up_query = getattr(probe, "_follow_up_query", None) or _SAFE_FOLLOW_UP
-            # Include follow-up tools in expected if present
+            # Merge tools from both turns (unique set)
             follow_up_tools = getattr(probe, "_follow_up_tools", None) or []
             if follow_up_tools:
-                all_tools = list(probe.tools) + list(follow_up_tools)
-                expected.tools = all_tools
-                if len(all_tools) > 1:
-                    expected.sequence = all_tools
+                all_unique = list(dict.fromkeys(list(probe.tools) + list(follow_up_tools)))
+                expected.tools = all_unique
+                if len(all_unique) > 1:
+                    expected.sequence = all_unique
             test_case.turns = [
                 ConversationTurn(query=probe.query),
                 ConversationTurn(query=follow_up_query),
@@ -1290,15 +1309,18 @@ class AgentTestGenerator:
 
         system = (
             "You refine test suites for AI agent regression testing. "
-            "For each test case, generate a clear name and stable output assertions."
+            "For each test case, generate a clear name and robust output checks."
         )
         user = (
             f"For each test case, return:\n"
             f"1. name: A concise, descriptive name (3-8 words, no tool names)\n"
-            f"2. contains: 2-3 short phrases (each under 30 chars) that should "
-            f"appear verbatim in any correct response. Pick stable domain terms, "
-            f"NOT numbers, dates, timestamps, IDs, or counts that change between "
-            f"runs.\n\n"
+            f"2. contains: 1-2 single KEYWORDS or short entity names (1-3 words max) "
+            f"that any correct response must mention regardless of exact wording. "
+            f"Think topic anchors, not full phrases. Example: for a query about "
+            f"Notion pain points, use [\"Notion\"] not [\"pain points for Notion\"]. "
+            f"For a capabilities query, use the product name. "
+            f"NEVER use full sentences, long phrases, or wording that could change "
+            f"on acceptable rewrites.\n\n"
             f"Test cases:\n{json.dumps(items, indent=2)}\n\n"
             f'Return JSON: {{"tests": [{{"name": "...", "contains": ["...", "..."]}}]}}'
         )
@@ -1330,10 +1352,11 @@ class AgentTestGenerator:
             name = re.sub(r"[^a-zA-Z0-9 \-]", "", name).strip()
             if name and 5 < len(name) < 60:
                 test.name = name
-            # Update contains assertions if the LLM produced stable phrases
+            # Update contains with short keyword anchors (not full phrases)
             contains = r.get("contains", [])
             if isinstance(contains, list) and contains:
-                stable = [p for p in contains if isinstance(p, str) and 3 < len(p) < 40]
+                # Reject anything longer than ~25 chars — those are phrases, not keywords
+                stable = [p for p in contains if isinstance(p, str) and 2 < len(p) < 25]
                 if stable and test.expected.output:
                     test.expected.output.contains = stable[:3]
 
@@ -1511,30 +1534,22 @@ class AgentTestGenerator:
         if not text:
             return []
 
-        phrases: List[str] = []
+        # For tool-using flows, don't extract wording assertions at all —
+        # the tool trajectory IS the assertion.  Brittle phrases like
+        # "monitoring product pain points" cause false failures on acceptable
+        # rewrites.  Let the LLM-as-judge handle output quality instead.
+        if has_tools or behavior_class in {"multi_turn", "tool_path"}:
+            return []
 
-        # For tool-using or multi-turn flows, prefer trajectory assertions unless the
-        # output contains obviously stable anchors. This reduces brittle wording checks.
-        conservative_mode = has_tools or behavior_class in {"multi_turn", "clarification"}
-
-        # DO NOT extract standalone numbers — they are volatile across runs
-        # (counts, versions, prices, timestamps all change). Only extract
-        # domain-relevant text anchors.
-
-        quoted = re.findall(r'"([^"]{4,40})"', text)
-        phrases.extend(quoted[:1])
-
-        if not conservative_mode:
-            entity_like = re.findall(r"\b[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})?\b", text)
-            phrases.extend(entity_like[:2])
-
-        seen = set()
-        unique = []
-        for phrase in phrases:
+        # For non-tool flows (direct_answer, clarification), extract minimal
+        # keyword anchors — only proper nouns / entity names, not phrases.
+        entity_like = re.findall(r"\b[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})?\b", text)
+        seen: Set[str] = set()
+        unique: List[str] = []
+        for phrase in entity_like:
             key = phrase.lower()
             if key in seen or len(phrase) < 3:
                 continue
-            # Skip anything that looks like a number, version, or date
             if re.match(r"^[\d.,$%/:-]+$", phrase):
                 continue
             seen.add(key)
