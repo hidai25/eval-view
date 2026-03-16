@@ -222,10 +222,18 @@ def generate(
             allow_private_urls=allow_private_urls or bool(getattr(config, "allow_private_urls", False)),
         )
 
+    # Detect synthesis model for display
+    synthesis_model_label = "none (heuristic only)"
+    if not no_synthesize:
+        _synth_client = AgentTestGenerator._select_synthesis_client()
+        if _synth_client:
+            synthesis_model_label = f"{_synth_client.provider.value}/{_synth_client.model}"
+
     console.print("[bold cyan]Generating draft suite[/bold cyan]")
     console.print(f"[dim]Adapter:[/dim] {resolved_adapter}")
     if endpoint:
         console.print(f"[dim]Endpoint:[/dim] {endpoint}")
+    console.print(f"[dim]Synthesis model:[/dim] {synthesis_model_label}")
     if from_log:
         console.print(f"[dim]Source:[/dim] log file ({from_log})")
     else:
