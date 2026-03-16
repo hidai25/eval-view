@@ -238,6 +238,8 @@ class Evaluator:
         self, evaluations: Evaluations, test_case: TestCase, score: float
     ) -> bool:
         """Determine if test case passed all criteria."""
+        generated_test = bool(getattr(test_case, "generated", False))
+
         # Forbidden tool violations are a hard-fail with zero tolerance.
         # This check runs FIRST so the failure reason is unambiguous in reports.
         if evaluations.forbidden_tools and not evaluations.forbidden_tools.passed:
@@ -251,9 +253,11 @@ class Evaluator:
         if not evaluations.cost.passed:
             return False
 
-        # Must pass latency threshold (if specified)
+        # Generated drafts should surface latency as a metric, not a default blocker.
+        # Users can later hand-tune max_latency on important tests.
         if not evaluations.latency.passed:
-            return False
+            if not generated_test:
+                return False
 
         # Must pass hallucination check (if configured)
         if evaluations.hallucination and not evaluations.hallucination.passed:

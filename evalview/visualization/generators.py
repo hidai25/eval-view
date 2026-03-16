@@ -398,7 +398,17 @@ def generate_visual_report(
 
         # Extract turn and tool info for the trace list view
         turn_list = []
-        if has_steps:
+        if getattr(r.trace, "turns", None):
+            for turn in getattr(r.trace, "turns", []) or []:
+                turn_list.append({
+                    "index": int(getattr(turn, "index", 0) or 0),
+                    "query": str(getattr(turn, "query", "") or ""),
+                    "output": _strip_markdown(str(getattr(turn, "output", "") or "")),
+                    "tools": [str(tool) for tool in (getattr(turn, "tools", None) or [])],
+                    "latency_ms": float(getattr(turn, "latency_ms", 0) or 0),
+                    "cost": float(getattr(turn, "cost", 0) or 0),
+                })
+        elif has_steps:
             current_t_idx = None
             current_turn_data = None
             turn_fallback_latency = 0.0
@@ -414,6 +424,7 @@ def generate_visual_report(
                         current_turn_data = {
                             "index": t_idx,
                             "query": getattr(step, "turn_query", ""),
+                            "output": "",
                             "tools": [],
                             "latency_ms": 0.0,
                             "cost": 0.0,
@@ -432,6 +443,7 @@ def generate_visual_report(
                 turn_list.append({
                     "index": 1,
                     "query": getattr(r, "input_query", "") or "",
+                    "output": _strip_markdown(getattr(r, "actual_output", "") or ""),
                     "tools": [
                         str(getattr(step, "tool_name", None) or getattr(step, "step_name", None) or "unknown")
                         for step in r.trace.steps
@@ -941,22 +953,35 @@ table tr:hover td{background:rgba(255,255,255,.02)}
           {% endif %}
           {% if t.has_steps %}
           <div class="mermaid-box"><div class="mermaid">{{ t.diagram }}</div></div>
+          {% else %}
+          <div style="display:flex;align-items:center;justify-content:center;padding:20px 0 8px">
+            <span style="display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:8px 18px;font-size:12px;color:var(--muted)">
+              <span style="opacity:.5">◎</span> Direct response — no tools invoked
+            </span>
+          </div>
+          {% endif %}
           {% if t.turns %}
           <div style="margin-top: 16px;">
             <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Conversation Turns</div>
-            
+
             {% for turn in t.turns %}
-            <details style="background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:6px;margin-bottom:6px;overflow:hidden;">
+            <details style="background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:6px;margin-bottom:6px;overflow:hidden;" {% if loop.first %}open{% endif %}>
               <summary style="padding:10px 14px;cursor:pointer;font-size:12px;font-weight:600;display:flex;align-items:center;color:var(--blue);">
                 Turn {{ turn.index }}
               </summary>
-              
+
               <div style="padding:10px 14px;border-top:1px solid var(--border);background:rgba(0,0,0,.2);font-family:monospace;font-size:11px;color:var(--muted);">
-                
+
                 <div style="margin-bottom: 10px; color: var(--text); font-family: var(--font); line-height: 1.5;">
                   <span style="color:var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; margin-right: 8px;">Query</span>{{ turn.query }}
                 </div>
-                
+
+                {% if turn.output %}
+                <div style="margin-bottom: 10px; color: var(--text); font-family: var(--font); line-height: 1.5;">
+                  <span style="color:var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; margin-right: 8px;">Response</span>{{ turn.output }}
+                </div>
+                {% endif %}
+
                 <div style="display: flex; align-items: center; gap: 8px;">
                   <span style="color:var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase;">Tools called</span>
                   <div style="display: flex; flex-wrap: wrap; gap: 4px;">
@@ -971,17 +996,10 @@ table tr:hover td{background:rgba(255,255,255,.02)}
                   <span>⚡ {{ turn.latency_ms|round(1) }}ms</span>
                   <span>💰 ${{ '%.6f'|format(turn.cost) if turn.cost else '0' }}</span>
                 </div>
-                
+
               </div>
             </details>
             {% endfor %}
-          </div>
-          {% endif %}
-          {% else %}
-          <div style="display:flex;align-items:center;justify-content:center;padding:20px 0 8px">
-            <span style="display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:8px 18px;font-size:12px;color:var(--muted)">
-              <span style="opacity:.5">◎</span> Direct response — no tools invoked
-            </span>
           </div>
           {% endif %}
           {% if t.output %}

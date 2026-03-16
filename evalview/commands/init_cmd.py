@@ -200,6 +200,12 @@ def _generate_init_draft_suite(endpoint: str, out_dir: Path) -> tuple[int, dict[
         timeout=30.0,
         allow_private_urls=True,
     )
+    AgentTestGenerator(
+        adapter=adapter,
+        endpoint=endpoint,
+        adapter_type="http",
+        allow_live_side_effects=False,
+    )._clear_generated_suite(out_dir)
     result = run_generation(
         adapter=adapter,
         endpoint=endpoint,
@@ -218,8 +224,7 @@ def _generate_init_draft_suite(endpoint: str, out_dir: Path) -> tuple[int, dict[
         meta["approved_at"] = approved_at
         test_case.meta = meta
         test_case.thresholds.min_score = min(test_case.thresholds.min_score, 50.0)
-        if test_case.thresholds.max_latency is None or test_case.thresholds.max_latency < 1000:
-            test_case.thresholds.max_latency = 1000.0
+        test_case.thresholds.max_latency = None
 
     generator = AgentTestGenerator(
         adapter=adapter,
@@ -227,7 +232,7 @@ def _generate_init_draft_suite(endpoint: str, out_dir: Path) -> tuple[int, dict[
         adapter_type="http",
         allow_live_side_effects=False,
     )
-    generator.write_suite(result, out_dir)
+    generator.write_suite(result, out_dir, replace_existing=True)
     return len(result.tests), result.report
 
 
@@ -779,6 +784,12 @@ model:
     elif path_choice == 2:
         console.print("\n[cyan]Generating a draft suite from your agent...[/cyan]")
         console.print(f"[dim]  Writing onboarding drafts to {init_generated_dir}/[/dim]")
+        AgentTestGenerator(
+            adapter=None,
+            endpoint=endpoint,
+            adapter_type="http",
+            allow_live_side_effects=False,
+        )._clear_generated_suite(init_generated_dir)
         n, report = _generate_init_draft_suite(endpoint, init_generated_dir)
         if n > 0:
             state_store.set_active_test_path("tests/generated-from-init")

@@ -292,6 +292,38 @@ class TestEvaluator:
         assert passed is False  # Should fail due to latency
 
     @patch("evalview.core.llm_provider.select_provider")
+    def test_compute_pass_fail_generated_tests_ignore_latency_threshold(self, mock_select_provider):
+        """Generated draft tests should not hard-fail solely on latency drift."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
+        evaluator = Evaluator()
+
+        evaluations_fail = Evaluations(
+            tool_accuracy=ToolEvaluation(accuracy=1.0),
+            sequence_correctness=SequenceEvaluation(
+                correct=True, expected_sequence=[], actual_sequence=[]
+            ),
+            output_quality=OutputEvaluation(
+                score=85.0,
+                rationale="Helpful enough",
+                contains_checks=ContainsChecks(),
+                not_contains_checks=ContainsChecks(),
+            ),
+            cost=CostEvaluation(total_cost=0.05, threshold=1.0, passed=True),
+            latency=LatencyEvaluation(total_latency=10000.0, threshold=5000.0, passed=False),
+        )
+
+        generated_test_case = TestCaseModel(
+            name="generated-test",
+            input=TestInputModel(query="test"),
+            expected=ExpectedBehavior(),
+            thresholds=Thresholds(min_score=65.0, max_latency=5000.0),
+            generated=True,
+        )
+
+        passed = evaluator._compute_pass_fail(evaluations_fail, generated_test_case, 85.0)
+        assert passed is True
+
+    @patch("evalview.core.llm_provider.select_provider")
     def test_compute_pass_fail_all_pass(self, mock_select_provider):
         """Test pass/fail when all criteria are met."""
         mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")

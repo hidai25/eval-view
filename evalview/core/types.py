@@ -386,8 +386,19 @@ class ExecutionMetrics(BaseModel):
             return v
         raise ValueError(
             f"total_tokens must be TokenUsage, dict, or int, got {type(v).__name__}. "
-            f"Check your adapter's _calculate_metrics() method."
-        )
+                f"Check your adapter's _calculate_metrics() method."
+            )
+
+
+class TurnTrace(BaseModel):
+    """Summary of a single conversation turn in a multi-turn execution."""
+
+    index: int
+    query: str
+    output: Optional[str] = None
+    tools: List[str] = Field(default_factory=list)
+    latency_ms: float = 0.0
+    cost: float = 0.0
 
 
 # --- Tracing Types (OpenTelemetry-aligned) ---
@@ -513,6 +524,7 @@ class ExecutionTrace(BaseModel):
     # Optional so adapters that don't capture this field still work.
     model_id: Optional[str] = None        # e.g. "claude-3-5-sonnet-20241022"
     model_provider: Optional[str] = None  # e.g. "anthropic"
+    turns: Optional[List[TurnTrace]] = None
 
     @field_validator("start_time", "end_time", mode="before")
     @classmethod

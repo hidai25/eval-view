@@ -15,6 +15,7 @@ from evalview.core.types import (
     SequenceEvaluation,
     StepMetrics,
     StepTrace,
+    TurnTrace,
     TokenUsage,
     ToolEvaluation,
 )
@@ -200,3 +201,76 @@ def test_visual_report_falls_back_for_missing_step_latency_and_baseline_model(tm
     assert "mock-support-agent" in html
     assert "Trace cost comes from the agent execution trace only" in html
     assert "Baseline model: Not recorded in snapshot" in html
+
+
+def test_visual_report_shows_all_multi_turn_turns_without_tool_steps(tmp_path):
+    now = datetime(2026, 3, 16, 10, 24)
+    trace = ExecutionTrace(
+        session_id="s2",
+        start_time=now,
+        end_time=now,
+        steps=[],
+        final_output="I can help with billing, refunds, and outages.",
+        metrics=ExecutionMetrics(
+            total_cost=0.0,
+            total_latency=102.0,
+            total_tokens=TokenUsage(input_tokens=30, output_tokens=20, cached_tokens=0),
+        ),
+        model_id="mock-support-agent",
+        turns=[
+            TurnTrace(
+                index=1,
+                query="Hello, what can you help me with?",
+                output="Please describe the support issue you need help with.",
+                tools=[],
+                latency_ms=48.0,
+                cost=0.0,
+            ),
+            TurnTrace(
+                index=2,
+                query="I need help with a refund.",
+                output="I can help with billing, refunds, and outages.",
+                tools=[],
+                latency_ms=54.0,
+                cost=0.0,
+            ),
+        ],
+    )
+    result = EvaluationResult(
+        test_case="hello-multi-turn",
+        passed=True,
+        score=85.0,
+        evaluations=Evaluations(
+            tool_accuracy=ToolEvaluation(accuracy=1.0, correct=[]),
+            sequence_correctness=SequenceEvaluation(correct=True, expected_sequence=[], actual_sequence=[]),
+            output_quality=OutputEvaluation(
+                score=85.0,
+                rationale="ok",
+                contains_checks=ContainsChecks(),
+                not_contains_checks=ContainsChecks(),
+            ),
+            cost=CostEvaluation(total_cost=0.0, threshold=1.0, passed=True),
+            latency=LatencyEvaluation(total_latency=102.0, threshold=1000.0, passed=True),
+        ),
+        trace=trace,
+        timestamp=now,
+        input_query="Hello, what can you help me with?",
+        actual_output="I can help with billing, refunds, and outages.",
+    )
+
+    report_path = tmp_path / "report.html"
+    generate_visual_report(
+        results=[result],
+        diffs=[],
+        output_path=str(report_path),
+        auto_open=False,
+        title="EvalView Run Report",
+    )
+
+    html = report_path.read_text(encoding="utf-8")
+    assert "Conversation Turns" in html
+    assert "Turn 1" in html
+    assert "Turn 2" in html
+    assert "I need help with a refund." in html
+    assert "Please describe the support issue you need help with." in html
+    assert "I can help with billing, refunds, and outages." in html

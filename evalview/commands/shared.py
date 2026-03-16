@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 from rich.console import Console
 
 from evalview.core.adapter_factory import create_adapter
-from evalview.core.types import ExecutionTrace, ExecutionMetrics, TokenUsage
+from evalview.core.types import ExecutionTrace, ExecutionMetrics, TokenUsage, TurnTrace
 
 if TYPE_CHECKING:
     from evalview.core.types import EvaluationResult, TestCase
@@ -45,6 +45,7 @@ async def _execute_multi_turn_trace(test_case: TestCase, adapter: AgentAdapter) 
     conversation_history: List[Dict[str, Any]] = []
     all_steps: List[Any] = []
     turn_traces: List[Any] = []
+    turn_summaries: List[TurnTrace] = []
 
     # 1. Iterate through each turn, execute, and collect traces
     if not test_case.turns:
@@ -66,6 +67,19 @@ async def _execute_multi_turn_trace(test_case: TestCase, adapter: AgentAdapter) 
 
         turn_traces.append(trace)
         all_steps.extend(trace.steps)
+        turn_summaries.append(
+            TurnTrace(
+                index=turn_index + 1,
+                query=turn.query,
+                output=trace.final_output,
+                tools=[
+                    str(getattr(step, "tool_name", None) or getattr(step, "step_name", None) or "unknown")
+                    for step in trace.steps
+                ],
+                latency_ms=float(getattr(trace.metrics, "total_latency", 0) or 0),
+                cost=float(getattr(trace.metrics, "total_cost", 0) or 0),
+            )
+        )
 
         conversation_history.append({"role": "user", "content": turn.query})
         conversation_history.append({"role": "assistant", "content": trace.final_output})
@@ -96,6 +110,7 @@ async def _execute_multi_turn_trace(test_case: TestCase, adapter: AgentAdapter) 
         ),
         model_id=last_trace.model_id,
         model_provider=last_trace.model_provider,
+        turns=turn_summaries,
     )
 
 

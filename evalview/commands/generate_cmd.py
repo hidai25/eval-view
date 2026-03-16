@@ -88,6 +88,7 @@ def _print_generated_test_preview(output_dir: Path, max_files: int = 2) -> None:
 @click.option("--timeout", default=30.0, type=float, help="Probe timeout in seconds.")
 @click.option("--allow-private-urls", is_flag=True, help="Allow private/local agent URLs.")
 @click.option("--allow-live-side-effects", is_flag=True, help="Allow prompts that may trigger side-effecting tools.")
+@click.option("--keep-old", is_flag=True, help="Keep existing generated drafts instead of replacing the output folder.")
 @click.option("--dry-run", is_flag=True, help="Preview generation without writing files.")
 @track_command("generate")
 def generate(
@@ -103,6 +104,7 @@ def generate(
     timeout: float,
     allow_private_urls: bool,
     allow_live_side_effects: bool,
+    keep_old: bool,
     dry_run: bool,
 ) -> None:
     """Generate a draft regression suite from live agent probing.
@@ -214,11 +216,33 @@ def generate(
     if dry_run:
         console.print(f"[green]✓ Would generate {len(result.tests)} draft tests[/green]")
     else:
-        written = generator.write_suite(result, output_dir)
+        replacing_existing = output_dir.exists() and any(output_dir.iterdir())
+        generated_yaml, handwritten_yaml = generator.classify_output_dir(output_dir)
+        full_replace_confirmed = False
+        if handwritten_yaml and not keep_old:
+            keep_handwritten = click.confirm(
+                f"{output_dir} contains {len(handwritten_yaml)} hand-written YAML test(s). "
+                "Keep them and replace only EvalView-generated drafts?",
+                default=True,
+            )
+            if not keep_handwritten:
+                generator._replace_all_yaml_suite(output_dir)
+                full_replace_confirmed = True
+                replacing_existing = False
+
+        written = generator.write_suite(
+            result,
+            output_dir,
+            replace_existing=not keep_old and not full_replace_confirmed,
+        )
         ProjectStateStore().set_active_test_path(out_dir)
         console.print(f"[green]✓ Generated {len(result.tests)} draft tests[/green]")
         console.print(f"[dim]Output:[/dim] {output_dir}")
         console.print(f"[dim]Files written:[/dim] {len(written)}")
+        if full_replace_confirmed:
+            console.print("[dim]Replaced all YAML drafts in this folder, including hand-written tests.[/dim]")
+        elif replacing_existing and not keep_old:
+            console.print("[dim]Replaced previous generated drafts in this folder.[/dim]")
         _print_generated_test_preview(output_dir)
 
     covered = result.report.get("covered", {})
@@ -254,4 +278,6 @@ def generate(
         console.print("[dim]Re-run without --dry-run to write tests.[/dim]")
     else:
         console.print(f"[dim]Next: review {output_dir}, then run evalview snapshot {out_dir}[/dim]")
+        if keep_old:
+            console.print("[dim]Used --keep-old, so older generated drafts in this folder were preserved.[/dim]")
         console.print("[dim]Generate writes editable YAML tests plus generated.report.json; it does not open or create an HTML report.[/dim]")
