@@ -254,7 +254,7 @@ def generate(
                 console.file.flush()
             except Exception:
                 pass
-            time.sleep(1)
+            time.sleep(0.25)
         # Clear the timer line when done
         try:
             console.file.write("\r\033[K")
