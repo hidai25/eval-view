@@ -985,7 +985,7 @@ table tr:hover td{background:rgba(255,255,255,.02)}
             <details style="background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:6px;margin-bottom:6px;overflow:hidden;" {% if loop.first %}open{% endif %}>
               <summary style="padding:10px 14px;cursor:pointer;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:space-between;color:var(--blue);">
                 <span>Turn {{ turn.index }}{% if turn.tools %} · {{ turn.tools|join(', ') }}{% endif %}</span>
-                <span style="font-size:10px;color:var(--muted);font-weight:400;transition:transform .2s;display:inline-block" class="turn-chevron">▶ details</span>
+                <span style="font-size:10px;color:var(--muted);font-weight:400;display:inline-flex;align-items:center;gap:3px"><span style="transition:transform .2s;display:inline-block" class="turn-chevron">▶</span> details</span>
               </summary>
 
               <div style="padding:10px 14px;border-top:1px solid var(--border);background:rgba(0,0,0,.2);font-family:monospace;font-size:11px;color:var(--muted);">
