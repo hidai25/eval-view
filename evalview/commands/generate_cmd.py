@@ -1,6 +1,7 @@
 """Generate command — draft a regression suite by probing an agent."""
 from __future__ import annotations
 
+import threading
 import time
 from pathlib import Path
 import yaml  # type: ignore[import-untyped]
@@ -228,60 +229,51 @@ def generate(
         console.print("[dim]Side effects:[/dim] safe mode")
     console.print()
 
-    # Shared state for the probe progress
+    # Shared state for the probe progress — uses a background thread to
+    # keep the elapsed timer ticking while asyncio.run() blocks the main thread.
     _gen_start = time.time()
-    _probe_live = {"live": None, "phase": "", "completed": 0, "total": 0}
+    _gen_state = {"phase": "", "completed": 0, "total": 0, "stop": False}
 
     def _format_gen_elapsed() -> str:
         elapsed = time.time() - _gen_start
         mins, secs = divmod(elapsed, 60)
         return f"{int(mins):02d}:{int(secs):02d}"
 
-    def _start_live_panel() -> None:
-        from rich.live import Live
-        from rich.panel import Panel
+    def _timer_thread() -> None:
+        """Background thread that reprints the status line every second."""
+        while not _gen_state["stop"]:
+            n = _gen_state["completed"]
+            t = _gen_state["total"] or "?"
+            phase = _gen_state["phase"] or "Starting..."
+            # \r + clear line + reprint — works in most terminals
+            line = f"\r\033[K  ⏱  {_format_gen_elapsed()}  [{n}/{t}]  {phase}"
+            try:
+                console.file.write(line)
+                console.file.flush()
+            except Exception:
+                pass
+            time.sleep(1)
+        # Clear the timer line when done
+        try:
+            console.file.write("\r\033[K")
+            console.file.flush()
+        except Exception:
+            pass
 
-        if _probe_live["live"] is not None:
-            return
-
-        def _make_panel() -> Panel:
-            phase = _probe_live["phase"] or "Starting..."
-            n = _probe_live["completed"]
-            t = _probe_live["total"]
-            return Panel(
-                f"  [green]● Generating[/green]\n\n"
-                f"  [bold]⏱️  Elapsed:[/bold]    [yellow]{_format_gen_elapsed()}[/yellow]\n"
-                f"  [bold]📋 Progress:[/bold]   {n}/{t} probes\n\n"
-                f"  [dim]{phase}[/dim]",
-                title="[bold]Test Generation[/bold]",
-                border_style="cyan",
-                padding=(0, 1),
-            )
-
-        live = Live(_make_panel(), console=console, refresh_per_second=4)
-        live.start()
-        _probe_live["live"] = live
-        _probe_live["make_panel"] = _make_panel
-
-    def _update_live() -> None:
-        live = _probe_live.get("live")
-        make = _probe_live.get("make_panel")
-        if live and make:
-            live.update(make())
-
-    def _stop_live() -> None:
-        live = _probe_live.get("live")
-        if live:
-            live.stop()
-            _probe_live["live"] = None
+    _timer = threading.Thread(target=_timer_thread, daemon=True)
 
     def _on_probe(num: int, total: int, query: str, status: str, tools: list) -> None:
-        _probe_live["total"] = total
+        _gen_state["total"] = total
         if status == "info":
-            _probe_live["phase"] = query
-            _update_live()
+            _gen_state["phase"] = query
             return
-        _probe_live["completed"] = num
+        # Clear timer line before printing result
+        try:
+            console.file.write("\r\033[K")
+            console.file.flush()
+        except Exception:
+            pass
+        _gen_state["completed"] = num
         if status == "fail":
             console.print(f"[dim]  [red]✗[/red] [{num}/{total}] {query} [timeout][/dim]")
         elif tools:
@@ -289,10 +281,9 @@ def generate(
         else:
             console.print(f"[dim]  [green]✓[/green] [{num}/{total}] {query}[/dim]")
         if num < total:
-            _probe_live["phase"] = f"Probing [{num + 1}/{total}]..."
+            _gen_state["phase"] = f"Probing [{num + 1}/{total}]..."
         else:
-            _probe_live["phase"] = "Building tests..."
-        _update_live()
+            _gen_state["phase"] = "Building tests..."
 
     if from_log:
         from evalview.importers.log_importer import parse_log_file
@@ -309,9 +300,9 @@ def generate(
         entries = parse_log_file(Path(from_log), fmt=log_format, max_entries=budget)
         result = generator.generate_from_log_entries(entries)
     else:
-        _probe_live["total"] = budget
-        _probe_live["phase"] = f"Probing [1/{budget}]..."
-        _start_live_panel()
+        _gen_state["total"] = budget
+        _gen_state["phase"] = f"Probing [1/{budget}]..."
+        _timer.start()
 
         result = run_generation(
             adapter=adapter,
@@ -327,7 +318,9 @@ def generate(
             on_probe_complete=_on_probe,
         )
 
-    _stop_live()
+    _gen_state["stop"] = True
+    if _timer.is_alive():
+        _timer.join(timeout=2)
 
     if not result.tests:
         console.print("[yellow]⚠ No draft tests were generated.[/yellow]")
