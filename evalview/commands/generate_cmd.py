@@ -132,6 +132,7 @@ def _print_generated_test_preview(output_dir: Path, max_files: int = 2) -> None:
 @click.option("--keep-old", is_flag=True, help="Keep existing generated drafts instead of replacing the output folder.")
 @click.option("--dry-run", is_flag=True, help="Preview generation without writing files.")
 @click.option("--no-synthesize", is_flag=True, help="Skip LLM-powered prompt synthesis (use heuristic prompts only).")
+@click.option("--synth-model", default=None, help="Override synthesis model (e.g. gpt-4o, claude-sonnet-4-5-20250929).")
 @track_command("generate")
 def generate(
     agent_url: str | None,
@@ -149,6 +150,7 @@ def generate(
     keep_old: bool,
     dry_run: bool,
     no_synthesize: bool,
+    synth_model: str | None,
 ) -> None:
     """Generate a draft regression suite from live agent probing.
 
@@ -225,7 +227,7 @@ def generate(
     # Detect synthesis model for display
     synthesis_model_label = "none (heuristic only)"
     if not no_synthesize:
-        _synth_client = AgentTestGenerator._select_synthesis_client()
+        _synth_client = AgentTestGenerator._select_synthesis_client(model_override=synth_model)
         if _synth_client:
             synthesis_model_label = f"{_synth_client.provider.value}/{_synth_client.model}"
 
@@ -336,6 +338,7 @@ def generate(
             allow_live_side_effects=allow_live_side_effects,
             project_root=Path.cwd(),
             synthesize=not no_synthesize,
+            synth_model=synth_model,
             on_probe_complete=_on_probe,
         )
 

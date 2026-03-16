@@ -222,7 +222,7 @@ def _patch_generate_for_fake_adapter(monkeypatch, adapter_cls=None):
     # Prevent real LLM calls during synthesis in tests
     monkeypatch.setattr(
         "evalview.test_generation.AgentTestGenerator._select_synthesis_client",
-        staticmethod(lambda: None),
+        staticmethod(lambda model_override=None: None),
     )
 
 
@@ -509,7 +509,7 @@ def test_generate_drops_non_progressing_follow_up_from_multi_turn(monkeypatch, t
     # Prevent real LLM calls — force static fallback for clarification follow-up
     monkeypatch.setattr(
         "evalview.test_generation.AgentTestGenerator._select_synthesis_client",
-        staticmethod(lambda: None),
+        staticmethod(lambda model_override=None: None),
     )
     now = datetime.now()
     first_trace = ExecutionTrace(

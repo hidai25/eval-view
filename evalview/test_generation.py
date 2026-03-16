@@ -248,7 +248,9 @@ class AgentTestGenerator:
         seed_prompts: Optional[Sequence[str]] = None,
         synthesize: bool = True,
         on_probe_complete: Optional[Callable[[int, int, str, str, List[str]], None]] = None,
+        synth_model: Optional[str] = None,
     ) -> GenerationResult:
+        self._synth_model_override = synth_model
         self.discovered_tools = await discover_tool_schemas(self.adapter, self.adapter_type, self.endpoint)
         queue = self._build_probe_queue(seed_prompts or [], budget=budget)
         self.prompt_sources = {prompt: source for prompt, source in queue}
@@ -694,7 +696,7 @@ class AgentTestGenerator:
         self, original_query: str, agent_response: str
     ) -> Optional[str]:
         """Use LLM to generate a natural follow-up question from an agent response."""
-        client = self._select_synthesis_client()
+        client = self._select_synthesis_client(model_override=getattr(self, "_synth_model_override", None))
         if client is None:
             return None
 
@@ -1118,8 +1120,12 @@ class AgentTestGenerator:
     # -- LLM-powered prompt synthesis ------------------------------------------
 
     @staticmethod
-    def _select_synthesis_client() -> Optional[Any]:
-        """Pick the cheapest available LLM for prompt synthesis."""
+    def _select_synthesis_client(model_override: Optional[str] = None) -> Optional[Any]:
+        """Pick an LLM for prompt synthesis.
+
+        If *model_override* is provided (e.g. ``--synth-model gpt-4o``), it
+        takes precedence.  Otherwise the cheapest available provider is used.
+        """
         try:
             from evalview.core.llm_provider import LLMClient, detect_available_providers
             from evalview.core.llm_configs import LLMProvider as LLMProviderEnum
@@ -1129,6 +1135,13 @@ class AgentTestGenerator:
         available = detect_available_providers()
         if not available:
             return None
+
+        # User-specified model override
+        if model_override:
+            try:
+                return LLMClient(model=model_override)
+            except Exception:
+                pass
 
         available_map = {p.provider.value: p.api_key for p in available}
 
@@ -1166,7 +1179,7 @@ class AgentTestGenerator:
         Returns an empty list if no LLM provider is available or synthesis
         fails — the generator falls back to heuristic prompts automatically.
         """
-        client = self._select_synthesis_client()
+        client = self._select_synthesis_client(model_override=getattr(self, "_synth_model_override", None))
         if client is None:
             return []
 
@@ -1317,7 +1330,7 @@ class AgentTestGenerator:
 
         Modifies tests in place. Fails silently if no LLM provider is available.
         """
-        client = self._select_synthesis_client()
+        client = self._select_synthesis_client(model_override=getattr(self, "_synth_model_override", None))
         if client is None or not probes:
             return
 
@@ -1391,7 +1404,7 @@ class AgentTestGenerator:
         "run a collection" but the agent only searched, the test is misleading
         and should be dropped rather than creating a noisy regression baseline.
         """
-        client = self._select_synthesis_client()
+        client = self._select_synthesis_client(model_override=getattr(self, "_synth_model_override", None))
         if client is None or len(tests) <= 1:
             return tests
 
@@ -1703,6 +1716,7 @@ def run_generation(
     project_root: Optional[Path] = None,
     synthesize: bool = True,
     on_probe_complete: Optional[Callable[[int, int, str, str, List[str]], None]] = None,
+    synth_model: Optional[str] = None,
 ) -> GenerationResult:
     """Sync wrapper for CLI usage."""
     generator = AgentTestGenerator(
@@ -1719,6 +1733,7 @@ def run_generation(
         seed_prompts=seed_prompts,
         synthesize=synthesize,
         on_probe_complete=on_probe_complete,
+        synth_model=synth_model,
     ))
 
 
