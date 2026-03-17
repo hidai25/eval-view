@@ -7,7 +7,7 @@ from evalview.commands.shared import console
 from evalview.telemetry.decorators import track_command
 
 
-@click.group()
+@click.group(hidden=True)
 def golden():
     """Manage golden traces (blessed baselines for regression detection).
 

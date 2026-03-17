@@ -59,7 +59,7 @@ def main(ctx: click.Context) -> None:
 
     \b
     Regression Gating — did my agent change?
-      snapshot                Capture current behavior as golden baseline
+      snapshot                Capture current behavior as baseline
       check                   Compare against baseline — catch regressions
 
     \b
