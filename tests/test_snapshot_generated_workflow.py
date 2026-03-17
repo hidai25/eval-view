@@ -83,7 +83,7 @@ thresholds:
     )
 
     runner = CliRunner()
-    result = runner.invoke(snapshot, ["tests"])
+    result = runner.invoke(snapshot, ["tests"], input="n\n")
 
     assert result.exit_code == 0
     assert "need approval" in result.output.lower()
@@ -119,7 +119,7 @@ thresholds:
     )
 
     runner = CliRunner()
-    result = runner.invoke(snapshot, ["tests"])
+    result = runner.invoke(snapshot, ["tests"], input="n\n")
 
     assert result.exit_code == 0
     assert "need approval" in result.output.lower()
@@ -156,7 +156,7 @@ thresholds:
         )
 
     runner = CliRunner()
-    result = runner.invoke(snapshot, ["tests"])
+    result = runner.invoke(snapshot, ["tests"], input="n\n")
 
     assert result.exit_code == 0
     assert "need approval" in result.output.lower()
@@ -191,7 +191,7 @@ thresholds:
     ProjectStateStore().set_active_test_path("tests/generated-from-init")
 
     runner = CliRunner()
-    result = runner.invoke(snapshot, [])
+    result = runner.invoke(snapshot, [], input="n\n")
 
     assert result.exit_code == 0
     assert "need approval" in result.output.lower()

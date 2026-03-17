@@ -368,8 +368,9 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
         analysis["has_execution_failures"] = True
 
     # Don't treat zero-test runs as a real pass — no tests were compared
+    # But execution failures still count as failures even with 0 diffs.
     actually_compared = len(diffs)
-    if actually_compared == 0:
+    if actually_compared == 0 and execution_failures == 0:
         analysis["all_passed"] = True  # Not a failure, but not a real check
         analysis["nothing_compared"] = True
 
