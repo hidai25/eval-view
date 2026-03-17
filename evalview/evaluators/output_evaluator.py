@@ -146,6 +146,8 @@ class OutputEvaluator:
             not_contains_checks=not_contains_checks,
         )
 
+    _billing_warned: bool = False  # Class-level: warn once per session
+
     def _fallback_judge_result(
         self,
         test_case: TestCase,
@@ -153,6 +155,7 @@ class OutputEvaluator:
         error: Exception,
     ) -> Dict[str, Any]:
         """Deterministic fallback when the judge provider is unavailable."""
+        self._warn_if_billing_error(error)
         output = trace.final_output.strip()
         output_lower = output.lower()
         expected_output = test_case.expected.output
@@ -213,6 +216,57 @@ class OutputEvaluator:
             "score": round(max(0.0, min(score, 100.0)), 2),
             "rationale": rationale,
         }
+
+    def _warn_if_billing_error(self, error: Exception) -> None:
+        """Detect billing/quota/auth errors and print a clear warning once."""
+        if OutputEvaluator._billing_warned:
+            return
+
+        err_str = str(error).lower()
+        err_type = type(error).__name__
+
+        # Common billing/quota error patterns across providers
+        billing_patterns = [
+            "insufficient_quota", "exceeded your current quota",
+            "billing", "payment", "402", "quota",
+            "rate_limit", "rate limit", "429",
+            "credit", "balance",
+            "plan", "upgrade",
+        ]
+        auth_patterns = [
+            "invalid_api_key", "invalid api key",
+            "authentication", "401", "unauthorized",
+            "permission", "403", "forbidden",
+        ]
+
+        is_billing = any(p in err_str for p in billing_patterns)
+        is_auth = any(p in err_str for p in auth_patterns)
+
+        if is_billing or is_auth:
+            OutputEvaluator._billing_warned = True
+            import logging
+            _logger = logging.getLogger(__name__)
+
+            if is_billing:
+                _logger.warning(
+                    "\n⚠️  JUDGE MODEL BILLING ERROR: %s\n"
+                    "   Your API account may have run out of credits or hit its rate limit.\n"
+                    "   Scores are using deterministic fallback (capped, less accurate).\n"
+                    "   Fix: top up credits, wait for rate limit reset, or switch models:\n"
+                    "     evalview check --judge deepseek    (cheapest)\n"
+                    "     evalview check --judge llama3.2    (free, local via Ollama)\n",
+                    error,
+                )
+            else:
+                _logger.warning(
+                    "\n⚠️  JUDGE MODEL AUTH ERROR: %s\n"
+                    "   Your API key may be invalid or expired.\n"
+                    "   Scores are using deterministic fallback (capped, less accurate).\n"
+                    "   Fix: check your API key or switch providers:\n"
+                    "     evalview check --judge deepseek\n"
+                    "     evalview check --judge llama3.2    (free, no key needed)\n",
+                    error,
+                )
 
     def _check_contains(self, output: str, must_contain: Optional[List[str]]) -> ContainsChecks:
         """Check if output contains required strings."""
