@@ -73,6 +73,7 @@ def main(ctx: click.Context) -> None:
     \b
     Build Your Test Suite:
       capture --agent <url>   Record real traffic as tests
+      capture --multi-turn    Record a conversation as a multi-turn test
       import <log_file>       Convert production logs into EvalView tests
       expand                  Generate test variations with LLM
       compare                 Compare two agent endpoints on the same suite
