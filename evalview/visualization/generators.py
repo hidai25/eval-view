@@ -923,7 +923,7 @@ table tr:hover td{background:rgba(255,255,255,.02)}
       <div class="meta-card">
         <div class="meta-label">Judge Token Breakdown</div>
         <div class="meta-value">in {{ '{:,}'.format(judge_usage.input_tokens) }} / out {{ '{:,}'.format(judge_usage.output_tokens) }}</div>
-        <div class="meta-sub">Separate from agent trace cost</div>
+        <div class="meta-sub">{% if judge_usage.pricing %}Rate: {{ judge_usage.pricing }}{% else %}Separate from agent trace cost{% endif %}</div>
       </div>
     </div>
     {% endif %}

@@ -294,7 +294,7 @@ class HTTPAdapter(AgentAdapter):
         if model_provider is None and model_id:
             if model_id.startswith("claude"):
                 model_provider = "anthropic"
-            elif model_id.startswith(("gpt-", "o1", "o3", "o4")):
+            elif model_id.startswith(("gpt-", "o1", "o3", "o4", "o5")):
                 model_provider = "openai"
             elif model_id.startswith("gemini"):
                 model_provider = "google"

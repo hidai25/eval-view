@@ -112,11 +112,14 @@ def _judge_usage_summary() -> Dict[str, Any]:
 
     total_tokens = judge_cost_tracker.total_input_tokens + judge_cost_tracker.total_output_tokens
     model_display = ""
+    pricing_display = ""
     if judge_cost_tracker.model:
         if judge_cost_tracker.provider:
             model_display = f"{judge_cost_tracker.provider}/{judge_cost_tracker.model}"
         else:
             model_display = judge_cost_tracker.model
+        from evalview.core.pricing import format_pricing_line
+        pricing_display = format_pricing_line(judge_cost_tracker.model) or ""
     return {
         "call_count": judge_cost_tracker.call_count,
         "input_tokens": judge_cost_tracker.total_input_tokens,
@@ -125,6 +128,7 @@ def _judge_usage_summary() -> Dict[str, Any]:
         "total_cost": round(judge_cost_tracker.total_cost, 6),
         "is_free": judge_cost_tracker.call_count > 0 and judge_cost_tracker.total_cost == 0,
         "model": model_display,
+        "pricing": pricing_display,
     }
 
 
@@ -303,10 +307,8 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
     config = _load_config_if_exists()
 
     # Apply judge config: --judge flag > env vars > config.yaml
-    if judge_model:
-        import os
-        from evalview.core.llm_configs import resolve_model_alias
-        os.environ["EVAL_MODEL"] = resolve_model_alias(judge_model)
+    from evalview.commands.shared import apply_judge_model
+    apply_judge_model(judge_model)
     from evalview.core.config import apply_judge_config
     apply_judge_config(config)
     from evalview.core.llm_provider import judge_cost_tracker

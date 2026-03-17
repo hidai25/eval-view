@@ -30,6 +30,50 @@ load_dotenv(dotenv_path=".env.local", override=True)
 console = Console()
 
 
+def apply_judge_model(judge_model: Optional[str]) -> None:
+    """Resolve --judge flag: set EVAL_MODEL and EVAL_PROVIDER, validate API key.
+
+    Exits with a clear error if the required API key is missing.
+    """
+    if not judge_model:
+        return
+
+    import os
+    import sys
+    from evalview.core.llm_configs import resolve_model_alias, PROVIDER_CONFIGS, LLMProvider
+
+    resolved = resolve_model_alias(judge_model)
+    os.environ["EVAL_MODEL"] = resolved
+
+    # Infer provider from model name and set EVAL_PROVIDER so the right client is used
+    model_lower = resolved.lower()
+    provider_map = {
+        "claude": (LLMProvider.ANTHROPIC, "ANTHROPIC_API_KEY"),
+        "gpt-": (LLMProvider.OPENAI, "OPENAI_API_KEY"),
+        "o1": (LLMProvider.OPENAI, "OPENAI_API_KEY"),
+        "o3": (LLMProvider.OPENAI, "OPENAI_API_KEY"),
+        "o4": (LLMProvider.OPENAI, "OPENAI_API_KEY"),
+        "o5": (LLMProvider.OPENAI, "OPENAI_API_KEY"),
+        "gemini": (LLMProvider.GEMINI, "GEMINI_API_KEY"),
+        "grok": (LLMProvider.GROK, "XAI_API_KEY"),
+        "deepseek": (LLMProvider.DEEPSEEK, "DEEPSEEK_API_KEY"),
+    }
+
+    for prefix, (provider, env_var) in provider_map.items():
+        if model_lower.startswith(prefix):
+            os.environ["EVAL_PROVIDER"] = provider.value
+            if not os.environ.get(env_var):
+                config = PROVIDER_CONFIGS[provider]
+                console.print(
+                    f"\n[red]Missing API key for {config.display_name}.[/red]\n"
+                    f"Model [bold]{resolved}[/bold] requires [bold]{env_var}[/bold] to be set.\n\n"
+                    f"[dim]Get your key at: {config.api_key_url}[/dim]\n"
+                    f"[dim]Then: export {env_var}=your-key-here[/dim]\n"
+                )
+                sys.exit(1)
+            break
+
+
 def run_with_spinner(fn: Any, label: str, n_tests: int) -> Any:
     """Run a blocking function with a live spinner and elapsed timer.
 

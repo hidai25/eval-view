@@ -53,14 +53,14 @@ PROVIDER_CONFIGS: Dict[LLMProvider, ProviderConfig] = {
     LLMProvider.OPENAI: ProviderConfig(
         name="openai",
         env_var="OPENAI_API_KEY",
-        default_model="gpt-5-mini",
+        default_model="gpt-5.4-mini",
         display_name="OpenAI",
         api_key_url="https://platform.openai.com/api-keys",
     ),
     LLMProvider.ANTHROPIC: ProviderConfig(
         name="anthropic",
         env_var="ANTHROPIC_API_KEY",
-        default_model="claude-sonnet-4-5-20250929",
+        default_model="claude-sonnet-4-6",
         display_name="Anthropic",
         api_key_url="https://console.anthropic.com/settings/keys",
     ),
@@ -74,7 +74,7 @@ PROVIDER_CONFIGS: Dict[LLMProvider, ProviderConfig] = {
     LLMProvider.GROK: ProviderConfig(
         name="grok",
         env_var="XAI_API_KEY",
-        default_model="grok-2-latest",
+        default_model="grok-3-mini",
         display_name="xAI Grok",
         api_key_url="https://console.x.ai/",
     ),
@@ -101,44 +101,63 @@ PROVIDER_CONFIGS: Dict[LLMProvider, ProviderConfig] = {
     ),
 }
 
-# Model aliases for better DX - shortcuts map to full model names
+# Model aliases for better DX - shortcuts map to full model names.
+# Users type the left side, EvalView resolves to the right side.
 MODEL_ALIASES: Dict[str, str] = {
-    # OpenAI GPT-5 family (use simple names - they track latest)
-    "gpt-5": "gpt-5",
-    "gpt-5-mini": "gpt-5-mini",
-    "gpt-5-nano": "gpt-5-nano",
-    "gpt-5.1": "gpt-5.1",
-    "gpt-5.4": "gpt-5.4",
-    "gpt-5.4-mini": "gpt-5.4-mini",
-    # OpenAI GPT-4 family (legacy)
-    "gpt-4o": "gpt-4o",
-    "gpt-4o-mini": "gpt-4o-mini",
-    "gpt-4": "gpt-4-turbo",
-    # Anthropic Claude
-    "sonnet": "claude-sonnet-4-5-20250929",
-    "claude-sonnet": "claude-sonnet-4-5-20250929",
-    "opus": "claude-opus-4-6",
-    "claude-opus": "claude-opus-4-6",
-    "opus-4.6": "claude-opus-4-6",
-    "opus-4.5": "claude-opus-4-5-20251101",
-    "haiku": "claude-haiku-4-5-20251001",
-    "claude-haiku": "claude-haiku-4-5-20251001",
-    # HuggingFace Llama
-    "llama": "meta-llama/Llama-3.1-8B-Instruct",
-    "llama-8b": "meta-llama/Llama-3.1-8B-Instruct",
-    "llama-70b": "meta-llama/Llama-3.1-70B-Instruct",
-    # Google Gemini
-    "gemini": "gemini-3.0",
-    "gemini-3": "gemini-3.0",
-    "gemini-flash": "gemini-2.0-flash",
-    "gemini-pro": "gemini-1.5-pro",
-    # Ollama (local models)
-    "ollama-llama": "llama3.2",
-    "llama3.2": "llama3.2",
-    "llama3.1": "llama3.1",
-    "mistral": "mistral",
-    "codellama": "codellama",
-    "phi": "phi",
+    # ── OpenAI GPT-5 family ──────────────────────────────────────────
+    "gpt-5.4":       "gpt-5.4",
+    "gpt-5.4-mini":  "gpt-5.4-mini",
+    "gpt-5.1":       "gpt-5.1",
+    "gpt-5":         "gpt-5",
+    "gpt-5-mini":    "gpt-5-mini",
+    "gpt-5-nano":    "gpt-5-nano",
+    # ── OpenAI GPT-4 family (legacy) ─────────────────────────────────
+    "gpt-4o":        "gpt-4o",
+    "gpt-4o-mini":   "gpt-4o-mini",
+    "gpt-4":         "gpt-4-turbo",
+    # ── OpenAI o-series (reasoning) ──────────────────────────────────
+    "o4-mini":       "o4-mini",
+    "o3":            "o3",
+    "o3-mini":       "o3-mini",
+    "o1":            "o1",
+    "o1-mini":       "o1-mini",
+    # ── Anthropic Claude 4 family ────────────────────────────────────
+    "opus":          "claude-opus-4-6",
+    "opus-4.6":      "claude-opus-4-6",
+    "opus-4.5":      "claude-opus-4-5-20251101",
+    "claude-opus":   "claude-opus-4-6",
+    "sonnet":        "claude-sonnet-4-6",
+    "sonnet-4.6":    "claude-sonnet-4-6",
+    "sonnet-4.5":    "claude-sonnet-4-5-20250929",
+    "claude-sonnet": "claude-sonnet-4-6",
+    "haiku":         "claude-haiku-4-5-20251001",
+    "claude-haiku":  "claude-haiku-4-5-20251001",
+    # ── Google Gemini ────────────────────────────────────────────────
+    "gemini":        "gemini-3.0",
+    "gemini-3":      "gemini-3.0",
+    "gemini-2.5":    "gemini-2.5-pro",
+    "gemini-flash":  "gemini-2.5-flash",
+    "gemini-pro":    "gemini-2.5-pro",
+    # ── xAI Grok ─────────────────────────────────────────────────────
+    "grok":          "grok-3",
+    "grok-3":        "grok-3",
+    "grok-mini":     "grok-3-mini",
+    # ── DeepSeek ─────────────────────────────────────────────────────
+    "deepseek":      "deepseek-chat",
+    "deepseek-chat": "deepseek-chat",
+    "deepseek-r1":   "deepseek-reasoner",
+    # ── HuggingFace Llama ────────────────────────────────────────────
+    "llama":         "meta-llama/Llama-3.1-8B-Instruct",
+    "llama-8b":      "meta-llama/Llama-3.1-8B-Instruct",
+    "llama-70b":     "meta-llama/Llama-3.1-70B-Instruct",
+    # ── Ollama (local, free) ─────────────────────────────────────────
+    "ollama-llama":  "llama3.2",
+    "llama3.2":      "llama3.2",
+    "llama3.1":      "llama3.1",
+    "mistral":       "mistral",
+    "codellama":     "codellama",
+    "phi":           "phi",
+    "qwen":          "qwen2.5",
 }
 
 
@@ -155,40 +174,11 @@ def resolve_model_alias(model: str) -> str:
 
 
 class JudgeCostTracker:
-    """Track LLM-as-judge API costs across all evaluations."""
+    """Track LLM-as-judge API costs across all evaluations.
 
-    # Pricing per 1M tokens (input, output)
-    PRICING = {
-        "openai": {
-            "gpt-5.4": (2.00, 8.00),
-            "gpt-5.4-mini": (0.10, 0.40),
-            "gpt-5": (2.00, 8.00),
-            "gpt-5-mini": (0.10, 0.40),
-            "gpt-5-nano": (0.05, 0.20),
-            "gpt-4o": (2.50, 10.00),
-            "gpt-4o-mini": (0.15, 0.60),
-            "gpt-4-turbo": (10.00, 30.00),
-        },
-        "anthropic": {
-            "claude-opus-4-6": (5.00, 25.00),
-            "claude-opus-4-5-20251101": (5.00, 25.00),
-            "claude-sonnet-4-5-20250929": (3.00, 15.00),
-            "claude-haiku-4-5-20251001": (0.25, 1.25),
-            "claude-3-5-haiku-latest": (0.25, 1.25),
-        },
-        "gemini": {
-            "gemini-2.0-flash": (0.10, 0.40),
-            "gemini-1.5-pro": (1.25, 5.00),
-        },
-        "deepseek": {
-            "deepseek-chat": (0.14, 0.28),
-            "deepseek-reasoner": (0.55, 2.19),
-        },
-        "ollama": {},  # Free - local
-        "huggingface": {
-            "meta-llama/Llama-3.1-8B-Instruct": (0.05, 0.05),
-        },
-    }
+    Uses the shared pricing table in evalview.core.pricing — single
+    source of truth for all model costs.
+    """
 
     def __init__(self):
         self.total_input_tokens = 0
@@ -200,6 +190,8 @@ class JudgeCostTracker:
 
     def add_usage(self, provider: str, model: str, input_tokens: int, output_tokens: int):
         """Track token usage and calculate cost."""
+        from evalview.core.pricing import calculate_cost
+
         self.total_input_tokens += input_tokens
         self.total_output_tokens += output_tokens
         self.call_count += 1
@@ -207,20 +199,11 @@ class JudgeCostTracker:
             self.provider = provider
             self.model = model
 
-        # Calculate cost
-        pricing = self.PRICING.get(provider, {})
-        model_pricing = None
-
-        # Try exact match first, then partial match
-        for model_name, prices in pricing.items():
-            if model_name in model or model in model_name:
-                model_pricing = prices
-                break
-
-        if model_pricing:
-            input_cost = (input_tokens / 1_000_000) * model_pricing[0]
-            output_cost = (output_tokens / 1_000_000) * model_pricing[1]
-            self.total_cost += input_cost + output_cost
+        self.total_cost += calculate_cost(
+            model_name=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
 
     def get_summary(self) -> str:
         """Get a summary string of costs."""

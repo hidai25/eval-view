@@ -277,10 +277,8 @@ def snapshot(test_path: str, notes: str, test: str, variant: str, approve_genera
     config = _load_config_if_exists()
 
     # Apply judge config: --judge flag > env vars > config.yaml
-    if judge_model:
-        import os
-        from evalview.core.llm_configs import resolve_model_alias
-        os.environ["EVAL_MODEL"] = resolve_model_alias(judge_model)
+    from evalview.commands.shared import apply_judge_model
+    apply_judge_model(judge_model)
     from evalview.core.config import apply_judge_config
     apply_judge_config(config)
 
