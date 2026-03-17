@@ -300,4 +300,6 @@ def test_check_shows_last_snapshot_timestamp(monkeypatch, tmp_path):
     result = runner.invoke(check, ["tests", "--dry-run"])
 
     assert result.exit_code == 0
-    assert "Last baseline snapshot: 2026-03-14 09:45" in result.output
+    assert "1 baseline" in result.output
+    assert "snapshot:" in result.output
+    assert "2026-03-1" in result.output  # date from blessed_at

@@ -139,6 +139,45 @@ def _format_snapshot_timestamp(snapshot_at: datetime) -> str:
     return snapshot_at.strftime("%Y-%m-%d %H:%M")
 
 
+def _format_baseline_timestamp(dt: datetime) -> str:
+    """Format a baseline timestamp as an exact date/time string."""
+    if dt.tzinfo is not None:
+        dt = dt.astimezone().replace(tzinfo=None)
+    return dt.strftime("%Y-%m-%d %H:%M")
+
+
+def _print_baseline_context(goldens: List[Any], state: Any) -> None:
+    """Print baseline context: count, date range, and model info."""
+    if not goldens:
+        return
+
+    n = len(goldens)
+    dates = [g.blessed_at for g in goldens if g.blessed_at]
+
+    # Model info — collect unique model IDs
+    models = {g.model_id for g in goldens if g.model_id}
+
+    parts = [f"[dim]{n} baseline{'s' if n != 1 else ''}[/dim]"]
+
+    if dates:
+        oldest = min(dates)
+        newest = max(dates)
+        if oldest == newest:
+            parts.append(f"[dim]snapshot: {_format_baseline_timestamp(newest)}[/dim]")
+        else:
+            parts.append(
+                f"[dim]snapshots: {_format_baseline_timestamp(oldest)} – "
+                f"{_format_baseline_timestamp(newest)}[/dim]"
+            )
+
+    if models:
+        model_str = ", ".join(sorted(models))
+        parts.append(f"[dim]model: {model_str}[/dim]")
+
+    console.print("  ".join(parts))
+    console.print()
+
+
 @click.command("check")
 @click.argument("test_path", default="tests", type=click.Path(exists=True))
 @click.option("--test", "-t", help="Check only this specific test")
@@ -224,13 +263,8 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
             Celebrations.no_snapshot_found()
         sys.exit(1)
 
-    if state.last_snapshot_at and not json_output:
-        console.print(
-            f"[dim]Last baseline snapshot: {_format_snapshot_timestamp(state.last_snapshot_at)}[/dim]\n"
-        )
-
-    # Show status message
     if not json_output:
+        _print_baseline_context(goldens, state)
         console.print(f"[cyan]▶ {get_random_checking_message()}[/cyan]\n")
 
     # Load test cases
