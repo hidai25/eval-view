@@ -73,11 +73,14 @@ make run
 # Generate tests from a live agent
 evalview generate --agent http://localhost:8000
 
-# Generate from existing logs
-evalview generate --from-log traffic.jsonl
-
 # Capture real user flows via proxy
 evalview capture --agent http://localhost:8000/invoke
+
+# Capture a multi-turn conversation as one test
+evalview capture --agent http://localhost:8000/invoke --multi-turn
+
+# Generate from existing logs
+evalview generate --from-log traffic.jsonl
 ```
 
 ## How It Works
@@ -90,9 +93,17 @@ evalview capture --agent http://localhost:8000/invoke
 ```
 
 1. **`evalview init`** — detects your running agent, creates a starter test suite
-2. **`evalview snapshot`** — runs tests, saves traces as golden baselines
-3. **`evalview check`** — replays tests, diffs against baselines, flags regressions
+2. **`evalview snapshot`** — runs tests, saves traces as baselines (picks judge model on first run)
+3. **`evalview check`** — replays tests, diffs against baselines, opens HTML report with results
 4. **`evalview monitor`** — runs checks continuously with optional Slack alerts
+
+```bash
+evalview snapshot list              # See all saved baselines
+evalview snapshot show "my-test"    # Inspect a baseline
+evalview snapshot delete "my-test"  # Remove a baseline
+evalview snapshot --reset           # Clear all and start fresh
+evalview replay                     # List tests, or: evalview replay "my-test"
+```
 
 **Your data stays local.** Nothing is sent to EvalView servers.
 
@@ -105,9 +116,10 @@ EvalView has two complementary ways to test your agent:
 Snapshot known-good behavior, then detect when something drifts.
 
 ```bash
-evalview snapshot           # Capture current behavior as golden baseline
-evalview check              # Compare against baseline after every change
-evalview monitor            # Continuous checks with Slack alerts
+evalview snapshot              # Capture current behavior as baseline
+evalview check                 # Compare against baseline after every change
+evalview check --judge opus    # Use a specific judge model (sonnet, gpt-5.4, deepseek...)
+evalview monitor               # Continuous checks with Slack alerts
 ```
 
 ### Evaluation — *"How good is my agent?"*
@@ -137,9 +149,9 @@ Both modes start the same way: `evalview demo` → `evalview init` → then pick
 | **Tool calls + sequence** | Exact tool names, order, parameters | No | Free |
 | **Code-based checks** | Regex, JSON schema, contains/not_contains | No | Free |
 | **Semantic similarity** | Output meaning via embeddings | `OPENAI_API_KEY` | ~$0.00004/test |
-| **LLM-as-judge** | Output quality scored by GPT | `OPENAI_API_KEY` | ~$0.01/test |
+| **LLM-as-judge** | Output quality scored by LLM | Any provider key | ~$0.01/test |
 
-The first two layers alone catch most regressions — fully offline, zero cost.
+The first two layers alone catch most regressions — fully offline, zero cost. The LLM judge supports GPT-5.4, Claude Opus/Sonnet, Gemini, DeepSeek, Grok, and Ollama (free local). EvalView asks which model to use on first run, or use `--judge sonnet`.
 
 ## Multi-Turn Testing
 
@@ -161,15 +173,27 @@ thresholds:
   min_score: 70
 ```
 
-Each turn is evaluated independently — if the agent stops asking for the order number or uses a forbidden tool on the follow-up, EvalView flags exactly which turn broke and why.
+Each turn is evaluated independently. EvalView checks per-turn tool usage, forbidden tools, and output content — then tells you exactly which turn broke:
+
+```
+Turn 1: ✅ tools: search_flights ✓, output: contains "Paris" ✓
+Turn 2: ❌ forbidden tool "delete_booking" used
+```
+
+Capture multi-turn conversations from real traffic:
+
+```bash
+evalview capture --agent http://localhost:8000/invoke --multi-turn
+```
 
 ## Key Features
 
 | Feature | Description | Docs |
 |---------|-------------|------|
-| **Golden baseline diffing** | Tool call + parameter + output regression detection | [Docs](docs/GOLDEN_TRACES.md) |
-| **Multi-turn testing** | Sequential turns with context injection | [Docs](#multi-turn-testing) |
-| **Multi-reference goldens** | Up to 5 variants for non-deterministic agents | [Docs](docs/GOLDEN_TRACES.md) |
+| **Baseline diffing** | Tool call + parameter + output regression detection | [Docs](docs/GOLDEN_TRACES.md) |
+| **Multi-turn testing** | Per-turn tool, forbidden_tools, and output checks | [Docs](#multi-turn-testing) |
+| **Multi-turn capture** | `capture --multi-turn` records conversations as tests | [Docs](#multi-turn-testing) |
+| **Multi-reference baselines** | Up to 5 variants for non-deterministic agents | [Docs](docs/GOLDEN_TRACES.md) |
 | **`forbidden_tools`** | Safety contracts — hard-fail on any violation | [Docs](docs/YAML_SCHEMA.md) |
 | **Semantic similarity** | Embedding-based output comparison | [Docs](docs/EVALUATION_METRICS.md) |
 | **Production monitoring** | `evalview monitor` with Slack alerts and JSONL history | [Docs](#production-monitoring) |
@@ -178,7 +202,9 @@ Each turn is evaluated independently — if the agent stops asking for the order
 | **Silent model detection** | Alerts when LLM provider updates the model version | [Docs](docs/GOLDEN_TRACES.md) |
 | **Gradual drift detection** | Trend analysis across check history | [Docs](docs/GOLDEN_TRACES.md) |
 | **Statistical mode (pass@k)** | Run N times, require a pass rate | [Docs](docs/STATISTICAL_MODE.md) |
-| **HTML trace replay** | Step-by-step forensic debugging | [Docs](docs/CLI_REFERENCE.md) |
+| **HTML trace replay** | Auto-opens after check with full trace details | [Docs](docs/CLI_REFERENCE.md) |
+| **Verified cost tracking** | Token breakdown (in/out) with model pricing rates | [Docs](docs/COST_TRACKING.md) |
+| **Judge model picker** | Choose GPT, Claude, Gemini, DeepSeek, or Ollama (free) | [Docs](docs/EVALUATION_METRICS.md) |
 | **Pytest plugin** | `evalview_check` fixture for standard pytest | [Docs](#pytest-plugin) |
 | **PR comments + alerts** | Cost/latency spikes, model changes, collapsible diffs | [Docs](docs/CI_CD.md) |
 | **GitHub Actions job summary** | Results visible in Actions UI, not just PR comments | [Docs](docs/CI_CD.md) |
