@@ -323,11 +323,20 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
         analysis["all_passed"] = False
         analysis["has_execution_failures"] = True
 
-    # Update project state
-    state = state_store.update_check(
-        has_regressions=(not analysis["all_passed"]),
-        status="passed" if analysis["all_passed"] else "regression"
-    )
+    # Don't treat zero-test runs as a real pass — no tests were compared
+    actually_compared = len(diffs)
+    if actually_compared == 0:
+        analysis["all_passed"] = True  # Not a failure, but not a real check
+        analysis["nothing_compared"] = True
+
+    # Update project state (only count real checks toward streaks)
+    if actually_compared > 0:
+        state = state_store.update_check(
+            has_regressions=(not analysis["all_passed"]),
+            status="passed" if analysis["all_passed"] else "regression"
+        )
+    else:
+        state = state_store.load()
 
     # Cost summary
     if results and not json_output:

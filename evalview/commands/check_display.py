@@ -338,14 +338,22 @@ def _display_check_results(
             # Show what was verified so users can trust the result
             if diffs:
                 _print_passed_summary(diffs, result_by_name, golden_traces)
+                console.print(f"[green]{get_random_clean_check_message()}[/green]\n")
 
-            console.print(f"[green]{get_random_clean_check_message()}[/green]\n")
+                if state.current_streak >= 3:
+                    Celebrations.clean_check_streak(state)
 
-            if state.current_streak >= 3:
-                Celebrations.clean_check_streak(state)
-
-            if state.total_checks >= 5 and state.total_checks % 5 == 0:
-                Celebrations.health_summary(state)
+                if state.total_checks >= 5 and state.total_checks % 5 == 0:
+                    Celebrations.health_summary(state)
+            else:
+                console.print(
+                    "[yellow]0 tests compared.[/yellow] "
+                    "Test names don't match any golden baselines.\n"
+                )
+                console.print(
+                    "[dim]Run [bold]evalview snapshot[/bold] to capture baselines "
+                    "for your current tests.[/dim]\n"
+                )
         else:
             console.print("\n[bold]Diff Summary[/bold]")
             execution_failures = int(analysis.get("execution_failures", 0) or 0)
