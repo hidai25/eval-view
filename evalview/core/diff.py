@@ -96,6 +96,9 @@ class TurnDiff:
     baseline_tools: List[str]
     current_tools: List[str]
     status: DiffStatus
+    baseline_output: Optional[str] = None
+    current_output: Optional[str] = None
+    output_similarity: Optional[float] = None
 
 
 @dataclass
@@ -606,6 +609,12 @@ class DiffEngine:
             idx = step.turn_index if step.turn_index is not None else 1
             actual_turns[idx].append(step.tool_name)
 
+        # Build actual per-turn outputs from trace.turns
+        actual_outputs: Dict[int, str] = {}
+        if actual.turns:
+            for tt in actual.turns:
+                actual_outputs[tt.index] = tt.output or ""
+
         max_turn = max(
             len(golden.per_turn_tool_sequences),
             max(actual_turns.keys()) if actual_turns else 0,
@@ -622,11 +631,29 @@ class DiffEngine:
                 similarity = SequenceMatcher(None, baseline, current).ratio()
                 status = DiffStatus.PASSED if similarity >= self.tool_threshold else DiffStatus.TOOLS_CHANGED
 
+            # Compare per-turn outputs when available
+            baseline_output: Optional[str] = None
+            current_output: Optional[str] = None
+            output_similarity: Optional[float] = None
+
+            if golden.per_turn_outputs and t <= len(golden.per_turn_outputs):
+                baseline_output = golden.per_turn_outputs[t - 1]
+            current_output = actual_outputs.get(t)
+
+            if baseline_output is not None and current_output is not None:
+                output_similarity = SequenceMatcher(None, baseline_output, current_output).ratio()
+                # Escalate status if tools match but output diverged significantly
+                if status == DiffStatus.PASSED and output_similarity < self.output_threshold:
+                    status = DiffStatus.OUTPUT_CHANGED
+
             turn_diffs.append(TurnDiff(
                 turn_index=t,
                 baseline_tools=baseline,
                 current_tools=current,
                 status=status,
+                baseline_output=baseline_output,
+                current_output=current_output,
+                output_similarity=output_similarity,
             ))
 
         return turn_diffs

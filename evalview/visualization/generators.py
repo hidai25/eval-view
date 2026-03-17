@@ -412,14 +412,27 @@ def generate_visual_report(
         turn_list = []
         if getattr(r.trace, "turns", None):
             for turn in getattr(r.trace, "turns", []) or []:
-                turn_list.append({
+                turn_entry = {
                     "index": int(getattr(turn, "index", 0) or 0),
                     "query": str(getattr(turn, "query", "") or ""),
                     "output": _strip_markdown(str(getattr(turn, "output", "") or "")),
                     "tools": [str(tool) for tool in (getattr(turn, "tools", None) or [])],
                     "latency_ms": float(getattr(turn, "latency_ms", 0) or 0),
                     "cost": float(getattr(turn, "cost", 0) or 0),
-                })
+                }
+                # Attach per-turn evaluation if present
+                eval_obj = getattr(turn, "evaluation", None)
+                if eval_obj is not None:
+                    turn_entry["evaluation"] = {
+                        "passed": eval_obj.passed,
+                        "tool_accuracy": eval_obj.tool_accuracy,
+                        "forbidden_violations": eval_obj.forbidden_violations,
+                        "contains_passed": eval_obj.contains_passed,
+                        "contains_failed": eval_obj.contains_failed,
+                        "not_contains_passed": eval_obj.not_contains_passed,
+                        "not_contains_failed": eval_obj.not_contains_failed,
+                    }
+                turn_list.append(turn_entry)
         elif has_steps:
             current_t_idx = None
             current_turn_data = None
@@ -1014,6 +1027,26 @@ table tr:hover td{background:rgba(255,255,255,.02)}
                   <span>⚡ {{ turn.latency_ms|round(1) }}ms</span>
                   <span>💰 ${{ '%.6f'|format(turn.cost) if turn.cost else '0' }}</span>
                 </div>
+
+                {% if turn.evaluation %}
+                <div style="margin-top:10px;padding:8px 12px;border-radius:6px;font-family:var(--font);font-size:11px;{% if turn.evaluation.passed %}background:rgba(34,211,165,.08);border:1px solid rgba(34,211,165,.2);{% else %}background:rgba(255,68,68,.08);border:1px solid rgba(255,68,68,.2);{% endif %}">
+                  <span style="font-weight:700;{% if turn.evaluation.passed %}color:var(--green);{% else %}color:var(--red);{% endif %}">
+                    {% if turn.evaluation.passed %}✅ PASS{% else %}❌ FAIL{% endif %}
+                  </span>
+                  {% if turn.evaluation.tool_accuracy is not none %}
+                  <span style="margin-left:8px;color:var(--muted)">Tool accuracy: {{ (turn.evaluation.tool_accuracy * 100)|round(0) }}%</span>
+                  {% endif %}
+                  {% if turn.evaluation.forbidden_violations %}
+                  <span style="margin-left:8px;color:var(--red)">Forbidden: {{ turn.evaluation.forbidden_violations|join(', ') }}</span>
+                  {% endif %}
+                  {% if turn.evaluation.contains_failed %}
+                  <span style="margin-left:8px;color:var(--red)">Missing: {{ turn.evaluation.contains_failed|join(', ') }}</span>
+                  {% endif %}
+                  {% if turn.evaluation.not_contains_failed %}
+                  <span style="margin-left:8px;color:var(--red)">Prohibited: {{ turn.evaluation.not_contains_failed|join(', ') }}</span>
+                  {% endif %}
+                </div>
+                {% endif %}
 
               </div>
             </details>

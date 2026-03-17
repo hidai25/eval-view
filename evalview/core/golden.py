@@ -50,6 +50,7 @@ class GoldenTrace(BaseModel):
     tool_sequence: List[str] = Field(default_factory=list)
     output_hash: str = ""  # Hash of final output for quick comparison
     per_turn_tool_sequences: Optional[List[List[str]]] = Field(default=None)
+    per_turn_outputs: Optional[List[Optional[str]]] = Field(default=None)
 
 
 class GoldenStore:
@@ -135,6 +136,11 @@ class GoldenStore:
             max_turn = max(turns_map.keys()) if turns_map else 0
             per_turn = [turns_map.get(t, []) for t in range(1, max_turn + 1)]
 
+        # Build per-turn outputs for multi-turn tests
+        per_turn_outputs: Optional[List[Optional[str]]] = None
+        if result.trace.turns:
+            per_turn_outputs = [t.output for t in result.trace.turns]
+
         # Create golden trace
         golden = GoldenTrace(
             metadata=GoldenMetadata(
@@ -151,6 +157,7 @@ class GoldenStore:
             tool_sequence=tool_sequence,
             output_hash=self._hash_output(result.trace.final_output),
             per_turn_tool_sequences=per_turn,
+            per_turn_outputs=per_turn_outputs,
         )
 
         # Save

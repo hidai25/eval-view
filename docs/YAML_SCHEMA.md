@@ -353,6 +353,54 @@ Test cases are validated against Pydantic models on load. Common validation erro
 
 ---
 
+## Multi-Turn Tests with Per-Turn Expected Behavior
+
+Multi-turn tests validate conversation flows across multiple turns. Each turn can have its own `expected` block to verify tools, forbidden tools, and output content at each step.
+
+### Schema
+
+```yaml
+name: booking-flow
+turns:
+  - query: "I want to book a flight to Paris"
+    expected:
+      tools: [search_flights]
+      output:
+        contains: ["Paris"]
+  - query: "Book the cheapest one"
+    expected:
+      tools: [book_flight, confirm_booking]
+      forbidden_tools: [delete_booking]
+      output:
+        contains: ["confirmation", "Paris"]
+        not_contains: ["error", "failed"]
+  - query: "What's my booking status?"
+    expected:
+      tools: [get_booking_status]
+thresholds:
+  min_score: 70
+```
+
+### Per-Turn Expected Fields
+
+Each turn's `expected` block supports the same fields as the top-level `expected`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `tools` | list[str] | Tools that should be called in this turn |
+| `forbidden_tools` | list[str] | Tools that must NOT be called (hard-fail) |
+| `output.contains` | list[str] | Strings that must appear in the turn's response |
+| `output.not_contains` | list[str] | Strings that must NOT appear (hard-fail) |
+
+### Evaluation Behavior
+
+- **Diagnostic by default**: Per-turn evaluations don't change the overall score formula
+- **Hard-fail conditions**: forbidden_tools violations, contains failures, and not_contains failures cause the entire test to fail
+- **Turns without `expected`**: Skipped during per-turn evaluation (no effect on pass/fail)
+- **Backward compatible**: Existing multi-turn tests without per-turn `expected` blocks work unchanged
+
+---
+
 ## Tips
 
 1. **Start simple:** Begin with just `name`, `input`, `expected.tools`, and `thresholds`

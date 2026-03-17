@@ -14,6 +14,7 @@ from evalview.core.types import (
     Evaluations,
     OutputEvaluation,
     ContainsChecks,
+    TurnEvaluation,
 )
 from evalview.evaluators.cost_evaluator import CostEvaluator
 from evalview.evaluators.hallucination_evaluator import HallucinationEvaluator
@@ -157,6 +158,19 @@ class Evaluator:
         # Determine pass/fail
         passed = self._compute_pass_fail(evaluations, test_case, score)
 
+        # Per-turn evaluation for multi-turn tests
+        turn_evaluations = self._evaluate_per_turn(test_case, trace)
+        if turn_evaluations:
+            # Attach evaluations to corresponding TurnTrace objects
+            if trace.turns:
+                for te in turn_evaluations:
+                    idx = te.turn_index - 1  # turn_index is 1-based
+                    if 0 <= idx < len(trace.turns):
+                        trace.turns[idx].evaluation = te
+            # Hard-fail on forbidden_tools violations or contains failures
+            if any(not te.passed for te in turn_evaluations):
+                passed = False
+
         return EvaluationResult(
             test_case=test_case.name,
             passed=passed,
@@ -170,6 +184,7 @@ class Evaluator:
             actual_output=trace.final_output,
             suite_type=test_case.suite_type,
             difficulty=test_case.difficulty,
+            turn_evaluations=turn_evaluations,
         )
 
     def _get_weights_for_test(self, test_case: TestCase) -> Dict[str, float]:
@@ -272,6 +287,121 @@ class Evaluator:
             return False
 
         return True
+
+    def _evaluate_per_turn(
+        self, test_case: TestCase, trace: ExecutionTrace
+    ) -> Optional[List[TurnEvaluation]]:
+        """Evaluate per-turn expected behaviors for multi-turn tests.
+
+        Only runs when test_case.turns is present and at least one turn
+        has an ``expected`` block. Returns None for single-turn tests.
+
+        Per-turn evaluation is diagnostic + hard-fail on forbidden_tools
+        violations and contains/not_contains failures.
+        """
+        if not test_case.turns:
+            return None
+
+        # Check if any turn has expected behavior defined
+        if not any(t.expected for t in test_case.turns):
+            return None
+
+        # Build per-turn tool lists from step traces
+        from collections import defaultdict
+        turn_tools: Dict[int, List[str]] = defaultdict(list)
+        for step in trace.steps:
+            idx = step.turn_index if step.turn_index is not None else 1
+            turn_tools[idx].append(step.tool_name)
+
+        # Build per-turn output map from trace.turns
+        turn_outputs: Dict[int, str] = {}
+        if trace.turns:
+            for tt in trace.turns:
+                turn_outputs[tt.index] = tt.output or ""
+
+        evaluations: List[TurnEvaluation] = []
+        for i, turn in enumerate(test_case.turns):
+            if not turn.expected:
+                continue
+
+            turn_index = i + 1  # 1-based
+            actual_tools = turn_tools.get(turn_index, [])
+            turn_output = turn_outputs.get(turn_index, "")
+            passed = True
+            details_parts: List[str] = []
+
+            # Tool accuracy
+            tool_accuracy: Optional[float] = None
+            if turn.expected.tools:
+                expected_set = set(turn.expected.tools)
+                actual_set = set(actual_tools)
+                if expected_set:
+                    correct = expected_set & actual_set
+                    tool_accuracy = len(correct) / len(expected_set)
+                    if tool_accuracy < 1.0:
+                        missing = expected_set - actual_set
+                        details_parts.append(f"missing tools: {', '.join(sorted(missing))}")
+                        passed = False
+
+            # Forbidden tools check
+            forbidden_violations: List[str] = []
+            if turn.expected.forbidden_tools:
+                forbidden_set = set(turn.expected.forbidden_tools)
+                for tool in actual_tools:
+                    if tool in forbidden_set:
+                        forbidden_violations.append(tool)
+                if forbidden_violations:
+                    details_parts.append(f"forbidden tools used: {', '.join(forbidden_violations)}")
+                    passed = False
+
+            # Contains / not_contains checks on turn output
+            contains_passed: List[str] = []
+            contains_failed: List[str] = []
+            not_contains_passed: List[str] = []
+            not_contains_failed: List[str] = []
+
+            if turn.expected.output:
+                exp_output = turn.expected.output
+                # Normalize to ExpectedOutput if it's a dict
+                if isinstance(exp_output, dict):
+                    from evalview.core.types import ExpectedOutput
+                    exp_output = ExpectedOutput(**exp_output)
+
+                output_lower = turn_output.lower()
+
+                if exp_output.contains:
+                    for s in exp_output.contains:
+                        if s.lower() in output_lower:
+                            contains_passed.append(s)
+                        else:
+                            contains_failed.append(s)
+                    if contains_failed:
+                        details_parts.append(f"missing in output: {', '.join(contains_failed)}")
+                        passed = False
+
+                if exp_output.not_contains:
+                    for s in exp_output.not_contains:
+                        if s.lower() not in output_lower:
+                            not_contains_passed.append(s)
+                        else:
+                            not_contains_failed.append(s)
+                    if not_contains_failed:
+                        details_parts.append(f"prohibited in output: {', '.join(not_contains_failed)}")
+                        passed = False
+
+            evaluations.append(TurnEvaluation(
+                turn_index=turn_index,
+                passed=passed,
+                tool_accuracy=tool_accuracy,
+                forbidden_violations=forbidden_violations,
+                contains_passed=contains_passed,
+                contains_failed=contains_failed,
+                not_contains_passed=not_contains_passed,
+                not_contains_failed=not_contains_failed,
+                details="; ".join(details_parts) if details_parts else "",
+            ))
+
+        return evaluations if evaluations else None
 
     # ------------------------------------------------------------------
     # Code-based (zero-cost) evaluation helpers

@@ -76,6 +76,27 @@ def display_diff_results(
                             console.print(f"            [dim]golden:[/dim] {pd.golden_value}")
                             console.print(f"            [dim]actual:[/dim] {pd.actual_value}")
 
+        # Per-turn evaluation results
+        matching_result = next((r for r in results if r.test_case == test_name), None)
+        if matching_result and getattr(matching_result, "turn_evaluations", None):
+            for te in matching_result.turn_evaluations:
+                parts = []
+                if te.tool_accuracy is not None:
+                    tool_names = ""
+                    if te.tool_accuracy >= 1.0:
+                        tool_names = " ✓"
+                    parts.append(f"tools{tool_names}")
+                if te.contains_passed:
+                    parts.append(f'contains "{te.contains_passed[0]}" ✓')
+                if te.contains_failed:
+                    parts.append(f'missing "{te.contains_failed[0]}"')
+                if te.forbidden_violations:
+                    parts.append(f'forbidden "{te.forbidden_violations[0]}" used')
+                if te.passed:
+                    console.print(f"      [green]Turn {te.turn_index}: ✅[/green] {', '.join(parts)}")
+                else:
+                    console.print(f"      [red]Turn {te.turn_index}: ❌[/red] {', '.join(parts)}")
+
         if abs(trace_diff.score_diff) > 1:
             direction = "[green]↑[/green]" if trace_diff.score_diff > 0 else "[red]↓[/red]"
             console.print(f"    Score: {direction} {trace_diff.score_diff:+.1f}")

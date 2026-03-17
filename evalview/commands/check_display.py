@@ -161,6 +161,48 @@ def _print_inline_trajectory(diff: "TraceDiff", golden: Optional["GoldenTrace"],
         console.print(f"    [dim]Current:[/dim]  {' → '.join(actual_seq) or '(none)'}")
 
 
+def _print_passed_summary(
+    diffs: List[Tuple[str, "TraceDiff"]],
+    result_by_name: Dict[str, Any],
+    golden_traces: Optional[Dict[str, "GoldenTrace"]] = None,
+) -> None:
+    """Print a compact summary of what was verified when all tests pass.
+
+    Shows each test with its score, tool match status, and output similarity
+    so users have evidence that real work was done.
+    """
+    _goldens = golden_traces or {}
+    for name, diff in diffs:
+        result = result_by_name.get(name)
+        score_str = f"{result.score:.1f}" if result else "?"
+
+        parts = [f"[green]✓[/green] {name:<30s} [bold]{score_str}[/bold]"]
+
+        # Tool match status
+        if not diff.tool_diffs:
+            parts.append("[green]tools ✓[/green]")
+        else:
+            parts.append(f"[yellow]tools ~{len(diff.tool_diffs)} changed[/yellow]")
+
+        # Output similarity
+        if diff.output_diff:
+            sim_pct = int(diff.output_diff.similarity * 100)
+            if sim_pct >= 95:
+                parts.append(f"[green]output {sim_pct}%[/green]")
+            else:
+                color = "yellow" if sim_pct >= 80 else "red"
+                parts.append(f"[{color}]output {sim_pct}%[/{color}]")
+
+        # Multi-turn indicator
+        if diff.turn_diffs:
+            n_turns = len(diff.turn_diffs)
+            parts.append(f"[dim]({n_turns} turns)[/dim]")
+
+        console.print("  " + "  ".join(parts))
+
+    console.print()
+
+
 def _display_check_results(
     diffs: List[Tuple[str, "TraceDiff"]],
     analysis: Dict[str, Any],
@@ -293,6 +335,10 @@ def _display_check_results(
                 console.print(f"[yellow]📉 {name}:[/yellow] {warning}\n")
 
         if analysis["all_passed"]:
+            # Show what was verified so users can trust the result
+            if diffs:
+                _print_passed_summary(diffs, result_by_name, golden_traces)
+
             console.print(f"[green]{get_random_clean_check_message()}[/green]\n")
 
             if state.current_streak >= 3:
@@ -355,9 +401,28 @@ def _display_check_results(
                             for td in changed_turns:
                                 baseline_str = ", ".join(td.baseline_tools) or "(none)"
                                 current_str = ", ".join(td.current_tools) or "(none)"
+                                parts = []
+                                if td.baseline_tools != td.current_tools:
+                                    parts.append(f"[red]{baseline_str}[/red] → [green]{current_str}[/green]")
+                                else:
+                                    parts.append(f"tools OK")
+                                if td.output_similarity is not None:
+                                    sim_pct = int(td.output_similarity * 100)
+                                    sim_color = "green" if sim_pct >= 80 else "yellow" if sim_pct >= 50 else "red"
+                                    parts.append(f"output [{sim_color}]{sim_pct}% similar[/{sim_color}]")
                                 console.print(
                                     f"      [yellow]Turn {td.turn_index}:[/yellow] "
-                                    f"[red]{baseline_str}[/red] → [green]{current_str}[/green]"
+                                    + ", ".join(parts)
+                                )
+
+                    # Per-turn evaluation failures
+                    if result_for_test and getattr(result_for_test, "turn_evaluations", None):
+                        failed_evals = [te for te in result_for_test.turn_evaluations if not te.passed]
+                        if failed_evals:
+                            console.print("    [dim]Per-turn evaluation:[/dim]")
+                            for te in failed_evals:
+                                console.print(
+                                    f"      [red]Turn {te.turn_index}: FAIL[/red] — {te.details}"
                                 )
 
                     _print_output_diff(diff)

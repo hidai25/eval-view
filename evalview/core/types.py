@@ -399,6 +399,21 @@ class TurnTrace(BaseModel):
     tools: List[str] = Field(default_factory=list)
     latency_ms: float = 0.0
     cost: float = 0.0
+    evaluation: Optional["TurnEvaluation"] = None
+
+
+class TurnEvaluation(BaseModel):
+    """Per-turn evaluation results (diagnostic — does not affect overall score)."""
+
+    turn_index: int
+    passed: bool
+    tool_accuracy: Optional[float] = None          # 0.0–1.0
+    forbidden_violations: List[str] = Field(default_factory=list)
+    contains_passed: List[str] = Field(default_factory=list)
+    contains_failed: List[str] = Field(default_factory=list)
+    not_contains_passed: List[str] = Field(default_factory=list)
+    not_contains_failed: List[str] = Field(default_factory=list)
+    details: str = ""
 
 
 # --- Tracing Types (OpenTelemetry-aligned) ---
@@ -737,6 +752,9 @@ class EvaluationResult(BaseModel):
 
     # Difficulty level for benchmarking
     difficulty: Optional[Difficulty] = None
+
+    # Per-turn evaluation results for multi-turn tests
+    turn_evaluations: Optional[List[TurnEvaluation]] = None
 
 
 # --- Statistical/Variance Evaluation Types ---
