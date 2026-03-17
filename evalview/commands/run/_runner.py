@@ -150,11 +150,13 @@ async def run_parallel(
         status = "[bold red]● Running[/bold red]" if failed > 0 else "[green]● Running[/green]"
         judge_cost = judge_cost_tracker.get_summary()
 
+        judge_model = judge_cost_tracker.model or ""
+        judge_label = f"Judge ({judge_model}):" if judge_model else "Judge:"
         content = (
             f"  {status}\n\n"
             f"  [bold]⏱️  Elapsed:[/bold]    [yellow]{_format_elapsed()}[/yellow]\n"
             f"  [bold]📋 Progress:[/bold]   {tests_completed}/{len(test_cases)} tests\n"
-            f"  [bold]💰 Judge:[/bold]      [dim]{judge_cost}[/dim]\n\n"
+            f"  [bold]💰 {judge_label}[/bold]      [dim]{judge_cost}[/dim]\n\n"
             f"{running_lines}\n\n"
             f"  [green]✓ Passed:[/green] {passed}    [red]✗ Failed:[/red] {failed}"
         )
@@ -243,7 +245,9 @@ def _print_completion_box(
     console: Any,
 ) -> None:
     """Print the ASCII completion box shown after parallel execution."""
+    judge_model = judge_cost_tracker.model or ""
     final_judge_cost = judge_cost_tracker.get_summary()
+    judge_label = f"Judge ({judge_model}):" if judge_model else "Judge cost:"
     console.print()
     console.print("[bold cyan]╔══════════════════════════════════════════════════════════════════╗[/bold cyan]")
     console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
@@ -258,7 +262,7 @@ def _print_completion_box(
         console.print(f"[bold cyan]║[/bold cyan]  [green]✓ Passed:[/green] {passed:<4}  [red]✗ Failed:[/red] {failed:<4}  [red]⚠ Errors:[/red] {execution_errors:<4}         [bold cyan]║[/bold cyan]")
     else:
         console.print(f"[bold cyan]║[/bold cyan]  [green]✓ Passed:[/green] {passed:<4}  [red]✗ Failed:[/red] {failed:<4}  [dim]Time:[/dim] {elapsed}               [bold cyan]║[/bold cyan]")
-    console.print(f"[bold cyan]║[/bold cyan]  [dim]💰 Judge cost:[/dim] {final_judge_cost:<45}[bold cyan]║[/bold cyan]")
+    console.print(f"[bold cyan]║[/bold cyan]  [dim]💰 {judge_label}[/dim] {final_judge_cost:<45}[bold cyan]║[/bold cyan]")
     console.print("[bold cyan]║[/bold cyan]                                                                  [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]╚══════════════════════════════════════════════════════════════════╝[/bold cyan]")
     console.print()

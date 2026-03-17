@@ -154,9 +154,8 @@ def run(
     """
     if judge_provider:
         os.environ["EVAL_PROVIDER"] = judge_provider
-    if judge_model:
-        from evalview.core.llm_provider import resolve_model_alias
-        os.environ["EVAL_MODEL"] = resolve_model_alias(judge_model)
+    from evalview.commands.shared import apply_judge_model
+    apply_judge_model(judge_model, interactive=not no_judge)
 
     if budget is not None and budget <= 0:
         click.echo("Error: --budget must be a positive number.", err=True)
