@@ -255,7 +255,7 @@ class LLMClient:
         is_o_series = self.model.startswith("o1") or self.model.startswith("o3") or self.model.startswith("o4")
         uses_max_completion_tokens = is_gpt5 or is_o_series
 
-        params = {
+        params: Dict[str, Any] = {
             "model": self.model,
             "messages": [
                 {"role": "system", "content": system_prompt},
@@ -432,7 +432,7 @@ class LLMClient:
         is_o_series = self.model.startswith("o1") or self.model.startswith("o3") or self.model.startswith("o4")
         uses_max_completion_tokens = is_gpt5 or is_o_series
 
-        params = {
+        params: Dict[str, Any] = {
             "model": self.model,
             "messages": [
                 {"role": "system", "content": system_prompt},
