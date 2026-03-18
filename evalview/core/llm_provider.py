@@ -251,7 +251,8 @@ class LLMClient:
         client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
         # GPT-5 models require temperature=1 and max_completion_tokens
-        is_gpt5 = self.model.startswith("gpt-5")
+        # Models that require max_completion_tokens instead of max_tokens
+        is_gpt5 = self.model.startswith("gpt-5") or self.model.startswith("o1") or self.model.startswith("o3") or self.model.startswith("o4")
 
         params = {
             "model": self.model,
@@ -422,7 +423,8 @@ class LLMClient:
         client = AsyncOpenAI(api_key=self.api_key)
 
         # GPT-5 models require temperature=1 and max_completion_tokens
-        is_gpt5 = self.model.startswith("gpt-5")
+        # Models that require max_completion_tokens instead of max_tokens
+        is_gpt5 = self.model.startswith("gpt-5") or self.model.startswith("o1") or self.model.startswith("o3") or self.model.startswith("o4")
 
         params = {
             "model": self.model,

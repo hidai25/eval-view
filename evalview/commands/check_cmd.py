@@ -360,8 +360,8 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
 
     # Pre-flight: skip execution if no tests have matching baselines
     golden_names = {golden.test_name for golden in goldens}
-    tests_with_baselines = [tc for tc in test_cases if tc.name in golden_names]
-    if not tests_with_baselines:
+    matched_tests = [tc for tc in test_cases if tc.name in golden_names]
+    if not matched_tests:
         if not json_output:
             from rich.panel import Panel as _PF
             console.print(
