@@ -504,33 +504,55 @@ def generate(
             console.print("[dim]Discarded. Re-run with --seed or --budget to adjust.[/dim]")
             raise click.Abort()
 
-        replacing_existing = output_dir.exists() and any(output_dir.iterdir())
         generated_yaml, handwritten_yaml = generator.classify_output_dir(output_dir)
         full_replace_confirmed = False
-        if handwritten_yaml and not keep_old:
-            keep_handwritten = click.confirm(
-                f"{output_dir} contains {len(handwritten_yaml)} hand-written YAML test(s). "
-                "Keep them and replace only EvalView-generated drafts?",
-                default=True,
-            )
-            if not keep_handwritten:
-                generator._replace_all_yaml_suite(output_dir)
-                full_replace_confirmed = True
-                replacing_existing = False
+        replace_generated = False
+
+        if (generated_yaml or handwritten_yaml) and not keep_old:
+            total_existing = len(generated_yaml) + len(handwritten_yaml)
+            console.print(f"\n[yellow]Found {total_existing} existing test(s) in {output_dir}:[/yellow]")
+            if generated_yaml:
+                console.print(f"  [dim]{len(generated_yaml)} generated draft(s)[/dim]")
+            if handwritten_yaml:
+                console.print(f"  [dim]{len(handwritten_yaml)} hand-written test(s)[/dim]")
+            console.print()
+
+            if handwritten_yaml:
+                keep_handwritten = click.confirm(
+                    "Keep hand-written tests and replace only generated drafts?",
+                    default=True,
+                )
+                if keep_handwritten:
+                    replace_generated = True
+                else:
+                    if click.confirm("Delete ALL existing tests (including hand-written)?", default=False):
+                        generator._replace_all_yaml_suite(output_dir)
+                        full_replace_confirmed = True
+                    else:
+                        replace_generated = True
+            elif generated_yaml:
+                replace_generated = click.confirm(
+                    f"Replace {len(generated_yaml)} existing generated draft(s)?",
+                    default=True,
+                )
+                if not replace_generated:
+                    console.print("[dim]Keeping old tests. New tests will be added alongside them.[/dim]")
 
         written = generator.write_suite(
             result,
             output_dir,
-            replace_existing=not keep_old and not full_replace_confirmed,
+            replace_existing=(replace_generated or full_replace_confirmed) and not keep_old,
         )
         ProjectStateStore().set_active_test_path(out_dir)
         console.print(f"[green]✓ Saved {len(result.tests)} tests[/green] [dim]({_format_gen_elapsed()} elapsed)[/dim]")
         console.print(f"[dim]Output:[/dim] {output_dir}")
         console.print(f"[dim]Files written:[/dim] {len(written)}")
         if full_replace_confirmed:
-            console.print("[dim]Replaced all YAML drafts in this folder, including hand-written tests.[/dim]")
-        elif replacing_existing and not keep_old:
-            console.print("[dim]Replaced previous generated drafts in this folder.[/dim]")
+            console.print("[dim]Replaced all tests in this folder, including hand-written tests.[/dim]")
+        elif replace_generated:
+            console.print("[dim]Replaced previous generated drafts.[/dim]")
+        elif not keep_old and not generated_yaml and not handwritten_yaml:
+            pass  # fresh directory, nothing to report
 
     # Explain clustering if probes > tests
     if result.probes_run > len(result.tests) and len(result.tests) > 0:

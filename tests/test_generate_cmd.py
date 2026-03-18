@@ -361,10 +361,10 @@ def test_generate_replaces_existing_generated_drafts_by_default(monkeypatch, tmp
     _patch_generate_for_fake_adapter(monkeypatch)
 
     runner = CliRunner()
-    result = runner.invoke(generate, ["--budget", "8", "--out", "tests/generated"], input="y\n")
+    result = runner.invoke(generate, ["--budget", "8", "--out", "tests/generated"], input="y\ny\n")
 
     assert result.exit_code == 0, result.output
-    assert "Replaced previous generated drafts in this folder." in result.output
+    assert "Replaced previous generated drafts." in result.output
     assert not (out_dir / "stale.yaml").exists()
     assert (out_dir / "generated.report.json").exists()
 
@@ -404,10 +404,10 @@ def test_generate_preserves_handwritten_yaml_by_default(monkeypatch, tmp_path):
     _patch_generate_for_fake_adapter(monkeypatch)
 
     runner = CliRunner()
-    result = runner.invoke(generate, ["--budget", "8", "--out", "tests/generated"], input="y\n\n")
+    result = runner.invoke(generate, ["--budget", "8", "--out", "tests/generated"], input="y\ny\n")
 
     assert result.exit_code == 0, result.output
-    assert "hand-written YAML test" in result.output
+    assert "hand-written" in result.output
     assert handwritten.exists()
 
 
@@ -424,7 +424,7 @@ def test_generate_can_replace_handwritten_yaml_after_confirmation(monkeypatch, t
     _patch_generate_for_fake_adapter(monkeypatch)
 
     runner = CliRunner()
-    result = runner.invoke(generate, ["--budget", "8", "--out", "tests/generated"], input="y\nn\n")
+    result = runner.invoke(generate, ["--budget", "8", "--out", "tests/generated"], input="y\nn\ny\n")
 
     assert result.exit_code == 0, result.output
     assert "including hand-written tests" in result.output
