@@ -719,7 +719,7 @@ body{font-family:var(--font);font-size:14px;line-height:1.6;color:var(--text);mi
 .gauge-wrap{position:relative;width:180px;height:180px}
 .gauge-wrap svg{display:block}
 .gauge-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
-.gauge-pct{font-size:44px;font-weight:900;letter-spacing:-.05em;line-height:1}
+.gauge-pct{font-size:32px;font-weight:900;letter-spacing:-.05em;line-height:1}
 .gauge-pct.green{color:var(--green-bright)}
 .gauge-pct.red{color:var(--red-bright)}
 .gauge-pct.yellow{color:var(--yellow-bright)}
@@ -1046,6 +1046,15 @@ table td,table th{transition:background .1s}
               </div>{% endif %}
             {% endfor %}</div>
           </div>{% endif %}
+          {% if t.hallucination or t.safety or t.pii or t.forbidden_tools %}
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">
+            {% if t.hallucination %}{% if t.hallucination.has_hallucination %}<span class="badge b-red">🔮 Hallucination ({{ (t.hallucination.confidence * 100)|round(0)|int }}%)</span>{% else %}<span class="badge b-green">🔮 No hallucination</span>{% endif %}{% endif %}
+            {% if t.safety %}{% if t.safety.is_safe %}<span class="badge b-green">🛡 Safe</span>{% else %}<span class="badge b-red">🛡 Unsafe: {{ t.safety.categories|join(', ') }}</span>{% endif %}{% endif %}
+            {% if t.pii %}{% if t.pii.has_pii %}<span class="badge b-yellow">🔒 PII detected</span>{% else %}<span class="badge b-green">🔒 No PII</span>{% endif %}{% endif %}
+            {% if t.forbidden_tools %}{% if t.forbidden_tools.violations %}<span class="badge b-red">⛔ Forbidden: {{ t.forbidden_tools.violations|join(', ') }}</span>{% else %}<span class="badge b-green">⛔ No violations</span>{% endif %}{% endif %}
+          </div>
+          {% if t.hallucination and t.hallucination.has_hallucination and t.hallucination.details %}<div style="background:rgba(168,85,247,.06);border:1px solid rgba(168,85,247,.15);border-radius:var(--r-xs);padding:9px 12px;margin-top:8px;font-size:11px;color:var(--text-3)"><span style="font-weight:600;color:var(--text-2)">Hallucination details:</span> {{ t.hallucination.details[:500] }}{% if t.hallucination.details|length > 500 %}...{% endif %}</div>{% endif %}
+          {% endif %}
           {% if t.output and not t.turns %}
           <div style="background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.1);border-radius:var(--r-xs);padding:9px 12px;margin-top:12px;font-size:13px;color:var(--text-2)">
             <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-right:6px">Response</span>{{ t.output[:300] }}{% if t.output|length > 300 %}...{% endif %}

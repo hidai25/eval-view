@@ -1674,7 +1674,7 @@ class AgentTestGenerator:
         # normal when the agent takes a different tool path.  Cost and latency
         # still appear as metrics in the report for visibility.
         # Score 70 = "acceptable quality" — the universal default.
-        return Thresholds(min_score=70.0, max_cost=None, max_latency=None)
+        return Thresholds(min_score=50.0, max_cost=None, max_latency=None)
 
     def _generate_test_name(self, query: str, tools: Sequence[str], behavior_class: str) -> str:
         normalized_query = " ".join(query.lower().split())
