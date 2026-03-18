@@ -188,7 +188,12 @@ thresholds:
     return generated
 
 
-def _generate_init_draft_suite(endpoint: str, out_dir: Path) -> tuple[int, dict[str, Any], list]:
+def _generate_init_draft_suite(
+    endpoint: str,
+    out_dir: Path,
+    budget: int = 8,
+    synth_model: Optional[str] = None,
+) -> tuple[int, dict[str, Any], list]:
     """Generate an isolated draft suite for onboarding.
 
     Uses the same generation engine as `evalview generate`, but writes into a
@@ -207,8 +212,6 @@ def _generate_init_draft_suite(endpoint: str, out_dir: Path) -> tuple[int, dict[
         timeout=120.0,
         allow_private_urls=True,
     )
-
-    budget = 8
     _gen_start = _time.time()
     _gen_state: dict = {"phase": f"Probing [1/{budget}]...", "completed": 0, "total": budget, "stop": False}
 
@@ -244,7 +247,10 @@ def _generate_init_draft_suite(endpoint: str, out_dir: Path) -> tuple[int, dict[
             pass
         _gen_state["completed"] = num
         if status == "fail":
-            console.print(f"[dim]  [red]✗[/red] [{num}/{total}] {query} [timeout][/dim]")
+            console.print(f"[dim]  [red]✗[/red] [{num}/{total}] {query}[/dim]")
+            # Store first failure for later display
+            if "first_error" not in _gen_state:
+                _gen_state["first_error"] = query
         elif tools:
             console.print(f"[dim]  [green]✓[/green] [{num}/{total}] {query} → {', '.join(tools[:3])}[/dim]")
         else:
@@ -264,6 +270,7 @@ def _generate_init_draft_suite(endpoint: str, out_dir: Path) -> tuple[int, dict[
         budget=budget,
         allow_live_side_effects=False,
         on_probe_complete=_on_probe,
+        synth_model=synth_model,
     )
 
     _gen_state["stop"] = True
@@ -845,9 +852,88 @@ model:
             f"Tests are saved to tests/test-cases/ automatically.[/dim]"
         )
     elif path_choice == 2:
-        console.print("\n[cyan]Generating a draft suite from your agent...[/cyan]")
-        console.print(f"[dim]Endpoint: {endpoint}[/dim]\n")
-        n, report, tests = _generate_init_draft_suite(endpoint, init_generated_dir)
+        # Pre-flight: verify agent actually responds before spending time on generation
+        import httpx as _httpx
+        console.print(f"\n[dim]Checking agent at {endpoint}...[/dim]")
+        try:
+            _preflight = _httpx.post(endpoint, json={"query": "ping"}, timeout=5.0)
+            if _preflight.status_code != 200:
+                try:
+                    _err_data = _preflight.json()
+                    _err_msg = _err_data.get("detail", "") or _err_data.get("error", "") or str(_err_data)
+                except Exception:
+                    _err_msg = _preflight.text[:200]
+                console.print(f"[red]✗ Agent returned error: {_err_msg}[/red]")
+                console.print(f"[dim]Fix the agent at {endpoint} and rerun evalview init.[/dim]\n")
+                return
+        except _httpx.ConnectError:
+            console.print(f"[red]✗ Cannot connect to {endpoint}[/red]")
+            console.print(f"[dim]Make sure your agent is running, then rerun evalview init.[/dim]\n")
+            return
+        except _httpx.TimeoutException:
+            console.print(f"[yellow]⚠ Agent at {endpoint} is slow to respond (>5s). Proceeding anyway...[/yellow]\n")
+        except Exception as _e:
+            console.print(f"[red]✗ Error reaching agent: {_e}[/red]\n")
+            return
+
+        console.print("[green]✓ Agent is responsive[/green]\n")
+
+        # Interactive menus — same as evalview generate
+        from evalview.core.llm_configs import detect_available_providers
+
+        # Budget selection
+        console.print("[bold]How many tests to generate?[/bold]")
+        console.print("[dim]Time depends on your agent's speed[/dim]\n")
+        console.print("  [cyan]1.[/cyan] Quick    (~4 tests,  ~2-3 min)   [dim]← recommended[/dim]")
+        console.print("  [cyan]2.[/cyan] Standard (~8 tests,  ~4-6 min)")
+        console.print("  [cyan]3.[/cyan] Thorough (~20 tests, ~10-15 min)")
+        console.print()
+        _budget_choice = click.prompt("Choice", default="1", show_default=False).strip()
+        _budget_map = {"1": 4, "2": 8, "3": 20}
+        _budget = _budget_map.get(_budget_choice, 4)
+        console.print()
+
+        # Model selection
+        _synth_model = None
+        try:
+            _available = detect_available_providers()
+            _available_set = {p.provider.value for p in _available}
+        except Exception:
+            _available_set = set()
+
+        _model_choices = []
+        if "openai" in _available_set:
+            _model_choices.append(("gpt-5.4", "OpenAI GPT-5.4 — best quality"))
+            _model_choices.append(("gpt-5-mini", "OpenAI GPT-5 Mini — fast & cheap"))
+        if "anthropic" in _available_set:
+            _model_choices.append(("claude-haiku-4-5-20251001", "Claude Haiku — fast & cheap"))
+            _model_choices.append(("claude-sonnet-4-6", "Claude Sonnet 4.6 — great quality"))
+            _model_choices.append(("claude-opus-4-6", "Claude Opus 4.6 — best quality"))
+        if "gemini" in _available_set:
+            _model_choices.append(("gemini-2.0-flash", "Gemini Flash — free tier"))
+        if "deepseek" in _available_set:
+            _model_choices.append(("deepseek-chat", "DeepSeek — ultra cheap"))
+
+        if _model_choices:
+            console.print("[bold]Which model for test synthesis?[/bold]\n")
+            for i, (_model, _desc) in enumerate(_model_choices, 1):
+                _rec = "  [dim]← recommended[/dim]" if i == 1 else ""
+                console.print(f"  [cyan]{i}.[/cyan] {_desc}{_rec}")
+            console.print()
+            _model_input = click.prompt("Choice", default="1", show_default=False).strip()
+            try:
+                _idx = int(_model_input) - 1
+                if 0 <= _idx < len(_model_choices):
+                    _synth_model = _model_choices[_idx][0]
+            except ValueError:
+                _synth_model = _model_input
+            console.print()
+
+        console.print("[cyan]Generating draft suite...[/cyan]")
+        console.print(f"[dim]Endpoint: {endpoint}[/dim]")
+        console.print(f"[dim]Probe budget: {_budget}[/dim]\n")
+
+        n, report, tests = _generate_init_draft_suite(endpoint, init_generated_dir, budget=_budget, synth_model=_synth_model)
         if n > 0:
             covered = report.get("covered", {})
 
