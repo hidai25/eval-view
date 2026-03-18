@@ -547,7 +547,7 @@ def test_generate_report_tracks_changes_since_last_generation(monkeypatch, tmp_p
     first = runner.invoke(generate, ["--budget", "6"], input="y\n")
     assert first.exit_code == 0, first.output
 
-    second = runner.invoke(generate, ["--budget", "8"], input="y\n")
+    second = runner.invoke(generate, ["--budget", "8"], input="y\ny\n")
     assert second.exit_code == 0, second.output
 
     report = json.loads((tmp_path / "tests" / "generated" / "generated.report.json").read_text(encoding="utf-8"))
