@@ -89,24 +89,37 @@ class HallucinationEvaluator:
         Returns:
             Tuple of (has_hallucination, confidence, details)
         """
-        # Deterministic check: tool errors not acknowledged
+        # Deterministic checks
         tool_issues = self._check_tool_consistency(trace)
+        uncertainty_issues = self._check_uncertainty_handling(test_case, trace)
 
         # Skip LLM-based checks if no output to verify
         if not trace.final_output or not trace.final_output.strip():
-            if tool_issues:
-                return True, 0.8, "\n".join(f"- {i}" for i in tool_issues)
+            all_deterministic = tool_issues + uncertainty_issues
+            if all_deterministic:
+                return True, 0.8, "\n".join(f"- {i}" for i in all_deterministic)
             return False, 1.0, "No output to verify."
 
         # Build full tool context (no aggressive truncation)
         tool_context = self._build_tool_context(trace)
 
         # Step 1: Extract claims from agent response
-        claims = await self._extract_claims(trace.final_output, test_case.input.query)
+        claims, extraction_failed = await self._extract_claims(trace.final_output, test_case.input.query)
+
+        if extraction_failed:
+            # LLM call failed — report it clearly, don't mask as "no claims"
+            all_deterministic = tool_issues + uncertainty_issues
+            if all_deterministic:
+                details = "Claim extraction unavailable (LLM error). Deterministic issues found:\n"
+                details += "\n".join(f"- {i}" for i in all_deterministic)
+                return True, 0.7, details
+            return False, 0.0, "Claim extraction unavailable (LLM error). No deterministic issues found."
+
         if not claims:
-            # No verifiable claims found — not a hallucination
-            if tool_issues:
-                return True, 0.7, "\n".join(f"- {i}" for i in tool_issues)
+            # Genuinely no verifiable claims — check deterministic issues
+            all_deterministic = tool_issues + uncertainty_issues
+            if all_deterministic:
+                return True, 0.7, "\n".join(f"- {i}" for i in all_deterministic)
             return False, 1.0, "No verifiable factual claims found in output."
 
         # Step 2: Verify each claim against tool outputs
@@ -120,37 +133,38 @@ class HallucinationEvaluator:
         # Collect unsupported claims
         unsupported = [v for v in verdicts if not v["supported"]]
 
-        # Combine with deterministic issues
-        all_issues: List[str] = list(tool_issues)
+        # Combine all issues: deterministic + LLM-verified
+        all_issues: List[str] = list(tool_issues) + list(uncertainty_issues)
         for v in unsupported:
             all_issues.append(f"{v['claim']} — {v['reason']}")
 
-        has_hallucination = len(unsupported) > 0
-        # Confidence scales with how many claims are unsupported
+        # Deterministic issues AND unsupported claims both drive the verdict
+        has_hallucination = len(all_issues) > 0
         if has_hallucination:
-            unsupported_ratio = len(unsupported) / total
-            confidence = min(0.5 + unsupported_ratio * 0.5, 0.99)
+            unsupported_count = len(unsupported) + len(tool_issues) + len(uncertainty_issues)
+            total_checks = total + len(tool_issues) + len(uncertainty_issues)
+            confidence = min(0.5 + (unsupported_count / max(total_checks, 1)) * 0.5, 0.99)
         else:
             confidence = faithfulness
 
         if has_hallucination:
             details = (
                 f"Faithfulness: {faithfulness:.0%} ({supported}/{total} claims supported)\n"
-                f"Unsupported claims:\n"
+                f"Issues:\n"
                 + "\n".join(f"- {issue}" for issue in all_issues)
             )
         else:
             details = f"Faithfulness: {faithfulness:.0%} ({supported}/{total} claims verified against tool outputs)."
-            if tool_issues:
-                details += "\nWarnings:\n" + "\n".join(f"- {i}" for i in tool_issues)
 
         return has_hallucination, confidence, details
 
-    async def _extract_claims(self, response: str, query: str) -> List[str]:
+    async def _extract_claims(self, response: str, query: str) -> Tuple[List[str], bool]:
         """Step 1: Extract discrete factual claims from agent response.
 
-        Returns a list of simple factual statements that can be individually verified.
-        Skips opinions, advice, and meta-commentary.
+        Returns:
+            Tuple of (claims_list, extraction_failed).
+            extraction_failed is True when the LLM call itself errored,
+            distinguishing "no claims found" from "couldn't check."
         """
         prompt = f"""Extract all specific factual claims from this AI agent response.
 
@@ -181,18 +195,18 @@ If no specific factual claims exist, return: []"""
             )
             # Result should be a list of strings
             if isinstance(result, list):
-                return [str(c) for c in result if c]
+                return [str(c) for c in result if c], False
             if isinstance(result, dict) and "claims" in result:
-                return [str(c) for c in result["claims"] if c]
+                return [str(c) for c in result["claims"] if c], False
             # Try to parse as JSON array from string
             if isinstance(result, str):
                 parsed = json.loads(result)
                 if isinstance(parsed, list):
-                    return [str(c) for c in parsed if c]
-            return []
+                    return [str(c) for c in parsed if c], False
+            return [], False  # LLM succeeded but found no claims
         except Exception as e:
             logger.debug("Claim extraction failed: %s", e)
-            return []
+            return [], True  # LLM call failed — flag as extraction_failed
 
     async def _verify_claims(
         self, claims: List[str], tool_context: str

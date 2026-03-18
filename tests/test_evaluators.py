@@ -939,7 +939,7 @@ class TestHallucinationEvaluator:
 
         assert result.has_hallucination is False
         assert result.passed is True
-        assert "fact check unavailable" in result.details.lower()
+        assert "unavailable" in result.details.lower()
 
     @pytest.mark.asyncio
     @patch("evalview.core.llm_provider.LLMClient.chat_completion")
