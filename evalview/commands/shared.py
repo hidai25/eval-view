@@ -315,11 +315,14 @@ async def _execute_multi_turn_trace(test_case: TestCase, adapter: AgentAdapter) 
     )
 
 
-def _detect_agent_endpoint() -> Optional[str]:
-    """Scan common ports and paths for a running agent. Returns URL or None."""
+def _detect_all_agents() -> List[Dict[str, str]]:
+    """Scan common ports and paths for all running agents.
+
+    Returns a list of dicts with 'url', 'port', and 'name' (from /health if available).
+    """
     import socket
 
-    ports = [8090, 8000, 8080, 3000, 3001, 5000, 5001, 8888, 8081, 4000]
+    ports = [8000, 8080, 8090, 3000, 3001, 5000, 5001, 8888, 8081, 4000]
     execute_paths = ["/execute", "/invoke", "/api/chat", "/api/agent", "/run", "/chat", "/"]
     health_paths = ["/health"]
 
@@ -331,9 +334,26 @@ def _detect_agent_endpoint() -> Optional[str]:
                 open_ports.append(port)
 
     if not open_ports:
-        return None
+        return []
+
+    agents: List[Dict[str, str]] = []
+    seen_ports: set = set()
 
     for port in open_ports:
+        # Try to get agent name from health endpoint
+        agent_name = ""
+        for path in health_paths:
+            try:
+                r = httpx.get(f"http://localhost:{port}{path}", timeout=2.0)
+                if r.status_code == 200:
+                    data = r.json()
+                    # Extract a useful label from health response
+                    agent_name = data.get("title", "") or data.get("name", "") or data.get("model", "") or ""
+                    if data.get("backend"):
+                        agent_name = f"{agent_name} ({data['backend']})" if agent_name else data["backend"]
+            except Exception:
+                pass
+
         for path in execute_paths:
             url = f"http://localhost:{port}{path}"
             try:
@@ -342,22 +362,58 @@ def _detect_agent_endpoint() -> Optional[str]:
                     try:
                         data = r.json()
                         if "output" in data or "response" in data or "message" in data:
-                            return url
+                            if port not in seen_ports:
+                                seen_ports.add(port)
+                                agents.append({"url": url, "port": str(port), "name": agent_name})
+                            break
                     except Exception:
                         pass
             except Exception:
                 continue
 
-        for path in health_paths:
-            url = f"http://localhost:{port}{path}"
-            try:
-                r = httpx.get(url, timeout=2.0)
-                if r.status_code == 200:
-                    return f"http://localhost:{port}"
-            except Exception:
-                continue
+        # Fallback: if health responded but no execute path worked
+        if port not in seen_ports:
+            for path in health_paths:
+                try:
+                    r = httpx.get(f"http://localhost:{port}{path}", timeout=2.0)
+                    if r.status_code == 200:
+                        seen_ports.add(port)
+                        agents.append({"url": f"http://localhost:{port}", "port": str(port), "name": agent_name})
+                        break
+                except Exception:
+                    continue
 
-    return None
+    return agents
+
+
+def _detect_agent_endpoint() -> Optional[str]:
+    """Scan common ports for running agents. If multiple found, ask user to choose."""
+    import click as _click
+
+    agents = _detect_all_agents()
+
+    if not agents:
+        return None
+
+    if len(agents) == 1:
+        return agents[0]["url"]
+
+    # Multiple agents found — let user choose
+    console.print(f"\n[bold]Found {len(agents)} running agents:[/bold]\n")
+    for i, agent in enumerate(agents, 1):
+        label = agent["name"] or "unknown"
+        console.print(f"  [cyan]{i}.[/cyan] {agent['url']}  [dim]{label}[/dim]")
+    console.print()
+
+    choice = _click.prompt("Which agent?", default="1", show_default=False).strip()
+    try:
+        idx = int(choice) - 1
+        if 0 <= idx < len(agents):
+            return agents[idx]["url"]
+    except ValueError:
+        pass
+
+    return agents[0]["url"]
 
 
 def _parse_fail_statuses(fail_on: str) -> set:
