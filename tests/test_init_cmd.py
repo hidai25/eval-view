@@ -63,7 +63,7 @@ def test_init_generate_path_uses_isolated_onboarding_folder(monkeypatch, tmp_pat
 
     assert result.exit_code == 0, result.output
     assert "tests/generated-from-init/" in result.output
-    assert "evalview snapshot tests/generated-from-init" in result.output
+    assert "evalview snapshot --path tests/generated-from-init" in result.output
     assert "--approve-generated" not in result.output
     assert "evalview check tests/generated-from-init" in result.output
     assert "tests/test-cases/" not in result.output
