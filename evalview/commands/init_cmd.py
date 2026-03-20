@@ -1017,7 +1017,7 @@ model:
         )
         step4 = (
             f"[bold]→[/bold] Capture a baseline for just these drafts\n"
-            f"   [cyan]evalview snapshot tests/generated-from-init[/cyan]{snapshot_suffix}"
+            f"   [cyan]evalview snapshot --path tests/generated-from-init[/cyan]{snapshot_suffix}"
         )
         step5 = (
             "[bold]→[/bold] Check these drafts for regressions anytime\n"
@@ -1031,7 +1031,7 @@ model:
         )
         step4 = (
             f"[bold]→[/bold] Capture a baseline for this starter test\n"
-            f"   [cyan]evalview snapshot tests/generated-from-init[/cyan]{snapshot_suffix}"
+            f"   [cyan]evalview snapshot --path tests/generated-from-init[/cyan]{snapshot_suffix}"
         )
         step5 = (
             "[bold]→[/bold] Check this starter test for regressions anytime\n"
