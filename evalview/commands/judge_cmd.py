@@ -49,19 +49,13 @@ def judge(provider: Optional[str], model: Optional[str]):
             console.print("  evalview judge ollama llama3.2\n")
         return
 
-    # Default models per provider
-    default_models = {
-        "openai": "gpt-4o",
-        "anthropic": "claude-sonnet-4-5-20250929",
-        "gemini": "gemini-1.5-pro",
-        "grok": "grok-beta",
-        "ollama": "llama3.2",
-    }
+    # Default models per provider — from central config
+    from evalview.core.llm_configs import DEFAULT_MODELS
 
     # Set the judge config
     config["judge"] = {
         "provider": provider,
-        "model": model or default_models.get(provider, "default"),
+        "model": model or DEFAULT_MODELS.get(provider, "default"),
     }
 
     # Ensure directory exists

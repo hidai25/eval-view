@@ -21,7 +21,8 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from math import sqrt
+from typing import Any, Dict, List, Optional, Tuple
 
 from evalview.core.diff import TraceDiff
 
@@ -190,6 +191,132 @@ class DriftTracker:
             List of check records, newest first.
         """
         return list(reversed(self._load_recent(test_name, limit)))
+
+    def compute_variance(
+        self,
+        test_name: str,
+        window: int = 20,
+    ) -> Tuple[float, float, int]:
+        """Compute mean and standard deviation of output_similarity for a test.
+
+        Args:
+            test_name: Test to analyze.
+            window: Number of recent entries to include.
+
+        Returns:
+            Tuple of (mean, stddev, sample_count). Returns (0.0, 0.0, 0) if
+            no history exists.
+        """
+        recent = self._load_recent(test_name, window)
+        if not recent:
+            return (0.0, 0.0, 0)
+
+        similarities = [r["output_similarity"] for r in recent]
+        n = len(similarities)
+        mean = sum(similarities) / n
+
+        if n < 2:
+            return (mean, 0.0, n)
+
+        variance = sum((v - mean) ** 2 for v in similarities) / n
+        return (mean, sqrt(variance), n)
+
+    def compute_confidence(
+        self,
+        test_name: str,
+        current_similarity: float,
+        window: int = 20,
+    ) -> Optional[Tuple[float, str]]:
+        """Compute confidence that a change is a real signal vs. noise.
+
+        Uses z-score: how many standard deviations the current value is from
+        the historical mean. Higher z-score = more confidence it's a real change.
+
+        Args:
+            test_name: Test to analyze.
+            current_similarity: The output_similarity from this check run.
+            window: Historical window size.
+
+        Returns:
+            Tuple of (confidence_pct, label) where label is one of:
+            "high", "medium", "low", "insufficient_history".
+            Returns None if no history at all.
+        """
+        mean, stddev, count = self.compute_variance(test_name, window)
+
+        if count == 0:
+            return None
+
+        if count < 3:
+            return (0.0, "insufficient_history")
+
+        if stddev == 0.0:
+            # All historical values are identical
+            if abs(current_similarity - mean) > 0.001:
+                return (99.0, "high")
+            return (5.0, "low")
+
+        z = abs(current_similarity - mean) / stddev
+        confidence_pct = min(99.0, 50.0 + z * 25.0)
+
+        if z >= 2.0:
+            return (confidence_pct, "high")
+        elif z >= 1.0:
+            return (confidence_pct, "medium")
+        return (confidence_pct, "low")
+
+    def get_pass_rate_trend(self, window: int = 10) -> List[float]:
+        """Compute per-check-cycle pass rates over the last N check cycles.
+
+        Groups entries by timestamp (truncated to the minute) to identify
+        distinct check cycles, then computes the pass rate for each.
+
+        Args:
+            window: Number of recent cycles to return.
+
+        Returns:
+            List of pass rates (0.0-1.0) for each cycle, oldest first.
+        """
+        if not self.history_path.exists():
+            return []
+
+        # Load ALL entries (not filtered by test)
+        entries: List[Dict[str, Any]] = []
+        try:
+            with open(self.history_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entries.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+        except OSError:
+            return []
+
+        if not entries:
+            return []
+
+        # Group by timestamp truncated to the minute (dict preserves insertion order)
+        cycles: Dict[str, List[str]] = {}
+        for entry in entries:
+            ts = entry.get("ts", "")
+            # Truncate to minute: "2025-01-15T10:30:45" -> "2025-01-15T10:30"
+            cycle_key = ts[:16] if len(ts) >= 16 else ts
+            status = entry.get("status", "")
+            if cycle_key not in cycles:
+                cycles[cycle_key] = []
+            cycles[cycle_key].append(status)
+
+        # Compute pass rate per cycle
+        rates: List[float] = []
+        for statuses in cycles.values():
+            total = len(statuses)
+            passed = sum(1 for s in statuses if s == "passed")
+            rates.append(passed / total if total > 0 else 0.0)
+
+        return rates[-window:]
 
     def _prune_if_needed(self) -> None:
         """Trim history file to _MAX_HISTORY_ENTRIES if it has grown too large.

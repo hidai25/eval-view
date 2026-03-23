@@ -8,6 +8,7 @@ from datetime import datetime
 
 import yaml  # type: ignore[import-untyped]
 
+from evalview.core.llm_configs import DEFAULT_FAST_MODEL
 from evalview.core.types import TestCase, TestInput, ExpectedBehavior, Thresholds
 
 
@@ -111,7 +112,7 @@ Return JSON in this format:
         # Call appropriate provider
         if self.provider == "openai":
             response = await self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=DEFAULT_FAST_MODEL,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}

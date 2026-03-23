@@ -115,7 +115,7 @@ class CrewAIAdapter(AgentAdapter):
 
         # Record LLM span if we have token info
         if metrics.total_tokens and metrics.total_tokens.total_tokens > 0:
-            model_name = data.get("model") or self.model_config.get("model") or "gpt-4o-mini"
+            model_name = data.get("model") or self.model_config.get("model") or "gpt-5.4-mini"
             tracer.record_llm_call(
                 model=model_name,
                 provider="crewai",
@@ -248,11 +248,11 @@ class CrewAIAdapter(AgentAdapter):
 
         # Calculate cost from tokens if not provided
         if total_cost == 0.0 and (input_sum > 0 or output_sum > 0):
-            # Get model from config or response, default to gpt-4o-mini (common for CrewAI)
+            # Get model from config or response, default to gpt-5.4-mini
             model_name = (
                 data.get("model")
                 or self.model_config.get("model")
-                or "gpt-4o-mini"
+                or "gpt-5.4-mini"
             )
             total_cost = calculate_cost(
                 model_name=model_name,

@@ -329,6 +329,32 @@ def _diff_rows(
             actual_score = round(getattr(actual_results[test_name], "score", 0), 1)
         baseline_score = round(actual_score - score_delta, 1) if actual_score is not None else None
 
+        # Confidence scoring from drift history
+        confidence_pct = None
+        confidence_label = None
+        try:
+            from evalview.core.drift_tracker import DriftTracker
+            _dt = DriftTracker()
+            output_sim = getattr(output_diff, "similarity", 1.0) if output_diff else 1.0
+            conf = _dt.compute_confidence(test_name, output_sim)
+            if conf is not None:
+                confidence_pct = round(conf[0], 0)
+                confidence_label = conf[1]
+        except Exception:
+            pass
+
+        # Smart accept: suggest accepting if score improved or stayed stable
+        accept_suggestion = None
+        if status != "passed" and actual_score is not None and baseline_score is not None:
+            s_diff = actual_score - baseline_score
+            if s_diff >= -2.0:  # Score didn't drop significantly
+                quoted = f'"{test_name}"' if " " in test_name else test_name
+                accept_suggestion = {
+                    "score_improved": s_diff > 0,
+                    "command": f"evalview snapshot --test {quoted}",
+                    "preview_command": f"evalview snapshot --test {quoted} --preview",
+                }
+
         rows.append({
             "name": test_name,
             "status": status,
@@ -345,6 +371,9 @@ def _diff_rows(
             "param_diffs": param_diffs,
             "golden_diagram": golden_diagram,
             "actual_diagram": actual_diagram,
+            "confidence_pct": confidence_pct,
+            "confidence_label": confidence_label,
+            "accept_suggestion": accept_suggestion,
         })
     return rows
 
@@ -607,6 +636,47 @@ def generate_visual_report(
             "runs": [_kpis(r) for r in all_runs],
         }
 
+    # Compute dashboard data (health gauge + sparkline trends)
+    dashboard = None
+    try:
+        from evalview.core.drift_tracker import DriftTracker
+        _dt = DriftTracker()
+
+        # Health gauge — uses test pass rate (score >= threshold), not diff status.
+        # A test that passes with changed output is still healthy.
+        total_compared = len(results)
+        passed_count = sum(1 for r in results if r.passed)
+        health_pct = round(passed_count / total_compared * 100) if total_compared > 0 else 0
+
+        # Sparkline trends per test (output similarity over last 10 checks)
+        test_sparklines = []
+        for d in diff_rows:
+            history = _dt.get_test_history(d["name"], limit=10)
+            # newest-first → reverse for chronological sparkline
+            sims = [round(h["output_similarity"] * 100, 1) for h in reversed(history)]
+            if sims:
+                test_sparklines.append({
+                    "name": d["name"],
+                    "values": sims,
+                })
+
+        # Overall pass rate trend
+        pass_trend_raw = _dt.get_pass_rate_trend(window=10)
+        pass_trend = [round(v * 100, 1) for v in pass_trend_raw]
+
+        dashboard = {
+            "health_pct": health_pct,
+            "passed": passed_count,
+            "failed": total_compared - passed_count,
+            "changed": sum(1 for d in diff_rows if d["status"] in ("tools_changed", "output_changed")),
+            "regressions": sum(1 for d in diff_rows if d["status"] == "regression"),
+            "total": total_compared,
+            "test_sparklines": test_sparklines,
+            "pass_trend": pass_trend,
+        }
+    except Exception:
+        pass
+
     html = _render_template(
         title=title,
         notes=notes or "",
@@ -619,6 +689,7 @@ def generate_visual_report(
         timeline=timeline,
         compare=compare_data,
         default_tab=default_tab or "overview",
+        dashboard=dashboard,
     )
 
     abs_path = os.path.abspath(output_path)
@@ -706,6 +777,23 @@ body{font-family:var(--font);font-size:14px;line-height:1.6;color:var(--text);mi
 .b-green{background:rgba(16,185,129,.12);color:var(--green-bright);border:1px solid rgba(16,185,129,.25)}
 .b-red{background:rgba(239,68,68,.12);color:var(--red-bright);border:1px solid rgba(239,68,68,.25)}
 .b-yellow{background:rgba(245,158,11,.12);color:var(--yellow-bright);border:1px solid rgba(245,158,11,.25)}
+
+/* ── Dashboard Gauge ── */
+.health-gauge{display:flex;align-items:center;gap:16px;padding:16px 20px}
+.gauge-ring{position:relative;width:80px;height:80px;flex-shrink:0}
+.gauge-ring svg{transform:rotate(-90deg)}
+.gauge-ring .gauge-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;letter-spacing:-.02em}
+.gauge-stats{display:flex;flex-direction:column;gap:4px}
+.gauge-stat{font-size:12px;display:flex;align-items:center;gap:6px}
+.gauge-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.confidence-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;margin-left:8px}
+.conf-high{background:rgba(239,68,68,.15);color:var(--red-bright);border:1px solid rgba(239,68,68,.2)}
+.conf-medium{background:rgba(245,158,11,.15);color:var(--yellow-bright);border:1px solid rgba(245,158,11,.2)}
+.conf-low{background:rgba(100,116,139,.15);color:var(--text-3);border:1px solid rgba(100,116,139,.2)}
+.conf-insufficient{background:rgba(100,116,139,.08);color:var(--text-4);border:1px solid rgba(100,116,139,.15)}
+.accept-box{margin:8px 18px 12px;padding:12px 16px;border-radius:var(--r-xs);border:1px solid rgba(16,185,129,.25);background:rgba(16,185,129,.06)}
+.accept-box.neutral{border-color:rgba(245,158,11,.25);background:rgba(245,158,11,.06)}
+.accept-box code{background:rgba(255,255,255,.06);padding:3px 8px;border-radius:4px;font-family:var(--mono);font-size:11px;border:1px solid var(--border);user-select:all}
 .b-blue{background:rgba(37,99,235,.12);color:var(--blue-bright);border:1px solid rgba(37,99,235,.25)}
 .b-purple{background:rgba(13,148,136,.12);color:var(--teal-bright);border:1px solid rgba(13,148,136,.25)}
 
@@ -883,32 +971,61 @@ table td,table th{transition:background .1s}
         {% if kpis.total_tokens %}<span class="kpi-label">({{ '{:,}'.format(kpis.total_tokens) }} tokens)</span>{% endif %}
       </div>
     </div>
+    {% if dashboard %}
+    <!-- Health Gauge + Trend Sparklines -->
+    <div class="meta-row">
+      <div class="card" style="margin-bottom:0">
+        <div class="card-title">Health Gauge</div>
+        <div class="health-gauge">
+          <div class="gauge-ring">
+            <svg viewBox="0 0 36 36">
+              <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="3"/>
+              <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="{% if dashboard.health_pct >= 80 %}var(--green-bright){% elif dashboard.health_pct >= 50 %}var(--yellow-bright){% else %}var(--red-bright){% endif %}" stroke-width="3" stroke-dasharray="{{ dashboard.health_pct }}, 100" stroke-linecap="round"/>
+            </svg>
+            <span class="gauge-text" style="color:{% if dashboard.health_pct >= 80 %}var(--green-bright){% elif dashboard.health_pct >= 50 %}var(--yellow-bright){% else %}var(--red-bright){% endif %}">{{ dashboard.health_pct }}%</span>
+          </div>
+          <div class="gauge-stats">
+            {% if dashboard.passed %}<div class="gauge-stat"><span class="gauge-dot" style="background:var(--green)"></span> {{ dashboard.passed }} passed</div>{% endif %}
+            {% if dashboard.failed %}<div class="gauge-stat"><span class="gauge-dot" style="background:var(--red)"></span> {{ dashboard.failed }} failed</div>{% endif %}
+            {% if dashboard.regressions %}<div class="gauge-stat"><span class="gauge-dot" style="background:var(--red)"></span> {{ dashboard.regressions }} regression{{ 's' if dashboard.regressions != 1 else '' }}</div>{% endif %}
+            {% if dashboard.changed %}<div class="gauge-stat"><span class="gauge-dot" style="background:var(--yellow)"></span> {{ dashboard.changed }} diff{{ 's' if dashboard.changed != 1 else '' }} from baseline</div>{% endif %}
+          </div>
+        </div>
+      </div>
+      {% if dashboard.test_sparklines or dashboard.pass_trend %}
+      <div class="card" style="margin-bottom:0">
+        <div class="card-title">Score Trends</div>
+        <div style="height:{{ [dashboard.test_sparklines|length * 28 + 50, 100]|max }}px;position:relative"><canvas id="trendChart"></canvas></div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
     {% if not judge_usage or not judge_usage.call_count %}
     <div style="font-size:11px;color:var(--text-4);padding:0 4px 6px;line-height:1.4">
       No LLM judge was used — hallucination, safety, and PII checks were skipped. Run without <code style="background:rgba(255,255,255,.04);padding:1px 5px;border-radius:3px;font-family:var(--mono);font-size:10px;border:1px solid var(--border)">--no-judge</code> to enable them.
     </div>
     {% endif %}
-    {% if baseline.latest_created_display != 'Unknown' %}
-    <div class="meta-row">
+    {% if baseline.latest_created_display != 'Unknown' or (judge_usage and judge_usage.call_count) %}
+    <div class="meta-row" style="grid-template-columns:{% if baseline.latest_created_display != 'Unknown' and judge_usage and judge_usage.call_count %}1fr 1fr 1fr{% else %}1fr 1fr{% endif %}">
+      {% if baseline.latest_created_display != 'Unknown' %}
       <div class="meta-card">
         <div class="meta-label">Baseline Snapshot</div>
         <div class="meta-value">{{ baseline.latest_created_display }}</div>
         <div class="meta-sub">{% if baseline.models_display != 'Unknown' %}Model: {{ baseline.models_display }}{% endif %}</div>
       </div>
-    </div>
-    {% endif %}
-    {% if judge_usage and judge_usage.call_count %}
-    <div class="meta-row">
+      {% endif %}
+      {% if judge_usage and judge_usage.call_count %}
       <div class="meta-card">
-        <div class="meta-label">EvalView Judge{% if judge_usage.model %} ({{ judge_usage.model }}){% endif %}</div>
+        <div class="meta-label">Judge{% if judge_usage.model %} ({{ judge_usage.model }}){% endif %}</div>
         <div class="meta-value">{% if judge_usage.total_cost > 0 %}${{ judge_usage.total_cost }}{% elif judge_usage.is_free %}FREE{% else %}$0{% endif %}</div>
-        <div class="meta-sub">{{ '{:,}'.format(judge_usage.total_tokens) }} tokens across {{ judge_usage.call_count }} judge call{% if judge_usage.call_count != 1 %}s{% endif %}</div>
+        <div class="meta-sub">{{ '{:,}'.format(judge_usage.total_tokens) }} tokens / {{ judge_usage.call_count }} call{% if judge_usage.call_count != 1 %}s{% endif %}</div>
       </div>
       <div class="meta-card">
-        <div class="meta-label">Judge Token Breakdown</div>
+        <div class="meta-label">Token Breakdown</div>
         <div class="meta-value">in {{ '{:,}'.format(judge_usage.input_tokens) }} / out {{ '{:,}'.format(judge_usage.output_tokens) }}</div>
-        <div class="meta-sub">{% if judge_usage.pricing %}Rate: {{ judge_usage.pricing }}{% else %}Separate from agent trace cost{% endif %}</div>
+        <div class="meta-sub">{% if judge_usage.pricing %}{{ judge_usage.pricing }}{% else %}Separate from agent trace cost{% endif %}</div>
       </div>
+      {% endif %}
     </div>
     {% endif %}
 
@@ -1044,6 +1161,7 @@ table td,table th{transition:background .1s}
           {% if d.score_delta != 0 %}<span class="badge {% if d.score_delta > 0 %}b-green{% else %}b-red{% endif %}" title="Score change from baseline snapshot">{% if d.score_delta > 0 %}+{% endif %}{{ d.score_delta }}</span>{% endif %}
           <span class="sim" title="Exact word-for-word match between baseline and current output">lexical <span class="sim-track"><span class="sim-fill {% if d.similarity >= 80 %}hi{% elif d.similarity >= 50 %}mid{% else %}lo{% endif %}" style="width:{{ d.similarity }}%"></span></span> <b style="color:{% if d.similarity >= 80 %}var(--green-bright){% elif d.similarity >= 50 %}var(--yellow-bright){% else %}var(--red-bright){% endif %}">{{ d.similarity }}%</b></span>
           {% if d.semantic_similarity is not none %}<span class="sim" title="Meaning similarity — high means same intent even if wording changed">semantic <span class="sim-track"><span class="sim-fill {% if d.semantic_similarity >= 80 %}hi{% elif d.semantic_similarity >= 50 %}mid{% else %}lo{% endif %}" style="width:{{ d.semantic_similarity }}%"></span></span> <b style="color:{% if d.semantic_similarity >= 80 %}var(--green-bright){% elif d.semantic_similarity >= 50 %}var(--yellow-bright){% else %}var(--red-bright){% endif %}">{{ d.semantic_similarity }}%</b></span>{% endif %}
+          {% if d.confidence_label and d.confidence_label != 'insufficient_history' %}<span class="confidence-badge conf-{{ d.confidence_label }}" title="Statistical confidence that this change is a real signal vs. normal LLM variance">{{ d.confidence_pct|int }}% confidence</span>{% elif d.confidence_label == 'insufficient_history' %}<span class="confidence-badge conf-insufficient">needs history</span>{% endif %}
           <span class="chevron">▾</span>
         </div>
         <div id="df{{ loop.index }}" {% if d.status == 'passed' %}style="display:none"{% endif %}>
@@ -1078,6 +1196,17 @@ table td,table th{transition:background .1s}
             <div class="traj-col"><div class="col-title">Current</div><div class="mermaid-box" style="min-height:100px"><div class="mermaid-lazy"></div></div></div>
           </div>
         </div>{% endif %}
+        {% if d.accept_suggestion %}
+        <div class="accept-box {% if not d.accept_suggestion.score_improved %}neutral{% endif %}">
+          <div style="font-size:12px;font-weight:600;margin-bottom:6px;color:{% if d.accept_suggestion.score_improved %}var(--green-bright){% else %}var(--yellow-bright){% endif %}">
+            💡 {% if d.accept_suggestion.score_improved %}Score improved — this looks intentional{% else %}Score is stable — this may be intentional{% endif %}
+          </div>
+          <div style="font-size:11px;color:var(--text-2);display:flex;flex-direction:column;gap:4px">
+            <div>Accept: <code>{{ d.accept_suggestion.command }}</code></div>
+            <div>Preview: <code>{{ d.accept_suggestion.preview_command }}</code></div>
+          </div>
+        </div>
+        {% endif %}
         </div>
       </div>
     {% endfor %}
@@ -1195,6 +1324,35 @@ function togTraj(trigger){const grid=trigger.nextElementSibling;const open=grid.
   /* Cost chart */
   const maxCost=Math.max(...costs,0.000001);
   new Chart(document.getElementById('tlCostChart'),{type:'bar',data:{labels,datasets:[{label:'$',data:costs,backgroundColor:colors,borderColor:borders,borderWidth:1,borderRadius:3,borderSkipped:false,barPercentage:.6}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,scales:{x:{suggestedMax:maxCost>0?maxCost*1.15:0.001,grid:{color:'rgba(255,255,255,.025)'},ticks:{color:'rgba(100,116,139,.5)',font:{family:'Inter',size:9},callback:v=>'$'+v.toFixed(4)},border:{display:false}},y:{grid:{display:false},ticks:{color:'rgba(203,213,225,.6)',font:{family:'Inter',size:10,weight:'500'}},border:{display:false}}},plugins:{legend:{display:false},tooltip:{...tt,callbacks:{label:ctx=>` $${ctx.raw.toFixed(6)}`,title:ctx=>ctx[0].label}}}}});
+})();
+{% endif %}
+
+{% if dashboard and dashboard.test_sparklines %}
+(function(){
+  const canvas=document.getElementById('trendChart');
+  if(!canvas)return;
+  const sparklines={{ dashboard.test_sparklines|tojson }};
+  const passTrend={{ dashboard.pass_trend|tojson }};
+  const palette=[
+    {bg:'rgba(37,99,235,.15)',border:'rgba(37,99,235,.7)'},
+    {bg:'rgba(16,185,129,.15)',border:'rgba(16,185,129,.7)'},
+    {bg:'rgba(245,158,11,.15)',border:'rgba(245,158,11,.7)'},
+    {bg:'rgba(168,85,247,.15)',border:'rgba(168,85,247,.7)'},
+    {bg:'rgba(6,182,212,.15)',border:'rgba(6,182,212,.7)'},
+    {bg:'rgba(239,68,68,.15)',border:'rgba(239,68,68,.7)'},
+  ];
+  const maxLen=Math.max(...sparklines.map(s=>s.values.length),passTrend.length);
+  const labels=Array.from({length:maxLen},(_,i)=>''+(i+1));
+  const datasets=sparklines.map(function(s,i){
+    const c=palette[i%palette.length];
+    return {label:s.name,data:s.values,borderColor:c.border,backgroundColor:c.bg,borderWidth:2,pointRadius:3,pointHoverRadius:5,tension:.3,fill:false};
+  });
+  if(passTrend.length>1){
+    datasets.push({label:'Overall pass rate',data:passTrend,borderColor:'rgba(255,255,255,.4)',backgroundColor:'rgba(255,255,255,.05)',borderWidth:2,borderDash:[4,4],pointRadius:2,tension:.3,fill:false});
+  }
+  new Chart(canvas,{type:'line',data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,
+    scales:{x:{display:true,grid:{color:'rgba(255,255,255,.025)'},ticks:{color:'rgba(100,116,139,.5)',font:{family:'Inter',size:9}},title:{display:true,text:'Check #',color:'rgba(100,116,139,.5)',font:{family:'Inter',size:10}},border:{display:false}},y:{min:0,max:100,grid:{color:'rgba(255,255,255,.025)'},ticks:{color:'rgba(100,116,139,.5)',font:{family:'Inter',size:9},callback:function(v){return v+'%'}},border:{display:false}}},
+    plugins:{legend:{display:true,position:'bottom',labels:{color:'rgba(203,213,225,.7)',font:{family:'Inter',size:10},boxWidth:12,padding:10}},tooltip:{backgroundColor:'rgba(6,11,24,.95)',borderColor:'rgba(51,65,85,.5)',borderWidth:1,titleFont:{family:'Inter',weight:'700',size:11},bodyFont:{family:'Inter',size:11},padding:8,cornerRadius:6,callbacks:{label:function(ctx){return ' '+ctx.dataset.label+': '+ctx.raw+'%'}}}}}});
 })();
 {% endif %}
 

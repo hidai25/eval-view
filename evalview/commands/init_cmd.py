@@ -410,12 +410,14 @@ def _detect_model() -> Optional[str]:
     """Infer model from environment variables."""
     env = os.environ
 
+    from evalview.core.llm_configs import DEFAULT_MODELS
+
     if env.get("ANTHROPIC_API_KEY"):
-        return "claude-sonnet-4-6"
+        return DEFAULT_MODELS.get("anthropic", "claude-sonnet-4-6")
     if env.get("OPENAI_API_KEY"):
-        return "gpt-4o-mini"
+        return DEFAULT_MODELS.get("openai", "gpt-5.4-mini")
     if env.get("GEMINI_API_KEY") or env.get("GOOGLE_API_KEY"):
-        return "gemini-2.0-flash"
+        return DEFAULT_MODELS.get("gemini", "gemini-2.0-flash")
 
     return None
 
@@ -777,9 +779,10 @@ def _init_standard(dir: str, interactive: bool) -> None:
         model_name = detected_model
     else:
         console.print("[yellow]  Could not detect model from environment.[/yellow]")
+        from evalview.core.llm_configs import DEFAULT_JUDGE_MODEL, MODEL_HELP_EXAMPLES
         model_name = click.prompt(
-            "  Model name (e.g. claude-sonnet-4-6, gpt-4o-mini)",
-            default="gpt-4o-mini",
+            f"  Model name (e.g. {MODEL_HELP_EXAMPLES})",
+            default=DEFAULT_JUDGE_MODEL,
         )
 
     console.print("[dim]  Change these anytime in .evalview/config.yaml[/dim]\n")
@@ -1207,7 +1210,7 @@ headers: {}
 allow_private_urls: true  # Allow localhost for demo agent
 
 model:
-  name: gpt-4o-mini
+  name: gpt-5.4-mini
 """
         config_file.write_text(config_content)
         console.print("[green]✅ Config created[/green]\n")

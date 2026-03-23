@@ -542,6 +542,7 @@ def _execute_check_tests(
     json_output: bool,
     semantic_diff: bool = False,
     timeout: float = 30.0,
+    skip_llm_judge: bool = False,
 ) -> Tuple[List[Tuple[str, "TraceDiff"]], List["EvaluationResult"], "DriftTracker", Dict[str, "GoldenTrace"]]:
     """Execute tests and compare against golden variants.
 
@@ -572,7 +573,7 @@ def _execute_check_tests(
     store = GoldenStore()
     diff_engine = DiffEngine(config=diff_config)
     drift_tracker = DriftTracker()
-    evaluator = Evaluator()
+    evaluator = Evaluator(skip_llm_judge=skip_llm_judge)
 
     results: List["EvaluationResult"] = []
     diffs: List[Tuple[str, "TraceDiff"]] = []

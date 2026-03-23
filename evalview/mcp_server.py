@@ -413,10 +413,7 @@ class MCPServer:
             return "Error: evalview not found in PATH. Run: pip install -e ."
 
         if name == "run_check":
-            test_path = os.path.normpath(args.get("test_path", self.test_path))
-            cmd = ["evalview", "check", test_path, "--json"]
-            if args.get("test"):
-                cmd += ["--test", args["test"]]
+            return self._run_check_direct(args)
 
         elif name == "run_snapshot":
             test_path = os.path.normpath(args.get("test_path", self.test_path))
@@ -492,6 +489,68 @@ class MCPServer:
             output += result.stderr
         output = _ANSI_ESCAPE.sub("", output).strip()
         return output or f"Command exited with code {result.returncode}"
+
+    def _run_check_direct(self, args: Dict[str, Any]) -> str:
+        """Run regression check via the Python API instead of subprocess.
+
+        Calls evalview.api.gate() directly — no subprocess overhead, no output
+        parsing, no ANSI stripping.  Returns the same JSON format that
+        ``evalview check --json`` would produce.
+        """
+        try:
+            from evalview.api import gate, DiffStatus
+
+            test_path = os.path.normpath(args.get("test_path", self.test_path))
+            test_name = args.get("test") or None
+
+            result = gate(
+                test_dir=test_path,
+                test_name=test_name,
+                fail_on={DiffStatus.REGRESSION},
+                timeout=120.0,
+            )
+
+            # Build the same JSON structure as `evalview check --json`
+            output = {
+                "summary": {
+                    "total_tests": result.summary.total,
+                    "unchanged": result.summary.unchanged,
+                    "regressions": result.summary.regressions,
+                    "tools_changed": result.summary.tools_changed,
+                    "output_changed": result.summary.output_changed,
+                    "all_passed": result.summary.regressions == 0 and result.summary.tools_changed == 0 and result.summary.output_changed == 0,
+                    "has_regressions": result.summary.regressions > 0,
+                    "has_tools_changed": result.summary.tools_changed > 0,
+                    "has_output_changed": result.summary.output_changed > 0,
+                },
+                "diffs": [
+                    {
+                        "test_name": d.test_name,
+                        "status": d.status.value,
+                        "score_delta": d.score_delta,
+                        "has_tool_diffs": d.tool_changes > 0,
+                        "output_similarity": d.output_similarity,
+                        "model_changed": d.model_changed,
+                    }
+                    for d in result.diffs
+                ],
+            }
+
+            return json.dumps(output, indent=2)
+
+        except Exception as e:
+            # Fall back to subprocess if the API call fails for any reason
+            test_path = os.path.normpath(args.get("test_path", self.test_path))
+            cmd = ["evalview", "check", test_path, "--json"]
+            if args.get("test"):
+                cmd += ["--test", args["test"]]
+            env = {**os.environ, "NO_COLOR": "1", "FORCE_COLOR": "0"}
+            try:
+                proc = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=30)
+                output = proc.stdout + (proc.stderr or "")
+                return _ANSI_ESCAPE.sub("", output).strip() or f"Error: {e}"
+            except Exception:
+                return f"Error running check: {e}"
 
     def _generate_visual_report(self, args: Dict[str, Any]) -> str:
         """Generate a beautiful HTML visual report from results JSON."""

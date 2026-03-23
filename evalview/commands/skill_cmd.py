@@ -443,7 +443,7 @@ def skill_doctor(path: str, recursive: bool, security_scan: bool) -> None:
 @click.argument("test_file", type=click.Path(exists=True))
 @click.option(
     "--model", "-m", default=None,
-    help="Model to use (default: claude-haiku-4-5-20251001 for Anthropic, gpt-4o-mini for OpenAI)",
+    help="Model to use (auto-selected per provider from central config)",
 )
 @click.option(
     "--provider",

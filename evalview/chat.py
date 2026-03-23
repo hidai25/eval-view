@@ -441,7 +441,7 @@ tests:
         - Has proper error handling
         - Follows React best practices
       min_score: 70
-      model: gpt-4o-mini  # optional model override
+      model: gpt-5.4-mini  # optional model override
 ```
 
 ### Skill Test Commands
@@ -1751,10 +1751,10 @@ async def run_chat(
                     openai_status = "[green]✓[/green]" if has_openai else "[yellow]![/yellow]"
                     anthropic_status = "[green]✓[/green]" if has_anthropic else "[yellow]![/yellow]"
 
-                    console.print(f"  {openai_status} [cyan][5][/cyan] gpt-4o            - OpenAI, best overall")
-                    console.print(f"  {openai_status} [cyan][6][/cyan] gpt-4o-mini       - OpenAI, fast & cheap")
-                    console.print(f"  {anthropic_status} [cyan][7][/cyan] claude-sonnet-4-20250514  - Anthropic, excellent")
-                    console.print(f"  {anthropic_status} [cyan][8][/cyan] claude-3-5-haiku-20241022 - Anthropic, fast")
+                    console.print(f"  {openai_status} [cyan][5][/cyan] gpt-5.4-mini      - OpenAI, fast & cheap")
+                    console.print(f"  {openai_status} [cyan][6][/cyan] gpt-5.4           - OpenAI, best overall")
+                    console.print(f"  {anthropic_status} [cyan][7][/cyan] claude-sonnet-4-6 - Anthropic, excellent")
+                    console.print(f"  {anthropic_status} [cyan][8][/cyan] claude-haiku-4-5  - Anthropic, fast")
 
                     if not has_openai and not has_anthropic:
                         console.print("\n[bold]API Key Setup:[/bold]")
@@ -1773,10 +1773,10 @@ async def run_chat(
                         "2": ("mixtral", LLMProvider.OLLAMA),
                         "3": ("llama3.1:8b", LLMProvider.OLLAMA),
                         "4": ("qwen2:7b", LLMProvider.OLLAMA),
-                        "5": ("gpt-4o", LLMProvider.OPENAI),
-                        "6": ("gpt-4o-mini", LLMProvider.OPENAI),
-                        "7": ("claude-sonnet-4-20250514", LLMProvider.ANTHROPIC),
-                        "8": ("claude-3-5-haiku-20241022", LLMProvider.ANTHROPIC),
+                        "5": ("gpt-5.4-mini", LLMProvider.OPENAI),
+                        "6": ("gpt-5.4", LLMProvider.OPENAI),
+                        "7": ("claude-sonnet-4-6", LLMProvider.ANTHROPIC),
+                        "8": ("claude-haiku-4-5-20251001", LLMProvider.ANTHROPIC),
                     }
 
                     if choice in model_map:

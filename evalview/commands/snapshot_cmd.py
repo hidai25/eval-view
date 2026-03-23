@@ -185,11 +185,12 @@ def _group_tests_by_target(test_cases: List, config) -> Dict[tuple[str, str], li
 @click.option("--variant", help="Save as a named variant for non-deterministic agents (max 5 per test)")
 @click.option("--approve-generated", is_flag=True, help="Approve generated draft tests before snapshotting them.")
 @click.option("--reset", is_flag=True, help="Delete all existing baselines before capturing new ones.")
-@click.option("--judge", "judge_model", default=None, help="Judge model for scoring (e.g. gpt-4o-mini, sonnet, deepseek-chat).")
+@click.option("--judge", "judge_model", default=None, help="Judge model for scoring (e.g. gpt-5.4-mini, sonnet, deepseek-chat).")
 @click.option("--timeout", default=30.0, type=float, help="Timeout in seconds per test (default: 30).")
+@click.option("--preview", is_flag=True, help="Show what would change without saving. Dry-run mode for snapshot.")
 @track_command("snapshot")
 @click.pass_context
-def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant: str, approve_generated: bool, reset: bool, judge_model: Optional[str], timeout: float):
+def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant: str, approve_generated: bool, reset: bool, judge_model: Optional[str], timeout: float, preview: bool):
     """Run tests and snapshot passing results as baseline.
 
     This is the simple workflow: snapshot → check → fix → snapshot.
@@ -311,6 +312,47 @@ def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant:
         len(test_cases),
     )
     failed_count = len(test_cases) - len(results)
+
+    # Preview mode: show what would change without saving
+    if preview:
+        from evalview.core.golden import GoldenStore as _PreviewStore
+
+        preview_store = _PreviewStore()
+        console.print("\n[bold]Snapshot Preview[/bold] [dim](no changes saved)[/dim]\n")
+
+        for result in results:
+            if not result.passed:
+                console.print(f"  [dim]-- {result.test_case}: would skip (not passing)[/dim]")
+                continue
+
+            existing = preview_store.load_golden(result.test_case)
+            if existing:
+                baseline_tools_str = " → ".join(existing.tool_sequence) if existing.tool_sequence else "(none)"
+                current_tools_str = " → ".join(
+                    str(getattr(s, "tool_name", None) or getattr(s, "step_name", "?"))
+                    for s in (result.trace.steps or [])
+                ) or "(none)"
+                score_change = result.score - existing.metadata.score
+                sign = "+" if score_change > 0 else ""
+                score_color = "green" if score_change >= 0 else "red"
+
+                console.print(f"  [cyan]{result.test_case}[/cyan]")
+                console.print(f"    Baseline: [{baseline_tools_str}]")
+                console.print(f"    New:      [{current_tools_str}]")
+                console.print(
+                    f"    Score:    {existing.metadata.score:.0f} → {result.score:.0f} "
+                    f"[{score_color}]({sign}{score_change:.0f})[/{score_color}]"
+                )
+                console.print()
+            else:
+                console.print(
+                    f"  [green]+[/green] {result.test_case}: "
+                    f"[green]new baseline[/green] (score: {result.score:.0f})"
+                )
+                console.print()
+
+        console.print("[dim]No baselines were modified. Remove --preview to save.[/dim]\n")
+        return
 
     # Save passing results as golden
     saved_count = _save_snapshot_results(results, notes, variant=variant)

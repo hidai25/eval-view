@@ -16,6 +16,7 @@ from evalview.skills.types import (
     SkillExpectedBehavior,
 )
 from evalview.skills.parser import SkillParser
+from evalview.core.llm_configs import DEFAULT_MODELS, DEFAULT_FAST_MODEL
 
 
 class SkillRunner:
@@ -24,11 +25,7 @@ class SkillRunner:
     Loads a skill, sends test queries, and evaluates responses.
     """
 
-    # Default models per provider
-    _DEFAULT_MODELS = {
-        "anthropic": "claude-haiku-4-5-20251001",
-        "openai": "gpt-4o-mini",
-    }
+    _DEFAULT_MODELS = DEFAULT_MODELS
 
     def __init__(
         self,
@@ -51,7 +48,7 @@ class SkillRunner:
             provider=provider,
             base_url=base_url,
         )
-        self.model = model or self._DEFAULT_MODELS.get(self.provider, "gpt-4o-mini")
+        self.model = model or self._DEFAULT_MODELS.get(self.provider, DEFAULT_FAST_MODEL)
         self._client: Optional[Any] = None
 
     @property

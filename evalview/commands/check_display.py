@@ -312,6 +312,52 @@ def _display_check_results(
         print(json.dumps(output, indent=2))
     else:
         # Console output with personality
+        from evalview.core.dashboard import (
+            render_scorecard,
+            render_sparklines,
+            render_confidence_label,
+            render_smart_accept_suggestion,
+        )
+
+        # --- Dashboard Scorecard ---
+        passed_count = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.PASSED)
+        tools_changed_count = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.TOOLS_CHANGED)
+        output_changed_count = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.OUTPUT_CHANGED)
+        regression_count = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.REGRESSION)
+        exec_failures = int(analysis.get("execution_failures", 0) or 0)
+        total_compared = len(diffs)
+        health_pct = (passed_count / total_compared * 100) if total_compared > 0 else 0.0
+
+        if diffs:
+            scorecard = render_scorecard(
+                passed=passed_count,
+                tools_changed=tools_changed_count,
+                output_changed=output_changed_count,
+                regressions=regression_count,
+                execution_failures=exec_failures,
+                current_streak=state.current_streak,
+                longest_streak=state.longest_streak,
+                health_pct=health_pct,
+            )
+            console.print(scorecard)
+            console.print()
+
+        # --- Sparkline Trends ---
+        if diffs and drift_tracker is not None:
+            test_trends: Dict[str, List[float]] = {}
+            for _name, _diff in diffs:
+                history = drift_tracker.get_test_history(_name, limit=10)
+                # get_test_history returns newest-first; reverse for sparklines
+                similarities = [h["output_similarity"] for h in reversed(history)]
+                if similarities:
+                    test_trends[_name] = similarities
+
+            pass_trend = drift_tracker.get_pass_rate_trend(window=10)
+            sparkline_output = render_sparklines(test_trends, pass_trend)
+            if sparkline_output:
+                console.print(sparkline_output)
+                console.print()
+
         if is_first_check:
             Celebrations.first_check()
 
@@ -372,24 +418,7 @@ def _display_check_results(
                     )
                 )
         else:
-            console.print("\n[bold]Diff Summary[/bold]")
-            execution_failures = int(analysis.get("execution_failures", 0) or 0)
-            if execution_failures:
-                console.print(f"  {execution_failures} execution {'failure' if execution_failures == 1 else 'failures'}")
-            unchanged = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.PASSED)
-            console.print(f"  {unchanged}/{len(diffs)} unchanged")
-            if analysis["has_regressions"]:
-                count = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.REGRESSION)
-                console.print(f"  {count} {'regression' if count == 1 else 'regressions'}")
-            if analysis["has_tools_changed"]:
-                count = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.TOOLS_CHANGED)
-                console.print(f"  {count} tool {'change' if count == 1 else 'changes'}")
-            if analysis["has_output_changed"]:
-                count = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.OUTPUT_CHANGED)
-                console.print(f"  {count} output {'change' if count == 1 else 'changes'}")
-
-            console.print()
-
+            # Scorecard already shows the summary — go straight to details
             _goldens = golden_traces or {}
             for name, diff in diffs:
                 if diff.overall_severity != DiffStatus.PASSED:
@@ -405,7 +434,16 @@ def _display_check_results(
                         score_color = "green" if diff.score_diff > 0 else "red"
                         score_part = f"  [{score_color}]{sign}{diff.score_diff:.1f} pts[/{score_color}]"
 
-                    console.print(f"{severity_icon}: {name}{score_part}")
+                    # Confidence label from historical variance
+                    confidence_str = ""
+                    if drift_tracker is not None:
+                        output_sim = diff.output_diff.similarity if diff.output_diff else 1.0
+                        conf_result = drift_tracker.compute_confidence(name, output_sim)
+                        if conf_result is not None:
+                            conf_pct, conf_label = conf_result
+                            confidence_str = "  " + render_confidence_label(conf_pct, conf_label)
+
+                    console.print(f"{severity_icon}: {name}{score_part}{confidence_str}")
                     meta = (test_metadata or {}).get(name, {})
                     if meta.get("is_multi_turn"):
                         behavior_class = str(meta.get("behavior_class") or "multi_turn").replace("_", " ")
@@ -458,6 +496,34 @@ def _display_check_results(
 
                     quoted = f'"{name}"' if " " in name else name
                     console.print(f"    [dim]→ evalview replay {quoted}[/dim]")
+
+                    # Smart accept suggestion
+                    if result_for_test is not None:
+                        golden_for_accept = _goldens.get(name)
+                        baseline_score = (
+                            result_for_test.score - diff.score_diff
+                            if diff.score_diff is not None
+                            else 0.0
+                        )
+                        baseline_tools = (
+                            golden_for_accept.tool_sequence if golden_for_accept else []
+                        )
+                        current_tools = [
+                            str(getattr(s, "tool_name", None) or getattr(s, "step_name", "?"))
+                            for s in (result_for_test.trace.steps or [])
+                        ]
+                        accept_panel = render_smart_accept_suggestion(
+                            test_name=name,
+                            score_improved=(diff.score_diff > 0) if diff.score_diff is not None else False,
+                            tools_changed=bool(diff.tool_diffs),
+                            baseline_tools=baseline_tools,
+                            current_tools=current_tools,
+                            baseline_score=baseline_score,
+                            current_score=result_for_test.score,
+                        )
+                        if accept_panel:
+                            console.print(accept_panel)
+
                     console.print()
 
             if analysis["has_regressions"]:

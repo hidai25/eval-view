@@ -31,6 +31,7 @@ from evalview.skills.agent_types import (
     AgentType,
 )
 from evalview.skills.types import Skill
+from evalview.core.llm_configs import DEFAULT_MODELS as _CENTRAL_DEFAULT_MODELS
 
 logger = logging.getLogger(__name__)
 
@@ -75,13 +76,8 @@ class SkillTestGenerator:
         ],
     }
 
-    # Cost-optimized defaults (first model in each provider list)
-    DEFAULT_MODELS = {
-        "anthropic": "claude-haiku-4-5-20251001",
-        "openai": "gpt-5-mini",
-        "gemini": "gemini-2.0-flash",
-        "deepseek": "deepseek-chat",
-    }
+    # Cost-optimized defaults — derived from central config
+    DEFAULT_MODELS = _CENTRAL_DEFAULT_MODELS
 
     def __init__(self, model: Optional[str] = None):
         """Initialize generator with LLM client.
@@ -797,20 +793,10 @@ Rules:
         output_tokens = len(response) // 4
 
         # Model pricing (per 1M tokens) - input, output
-        pricing = {
-            "claude-haiku-4-5-20251001": (0.25, 1.25),
-            "gpt-4o-mini": (0.15, 0.60),
-            "gemini-2.0-flash": (0.0, 0.0),  # Free tier
-            "gpt-4o": (2.50, 10.00),
-            "claude-sonnet-4-5-20250929": (3.00, 15.00),
-            "deepseek-chat": (0.14, 0.28),
-            "deepseek-reasoner": (0.55, 2.19),
-        }
+        from evalview.core.pricing import calculate_cost
 
-        model = self.client.model
-        input_price, output_price = pricing.get(model, (0.15, 0.60))  # Default to gpt-4o-mini
-
-        cost = (input_tokens / 1_000_000 * input_price) + (
-            output_tokens / 1_000_000 * output_price
+        return calculate_cost(
+            model_name=self.client.model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
         )
-        return cost

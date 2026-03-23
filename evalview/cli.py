@@ -44,6 +44,7 @@ from evalview.commands.chat_cmd import chat, trace_cmd
 from evalview.commands.traces_cmd import traces
 from evalview.commands.baseline_cmd import baseline
 from evalview.commands.feedback_cmd import feedback
+from evalview.commands.openclaw_cmd import openclaw
 
 
 @click.group(context_settings={"allow_interspersed_args": False})
@@ -170,6 +171,7 @@ main.add_command(traces)
 main.add_command(baseline)
 main.add_command(monitor)
 main.add_command(feedback)
+main.add_command(openclaw)
 
 
 if __name__ == "__main__":

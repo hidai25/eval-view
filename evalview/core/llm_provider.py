@@ -129,7 +129,7 @@ class LLMClient:
                         f"Model '{self.model}' is an Ollama model but EVAL_PROVIDER=openai.\n"
                         f"Either:\n"
                         f"  1. Use Ollama: set EVAL_PROVIDER=ollama\n"
-                        f"  2. Use OpenAI model: remove EVAL_MODEL or set to gpt-4o-mini"
+                        f"  2. Use OpenAI model: remove EVAL_MODEL or set to gpt-5.4-mini"
                     )
 
         elif self.provider == LLMProvider.OLLAMA:

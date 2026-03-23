@@ -212,7 +212,7 @@ def _print_baseline_context(goldens: List[Any], state: Any) -> None:
 @click.option("--timeout", type=float, default=120.0, help="Timeout per test in seconds (default: 120.0).")
 @click.option("--dry-run", "dry_run", is_flag=True, default=False, help="Preview test plan without executing.")
 @click.option("--ai-root-cause", "ai_root_cause", is_flag=True, default=False, help="Use AI to explain low-confidence regressions (requires LLM provider).")
-@click.option("--judge", "judge_model", default=None, help="Judge model for scoring (e.g. gpt-4o-mini, sonnet, deepseek-chat).")
+@click.option("--judge", "judge_model", default=None, help="Judge model for scoring (e.g. gpt-5.4-mini, sonnet, deepseek-chat).")
 @track_command("check")
 def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bool, report_path: Optional[str], csv_path: Optional[str], semantic_diff: Optional[bool], budget: Optional[float], timeout: float, dry_run: bool, ai_root_cause: bool, judge_model: Optional[str]):
     """Check current behavior against snapshot baseline.

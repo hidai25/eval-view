@@ -101,6 +101,28 @@ PROVIDER_CONFIGS: Dict[LLMProvider, ProviderConfig] = {
     ),
 }
 
+# ---------------------------------------------------------------------------
+# Centralized model defaults — import these instead of hardcoding model names.
+# Every command, skill runner, and help string should reference these constants.
+# To update a default model, change it HERE and nowhere else.
+# ---------------------------------------------------------------------------
+
+# Derived from PROVIDER_CONFIGS — one dict for all "give me the default for X" lookups.
+DEFAULT_MODELS: Dict[str, str] = {
+    cfg.name: cfg.default_model for cfg in PROVIDER_CONFIGS.values()
+}
+# e.g. {"openai": "gpt-5.4-mini", "anthropic": "claude-sonnet-4-6", ...}
+
+# The default judge model used for LLM-as-judge evaluation.
+DEFAULT_JUDGE_MODEL: str = PROVIDER_CONFIGS[LLMProvider.OPENAI].default_model
+
+# Cheap/fast model for internal tasks (test generation, expansion, etc.)
+DEFAULT_FAST_MODEL: str = PROVIDER_CONFIGS[LLMProvider.OPENAI].default_model
+
+# Human-readable example for help text (keeps CLI --help consistent everywhere)
+MODEL_HELP_EXAMPLES: str = "gpt-5.4-mini, sonnet, deepseek-chat"
+
+
 # Model aliases for better DX - shortcuts map to full model names.
 # Users type the left side, EvalView resolves to the right side.
 MODEL_ALIASES: Dict[str, str] = {

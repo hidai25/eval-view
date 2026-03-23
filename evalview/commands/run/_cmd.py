@@ -1026,7 +1026,8 @@ def _maybe_show_adapter_menu(
     else:
         console.print("[dim]Running tests in parallel...[/dim]\n")
 
-    cost_model = config.get("model", "gpt-4o-mini")
+    from evalview.core.llm_configs import DEFAULT_FAST_MODEL
+    cost_model = config.get("model", DEFAULT_FAST_MODEL)
     console.print(f"[dim]💰 Cost calculated using: {cost_model} pricing[/dim]")
     console.print("[dim]   (Configure in .evalview/config.yaml or test case)[/dim]\n")
 
