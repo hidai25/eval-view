@@ -418,7 +418,14 @@ def _display_check_results(
                     )
                 )
         else:
-            # Scorecard already shows the summary — go straight to details
+            # Execution failures (tests that didn't produce diffs)
+            if exec_failures > 0:
+                console.print(
+                    f"  {exec_failures} execution "
+                    f"{'failure' if exec_failures == 1 else 'failures'}"
+                )
+                console.print()
+
             _goldens = golden_traces or {}
             for name, diff in diffs:
                 if diff.overall_severity != DiffStatus.PASSED:
