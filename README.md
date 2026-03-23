@@ -372,23 +372,21 @@ if not gate_or_revert("tests/", quick=True):
 
 ## OpenClaw Integration
 
-EvalView is the regression gate for [OpenClaw](https://github.com/openclaw) autonomous agents.
+Use EvalView as a regression gate in autonomous agent loops.
 
 ```bash
-evalview openclaw install                    # Install skill into claw workspace
-evalview openclaw check --path tests/        # Run gate, auto-revert on regression
+evalview openclaw install                    # Install gate skill into workspace
+evalview openclaw check --path tests/        # Check and auto-revert on regression
 ```
 
-Or use the Python helpers directly in your claw:
+Or programmatically:
 
 ```python
-from evalview.openclaw import check_and_decide, accept_change
+from evalview.openclaw import gate_or_revert
 
-decision = check_and_decide("tests/")
-# decision.action: "continue" | "revert" | "accept" | "review"
-
-if decision.action == "accept":
-    accept_change(decision)  # Snapshot new baselines
+make_code_change()
+if not gate_or_revert("tests/", quick=True):
+    try_alternative()  # Change was reverted
 ```
 
 ## Pytest Plugin
