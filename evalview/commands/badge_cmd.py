@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 import click
 
@@ -15,7 +15,7 @@ from evalview.telemetry.decorators import track_command
 _DEFAULT_BADGE_PATH = ".evalview/badge.json"
 
 # Status → badge config
-_STATUS_CONFIG = {
+_STATUS_CONFIG: Dict[str, Dict[str, Any]] = {
     "passed": {"label": "evalview", "message": "passing", "color": "brightgreen"},
     "tools_changed": {"label": "evalview", "message": "tools changed", "color": "yellow"},
     "output_changed": {"label": "evalview", "message": "output changed", "color": "yellow"},
