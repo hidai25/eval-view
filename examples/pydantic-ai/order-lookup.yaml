@@ -1,0 +1,24 @@
+# EvalView Test Case: Pydantic AI Order Lookup
+# Tests a support agent that looks up order status
+
+name: order-lookup
+description: "Customer asks about order status — agent should use lookup_order tool"
+
+adapter: http
+endpoint: http://localhost:8000/agent
+
+input:
+  query: "What's the status of order #4812?"
+
+expected:
+  tools:
+    - lookup_order
+  output:
+    contains:
+      - "4812"
+      - "status"
+    not_contains:
+      - "error"
+
+thresholds:
+  min_score: 70
