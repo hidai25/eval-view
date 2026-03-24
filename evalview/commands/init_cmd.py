@@ -15,6 +15,14 @@ import yaml  # type: ignore[import-untyped]
 
 from evalview.commands.shared import console, _detect_agent_endpoint
 from evalview.core.project_state import ProjectStateStore
+from evalview.core.eval_profiles import (
+    detect_agent_type,
+    display_profile_recommendation,
+    generate_config_yaml,
+    generate_test_yaml,
+    get_profile,
+    EVAL_PROFILES,
+)
 from evalview.telemetry.decorators import track_command
 from evalview.core.adapter_factory import create_adapter
 from evalview.test_generation import AgentTestGenerator, run_generation
@@ -377,12 +385,30 @@ def _sync_existing_config(
     return changed
 
 
-def _write_blank_template(tests_dir: Path, endpoint: str) -> None:
-    """Write a minimal blank test template when auto-gen is not possible."""
+def _write_blank_template(
+    tests_dir: Path,
+    endpoint: str,
+    profile_key: Optional[str] = None,
+    detected_tools: Optional[List[str]] = None,
+) -> None:
+    """Write a minimal blank test template when auto-gen is not possible.
+
+    When *profile_key* is supplied the template uses profile-aware thresholds
+    and assertions from :func:`generate_test_yaml`.  Otherwise falls back to
+    the original static template.
+    """
     tests_dir.mkdir(parents=True, exist_ok=True)
     path = tests_dir / "my-first-test.yaml"
     if not path.exists():
-        path.write_text(f"""name: "my-first-test"
+        if profile_key:
+            content = generate_test_yaml(
+                profile_key=profile_key,
+                test_name="my-first-test",
+                query="Hello, what can you help me with?",
+                detected_tools=detected_tools,
+            )
+        else:
+            content = f"""name: "my-first-test"
 description: "Test that my agent responds correctly"
 
 endpoint: {endpoint}
@@ -401,7 +427,8 @@ expected:
 thresholds:
   min_score: 70
   max_latency: 10000
-""")
+"""
+        path.write_text(content)
         console.print(f"[green]✅ Created {path}[/green]")
         console.print("[dim]   Edit the query to match what your agent actually does[/dim]")
 
@@ -667,7 +694,7 @@ def _build_wizard_yaml(description: str, tools: List[str]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _init_wizard(dir: str) -> None:
+def _init_wizard(dir: str, profile_override: Optional[str] = None) -> None:
     """3-question wizard that generates one personalized, immediately-runnable test case."""
     console.print("[blue]━━━ EvalView Setup Wizard ━━━[/blue]\n")
     console.print("3 questions. One working test case. Let's go.\n")
@@ -718,21 +745,30 @@ def _init_wizard(dir: str) -> None:
     endpoint = click.prompt("Agent endpoint URL", default=default_endpoint)
     model_name = click.prompt("Model name", default="gpt-4o")
 
+    # Detect agent profile from wizard answers
+    if profile_override:
+        profile_key = profile_override
+    else:
+        profile_key = detect_agent_type(tools=tools, description=description)
+
+    # Display profile recommendation
+    console.print()
+    display_profile_recommendation(profile_key, tools)
+
     config_path = base_path / ".evalview" / "config.yaml"
     if not config_path.exists():
-        config_content = f"""# EvalView Configuration
-adapter: {adapter}
-endpoint: {endpoint}
-timeout: 30.0
-allow_private_urls: true
-
-model:
-  name: {model_name}
-"""
+        config_content = generate_config_yaml(
+            profile_key=profile_key,
+            endpoint=endpoint,
+            adapter=adapter,
+            detected_tools=tools,
+        )
+        # Append model and timeout settings (not part of the profile template)
+        config_content += f"timeout: 30.0\nallow_private_urls: true\n\nmodel:\n  name: {model_name}\n"
         config_path.write_text(config_content)
-        console.print("\n[green]✓ Created .evalview/config.yaml[/green]")
+        console.print("[green]✓ Created .evalview/config.yaml[/green]")
     else:
-        console.print("\n[yellow]⚠  .evalview/config.yaml already exists, skipping[/yellow]")
+        console.print("[yellow]⚠  .evalview/config.yaml already exists, skipping[/yellow]")
 
     test_path = base_path / "tests" / "test-cases" / "first-test.yaml"
     if not test_path.exists():
@@ -745,10 +781,12 @@ model:
     console.print("\n[bold]Run your first test:[/bold]")
     console.print("  [cyan]evalview run[/cyan]")
     console.print("\n[dim]Edit tests/test-cases/first-test.yaml to refine expected behaviour.[/dim]")
-    console.print(f"[dim]Adapter: {adapter}  →  {endpoint}[/dim]\n")
+    console.print(f"[dim]Adapter: {adapter}  →  {endpoint}[/dim]")
+    profile = get_profile(profile_key)
+    console.print(f"[dim]Profile: {profile['icon']} {profile['name']}[/dim]\n")
 
 
-def _init_standard(dir: str, interactive: bool) -> None:
+def _init_standard(dir: str, interactive: bool, profile_override: Optional[str] = None) -> None:
     """Standard init flow — auto-detects agent and model, asks only when needed."""
     from rich.panel import Panel
 
@@ -785,14 +823,51 @@ def _init_standard(dir: str, interactive: bool) -> None:
             default=DEFAULT_JUDGE_MODEL,
         )
 
+    # --- Agent profile detection ---
+    detected_tools: List[str] = []
+    probe_output = ""
+    if detected_endpoint:
+        console.print("[dim]Probing agent to detect profile...[/dim]")
+        try:
+            probe_resp = httpx.post(
+                endpoint,
+                json={"query": "Hello, what can you help me with?"},
+                timeout=15.0,
+            )
+            if probe_resp.status_code == 200:
+                probe_data = probe_resp.json()
+                probe_output = probe_data.get("output", "")
+                tool_calls = probe_data.get("tool_calls", [])
+                detected_tools = [
+                    tc["name"] for tc in tool_calls
+                    if isinstance(tc, dict) and "name" in tc
+                ]
+        except Exception:
+            pass  # Probe failure is non-fatal; we fall back to 'chat'
+
+    if profile_override:
+        profile_key = profile_override
+    else:
+        profile_key = detect_agent_type(
+            tools=detected_tools,
+            output_sample=probe_output,
+        )
+
+    # Display the detected / overridden profile
+    display_profile_recommendation(profile_key, detected_tools)
+
     console.print("[dim]  Change these anytime in .evalview/config.yaml[/dim]\n")
 
     config_path = base_path / ".evalview" / "config.yaml"
     if not config_path.exists():
-        config_content = f"""# EvalView Configuration
-adapter: {adapter_type}
-endpoint: {endpoint}
-timeout: {timeout}
+        config_content = generate_config_yaml(
+            profile_key=profile_key,
+            endpoint=endpoint,
+            adapter=adapter_type,
+            detected_tools=detected_tools,
+        )
+        # Append timeout, headers, and model settings (not part of profile template)
+        config_content += f"""timeout: {timeout}
 headers: {{}}
 
 # Model configuration
@@ -844,7 +919,7 @@ model:
         path_choice = 3
 
     if path_choice == 1:
-        _write_blank_template(tests_dir, endpoint)
+        _write_blank_template(tests_dir, endpoint, profile_key=profile_key, detected_tools=detected_tools)
         state_store.set_active_test_path("tests/test-cases")
         console.print(
             f"\n[green]✅ Ready![/green] "
@@ -955,7 +1030,7 @@ model:
             )
             if not approved:
                 console.print("[dim]Discarded. Run evalview generate to try again with different options.[/dim]")
-                _write_blank_template(init_generated_dir, endpoint)
+                _write_blank_template(init_generated_dir, endpoint, profile_key=profile_key, detected_tools=detected_tools)
                 state_store.set_active_test_path("tests/generated-from-init")
             else:
                 _write_init_suite(tests, init_generated_dir, endpoint)
@@ -970,10 +1045,10 @@ model:
         else:
             console.print("[yellow]⚠️  Could not reach agent to generate draft tests.[/yellow]")
             console.print("[dim]   Creating a blank template in tests/generated-from-init/ instead.[/dim]")
-            _write_blank_template(init_generated_dir, endpoint)
+            _write_blank_template(init_generated_dir, endpoint, profile_key=profile_key, detected_tools=detected_tools)
             state_store.set_active_test_path("tests/generated-from-init")
     else:
-        _write_blank_template(init_generated_dir, endpoint)
+        _write_blank_template(init_generated_dir, endpoint, profile_key=profile_key, detected_tools=detected_tools)
         state_store.set_active_test_path("tests/generated-from-init")
         _print_generated_test_preview(init_generated_dir, max_files=1)
 
@@ -1045,6 +1120,9 @@ model:
             f"[dim]Edit tests/generated-from-init/my-first-test.yaml to match your agent's queries[/dim]"
         )
 
+    _profile = get_profile(profile_key)
+    body += f"\n\n[dim]Profile: {_profile['icon']} {_profile['name']}[/dim]"
+
     console.print(Panel(body, title="You're set up", border_style="green"))
 
 
@@ -1057,18 +1135,19 @@ model:
 @click.option("--interactive/--no-interactive", default=True, help="Interactive setup (default: True)")
 @click.option("--wizard", is_flag=True, help="Run 3-question wizard to generate a personalized first test case")
 @click.option("--ci", is_flag=True, help="Generate a GitHub Actions workflow for running EvalView in CI.")
+@click.option("--profile", type=click.Choice(["chat", "tool-use", "multi-step", "rag", "coding"]), default=None, help="Override detected agent profile")
 @track_command("init", lambda **kw: {"ci": kw.get("ci", False)})
-def init(dir: str, interactive: bool, wizard: bool, ci: bool):
+def init(dir: str, interactive: bool, wizard: bool, ci: bool, profile: Optional[str]):
     """Initialize EvalView in the current directory."""
     if ci:
         _init_ci_workflow(dir)
         return
 
     if wizard:
-        _init_wizard(dir)
+        _init_wizard(dir, profile_override=profile)
         return
 
-    _init_standard(dir, interactive)
+    _init_standard(dir, interactive, profile_override=profile)
 
 
 @click.command("quickstart", hidden=True)

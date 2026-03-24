@@ -41,12 +41,12 @@ pip install evalview
 ```
 
 ```bash
-evalview init        # Detect agent, create starter suite
+evalview init        # Detect agent, auto-configure profile + starter suite
 evalview snapshot    # Save current behavior as baseline
 evalview check       # Catch regressions after every change
 ```
 
-That's it. Three commands to regression-test any AI agent.
+That's it. Three commands to regression-test any AI agent. `init` auto-detects your agent type (chat, tool-use, multi-step, RAG, coding) and configures the right evaluators, thresholds, and assertions.
 
 <details>
 <summary><strong>Other install methods</strong></summary>
@@ -82,7 +82,7 @@ make run
 # Generate tests from a live agent
 evalview generate --agent http://localhost:8000
 
-# Capture real user flows via proxy
+# Capture real user flows via proxy (runs assertion wizard after)
 evalview capture --agent http://localhost:8000/invoke
 
 # Capture a multi-turn conversation as one test
@@ -90,6 +90,9 @@ evalview capture --agent http://localhost:8000/invoke --multi-turn
 
 # Generate from existing logs
 evalview generate --from-log traffic.jsonl
+
+# Override auto-detected agent profile
+evalview init --profile rag
 ```
 
 </details>
@@ -353,6 +356,8 @@ Snapshot known-good behavior, then detect when something drifts.
 ```bash
 evalview snapshot              # Capture current behavior as baseline
 evalview check                 # Compare against baseline after every change
+evalview check --budget 0.50   # Stop mid-run if budget exceeded
+evalview check --statistical 10 --auto-variant  # Discover + save non-deterministic paths
 evalview check --judge opus    # Use a specific judge model (sonnet, gpt-5.4, deepseek...)
 evalview watch --quick         # Re-run checks on every file save ($0, sub-second)
 evalview monitor               # Continuous checks with Slack alerts
@@ -382,10 +387,129 @@ New regressions trigger Slack alerts. Recoveries send all-clear. No spam on pers
 
 [Monitor config options →](docs/CLI_REFERENCE.md)
 
+## Smart DX — Zero-Config Testing That Gets It Right
+
+EvalView doesn't just run tests — it **understands your agent** and configures itself. Four features that make the difference between "another eval tool" and the one you actually use.
+
+### 1. Assertion Wizard — Tests From Real Traffic, Not Guesses
+
+Capture real user interactions, and EvalView analyzes the traffic to suggest smart assertions automatically.
+
+```bash
+evalview capture --agent http://localhost:8000/invoke
+# Use your agent normally, then Ctrl+C
+```
+
+```
+Assertion Wizard — analyzing 8 captured interactions
+
+  Agent type detected: multi-step
+
+  Capture Analysis
+    Interactions        8
+    Tools seen          search, extract, summarize
+    Avg tools/call      3.2
+    Consistent sequence search -> extract -> summarize
+    Avg latency         2340ms
+
+  Suggested assertions:
+
+    1. Lock tool sequence: search -> extract -> summarize  (recommended)
+    2. Require tools: search, extract, summarize           (recommended)
+    3. Max latency: 5000ms                                 (recommended)
+    4. Reject error outputs                                (recommended)
+    5. Minimum quality score: 70                           (recommended)
+
+  Accept all recommended? [Y]es / [n]o (pick individually) / [s]kip wizard: y
+
+  Applied 5 assertions to 8 test files
+```
+
+No YAML writing. No guessing what to assert. Your tests come pre-configured from real behavior.
+
+### 2. Auto-Variant Discovery — Solve Non-Determinism Automatically
+
+Non-deterministic agents take different valid paths. Instead of manually capturing each one, let EvalView discover them:
+
+```bash
+evalview check --statistical 10 --auto-variant
+```
+
+```
+Statistical mode: running each test 10 times...
+
+  search-flow  mean: 82.3, std: 8.1, flakiness: low_variance
+    1. search -> extract -> summarize       (7/10 runs = 70%, pass rate: 100%, avg score: 85.2)
+    2. search -> summarize                  (3/10 runs = 30%, pass rate: 100%, avg score: 78.1)
+
+    Found 1 distinct path to save as variant:
+      * search -> summarize (3 occurrences)
+    Save as golden variant? [Y/n]: y
+    Saved variant 'auto-v1': search -> summarize
+```
+
+Run N times. Cluster the paths. Save the valid ones. Your tests stop being flaky — automatically.
+
+### 3. Budget Circuit Breaker — Stop Spending Before It's Too Late
+
+Budget isn't checked *after* all tests run. It's enforced **mid-execution** — the moment you hit the limit, remaining tests are skipped.
+
+```bash
+evalview check --budget 0.50
+```
+
+```
+  $0.12 (24%) — search-flow
+  $0.09 (18%) — refund-flow
+  $0.31 (62%) — billing-dispute
+
+  Budget circuit breaker tripped: $0.52 spent of $0.50 limit
+  2 test(s) skipped to stay within budget
+```
+
+Per-test cost breakdown shows you exactly where the money goes. No more surprise bills from runaway eval loops.
+
+### 4. Smart Eval Profiles — The Right Config for Your Agent Type
+
+`evalview init` detects your agent type and pre-configures the right evaluators, thresholds, and assertions:
+
+```bash
+evalview init
+```
+
+```
+  Agent Profile
+
+    Multi-Step Agent — Agent with complex tool chains (3+ tools per query)
+    Detected tools: search, extract, summarize
+
+    Recommended checks:
+      Output Quality    enabled
+      Hallucination     enabled
+      Tool Accuracy     enabled
+      Sequence Check    enabled
+      Safety            skip
+      PII Detection     skip
+
+    Tips for this agent type:
+      * Use tool_sequence to catch ordering regressions
+      * Consider evalview snapshot --variant for non-deterministic paths
+      * Set a cost budget — multi-step agents can get expensive
+      * Use --statistical 5 periodically to measure variance
+```
+
+Five profiles — `chat`, `tool-use`, `multi-step`, `rag`, `coding` — each with tailored thresholds, recommended checks, and actionable tips. Override with `--profile rag` if auto-detection is wrong.
+
+---
+
 ## Key Features
 
 | Feature | Description | Docs |
 |---------|-------------|------|
+| **Assertion wizard** | Analyze captured traffic, suggest smart assertions automatically | [Above](#1-assertion-wizard--tests-from-real-traffic-not-guesses) |
+| **Auto-variant discovery** | Run N times, cluster paths, save valid variants | [Above](#2-auto-variant-discovery--solve-non-determinism-automatically) |
+| **Budget circuit breaker** | Mid-execution budget enforcement with per-test cost breakdown | [Above](#3-budget-circuit-breaker--stop-spending-before-its-too-late) |
+| **Smart eval profiles** | Auto-detect agent type, pre-configure evaluators | [Above](#4-smart-eval-profiles--the-right-config-for-your-agent-type) |
 | **Baseline diffing** | Tool call + parameter + output regression detection | [Docs](docs/GOLDEN_TRACES.md) |
 | **Multi-turn testing** | Per-turn tool, forbidden_tools, and output checks | [Docs](#multi-turn-testing) |
 | **Multi-reference baselines** | Up to 5 variants for non-deterministic agents | [Docs](docs/GOLDEN_TRACES.md) |
@@ -408,9 +532,9 @@ New regressions trigger Slack alerts. Recoveries send all-clear. No spam on pers
 | **Per-turn judge scoring** | Multi-turn output quality scored per turn with conversation context | [Docs](#multi-turn-testing) |
 | **Silent model detection** | Alerts when LLM provider updates the model version | [Docs](docs/GOLDEN_TRACES.md) |
 | **Gradual drift detection** | Trend analysis across check history | [Docs](docs/GOLDEN_TRACES.md) |
-| **Statistical mode (pass@k)** | Run N times, require a pass rate | [Docs](docs/STATISTICAL_MODE.md) |
+| **Statistical mode (pass@k)** | Run N times, require a pass rate, auto-discover variants | [Docs](docs/STATISTICAL_MODE.md) |
 | **HTML trace replay** | Auto-opens after check with full trace details | [Docs](docs/CLI_REFERENCE.md) |
-| **Verified cost tracking** | Token breakdown (in/out) with model pricing rates | [Docs](docs/COST_TRACKING.md) |
+| **Verified cost tracking** | Per-test cost breakdown with model pricing rates | [Docs](docs/COST_TRACKING.md) |
 | **Judge model picker** | Choose GPT, Claude, Gemini, DeepSeek, or Ollama (free) | [Docs](docs/EVALUATION_METRICS.md) |
 | **Pytest plugin** | `evalview_check` fixture for standard pytest | [Docs](#pytest-plugin) |
 | **GitHub Actions job summary** | Results visible in Actions UI, not just PR comments | [Docs](docs/CI_CD.md) |

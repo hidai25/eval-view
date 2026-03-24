@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import click
 import httpx
@@ -62,10 +62,11 @@ def _extract_keywords_from_output(output: str, query: str) -> List[str]:
     return keywords[:3]
 
 
-def _save_captures_as_tests(captures: List[Dict[str, Any]], output_dir: Path) -> int:
-    """Save captured interactions as test YAML files. Returns number of files written."""
+def _save_captures_as_tests(captures: List[Dict[str, Any]], output_dir: Path) -> Tuple[int, List[str]]:
+    """Save captured interactions as test YAML files. Returns (count, list of file paths)."""
     output_dir.mkdir(parents=True, exist_ok=True)
     saved = 0
+    saved_paths: List[str] = []
 
     for cap in captures:
         query: str = cap.get("query", "")
@@ -118,13 +119,14 @@ def _save_captures_as_tests(captures: List[Dict[str, Any]], output_dir: Path) ->
         ]
 
         path.write_text("\n".join(lines) + "\n")
+        saved_paths.append(str(path))
         saved += 1
 
-    return saved
+    return saved, saved_paths
 
 
-def _save_multi_turn_test(captures: List[Dict[str, Any]], output_dir: Path) -> int:
-    """Save all captures as a single multi-turn test YAML. Returns 1 if saved, 0 if empty."""
+def _save_multi_turn_test(captures: List[Dict[str, Any]], output_dir: Path) -> Tuple[int, List[str]]:
+    """Save all captures as a single multi-turn test YAML. Returns (1, [path]) if saved, (0, []) if empty."""
     if len(captures) < 2:
         return _save_captures_as_tests(captures, output_dir)
 
@@ -173,7 +175,7 @@ def _save_multi_turn_test(captures: List[Dict[str, Any]], output_dir: Path) -> i
     ]
 
     path.write_text("\n".join(lines) + "\n")
-    return 1
+    return 1, [str(path)]
 
 
 @click.command("capture")
@@ -210,7 +212,6 @@ def capture(agent: Optional[str], port: int, output_dir: str, multi_turn: bool) 
     import signal
     import threading as _threading
     import json as _json
-    from typing import Tuple
     from urllib.parse import urlparse
 
     if not agent:
@@ -315,6 +316,8 @@ def capture(agent: Optional[str], port: int, output_dir: str, multi_turn: bool) 
             query = self._extract_query(body)
 
             try:
+                import time as _time
+                _req_start = _time.monotonic()
                 resp = httpx.post(
                     agent_url,
                     content=body,
@@ -322,6 +325,7 @@ def capture(agent: Optional[str], port: int, output_dir: str, multi_turn: bool) 
                     timeout=60.0,
                 )
                 resp_body = resp.content
+                _req_latency = (_time.monotonic() - _req_start) * 1000
                 status_code = resp.status_code
             except Exception as exc:
                 err = _json.dumps({"error": str(exc)}).encode()
@@ -340,6 +344,7 @@ def capture(agent: Optional[str], port: int, output_dir: str, multi_turn: bool) 
                         "output": output,
                         "tools": tools,
                         "idx": len(captures) + 1,
+                        "latency_ms": _req_latency,
                     })
 
             self.send_response(status_code)
@@ -440,23 +445,31 @@ def capture(agent: Optional[str], port: int, output_dir: str, multi_turn: bool) 
         server.shutdown()
 
     console.print()
+
+    # Also record latency if available in captures
+    saved_paths: List[str] = []
+
     if multi_turn and len(captures) >= 2:
-        n_saved = _save_multi_turn_test(captures, Path(output_dir))
+        n_saved, saved_paths = _save_multi_turn_test(captures, Path(output_dir))
         test_type = f"1 multi-turn test ({len(captures)} turns)"
     else:
-        n_saved = _save_captures_as_tests(captures, Path(output_dir))
+        n_saved, saved_paths = _save_captures_as_tests(captures, Path(output_dir))
         test_type = f"{n_saved} test(s)"
 
     if n_saved > 0:
-        console.print(f"[green]✅ Saved {test_type} to {output_dir}/[/green]")
+        console.print(f"[green]Saved {test_type} to {output_dir}/[/green]")
         console.print()
+
+        # Run the assertion wizard
+        if len(captures) >= 2:
+            from evalview.commands.assertion_wizard import enhance_captured_tests
+            enhance_captured_tests(captures, output_dir, saved_paths)
+
         console.print(Panel(
             f"[bold]You now have {n_saved} test(s) from real traffic.[/bold]\n\n"
             "[bold]Next:[/bold]\n"
             "  [cyan]evalview snapshot[/cyan]  ← save as your regression baseline\n"
-            "  [cyan]evalview check[/cyan]     ← check for regressions anytime\n\n"
-            "[dim]Tip: review the YAML files and refine the `contains:` assertions\n"
-            "for the most precise regression detection.[/dim]",
+            "  [cyan]evalview check[/cyan]     ← check for regressions anytime",
             title="Capture complete",
             border_style="green",
         ))

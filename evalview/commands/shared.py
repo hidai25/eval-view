@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from evalview.core.golden import GoldenStore, GoldenTrace
     from evalview.core.drift_tracker import DriftTracker
     from evalview.adapters.base import AgentAdapter
+    from evalview.core.budget import BudgetTracker
 
 # Load environment variables (.env is the OSS standard, .env.local for overrides)
 load_dotenv()
@@ -543,6 +544,7 @@ def _execute_check_tests(
     semantic_diff: bool = False,
     timeout: float = 30.0,
     skip_llm_judge: bool = False,
+    budget_tracker: Optional["BudgetTracker"] = None,
 ) -> Tuple[List[Tuple[str, "TraceDiff"]], List["EvaluationResult"], "DriftTracker", Dict[str, "GoldenTrace"]]:
     """Execute tests and compare against golden variants.
 
@@ -551,6 +553,7 @@ def _execute_check_tests(
         config: EvalView config (adapter, endpoint, thresholds).
         json_output: Suppress non-JSON console output when True.
         semantic_diff: Enable embedding-based semantic similarity (opt-in).
+        budget_tracker: Optional budget tracker for mid-run circuit breaking.
 
     Returns:
         Tuple of (diffs, results, drift_tracker, golden_traces) where
@@ -579,60 +582,133 @@ def _execute_check_tests(
     diffs: List[Tuple[str, "TraceDiff"]] = []
     golden_traces: Dict[str, GoldenTrace] = {}
 
-    async def _run_one(tc) -> Optional[Tuple["EvaluationResult", "TraceDiff", GoldenTrace]]:
-        """Run a single test: execute -> evaluate -> diff (async pipeline)."""
-        adapter_type = tc.adapter or (config.adapter if config else None)
-        endpoint = tc.endpoint or (config.endpoint if config else None)
-        if not adapter_type or not endpoint:
-            return None
+    if budget_tracker is not None:
+        # Sequential execution with budget checking after each test
+        async def _run_one_sequential(tc: "TestCase") -> Optional[Tuple["EvaluationResult", "TraceDiff", "GoldenTrace"]]:
+            """Run a single test: execute -> evaluate -> diff (async pipeline)."""
+            adapter_type = tc.adapter or (config.adapter if config else None)
+            endpoint = tc.endpoint or (config.endpoint if config else None)
+            if not adapter_type or not endpoint:
+                return None
 
-        allow_private = getattr(config, "allow_private_urls", True) if config else True
-        try:
-            adapter = _create_adapter(adapter_type, endpoint, timeout=timeout, allow_private_urls=allow_private)
-        except ValueError as e:
-            if not json_output:
-                console.print(f"[yellow]⚠ Skipping {tc.name}: {e}[/yellow]")
-            return None
+            allow_private = getattr(config, "allow_private_urls", True) if config else True
+            try:
+                adapter = _create_adapter(adapter_type, endpoint, timeout=timeout, allow_private_urls=allow_private)
+            except ValueError as e:
+                if not json_output:
+                    console.print(f"[yellow]⚠ Skipping {tc.name}: {e}[/yellow]")
+                return None
 
-        if tc.is_multi_turn:
-            trace = await _execute_multi_turn_trace(tc, adapter)
-        else:
-            trace = await adapter.execute(tc.input.query, tc.input.context)
-        result = await evaluator.evaluate(tc, trace)
+            if tc.is_multi_turn:
+                trace = await _execute_multi_turn_trace(tc, adapter)
+            else:
+                trace = await adapter.execute(tc.input.query, tc.input.context)
+            result = await evaluator.evaluate(tc, trace)
 
-        golden_variants = store.load_all_golden_variants(tc.name)
-        if not golden_variants:
-            return None
+            golden_variants = store.load_all_golden_variants(tc.name)
+            if not golden_variants:
+                return None
 
-        # Use async comparison to include semantic diff when enabled
-        diff = await diff_engine.compare_multi_reference_async(
-            golden_variants, trace, result.score
-        )
-        return result, diff, golden_variants[0]
+            diff = await diff_engine.compare_multi_reference_async(
+                golden_variants, trace, result.score
+            )
+            return result, diff, golden_variants[0]
 
-    # Run all tests concurrently in a single event loop.
-    # return_exceptions=True means exceptions are returned as values (not raised),
-    # so one failing test does not cancel the others.
-    async def _run_all() -> List:
-        return await asyncio.gather(*[_run_one(tc) for tc in test_cases], return_exceptions=True)
+        async def _run_all_with_budget() -> None:
+            from evalview.core.budget import BudgetExhausted
 
-    outcomes = asyncio.run(_run_all())
+            total = len(test_cases)
+            completed = 0
+            for tc in test_cases:
+                try:
+                    outcome = await _run_one_sequential(tc)
+                except BaseException as exc:
+                    if not json_output:
+                        if isinstance(exc, (asyncio.TimeoutError, asyncio.CancelledError)):
+                            console.print(f"[red]✗ {tc.name}: Async execution timed out — {exc}[/red]")
+                        else:
+                            console.print(f"[red]✗ {tc.name}: Failed — {exc}[/red]")
+                    completed += 1
+                    continue
 
-    for tc, outcome in zip(test_cases, outcomes):
-        if isinstance(outcome, BaseException):
-            if not json_output:
-                if isinstance(outcome, (asyncio.TimeoutError, asyncio.CancelledError)):
-                    console.print(f"[red]✗ {tc.name}: Async execution timed out — {outcome}[/red]")
-                else:
-                    console.print(f"[red]✗ {tc.name}: Failed — {outcome}[/red]")
-            continue
-        if outcome is None:
-            continue
-        result, diff, golden = outcome
-        results.append(result)
-        diffs.append((tc.name, diff))
-        golden_traces[tc.name] = golden
-        drift_tracker.record_check(tc.name, diff)
+                if outcome is None:
+                    completed += 1
+                    continue
+
+                result, diff, golden = outcome
+                results.append(result)
+                diffs.append((tc.name, diff))
+                golden_traces[tc.name] = golden
+                drift_tracker.record_check(tc.name, diff)
+
+                # Record cost and check budget
+                cost = result.trace.metrics.total_cost
+                adapter_type = tc.adapter or (config.adapter if config else "") or ""
+                budget_tracker.record_cost(tc.name, cost, adapter=adapter_type)
+                completed += 1
+
+                try:
+                    budget_tracker.check_budget(completed=completed, total=total)
+                except BudgetExhausted:
+                    break
+
+        asyncio.run(_run_all_with_budget())
+    else:
+        # Original concurrent execution (no budget tracking)
+        async def _run_one(tc: "TestCase") -> Optional[Tuple["EvaluationResult", "TraceDiff", "GoldenTrace"]]:
+            """Run a single test: execute -> evaluate -> diff (async pipeline)."""
+            adapter_type = tc.adapter or (config.adapter if config else None)
+            endpoint = tc.endpoint or (config.endpoint if config else None)
+            if not adapter_type or not endpoint:
+                return None
+
+            allow_private = getattr(config, "allow_private_urls", True) if config else True
+            try:
+                adapter = _create_adapter(adapter_type, endpoint, timeout=timeout, allow_private_urls=allow_private)
+            except ValueError as e:
+                if not json_output:
+                    console.print(f"[yellow]⚠ Skipping {tc.name}: {e}[/yellow]")
+                return None
+
+            if tc.is_multi_turn:
+                trace = await _execute_multi_turn_trace(tc, adapter)
+            else:
+                trace = await adapter.execute(tc.input.query, tc.input.context)
+            result = await evaluator.evaluate(tc, trace)
+
+            golden_variants = store.load_all_golden_variants(tc.name)
+            if not golden_variants:
+                return None
+
+            # Use async comparison to include semantic diff when enabled
+            diff = await diff_engine.compare_multi_reference_async(
+                golden_variants, trace, result.score
+            )
+            return result, diff, golden_variants[0]
+
+        # Run all tests concurrently in a single event loop.
+        # return_exceptions=True means exceptions are returned as values (not raised),
+        # so one failing test does not cancel the others.
+        async def _run_all() -> List:
+            return await asyncio.gather(*[_run_one(tc) for tc in test_cases], return_exceptions=True)
+
+        outcomes = asyncio.run(_run_all())
+
+        for tc, outcome in zip(test_cases, outcomes):
+            if isinstance(outcome, BaseException):
+                if not json_output:
+                    if isinstance(outcome, (asyncio.TimeoutError, asyncio.CancelledError)):
+                        console.print(f"[red]✗ {tc.name}: Async execution timed out — {outcome}[/red]")
+                    else:
+                        console.print(f"[red]✗ {tc.name}: Failed — {outcome}[/red]")
+                continue
+            if outcome is None:
+                continue
+            result, diff, golden = outcome
+            results.append(result)
+            diffs.append((tc.name, diff))
+            golden_traces[tc.name] = golden
+            drift_tracker.record_check(tc.name, diff)
 
     return diffs, results, drift_tracker, golden_traces
 

@@ -212,9 +212,11 @@ def _print_baseline_context(goldens: List[Any], state: Any) -> None:
 @click.option("--timeout", type=float, default=120.0, help="Timeout per test in seconds (default: 120.0).")
 @click.option("--dry-run", "dry_run", is_flag=True, default=False, help="Preview test plan without executing.")
 @click.option("--ai-root-cause", "ai_root_cause", is_flag=True, default=False, help="Use AI to explain low-confidence regressions (requires LLM provider).")
+@click.option("--statistical", "statistical_runs", type=int, default=None, help="Run each test N times for variance analysis (e.g. --statistical 10).")
+@click.option("--auto-variant", "auto_variant", is_flag=True, default=False, help="Auto-discover and save distinct execution paths as golden variants (use with --statistical).")
 @click.option("--judge", "judge_model", default=None, help="Judge model for scoring (e.g. gpt-5.4-mini, sonnet, deepseek-chat).")
 @track_command("check")
-def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bool, report_path: Optional[str], csv_path: Optional[str], semantic_diff: Optional[bool], budget: Optional[float], timeout: float, dry_run: bool, ai_root_cause: bool, judge_model: Optional[str]):
+def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bool, report_path: Optional[str], csv_path: Optional[str], semantic_diff: Optional[bool], budget: Optional[float], timeout: float, dry_run: bool, ai_root_cause: bool, statistical_runs: Optional[int], auto_variant: bool, judge_model: Optional[str]):
     """Check current behavior against snapshot baseline.
 
     This command runs tests and compares them against your saved baselines,
@@ -235,6 +237,8 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
         evalview check --budget 0.50                     # Cap spend at $0.50
         evalview check --timeout 60                      # 60 second timeout per test
         evalview check --ai-root-cause                   # AI-powered regression explanation
+        evalview check --statistical 10                  # Run each test 10 times, show variance
+        evalview check --statistical 10 --auto-variant   # Auto-save distinct paths as variants
     """
     if budget is not None and budget <= 0:
         click.echo("Error: --budget must be a positive number.", err=True)
@@ -379,17 +383,106 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
             )
         sys.exit(0)
 
+    # Budget tracking with circuit breaker
+    budget_tracker = None
+    if budget is not None:
+        from evalview.core.budget import BudgetTracker
+        budget_tracker = BudgetTracker(limit=budget)
+
+    # Statistical mode — run tests N times and cluster results
+    if statistical_runs:
+        if statistical_runs < 3:
+            console.print("[red]Error: --statistical requires at least 3 runs.[/red]")
+            sys.exit(1)
+
+        if not json_output:
+            console.print(f"[cyan]▶ Statistical mode: running each test {statistical_runs} times...[/cyan]\n")
+
+        from evalview.core.variant_clusterer import cluster_results, suggest_variants, format_cluster_summary
+        from evalview.evaluators.statistical_evaluator import compute_statistical_metrics, compute_flakiness_score
+
+        all_stat_results: Dict[str, List] = {}
+
+        for run_idx in range(statistical_runs):
+            if not json_output:
+                console.print(f"  [dim]Run {run_idx + 1}/{statistical_runs}...[/dim]")
+
+            run_diffs, run_results, _, _ = _execute_check_tests(
+                test_cases, config, json_output=True, semantic_diff=semantic_diff, timeout=timeout,
+                budget_tracker=budget_tracker,
+            )
+
+            for result in run_results:
+                test_name = result.test_case
+                if test_name not in all_stat_results:
+                    all_stat_results[test_name] = []
+                all_stat_results[test_name].append(result)
+
+        # Cluster and display results per test
+        if not json_output:
+            console.print()
+            for test_name, test_results in all_stat_results.items():
+                clusters = cluster_results(test_results)
+                scores = [r.score for r in test_results]
+                stats = compute_statistical_metrics(scores)
+                flakiness = compute_flakiness_score(test_results, stats)
+
+                console.print(
+                    f"[bold]{test_name}[/bold]  "
+                    f"[dim]mean: {stats.mean:.1f}, std: {stats.std_dev:.1f}, "
+                    f"flakiness: {flakiness.category}[/dim]"
+                )
+                console.print(format_cluster_summary(clusters, statistical_runs))
+                console.print()
+
+                # Auto-variant: save distinct paths
+                if auto_variant:
+                    suggested = suggest_variants(clusters)
+                    if len(suggested) > 1:
+                        existing = store.load_all_golden_variants(test_name)
+                        existing_count = len(existing) if existing else 0
+                        slots_left = 5 - existing_count
+
+                        if slots_left <= 0:
+                            console.print(f"  [yellow]⚠ {test_name}: already has 5 variants (max)[/yellow]")
+                            continue
+
+                        # Skip the most common cluster (already the default baseline)
+                        new_variants = suggested[1:slots_left + 1]
+
+                        if new_variants:
+                            console.print(f"  [cyan]Found {len(new_variants)} distinct path(s) to save as variants:[/cyan]")
+                            for v in new_variants:
+                                console.print(f"    • {v.sequence_key} ({v.frequency} occurrences)")
+
+                            import click as _click
+                            if _click.confirm("    Save these as golden variants?", default=True):
+                                for idx, variant_cluster in enumerate(new_variants):
+                                    variant_name = f"auto-v{existing_count + idx + 1}"
+                                    rep = variant_cluster.representative
+                                    store.save_golden(
+                                        result=rep,
+                                        notes=f"Auto-variant from statistical run ({variant_cluster.frequency}/{statistical_runs} occurrences)",
+                                        variant_name=variant_name,
+                                    )
+                                    console.print(f"    [green]✓ Saved variant '{variant_name}': {variant_cluster.sequence_key}[/green]")
+                                console.print()
+
+            console.print()
+
+        sys.exit(0)
+
     # Execute tests and compare against golden — show spinner while waiting
     if not json_output:
         from evalview.commands.shared import run_with_spinner
         diffs, results, drift_tracker, golden_traces = run_with_spinner(
-            lambda: _execute_check_tests(test_cases, config, json_output, semantic_diff, timeout),
+            lambda: _execute_check_tests(test_cases, config, json_output, semantic_diff, timeout, budget_tracker=budget_tracker),
             "Checking",
             len(test_cases),
         )
     else:
         diffs, results, drift_tracker, golden_traces = _execute_check_tests(
-            test_cases, config, json_output, semantic_diff, timeout
+            test_cases, config, json_output, semantic_diff, timeout, budget_tracker=budget_tracker
         )
 
     golden_names = {golden.test_name for golden in goldens}
@@ -419,15 +512,39 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
     else:
         state = state_store.load()
 
-    # Cost summary
+    # Cost summary with per-test breakdown
     if results and not json_output:
         total_cost = sum(r.trace.metrics.total_cost for r in results)
         total_api_calls = sum(len(r.trace.steps) for r in results)
+
         console.print(
             f"[dim]💰 {len(results)} tests, {total_api_calls} API calls, "
-            f"${total_cost:.4f} total[/dim]\n"
+            f"${total_cost:.4f} total[/dim]"
         )
-        if budget is not None and total_cost > budget:
+
+        # Per-test cost breakdown (show top 5 most expensive)
+        if len(results) > 1:
+            sorted_by_cost = sorted(results, key=lambda r: r.trace.metrics.total_cost, reverse=True)
+            console.print("[dim]   Top costs:[/dim]")
+            for r in sorted_by_cost[:5]:
+                cost = r.trace.metrics.total_cost
+                if cost > 0:
+                    pct = cost / total_cost * 100 if total_cost > 0 else 0
+                    console.print(f"[dim]     ${cost:.4f} ({pct:.0f}%) — {r.test_case}[/dim]")
+
+        console.print()
+
+        if budget_tracker and budget_tracker.halted:
+            console.print(
+                f"[red]⚠  Budget circuit breaker tripped: "
+                f"${budget_tracker.spent:.4f} spent of ${budget:.2f} limit[/red]"
+            )
+            skipped = len(test_cases) - len(results)
+            if skipped > 0:
+                console.print(f"[red]   {skipped} test(s) skipped to stay within budget[/red]")
+            console.print()
+            sys.exit(1)
+        elif budget is not None and total_cost > budget:
             console.print(
                 f"[red]⚠  Budget exceeded: ${total_cost:.4f} > ${budget:.2f} limit[/red]\n"
             )
