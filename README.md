@@ -552,12 +552,25 @@ Then just ask Claude: "did my refactor break anything?" and it runs `run_check` 
 
 </details>
 
+## Agent-Native Docs
+
+If you're using Cursor, Claude Code, GitHub Copilot, or another coding agent to work on EvalView or integrate it into your stack, start here:
+
+- [AGENT_INSTRUCTIONS.md](AGENT_INSTRUCTIONS.md) — architecture map, contracts, invariants, verification commands
+- [Agent Recipes](docs/agent-recipes/README.md) — task-specific playbooks for common extensions
+- [Add an Adapter](docs/agent-recipes/add-adapter.md)
+- [Add an Evaluator](docs/agent-recipes/add-evaluator.md)
+- [Debug Check vs Snapshot Mismatch](docs/agent-recipes/debug-check-vs-snapshot-mismatch.md)
+- [Extend the HTML Report](docs/agent-recipes/extend-html-report.md)
+- [Integrate Ollama](docs/agent-recipes/integrate-ollama.md)
+
 ## Documentation
 
 | Getting Started | Core Features | Integrations |
 |---|---|---|
 | [Getting Started](docs/GETTING_STARTED.md) | [Golden Traces](docs/GOLDEN_TRACES.md) | [CI/CD](docs/CI_CD.md) |
 | [CLI Reference](docs/CLI_REFERENCE.md) | [Evaluation Metrics](docs/EVALUATION_METRICS.md) | [MCP Contracts](docs/MCP_CONTRACTS.md) |
+| [Agent Instructions](AGENT_INSTRUCTIONS.md) | [Agent Recipes](docs/agent-recipes/README.md) | [Ollama Recipe](docs/agent-recipes/integrate-ollama.md) |
 | [FAQ](docs/FAQ.md) | [Test Generation](docs/TEST_GENERATION.md) | [Skills Testing](docs/SKILLS_TESTING.md) |
 | [YAML Schema](docs/YAML_SCHEMA.md) | [Statistical Mode](docs/STATISTICAL_MODE.md) | [Chat Mode](docs/CHAT_MODE.md) |
 | [Framework Support](docs/FRAMEWORK_SUPPORT.md) | [Behavior Coverage](docs/BEHAVIOR_COVERAGE.md) | [Debugging](docs/DEBUGGING.md) |
