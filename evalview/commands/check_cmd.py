@@ -14,6 +14,7 @@ from evalview.commands.shared import (
     console,
     _load_config_if_exists,
     _cloud_pull,
+    _create_adapter,
     _execute_check_tests,
     _analyze_check_diffs,
     _parse_fail_statuses,
@@ -23,6 +24,8 @@ from evalview.commands.check_display import (
     _print_trajectory_diff,
 )
 from evalview.telemetry.decorators import track_command
+
+from evalview.core.diff import DiffStatus
 
 if TYPE_CHECKING:
     from evalview.core.types import EvaluationResult
@@ -56,6 +59,31 @@ def _compute_check_exit_code(
             return 1
 
     return 0
+
+
+def _all_failures_retry_healed(
+    diffs: List[Tuple[str, "TraceDiff"]],
+    healing_summary: Optional[Any],
+    execution_failures: int = 0,
+) -> bool:
+    """Return True only when every failing diff was resolved by a retry heal."""
+    if execution_failures > 0 or not healing_summary:
+        return False
+
+    failed_names = {
+        name for name, diff in diffs if diff.overall_severity != DiffStatus.PASSED
+    }
+    if not failed_names:
+        return False
+
+    result_by_name = {result.test_name: result for result in healing_summary.results}
+    if set(result_by_name) != failed_names:
+        return False
+
+    return all(
+        result.healed and result.final_status == DiffStatus.PASSED.value
+        for result in result_by_name.values()
+    )
 
 
 def _summarize_check_targets(test_cases: List[Any], config: Any) -> tuple[list[str], list[str]]:
@@ -215,8 +243,9 @@ def _print_baseline_context(goldens: List[Any], state: Any) -> None:
 @click.option("--statistical", "statistical_runs", type=int, default=None, help="Run each test N times for variance analysis (e.g. --statistical 10).")
 @click.option("--auto-variant", "auto_variant", is_flag=True, default=False, help="Auto-discover and save distinct execution paths as golden variants (use with --statistical).")
 @click.option("--judge", "judge_model", default=None, help="Judge model for scoring (e.g. gpt-5.4-mini, sonnet, deepseek-chat).")
+@click.option("--heal", "heal_mode", is_flag=True, default=False, help="Auto-retry flaky failures, propose candidate variants. Never touches forbidden tools.")
 @track_command("check")
-def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bool, report_path: Optional[str], csv_path: Optional[str], semantic_diff: Optional[bool], budget: Optional[float], timeout: float, dry_run: bool, ai_root_cause: bool, statistical_runs: Optional[int], auto_variant: bool, judge_model: Optional[str]):
+def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bool, report_path: Optional[str], csv_path: Optional[str], semantic_diff: Optional[bool], budget: Optional[float], timeout: float, dry_run: bool, ai_root_cause: bool, statistical_runs: Optional[int], auto_variant: bool, judge_model: Optional[str], heal_mode: bool):
     """Check current behavior against snapshot baseline.
 
     This command runs tests and compares them against your saved baselines,
@@ -239,6 +268,7 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
         evalview check --ai-root-cause                   # AI-powered regression explanation
         evalview check --statistical 10                  # Run each test 10 times, show variance
         evalview check --statistical 10 --auto-variant   # Auto-save distinct paths as variants
+        evalview check --heal                            # Auto-retry flaky failures, propose variants
     """
     if budget is not None and budget <= 0:
         click.echo("Error: --budget must be a positive number.", err=True)
@@ -489,6 +519,166 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
     baseline_test_cases = [tc for tc in test_cases if tc.name in golden_names]
     execution_failures = max(0, len(baseline_test_cases) - len(results))
 
+    # --- Healing pass (never mutates original diffs) ---
+    healing_summary = None
+    all_failures_retry_healed = False
+    if heal_mode and diffs:
+        import asyncio as _asyncio
+        from evalview.core.healing import (
+            HealingEngine, HealingSummary, HealingAction, HealingTrigger,
+            HealingDiagnosis, HealingResult,
+            ModelUpdateSummary, save_audit_log,
+            MIN_VARIANT_SCORE, MAX_COST_MULTIPLIER, MAX_LATENCY_MULTIPLIER,
+            MAX_AUTO_VARIANTS,
+        )
+        from evalview.core.diff import DiffEngine as _HealDiffEngine, DiffConfig as _HealDiffConfig
+        from evalview.evaluators.evaluator import Evaluator as _HealEvaluator
+
+        _heal_diff_config = config.get_diff_config() if config else _HealDiffConfig()
+        heal_diff_engine = _HealDiffEngine(config=_heal_diff_config)
+        heal_evaluator = _HealEvaluator()
+        engine = HealingEngine(store, heal_evaluator)
+
+        healing_results: List[Any] = []
+
+        async def _heal_all() -> None:
+            for (name, diff_item), result_item in zip(diffs, results):
+                if diff_item.overall_severity == DiffStatus.PASSED:
+                    continue
+                tc = next((t for t in test_cases if t.name == name), None)
+                if tc is None:
+                    healing_results.append(HealingResult(
+                        test_name=name,
+                        original_status=diff_item.overall_severity.value,
+                        diagnosis=HealingDiagnosis(
+                            action=HealingAction.FLAG_REVIEW,
+                            trigger=HealingTrigger.OTHER,
+                            reason="heal skipped: no matching test case loaded",
+                            details={"skip_reason": "missing_test_case"},
+                        ),
+                        attempted=False,
+                        healed=False,
+                        final_status=diff_item.overall_severity.value,
+                        original_score=result_item.score,
+                        actual_model=getattr(result_item.trace, "model_id", None),
+                    ))
+                    continue
+                gv = store.load_all_golden_variants(name)
+                if not gv:
+                    healing_results.append(HealingResult(
+                        test_name=name,
+                        original_status=diff_item.overall_severity.value,
+                        diagnosis=HealingDiagnosis(
+                            action=HealingAction.FLAG_REVIEW,
+                            trigger=HealingTrigger.OTHER,
+                            reason="heal skipped: no baseline variants available",
+                            details={"skip_reason": "missing_golden_variants"},
+                        ),
+                        attempted=False,
+                        healed=False,
+                        final_status=diff_item.overall_severity.value,
+                        original_score=result_item.score,
+                        actual_model=getattr(result_item.trace, "model_id", None),
+                    ))
+                    continue
+
+                adapter_type = tc.adapter or (config.adapter if config else None)
+                endpoint = tc.endpoint or (config.endpoint if config else None)
+                if not adapter_type or not endpoint:
+                    healing_results.append(HealingResult(
+                        test_name=name,
+                        original_status=diff_item.overall_severity.value,
+                        diagnosis=HealingDiagnosis(
+                            action=HealingAction.FLAG_REVIEW,
+                            trigger=HealingTrigger.OTHER,
+                            reason="heal skipped: adapter or endpoint missing",
+                            details={"skip_reason": "missing_adapter_or_endpoint"},
+                        ),
+                        attempted=False,
+                        healed=False,
+                        final_status=diff_item.overall_severity.value,
+                        original_score=result_item.score,
+                        baseline_score=gv[0].metadata.score if gv else None,
+                        baseline_model=gv[0].metadata.model_id if gv else None,
+                        actual_model=getattr(result_item.trace, "model_id", None),
+                    ))
+                    continue
+
+                try:
+                    adapter = _create_adapter(adapter_type, endpoint, timeout=timeout)
+                    hr = await engine.heal_test(
+                        diff_item, result_item, tc, gv, adapter, heal_diff_engine
+                    )
+                    healing_results.append(hr)
+                except Exception as exc:
+                    if not json_output:
+                        console.print(f"[yellow]  Heal failed for {name}: {exc}[/yellow]")
+                    healing_results.append(HealingResult(
+                        test_name=name,
+                        original_status=diff_item.overall_severity.value,
+                        diagnosis=HealingDiagnosis(
+                            action=HealingAction.FLAG_REVIEW,
+                            trigger=HealingTrigger.OTHER,
+                            reason=f"heal error: {exc}",
+                            details={"error_type": type(exc).__name__},
+                        ),
+                        attempted=True,
+                        healed=False,
+                        final_status=diff_item.overall_severity.value,
+                        original_score=result_item.score,
+                        baseline_score=gv[0].metadata.score if gv else None,
+                        baseline_model=gv[0].metadata.model_id if gv else None,
+                        actual_model=getattr(result_item.trace, "model_id", None),
+                    ))
+
+        _asyncio.run(_heal_all())
+
+        # Build model update summary if any tests had model_changed
+        model_update = None
+        model_affected = [(n, d) for n, d in diffs if d.model_changed]
+        if model_affected:
+            _, first_model_diff = model_affected[0]
+            model_healed = sum(
+                1 for r in healing_results
+                if r.healed and r.diagnosis.trigger == HealingTrigger.MODEL_UPDATE
+            )
+            model_update = ModelUpdateSummary(
+                golden_model=first_model_diff.golden_model_id or "unknown",
+                actual_model=first_model_diff.actual_model_id or "unknown",
+                affected_count=len(model_affected),
+                healed_count=model_healed,
+                failed_count=len(model_affected) - model_healed,
+            )
+
+        healing_summary = HealingSummary(
+            results=healing_results,
+            total_healed=sum(1 for r in healing_results if r.healed),
+            total_proposed=sum(1 for r in healing_results if r.proposed),
+            total_review=sum(
+                1 for r in healing_results
+                if r.diagnosis.action == HealingAction.FLAG_REVIEW
+            ),
+            total_blocked=sum(
+                1 for r in healing_results
+                if r.diagnosis.action == HealingAction.BLOCKED
+            ),
+            attempted_count=sum(1 for r in healing_results if r.attempted),
+            unresolved_count=sum(1 for r in healing_results if not r.healed),
+            failed_count=len(healing_results),
+            thresholds={
+                "min_variant_score": MIN_VARIANT_SCORE,
+                "max_cost_multiplier": MAX_COST_MULTIPLIER,
+                "max_latency_multiplier": MAX_LATENCY_MULTIPLIER,
+                "max_auto_variants": float(MAX_AUTO_VARIANTS),
+            },
+            model_update=model_update,
+        )
+        if healing_results:
+            healing_summary.audit_path = save_audit_log(healing_summary)
+        all_failures_retry_healed = _all_failures_retry_healed(
+            diffs, healing_summary, execution_failures=execution_failures
+        )
+
     # Analyze diffs
     analysis = _analyze_check_diffs(diffs)
     analysis["execution_failures"] = execution_failures
@@ -503,11 +693,18 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
         analysis["all_passed"] = True  # Not a failure, but not a real check
         analysis["nothing_compared"] = True
 
+    analysis["healing_enabled"] = bool(heal_mode)
+    analysis["healing_all_resolved"] = all_failures_retry_healed
+    analysis["effective_all_passed"] = (
+        analysis["all_passed"] or all_failures_retry_healed
+    )
+    analysis["has_unresolved_failures"] = not analysis["effective_all_passed"]
+
     # Update project state (only count real checks toward streaks)
     if actually_compared > 0:
         state = state_store.update_check(
-            has_regressions=(not analysis["all_passed"]),
-            status="passed" if analysis["all_passed"] else "regression"
+            has_regressions=analysis["has_unresolved_failures"],
+            status="passed" if analysis["effective_all_passed"] else "regression"
         )
     else:
         state = state_store.load()
@@ -552,7 +749,7 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
 
     # AI root cause enrichment (opt-in)
     ai_root_causes = None
-    if ai_root_cause and not analysis["all_passed"]:
+    if ai_root_cause and analysis["has_unresolved_failures"]:
         import asyncio
         from evalview.core.root_cause import enrich_diffs_with_ai
         if not json_output:
@@ -567,6 +764,7 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
         results=results,
         ai_root_causes=ai_root_causes,
         test_metadata=test_metadata,
+        healing_summary=healing_summary,
     )
 
     if execution_failures > 0 and not json_output:
@@ -597,11 +795,17 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
             auto_open=not json_output,
             title="EvalView Check Report",
             default_tab=tab,
+            healing_summary=healing_summary,
+            effective_all_passed=analysis["effective_all_passed"],
         )
         if not json_output:
             if auto_report:
-                console.print(f"[green]◈ Failure report:[/green] {path}")
-                console.print("[dim]Opened automatically because this check found changes or execution failures.[/dim]\n")
+                label = "Check report" if analysis["effective_all_passed"] else "Failure report"
+                console.print(f"[green]◈ {label}:[/green] {path}")
+                if analysis["effective_all_passed"]:
+                    console.print("[dim]Opened automatically with healing details and audit context.[/dim]\n")
+                else:
+                    console.print("[dim]Opened automatically because this check found unresolved changes or execution failures.[/dim]\n")
             else:
                 console.print(f"[green]◈ Report:[/green] {path}\n")
 
@@ -639,6 +843,26 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
 
     # Compute and exit with code
     exit_code = _compute_check_exit_code(diffs, fail_on, strict, execution_failures=execution_failures)
+
+    # --heal exit code: 0 only if every failure was retry-healed
+    if all_failures_retry_healed:
+        exit_code = 0
+
+    if (
+        heal_mode
+        and healing_summary
+        and healing_summary.unresolved_count > 0
+        and exit_code == 0
+        and not json_output
+    ):
+        console.print(
+            "[yellow]⚠ Unresolved healing review items remain, but this run exits 0 under the current "
+            "--fail-on policy.[/yellow]"
+        )
+        console.print(
+            "[dim]Use --strict or --fail-on REGRESSION,TOOLS_CHANGED,OUTPUT_CHANGED if review cases should fail CI.[/dim]\n"
+        )
+
     sys.exit(exit_code)
 
 

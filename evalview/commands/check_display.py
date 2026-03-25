@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from evalview.core.drift_tracker import DriftTracker
     from evalview.core.golden import GoldenTrace
     from evalview.core.root_cause import RootCauseAnalysis
+    from evalview.core.healing import HealingSummary
 
 
 def _print_parameter_diffs(tool_diffs: List["ToolDiff"]) -> None:
@@ -224,6 +225,7 @@ def _display_check_results(
     results: Optional[List["EvaluationResult"]] = None,
     ai_root_causes: Optional[Dict[str, Any]] = None,
     test_metadata: Optional[Dict[str, Dict[str, Any]]] = None,
+    healing_summary: Optional["HealingSummary"] = None,
 ) -> None:
     """Display check results in JSON or console format."""
     import json
@@ -257,6 +259,9 @@ def _display_check_results(
                 "tools_changed": sum(1 for _, d in diffs if d.overall_severity == DiffStatus.TOOLS_CHANGED),
                 "output_changed": sum(1 for _, d in diffs if d.overall_severity == DiffStatus.OUTPUT_CHANGED),
                 "model_changed": any(getattr(d, "model_changed", False) for _, d in diffs),
+                "effective_all_passed": bool(analysis.get("effective_all_passed", analysis["all_passed"])),
+                "healing_all_resolved": bool(analysis.get("healing_all_resolved", False)),
+                "has_unresolved_failures": bool(analysis.get("has_unresolved_failures", not analysis["all_passed"])),
             },
             "diffs": [
                 {
@@ -309,6 +314,20 @@ def _display_check_results(
                 for name, diff in diffs
             ],
         }
+        if healing_summary:
+            output["healing"] = {
+                "total_healed": healing_summary.total_healed,
+                "total_proposed": healing_summary.total_proposed,
+                "total_review": healing_summary.total_review,
+                "total_blocked": healing_summary.total_blocked,
+                "attempted_count": healing_summary.attempted_count,
+                "unresolved_count": healing_summary.unresolved_count,
+                "failed_count": healing_summary.failed_count,
+                "policy_version": healing_summary.policy_version,
+                "thresholds": healing_summary.thresholds,
+                "audit_path": healing_summary.audit_path,
+                "results": [r.model_dump() for r in healing_summary.results],
+            }
         print(json.dumps(output, indent=2))
     else:
         # Console output with personality
@@ -390,6 +409,8 @@ def _display_check_results(
             if warning:
                 console.print(f"[yellow]📉 {name}:[/yellow] {warning}\n")
 
+        effective_all_passed = bool(analysis.get("effective_all_passed", analysis["all_passed"]))
+
         if analysis["all_passed"]:
             # Show what was verified so users can trust the result
             if diffs:
@@ -426,12 +447,59 @@ def _display_check_results(
                 )
                 console.print()
 
+            # Build healing lookup
+            heal_by_name: Dict[str, Any] = {}
+            if healing_summary:
+                from evalview.core.healing import HealingAction
+                heal_by_name = {r.test_name: r for r in healing_summary.results}
+
+            # Model update banner (before per-test display)
+            if healing_summary and healing_summary.model_update:
+                mu = healing_summary.model_update
+                console.print(
+                    f"  [yellow]\u26a0 Model update detected:[/yellow] "
+                    f"[dim]{mu.golden_model}[/dim] \u2192 [bold]{mu.actual_model}[/bold] "
+                    f"({mu.affected_count} test{'s' if mu.affected_count != 1 else ''} affected)\n"
+                )
+
             _goldens = golden_traces or {}
             for name, diff in diffs:
-                if diff.overall_severity != DiffStatus.PASSED:
+                if diff.overall_severity == DiffStatus.PASSED:
+                    continue
+
+                # Check if healing resolved this test
+                heal_result = heal_by_name.get(name)
+                if heal_result and heal_result.healed:
+                    console.print(
+                        f"  [green]\u26a1 HEALED[/green]: {name}  "
+                        f"[dim]{heal_result.diagnosis.reason}[/dim]"
+                    )
+                    continue
+                elif heal_result and heal_result.proposed:
+                    console.print(
+                        f"  [cyan]\u25c8 PROPOSED[/cyan]: {name}  "
+                        f"[dim]{heal_result.diagnosis.reason}[/dim]"
+                    )
+                    continue
+                elif heal_result and heal_result.diagnosis.action == HealingAction.BLOCKED:
+                    console.print(
+                        f"  [red]\u2717 BLOCKED[/red]: {name}  "
+                        f"[dim]{heal_result.diagnosis.reason}[/dim]"
+                    )
+                    continue
+                elif heal_result:
+                    # FLAG_REVIEW — show with review icon then fall through to details
+                    console.print(
+                        f"  [yellow]\u26a0 REVIEW[/yellow]: {name}  "
+                        f"[dim]{heal_result.diagnosis.reason}[/dim]"
+                    )
+                    # Fall through to show details below
+
+                if not heal_result:
+                    # Normal (non-healing) display
                     severity_icon = {
-                        DiffStatus.REGRESSION: "[red]✗ REGRESSION[/red]",
-                        DiffStatus.TOOLS_CHANGED: "[yellow]⚠ TOOLS_CHANGED[/yellow]",
+                        DiffStatus.REGRESSION: "[red]\u2717 REGRESSION[/red]",
+                        DiffStatus.TOOLS_CHANGED: "[yellow]\u26a0 TOOLS_CHANGED[/yellow]",
                         DiffStatus.OUTPUT_CHANGED: "[dim]~ OUTPUT_CHANGED[/dim]",
                     }.get(diff.overall_severity, "?")
 
@@ -451,89 +519,131 @@ def _display_check_results(
                             confidence_str = "  " + render_confidence_label(conf_pct, conf_label)
 
                     console.print(f"{severity_icon}: {name}{score_part}{confidence_str}")
-                    meta = (test_metadata or {}).get(name, {})
-                    if meta.get("is_multi_turn"):
-                        behavior_class = str(meta.get("behavior_class") or "multi_turn").replace("_", " ")
-                        console.print(f"    [dim]Multi-turn path:[/dim] {behavior_class}")
 
-                    golden_for_test = _goldens.get(name)
-                    result_for_test = result_by_name.get(name)
-                    _print_inline_trajectory(diff, golden_for_test, result_for_test)
+                meta = (test_metadata or {}).get(name, {})
+                if meta.get("is_multi_turn"):
+                    behavior_class = str(meta.get("behavior_class") or "multi_turn").replace("_", " ")
+                    console.print(f"    [dim]Multi-turn path:[/dim] {behavior_class}")
 
-                    if diff.tool_diffs:
-                        _print_parameter_diffs(diff.tool_diffs)
+                golden_for_test = _goldens.get(name)
+                result_for_test = result_by_name.get(name)
+                _print_inline_trajectory(diff, golden_for_test, result_for_test)
 
-                    # Per-turn breakdown for multi-turn tests
-                    if diff.turn_diffs:
-                        changed_turns = [td for td in diff.turn_diffs if td.status != DiffStatus.PASSED]
-                        if changed_turns:
-                            console.print("    [dim]Per-turn breakdown:[/dim]")
-                            for td in changed_turns:
-                                baseline_str = ", ".join(td.baseline_tools) or "(none)"
-                                current_str = ", ".join(td.current_tools) or "(none)"
-                                parts = []
-                                if td.baseline_tools != td.current_tools:
-                                    parts.append(f"[red]{baseline_str}[/red] → [green]{current_str}[/green]")
-                                else:
-                                    parts.append(f"tools OK")
-                                if td.output_similarity is not None:
-                                    sim_pct = int(td.output_similarity * 100)
-                                    sim_color = "green" if sim_pct >= 80 else "yellow" if sim_pct >= 50 else "red"
-                                    parts.append(f"output [{sim_color}]{sim_pct}% similar[/{sim_color}]")
-                                console.print(
-                                    f"      [yellow]Turn {td.turn_index}:[/yellow] "
-                                    + ", ".join(parts)
-                                )
+                if diff.tool_diffs:
+                    _print_parameter_diffs(diff.tool_diffs)
 
-                    # Per-turn evaluation failures
-                    if result_for_test and getattr(result_for_test, "turn_evaluations", None):
-                        failed_evals = [te for te in result_for_test.turn_evaluations if not te.passed]
-                        if failed_evals:
-                            console.print("    [dim]Per-turn evaluation:[/dim]")
-                            for te in failed_evals:
-                                console.print(
-                                    f"      [red]Turn {te.turn_index}: FAIL[/red] — {te.details}"
-                                )
+                # Per-turn breakdown for multi-turn tests
+                if diff.turn_diffs:
+                    changed_turns = [td for td in diff.turn_diffs if td.status != DiffStatus.PASSED]
+                    if changed_turns:
+                        console.print("    [dim]Per-turn breakdown:[/dim]")
+                        for td in changed_turns:
+                            baseline_str = ", ".join(td.baseline_tools) or "(none)"
+                            current_str = ", ".join(td.current_tools) or "(none)"
+                            parts = []
+                            if td.baseline_tools != td.current_tools:
+                                parts.append(f"[red]{baseline_str}[/red] \u2192 [green]{current_str}[/green]")
+                            else:
+                                parts.append(f"tools OK")
+                            if td.output_similarity is not None:
+                                sim_pct = int(td.output_similarity * 100)
+                                sim_color = "green" if sim_pct >= 80 else "yellow" if sim_pct >= 50 else "red"
+                                parts.append(f"output [{sim_color}]{sim_pct}% similar[/{sim_color}]")
+                            console.print(
+                                f"      [yellow]Turn {td.turn_index}:[/yellow] "
+                                + ", ".join(parts)
+                            )
 
-                    _print_output_diff(diff)
+                # Per-turn evaluation failures
+                if result_for_test and getattr(result_for_test, "turn_evaluations", None):
+                    failed_evals = [te for te in result_for_test.turn_evaluations if not te.passed]
+                    if failed_evals:
+                        console.print("    [dim]Per-turn evaluation:[/dim]")
+                        for te in failed_evals:
+                            console.print(
+                                f"      [red]Turn {te.turn_index}: FAIL[/red] \u2014 {te.details}"
+                            )
 
-                    root_cause = root_cause_by_name.get(name)
-                    if root_cause is not None:
-                        _print_root_cause(root_cause)
+                _print_output_diff(diff)
 
-                    quoted = f'"{name}"' if " " in name else name
-                    console.print(f"    [dim]→ evalview replay {quoted}[/dim]")
+                root_cause = root_cause_by_name.get(name)
+                if root_cause is not None:
+                    _print_root_cause(root_cause)
 
-                    # Smart accept suggestion
-                    if result_for_test is not None:
-                        golden_for_accept = _goldens.get(name)
-                        baseline_score = (
-                            result_for_test.score - diff.score_diff
-                            if diff.score_diff is not None
-                            else 0.0
-                        )
-                        baseline_tools = (
-                            golden_for_accept.tool_sequence if golden_for_accept else []
-                        )
-                        current_tools = [
-                            str(getattr(s, "tool_name", None) or getattr(s, "step_name", "?"))
-                            for s in (result_for_test.trace.steps or [])
-                        ]
-                        accept_panel = render_smart_accept_suggestion(
-                            test_name=name,
-                            score_improved=(diff.score_diff > 0) if diff.score_diff is not None else False,
-                            tools_changed=bool(diff.tool_diffs),
-                            baseline_tools=baseline_tools,
-                            current_tools=current_tools,
-                            baseline_score=baseline_score,
-                            current_score=result_for_test.score,
-                        )
-                        if accept_panel:
-                            console.print(accept_panel)
+                quoted = f'"{name}"' if " " in name else name
+                console.print(f"    [dim]\u2192 evalview replay {quoted}[/dim]")
 
-                    console.print()
+                # Smart accept suggestion
+                if result_for_test is not None:
+                    golden_for_accept = _goldens.get(name)
+                    baseline_score = (
+                        result_for_test.score - diff.score_diff
+                        if diff.score_diff is not None
+                        else 0.0
+                    )
+                    baseline_tools = (
+                        golden_for_accept.tool_sequence if golden_for_accept else []
+                    )
+                    current_tools = [
+                        str(getattr(s, "tool_name", None) or getattr(s, "step_name", "?"))
+                        for s in (result_for_test.trace.steps or [])
+                    ]
+                    accept_panel = render_smart_accept_suggestion(
+                        test_name=name,
+                        score_improved=(diff.score_diff > 0) if diff.score_diff is not None else False,
+                        tools_changed=bool(diff.tool_diffs),
+                        baseline_tools=baseline_tools,
+                        current_tools=current_tools,
+                        baseline_score=baseline_score,
+                        current_score=result_for_test.score,
+                    )
+                    if accept_panel:
+                        console.print(accept_panel)
 
-            if analysis["has_regressions"]:
+                console.print()
+
+            # Healing summary footer
+            if healing_summary and healing_summary.model_update:
+                mu = healing_summary.model_update
+                if mu.healed_count == mu.affected_count:
+                    console.print(
+                        f"  [green]Model update:[/green] all {mu.affected_count} affected tests healed via retry. "
+                        f"Run [bold]evalview snapshot[/bold] to rebase."
+                    )
+                elif mu.healed_count > 0:
+                    console.print(
+                        f"  [yellow]Model update:[/yellow] {mu.healed_count} of {mu.affected_count} affected tests healed. "
+                        f"{mu.failed_count} still failing \u2014 review before rebasing."
+                    )
+                else:
+                    console.print(
+                        f"  [red]Model update:[/red] broke {mu.failed_count} tests. Review before rebasing."
+                    )
+
+            if healing_summary and healing_summary.results:
+                parts = []
+                if healing_summary.total_healed:
+                    parts.append(f"{healing_summary.total_healed} resolved")
+                if healing_summary.total_proposed:
+                    parts.append(
+                        f"{healing_summary.total_proposed} candidate "
+                        f"variant{'s' if healing_summary.total_proposed != 1 else ''} saved"
+                    )
+                if healing_summary.total_review:
+                    parts.append(
+                        f"{healing_summary.total_review} "
+                        f"need{'s' if healing_summary.total_review == 1 else ''} review"
+                    )
+                if healing_summary.total_blocked:
+                    parts.append(f"{healing_summary.total_blocked} blocked")
+                console.print(f"\n  {', '.join(parts)}.")
+                if effective_all_passed:
+                    console.print("  [green]All detected failures were resolved by bounded retry healing.[/green]")
+                if healing_summary.audit_path:
+                    console.print(f"  [dim]Audit log: {healing_summary.audit_path}[/dim]")
+                console.print()
+
+            if analysis.get("has_unresolved_failures", analysis["has_regressions"]):
                 Celebrations.regression_guidance("See details above")
 
 

@@ -291,6 +291,33 @@ evalview check --statistical 10 --auto-variant
 
 Run N times. Cluster the paths. Save the valid ones. Tests stop being flaky — automatically.
 
+### Auto-Heal — Fix Flakes Without Leaving CI
+
+Model got silently updated? Output drifted? `--heal` retries safe failures, proposes variants for borderline cases, and hard-escalates everything else. Zero human intervention for flakes.
+
+```bash
+evalview check --heal
+```
+
+```
+  ⚠ Model update detected: gpt-5-2025-08-07 → gpt-5.1-2025-11-12 (3 tests affected)
+
+  ✓ login-flow           PASSED
+  ⚡ refund-request       HEALED   retried — non-deterministic drift
+  ⚡ order-lookup         HEALED   retried — model update drift (gpt-5.1-2025-11-12)
+  ◈ billing-dispute      PROPOSED saved candidate variant auto_heal_a1b2 (score 72)
+  ⚠ search-flow          REVIEW   tool removed: web_search
+  ✗ safety-check         BLOCKED  forbidden tool called — cannot heal
+
+  3 resolved, 1 candidate variant saved, 1 needs review, 1 blocked.
+  Model update: 2 of 3 affected tests healed via retry. Run `evalview snapshot` to rebase.
+  Audit log: .evalview/healing/2026-03-25T14-30-00.json
+```
+
+**Decision policy:** Retry when tools match but output drifted (non-determinism or model update). Propose a variant when retry fails but score is acceptable. Never auto-resolve structural changes, forbidden tool violations, cost spikes, or score improvements. Full audit trail in `.evalview/healing/`.
+
+**Exit code:** `0` only when every failure was resolved via retry. Proposed variants, reviews, and blocks always exit `1` — CI stays honest.
+
 <details>
 <summary><strong>Budget circuit breaker + Smart eval profiles</strong></summary>
 
@@ -381,6 +408,7 @@ New regressions trigger Slack alerts. Recoveries send all-clear. No spam on pers
 |---------|-------------|------|
 | **Assertion wizard** | Analyze captured traffic, suggest smart assertions automatically | [Above](#assertion-wizard--tests-from-real-traffic) |
 | **Auto-variant discovery** | Run N times, cluster paths, save valid variants | [Above](#auto-variant-discovery--solve-non-determinism) |
+| **Auto-heal** | Retry flakes, propose variants, escalate structural changes | [Above](#auto-heal--fix-flakes-without-leaving-ci) |
 | **Budget circuit breaker** | Mid-execution budget enforcement with per-test cost breakdown | [Above](#smart-dx) |
 | **Smart eval profiles** | Auto-detect agent type, pre-configure evaluators | [Above](#smart-dx) |
 | **Baseline diffing** | Tool call + parameter + output regression detection | [Docs](docs/GOLDEN_TRACES.md) |

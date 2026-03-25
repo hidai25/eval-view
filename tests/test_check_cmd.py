@@ -257,16 +257,108 @@ def test_check_auto_generates_html_report_on_failures(monkeypatch, tmp_path):
         "evalview.commands.check_cmd._display_check_results",
         lambda *args, **kwargs: None,
     )
+    def _fake_generate_visual_report(**kwargs):
+        called["path"] = kwargs["output_path"]
+        called["healing"] = kwargs.get("healing_summary")
+        called["effective"] = kwargs.get("effective_all_passed")
+        return kwargs["output_path"]
+
     monkeypatch.setattr(
         "evalview.visualization.generate_visual_report",
-        lambda **kwargs: called.setdefault("path", kwargs["output_path"]) or kwargs["output_path"],
+        _fake_generate_visual_report,
     )
 
     result = runner.invoke(check, ["tests"])
 
     assert result.exit_code == 1
     assert called["path"] == ".evalview/latest-check.html"
+    assert called["effective"] is False
     assert "Failure report:" in result.output
+
+
+def test_check_warns_when_heal_leaves_unresolved_but_default_fail_policy_exits_zero(monkeypatch, tmp_path):
+    """`check --heal` should explain zero exit under REGRESSION-only fail policy."""
+    from evalview.commands.check_cmd import check
+    from evalview.core.diff import DiffStatus
+    from evalview.core.golden import GoldenMetadata, GoldenTrace
+    from evalview.core.types import (
+        ContainsChecks,
+        CostEvaluation,
+        EvaluationResult,
+        Evaluations,
+        ExecutionMetrics,
+        ExecutionTrace,
+        LatencyEvaluation,
+        OutputEvaluation,
+        SequenceEvaluation,
+        ToolEvaluation,
+    )
+
+    project = tmp_path
+    monkeypatch.chdir(project)
+    tests_dir = project / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "sample.yaml").write_text(
+        "name: sample\nadapter: http\nendpoint: http://example.com\ninput:\n  query: hi\nexpected:\n  tools: []\nthresholds:\n  min_score: 0\n",
+        encoding="utf-8",
+    )
+
+    now = datetime.now()
+    sample_result = EvaluationResult(
+        test_case="sample",
+        passed=True,
+        score=92.0,
+        evaluations=Evaluations(
+            tool_accuracy=ToolEvaluation(accuracy=1.0),
+            sequence_correctness=SequenceEvaluation(correct=True, expected_sequence=[], actual_sequence=[]),
+            output_quality=OutputEvaluation(
+                score=92.0,
+                rationale="ok",
+                contains_checks=ContainsChecks(),
+                not_contains_checks=ContainsChecks(),
+            ),
+            cost=CostEvaluation(total_cost=0.0, threshold=1.0, passed=True),
+            latency=LatencyEvaluation(total_latency=10.0, threshold=1000.0, passed=True),
+        ),
+        trace=ExecutionTrace(
+            session_id="s1",
+            start_time=now,
+            end_time=now,
+            steps=[],
+            final_output="ok",
+            metrics=ExecutionMetrics(total_cost=0.0, total_latency=10.0),
+            model_id="gpt-4o-mini",
+        ),
+        timestamp=now,
+    )
+
+    class _Diff:
+        overall_severity = DiffStatus.TOOLS_CHANGED
+        score_diff = 2.0
+        tool_diffs = [object()]
+        output_diff = None
+        model_changed = False
+
+    runner = CliRunner()
+    monkeypatch.setattr("evalview.commands.check_cmd._cloud_pull", lambda store: None)
+    monkeypatch.setattr("evalview.commands.check_cmd._load_config_if_exists", lambda: None)
+    monkeypatch.setattr(
+        "evalview.core.golden.GoldenStore.list_golden",
+        lambda self: [GoldenMetadata(test_name="sample", blessed_at="2026-03-13T00:00:00Z", score=95.0)],
+    )
+    monkeypatch.setattr(
+        "evalview.commands.check_cmd._execute_check_tests",
+        lambda test_cases, config, json_output, semantic_diff=False, timeout=30.0, skip_llm_judge=False, budget_tracker=None: ([("sample", _Diff())], [sample_result], None, {"sample": GoldenTrace(metadata=GoldenMetadata(test_name="sample", blessed_at=now, score=95.0, model_id="gpt-4o-mini"), trace=sample_result.trace, tool_sequence=[], output_hash="abc")}),
+    )
+    monkeypatch.setattr("evalview.commands.check_cmd._display_check_results", lambda *args, **kwargs: None)
+    monkeypatch.setattr("evalview.commands.check_cmd._should_auto_generate_report", lambda **kwargs: False)
+    monkeypatch.setattr("evalview.commands.badge_cmd.update_badge_after_check", lambda *args, **kwargs: None)
+
+    result = runner.invoke(check, ["tests", "--heal"])
+
+    assert result.exit_code == 0
+    assert "Unresolved healing review items remain" in result.output
+    assert "--strict or --fail-on REGRESSION,TOOLS_CHANGED,OUTPUT_CHANGED" in result.output
 
 
 def test_check_shows_last_snapshot_timestamp(monkeypatch, tmp_path):

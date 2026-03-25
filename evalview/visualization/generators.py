@@ -430,6 +430,8 @@ def generate_visual_report(
     golden_traces: Optional[Dict[str, Any]] = None,
     judge_usage: Optional[Dict[str, Any]] = None,
     default_tab: Optional[str] = None,
+    healing_summary: Optional[Any] = None,
+    effective_all_passed: Optional[bool] = None,
 ) -> str:
     """Generate a self-contained visual HTML report.
 
@@ -690,6 +692,8 @@ def generate_visual_report(
         compare=compare_data,
         default_tab=default_tab or "overview",
         dashboard=dashboard,
+        healing=healing_summary.model_dump() if healing_summary is not None else None,
+        effective_all_passed=effective_all_passed,
     )
 
     abs_path = os.path.abspath(output_path)
@@ -777,6 +781,7 @@ body{font-family:var(--font);font-size:14px;line-height:1.6;color:var(--text);mi
 .b-green{background:rgba(16,185,129,.12);color:var(--green-bright);border:1px solid rgba(16,185,129,.25)}
 .b-red{background:rgba(239,68,68,.12);color:var(--red-bright);border:1px solid rgba(239,68,68,.25)}
 .b-yellow{background:rgba(245,158,11,.12);color:var(--yellow-bright);border:1px solid rgba(245,158,11,.25)}
+.b-cyan{background:rgba(6,182,212,.12);color:#67e8f9;border:1px solid rgba(6,182,212,.25)}
 
 /* ── Dashboard Gauge ── */
 .health-gauge{display:flex;align-items:center;gap:16px;padding:16px 20px}
@@ -840,6 +845,12 @@ body{font-family:var(--font);font-size:14px;line-height:1.6;color:var(--text);mi
 .meta-label{font-size:10px;font-weight:700;color:var(--text-4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
 .meta-value{font-size:14px;font-weight:700;color:var(--text)}
 .meta-sub{font-size:11px;color:var(--text-4);margin-top:3px}
+.healing-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:12px;margin-bottom:14px}
+@media(max-width:800px){.healing-grid{grid-template-columns:1fr}}
+.healing-list{display:flex;flex-direction:column;gap:8px}
+.healing-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-xs);background:rgba(255,255,255,.02)}
+.healing-name{font-weight:700;font-size:13px;color:var(--text)}
+.healing-reason{font-size:11px;color:var(--text-3);margin-top:3px}
 
 /* ── Chart row ── */
 
@@ -931,6 +942,7 @@ table td,table th{transition:background .1s}
     <div><div class="logo-text">{{ title }}</div><div class="logo-sub">{{ generated_at }}{% if notes %} · {{ notes }}{% endif %}</div></div>
   </div>
   <div class="header-right">
+    {% if effective_all_passed is not none %}{% if effective_all_passed %}<span class="badge b-green">✓ Final Outcome Passing</span>{% else %}<span class="badge b-red">✗ Final Outcome Failing</span>{% endif %}{% endif %}
     {% if kpis %}{% if kpis.failed == 0 %}<span class="badge b-green">✓ All Passing</span>{% else %}<span class="badge b-red">✗ {{ kpis.failed }} Failed</span>{% endif %}<span class="badge b-blue">{{ kpis.total }} Tests</span>{% endif %}
   </div>
 </header>
@@ -1004,6 +1016,55 @@ table td,table th{transition:background .1s}
         <div class="chart-wrap" style="height:{{ [kpis.scores|length * 40 + 24, 120]|max }}px"><canvas id="bars"></canvas></div>
       </div>
       {% endif %}
+    </div>
+    {% endif %}
+    {% if healing %}
+    <div class="healing-grid">
+      <div class="card" style="margin-bottom:0">
+        <div class="card-title">Healing Summary</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+          {% if healing.total_healed %}<span class="badge b-green">⚡ {{ healing.total_healed }} healed</span>{% endif %}
+          {% if healing.total_proposed %}<span class="badge b-cyan">◈ {{ healing.total_proposed }} proposed</span>{% endif %}
+          {% if healing.total_review %}<span class="badge b-yellow">⚠ {{ healing.total_review }} review</span>{% endif %}
+          {% if healing.total_blocked %}<span class="badge b-red">✗ {{ healing.total_blocked }} blocked</span>{% endif %}
+          <span class="badge b-blue">{{ healing.policy_version }}</span>
+        </div>
+        <div class="healing-list">
+          {% for hr in healing.results %}
+          <div class="healing-row">
+            <div>
+              <div class="healing-name">{{ hr.test_name }}</div>
+              <div class="healing-reason">{{ hr.diagnosis.reason }}</div>
+            </div>
+            <div>
+              {% if hr.healed %}<span class="badge b-green">HEALED</span>
+              {% elif hr.proposed %}<span class="badge b-cyan">PROPOSED</span>
+              {% elif hr.diagnosis.action == 'blocked' %}<span class="badge b-red">BLOCKED</span>
+              {% else %}<span class="badge b-yellow">REVIEW</span>{% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:0">
+        <div class="card-title">Healing Policy</div>
+        <div class="meta-label">Attempted</div>
+        <div class="meta-value">{{ healing.attempted_count }}/{{ healing.failed_count }}</div>
+        <div class="meta-sub">{{ healing.unresolved_count }} unresolved after healing</div>
+        {% if healing.thresholds %}
+        <div style="margin-top:12px;font-size:12px;color:var(--text-2);display:flex;flex-direction:column;gap:6px">
+          {% if healing.thresholds.min_variant_score is defined %}<div>Variant score threshold: <b>{{ healing.thresholds.min_variant_score }}</b></div>{% endif %}
+          {% if healing.thresholds.max_auto_variants is defined %}<div>Max auto variants: <b>{{ healing.thresholds.max_auto_variants|int }}</b></div>{% endif %}
+          {% if healing.thresholds.max_cost_multiplier is defined %}<div>Cost guardrail: <b>{{ healing.thresholds.max_cost_multiplier }}x</b></div>{% endif %}
+          {% if healing.thresholds.max_latency_multiplier is defined %}<div>Latency guardrail: <b>{{ healing.thresholds.max_latency_multiplier }}x</b></div>{% endif %}
+        </div>
+        {% endif %}
+        {% if healing.audit_path %}
+        <div style="margin-top:12px;font-size:11px;color:var(--text-3)">
+          Audit log: <code style="background:rgba(255,255,255,.04);padding:2px 6px;border-radius:3px;font-family:var(--mono);font-size:11px;border:1px solid var(--border)">{{ healing.audit_path }}</code>
+        </div>
+        {% endif %}
+      </div>
     </div>
     {% endif %}
     {% if not judge_usage or not judge_usage.call_count %}
@@ -1164,6 +1225,14 @@ table td,table th{transition:background .1s}
       <div class="diff-item">
         <div class="diff-head" style="cursor:pointer" onclick="tog('df{{ loop.index }}',this)">
           {% if d.status == 'regression' %}<span class="badge b-red">⬇ Regression</span>{% elif d.status == 'tools_changed' %}<span class="badge b-yellow">⚠ Tools Changed</span>{% elif d.status == 'output_changed' %}<span class="badge b-purple">~ Output Changed</span>{% else %}<span class="badge b-green">✓ Passed</span>{% endif %}
+          {% if healing %}
+            {% for hr in healing.results if hr.test_name == d.name %}
+              {% if hr.healed %}<span class="badge b-green">⚡ Healed</span>
+              {% elif hr.proposed %}<span class="badge b-cyan">◈ Proposed</span>
+              {% elif hr.diagnosis.action == 'blocked' %}<span class="badge b-red">✗ Blocked</span>
+              {% elif hr.diagnosis.action == 'flag_review' %}<span class="badge b-yellow">⚠ Review</span>{% endif %}
+            {% endfor %}
+          {% endif %}
           <span class="diff-name">{{ d.name }}</span>
           {% if d.actual_score is not none %}<span class="mc" title="Weighted score: tool accuracy (30%) + output quality (50%) + sequence correctness (20%). Baseline → Current." style="color:{% if d.actual_score >= 80 %}var(--green-bright){% elif d.actual_score >= 60 %}var(--yellow-bright){% else %}var(--red-bright){% endif %}">{{ d.baseline_score }} → {{ d.actual_score }}</span>{% endif %}
           {% if d.score_delta != 0 %}<span class="badge {% if d.score_delta > 0 %}b-green{% else %}b-red{% endif %}" title="Score change from baseline snapshot">{% if d.score_delta > 0 %}+{% endif %}{{ d.score_delta }}</span>{% endif %}
@@ -1214,6 +1283,22 @@ table td,table th{transition:background .1s}
             <div>Preview: <code>{{ d.accept_suggestion.preview_command }}</code></div>
           </div>
         </div>
+        {% endif %}
+        {% if healing %}
+          {% for hr in healing.results if hr.test_name == d.name %}
+          <div style="padding:12px 18px;border-top:1px solid var(--border);font-size:12px;color:var(--text-2)">
+            <div class="col-title" style="margin-bottom:8px">Healing Decision</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+              <span class="badge b-blue">{{ hr.diagnosis.trigger }}</span>
+              {% if hr.attempted %}<span class="badge b-blue">retry attempted</span>{% else %}<span class="badge b-yellow">no retry attempted</span>{% endif %}
+              {% if hr.retry_status %}<span class="badge b-blue">retry status: {{ hr.retry_status }}</span>{% endif %}
+            </div>
+            <div>{{ hr.diagnosis.reason }}</div>
+            {% if hr.variant_saved %}
+            <div style="margin-top:6px;color:var(--text-3)">Saved variant: <code style="background:rgba(255,255,255,.04);padding:2px 6px;border-radius:3px;font-family:var(--mono);font-size:11px;border:1px solid var(--border)">{{ hr.variant_saved }}</code></div>
+            {% endif %}
+          </div>
+          {% endfor %}
         {% endif %}
         </div>
       </div>
@@ -1389,4 +1474,3 @@ function togTraj(trigger){const grid=trigger.nextElementSibling;const open=grid.
 
 </body>
 </html>"""
-

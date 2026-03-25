@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from evalview.core.golden import GoldenMetadata, GoldenTrace
+from evalview.core.healing import HealingAction, HealingDiagnosis, HealingResult, HealingSummary, HealingTrigger
 from evalview.core.types import (
     ContainsChecks,
     CostEvaluation,
@@ -273,3 +274,86 @@ def test_visual_report_shows_all_multi_turn_turns_without_tool_steps(tmp_path):
     assert "I need help with a refund." in html
     assert "Please describe the support issue you need help with." in html
     assert "I can help with billing, refunds, and outages." in html
+
+
+def test_visual_report_includes_healing_summary_and_audit_context(tmp_path):
+    now = datetime(2026, 3, 16, 10, 24)
+    trace = ExecutionTrace(
+        session_id="s3",
+        start_time=now,
+        end_time=now,
+        steps=[],
+        final_output="ok",
+        metrics=ExecutionMetrics(total_cost=0.0, total_latency=10.0),
+        model_id="gpt-4o-mini",
+    )
+    result = EvaluationResult(
+        test_case="refund-flow",
+        passed=False,
+        score=72.0,
+        evaluations=Evaluations(
+            tool_accuracy=ToolEvaluation(accuracy=1.0, correct=[]),
+            sequence_correctness=SequenceEvaluation(correct=True, expected_sequence=[], actual_sequence=[]),
+            output_quality=OutputEvaluation(
+                score=72.0,
+                rationale="changed",
+                contains_checks=ContainsChecks(),
+                not_contains_checks=ContainsChecks(),
+            ),
+            cost=CostEvaluation(total_cost=0.0, threshold=1.0, passed=True),
+            latency=LatencyEvaluation(total_latency=10.0, threshold=1000.0, passed=True),
+        ),
+        trace=trace,
+        timestamp=now,
+        input_query="refund",
+        actual_output="ok",
+    )
+    healing = HealingSummary(
+        results=[
+            HealingResult(
+                test_name="refund-flow",
+                original_status="output_changed",
+                diagnosis=HealingDiagnosis(
+                    action=HealingAction.PROPOSE_VARIANT,
+                    trigger=HealingTrigger.NONDETERMINISM,
+                    reason="saved candidate variant auto_heal_abcd (score 72.0)",
+                ),
+                attempted=True,
+                healed=False,
+                proposed=True,
+                final_status="output_changed",
+                retry_score=72.0,
+                retry_status="output_changed",
+                variant_saved="auto_heal_abcd",
+            )
+        ],
+        total_healed=0,
+        total_proposed=1,
+        total_review=0,
+        total_blocked=0,
+        attempted_count=1,
+        unresolved_count=1,
+        failed_count=1,
+        audit_path=".evalview/healing/sample.json",
+        thresholds={
+            "min_variant_score": 70.0,
+            "max_auto_variants": 3.0,
+        },
+    )
+
+    report_path = tmp_path / "report.html"
+    generate_visual_report(
+        results=[result],
+        diffs=[],
+        output_path=str(report_path),
+        auto_open=False,
+        title="EvalView Check Report",
+        healing_summary=healing,
+        effective_all_passed=False,
+    )
+
+    html = report_path.read_text(encoding="utf-8")
+    assert "Healing Summary" in html
+    assert "saved candidate variant auto_heal_abcd" in html
+    assert ".evalview/healing/sample.json" in html
+    assert "Final Outcome Failing" in html
