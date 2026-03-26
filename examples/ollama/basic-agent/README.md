@@ -8,7 +8,7 @@ Test a fully local AI agent using Ollama and EvalView.
 ## Requirements
 
 - [Ollama](https://ollama.com) installed and running
-- Python 3.8+
+- Python 3.9+
 - EvalView installed (`pip install evalview`)
 
 ---

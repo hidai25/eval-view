@@ -1,4 +1,3 @@
-
 # Ollama Integration — Free, Offline AI Agent Testing with EvalView
 
 > Use Ollama with EvalView for completely free, fully offline AI agent testing and evaluation. No API keys needed, no cloud dependencies.

@@ -1,4 +1,3 @@
-#examples\ollama\langgraph-ollama-test.yaml
 # EvalView Test Case: LangGraph Agent with Ollama
 # Tests a local Llama-powered agent with tools
 
