@@ -1,0 +1,20 @@
+name: "Basic Ollama Local Agent Test"
+description: "Test a simple local Ollama agent using --no-judge mode"
+
+adapter: http
+endpoint: http://localhost:8123
+
+input:
+  query: "Say hello"
+
+expected:
+  output:
+    contains:
+      - "hello"
+    not_contains:
+      - "error"
+      - "failed"
+
+thresholds:
+  min_score: 50
+  max_latency: 60000

@@ -1,6 +1,6 @@
 # EvalView Configuration for LangGraph + Ollama
 # Use local Llama model as the LLM-as-judge (free!)
-
+#examples\ollama\.evalview\config.yaml
 adapter: langgraph
 endpoint: http://localhost:2024
 timeout: 90

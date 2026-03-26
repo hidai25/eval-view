@@ -1,0 +1,4 @@
+adapter: http
+endpoint: http://localhost:8123
+timeout: 120
+no_judge: true
