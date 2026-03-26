@@ -139,7 +139,7 @@ def _print_root_cause(root_cause: "RootCauseAnalysis") -> None:
     ))
 
 
-def _print_model_runtime_summary(summary: "ModelRuntimeChangeSummary") -> None:
+def _print_model_runtime_summary(summary: Optional["ModelRuntimeChangeSummary"]) -> None:
     """Print a run-level model/runtime change summary when detected."""
     from rich.panel import Panel
 
@@ -414,7 +414,8 @@ def _display_check_results(
         if is_first_check:
             Celebrations.first_check()
 
-        _print_model_runtime_summary(model_runtime_summary)  # richer replacement for boolean model_changed banner
+        if model_runtime_summary is not None:
+            _print_model_runtime_summary(model_runtime_summary)  # richer replacement for boolean model_changed banner
 
         # Gradual drift warnings
         _drift = drift_tracker if drift_tracker is not None else DriftTracker()

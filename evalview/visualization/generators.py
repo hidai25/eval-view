@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 import webbrowser
 from collections import Counter
 from datetime import datetime
@@ -707,7 +708,9 @@ def generate_visual_report(
         f.write(html)
 
     if auto_open:
-        webbrowser.open_new_tab(Path(abs_path).resolve().as_uri())
+        from pathlib import Path as _Path
+
+        webbrowser.open_new_tab(_Path(abs_path).resolve().as_uri())
 
     return abs_path
 
