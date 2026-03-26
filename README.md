@@ -24,11 +24,11 @@ Your agent returns `200` but silently takes the wrong tool path, skips a clarifi
 **Catches silent model and runtime updates.** EvalView looks for declared model swaps, runtime fingerprint changes, and coordinated drift across tests so you can tell "provider changed something" from "my code broke."
 
 <p align="center">
-  <a href="assets/evalview-demo.mp4">
-    <img src="assets/evalview-demo.gif" alt="Watch the EvalView demo" width="1100">
-  </a>
+  <video src="assets/evalview-demo.mp4" controls muted playsinline preload="metadata" width="1100">
+    <a href="assets/evalview-demo.mp4">Watch the EvalView demo</a>
+  </video>
   <br>
-  <strong>30-second live demo.</strong> Click the preview to watch the full recording.
+  <strong>30-second live demo.</strong> If the inline player does not render, open the <a href="assets/evalview-demo.mp4">MP4 directly</a>.
 </p>
 
 ```
