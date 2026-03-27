@@ -211,7 +211,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: hidai25/eval-view@v0.5.1
+      - uses: hidai25/eval-view@v0.6.0
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           command: check

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-03-27
+
+### Added
+- **Auto-heal engine** — `evalview check --heal` automatically retries flaky tests, distinguishes non-determinism from real regressions, and self-heals output drift
+- **Model change detection** — detects when the underlying model has changed and adjusts evaluation accordingly
+
 ## [0.5.5] - 2026-03-25
 
 ### Added
