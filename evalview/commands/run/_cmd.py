@@ -65,6 +65,7 @@ def _display_no_agent_guide(endpoint: Optional[str] = None) -> None:
 @click.argument("path", required=False, default=None)
 @click.option("--pattern", default="*.yaml", help="Test case file pattern (default: *.yaml)")
 @click.option("--test", "-t", multiple=True, help="Specific test name(s) to run (can specify multiple: -t test1 -t test2)")
+@click.option("--tag", "tags", multiple=True, help="Run only tests tagged with this behavior (repeatable).")
 @click.option("--filter", "-f", help="Filter tests by name pattern (e.g., 'LangGraph*', '*simple*')")
 @click.option("--output", default=".evalview/results", help="Output directory for results")
 @click.option("--verbose/--no-verbose", default=True, help="Verbose output with full test details (default: enabled)")
@@ -112,6 +113,7 @@ def run(
     path: Optional[str],
     pattern: str,
     test: tuple,
+    tags: tuple,
     filter: str,
     output: str,
     verbose: bool,
@@ -167,6 +169,7 @@ def run(
 
     asyncio.run(_run_async(
         path=path, pattern=pattern, test=test, filter=filter, output=output,
+        tags=tags,
         verbose=verbose, track=track, compare_baseline=compare_baseline, debug=debug,
         sequential=sequential, max_workers=max_workers, max_retries=max_retries,
         retry_delay=retry_delay, watch=watch, html_report=html_report,
@@ -186,6 +189,7 @@ async def _run_async(
     path: Optional[str],
     pattern: str,
     test: tuple,
+    tags: tuple,
     filter: str,
     output: str,
     verbose: bool,
@@ -565,6 +569,13 @@ async def _run_async(
             return
         if verbose:
             console.print(f"[dim]🎯 Filtered to {len(test_cases)}/{original} tests with difficulty: {difficulty_filter}[/dim]\n")
+
+    test_cases, active_tags = _filter_by_tags(test_cases, tags)
+    if active_tags and not test_cases:
+        console.print(f"[yellow]⚠️  No test cases matched tags: {', '.join(active_tags)}[/yellow]")
+        return
+    if verbose and active_tags:
+        console.print(f"[dim]🏷️  Filtered to behavior tags: {', '.join(active_tags)}[/dim]\n")
 
     # ── Filter: quality check ─────────────────────────────────────────────────
     test_cases = _apply_quality_filter(test_cases, console)
@@ -1071,6 +1082,26 @@ def _filter_by_name(
     if verbose:
         console.print(f"[dim]Filtered {original_count} → {len(filtered)} test(s)[/dim]\n")
     return filtered
+
+
+def _filter_by_tags(
+    test_cases: List[Any],
+    tags: tuple,
+) -> tuple[List[Any], list[str]]:
+    active_tags: list[str] = []
+    for tag in tags:
+        value = str(tag).strip().lower()
+        if value and value not in active_tags:
+            active_tags.append(value)
+
+    if not active_tags:
+        return test_cases, []
+
+    filtered = [
+        tc for tc in test_cases
+        if set(getattr(tc, "tags", []) or []).intersection(active_tags)
+    ]
+    return filtered, active_tags
 
 
 async def _run_watch_mode(

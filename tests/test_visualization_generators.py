@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from evalview.core.diff import DiffStatus, OutputDiff, TraceDiff
 from evalview.core.golden import GoldenMetadata, GoldenTrace
 from evalview.core.healing import HealingAction, HealingDiagnosis, HealingResult, HealingSummary, HealingTrigger
 from evalview.core.types import (
@@ -357,3 +358,72 @@ def test_visual_report_includes_healing_summary_and_audit_context(tmp_path):
     assert "saved candidate variant auto_heal_abcd" in html
     assert ".evalview/healing/sample.json" in html
     assert "Final Outcome Failing" in html
+
+
+def test_visual_report_shows_behavior_summary_tags_and_root_cause(tmp_path):
+    now = datetime(2026, 3, 16, 10, 24)
+    trace = ExecutionTrace(
+        session_id="s4",
+        start_time=now,
+        end_time=now,
+        steps=[],
+        final_output="Changed answer",
+        metrics=ExecutionMetrics(total_cost=0.0, total_latency=10.0),
+        model_id="gpt-4o-mini",
+    )
+    result = EvaluationResult(
+        test_case="refund-flow",
+        passed=False,
+        score=72.0,
+        evaluations=Evaluations(
+            tool_accuracy=ToolEvaluation(accuracy=1.0, correct=[]),
+            sequence_correctness=SequenceEvaluation(correct=True, expected_sequence=[], actual_sequence=[]),
+            output_quality=OutputEvaluation(
+                score=72.0,
+                rationale="changed",
+                contains_checks=ContainsChecks(),
+                not_contains_checks=ContainsChecks(),
+            ),
+            cost=CostEvaluation(total_cost=0.0, threshold=1.0, passed=True),
+            latency=LatencyEvaluation(total_latency=10.0, threshold=1000.0, passed=True),
+        ),
+        trace=trace,
+        timestamp=now,
+        input_query="refund",
+        actual_output="Changed answer",
+    )
+    diff = TraceDiff(
+        test_name="refund-flow",
+        has_differences=True,
+        tool_diffs=[],
+        output_diff=OutputDiff(
+            similarity=0.42,
+            golden_preview="Refunds take 5 days.",
+            actual_preview="Refunds take 30 days.",
+            diff_lines=["-Refunds take 5 days.", "+Refunds take 30 days."],
+            severity=DiffStatus.OUTPUT_CHANGED,
+            semantic_similarity=0.61,
+        ),
+        score_diff=-18.0,
+        latency_diff=0.0,
+        overall_severity=DiffStatus.OUTPUT_CHANGED,
+    )
+
+    report_path = tmp_path / "report.html"
+    generate_visual_report(
+        results=[result],
+        diffs=[diff],
+        output_path=str(report_path),
+        auto_open=False,
+        title="EvalView Check Report",
+        test_metadata={"refund-flow": {"tags": ["tool_use", "clarification"]}},
+        active_tags=["tool_use"],
+    )
+
+    html = report_path.read_text(encoding="utf-8")
+    assert "Behavior Summary" in html
+    assert "Filtered by tags" in html
+    assert "tool_use" in html
+    assert "clarification" in html
+    assert "Why This Changed" in html
+    assert "Same tools and parameters but output changed" in html

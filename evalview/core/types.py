@@ -207,6 +207,13 @@ class TestCase(BaseModel):
         description="Task difficulty: 'trivial', 'easy', 'medium', 'hard', or 'expert'"
     )
 
+    # Optional: behavior tags used for focused runs and grouped reporting.
+    # Examples: tool_use, retrieval, clarification, multi_step
+    tags: List[str] = Field(
+        default_factory=list,
+        description="Behavior tags for filtering and grouped reporting."
+    )
+
     # Set to True by evalview init auto-generation. Never set by users.
     # Enables strict quality gating — generated tests with bad queries are
     # skipped before running so they don't pollute agent scores.
@@ -287,6 +294,29 @@ class TestCase(BaseModel):
                 f"adapter must be either None or one of: {', '.join(allowed)}"
             )
         return v
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def normalize_tags(cls, v: Any) -> List[str]:
+        if v is None:
+            return []
+        if isinstance(v, str):
+            values = [v]
+        elif isinstance(v, list):
+            values = v
+        else:
+            raise ValueError("tags must be a list of strings")
+
+        normalized: List[str] = []
+        for item in values:
+            if not isinstance(item, str):
+                raise ValueError("tags must contain only strings")
+            tag = item.strip().lower()
+            if not tag:
+                continue
+            normalized.append(tag)
+
+        return sorted(set(normalized))
 
 # --- Execution Trace Types ---
 

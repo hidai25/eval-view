@@ -104,6 +104,49 @@ adapter_config:
         assert test_case.endpoint == "http://localhost:8000"
         assert test_case.adapter_config == {"streaming": True, "timeout": 60.0}
 
+    def test_load_normalizes_tags(self, tmp_path):
+        """Behavior tags should be normalized for filtering and reporting."""
+        yaml_content = """
+name: tagged_test
+tags:
+  - Tool_Use
+  - retrieval
+  - tool_use
+  - "  Clarification  "
+input:
+  query: test query
+expected:
+  tools: []
+thresholds:
+  min_score: 70.0
+"""
+        file_path = tmp_path / "tagged_test.yaml"
+        file_path.write_text(yaml_content)
+
+        test_case = TestCaseLoader.load_from_file(file_path)
+
+        assert test_case.tags == ["clarification", "retrieval", "tool_use"]
+
+    def test_load_rejects_non_string_tags(self, tmp_path):
+        """Tags must be string values."""
+        yaml_content = """
+name: tagged_test
+tags:
+  - tool_use
+  - 123
+input:
+  query: test query
+expected:
+  tools: []
+thresholds:
+  min_score: 70.0
+"""
+        file_path = tmp_path / "bad_tags.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(ValidationError):
+            TestCaseLoader.load_from_file(file_path)
+
     def test_load_empty_file(self, tmp_path):
         """Test loading an empty YAML file."""
         empty_file = tmp_path / "empty.yaml"

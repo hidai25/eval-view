@@ -262,8 +262,11 @@ def _diff_rows(
     diffs: List["TraceDiff"],
     golden_traces: Optional[Dict[str, Any]] = None,
     actual_results: Optional[Dict[str, Any]] = None,
+    test_metadata: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     rows = []
+    from evalview.core.root_cause import analyze_root_cause
+
     for d in diffs:
         status = str(getattr(d, "overall_severity", "passed")).lower().replace("diffstatus.", "")
         output_diff = getattr(d, "output_diff", None)
@@ -329,6 +332,9 @@ def _diff_rows(
         if actual_results and test_name in actual_results:
             actual_score = round(getattr(actual_results[test_name], "score", 0), 1)
         baseline_score = round(actual_score - score_delta, 1) if actual_score is not None else None
+        root_cause = analyze_root_cause(d)
+        meta = (test_metadata or {}).get(test_name, {})
+        tags = list(meta.get("tags") or [])
 
         # Confidence scoring from drift history
         confidence_pct = None
@@ -379,8 +385,69 @@ def _diff_rows(
             "runtime_fingerprint_changed": bool(getattr(d, "runtime_fingerprint_changed", False)),
             "golden_runtime_fingerprint": getattr(d, "golden_runtime_fingerprint", None),
             "actual_runtime_fingerprint": getattr(d, "actual_runtime_fingerprint", None),
+            "tags": tags,
+            "root_cause_summary": getattr(root_cause, "summary", ""),
+            "root_cause_category": getattr(getattr(root_cause, "category", None), "value", ""),
+            "root_cause_fix": getattr(root_cause, "suggested_fix", None),
         })
     return rows
+
+
+def _behavior_summary(
+    results: List["EvaluationResult"],
+    diff_rows: List[Dict[str, Any]],
+    test_metadata: Optional[Dict[str, Dict[str, Any]]] = None,
+    healing_summary: Optional[Any] = None,
+) -> List[Dict[str, Any]]:
+    rows_by_name = {row["name"]: row for row in diff_rows}
+    heal_by_name: Dict[str, Any] = {}
+    if healing_summary is not None:
+        heal_by_name = {r.test_name: r for r in healing_summary.results}
+
+    summary: Dict[str, Dict[str, int]] = {}
+
+    def _bucket(tag: str) -> Dict[str, int]:
+        if tag not in summary:
+            summary[tag] = {
+                "total": 0,
+                "passed": 0,
+                "changed": 0,
+                "regressions": 0,
+                "healed": 0,
+                "review": 0,
+                "blocked": 0,
+            }
+        return summary[tag]
+
+    for result in results:
+        name = result.test_case
+        meta = (test_metadata or {}).get(name, {})
+        tags = list(meta.get("tags") or []) or ["untagged"]
+        diff_row = rows_by_name.get(name)
+        heal_result = heal_by_name.get(name)
+        status = diff_row["status"] if diff_row else ("passed" if result.passed else "regression")
+
+        for tag in tags:
+            row = _bucket(tag)
+            row["total"] += 1
+            if status == "passed":
+                row["passed"] += 1
+            elif status == "regression":
+                row["regressions"] += 1
+            else:
+                row["changed"] += 1
+
+            if heal_result:
+                action = getattr(getattr(heal_result, "diagnosis", None), "action", None)
+                action_value = getattr(action, "value", action)
+                if heal_result.healed:
+                    row["healed"] += 1
+                elif action_value == "flag_review":
+                    row["review"] += 1
+                elif action_value == "blocked":
+                    row["blocked"] += 1
+
+    return [{"tag": tag, **counts} for tag, counts in sorted(summary.items(), key=lambda item: item[0])]
 
 
 # ── Timeline helpers ───────────────────────────────────────────────────────────
@@ -438,6 +505,8 @@ def generate_visual_report(
     healing_summary: Optional[Any] = None,
     model_runtime_summary: Optional[Any] = None,
     effective_all_passed: Optional[bool] = None,
+    test_metadata: Optional[Dict[str, Dict[str, Any]]] = None,
+    active_tags: Optional[List[str]] = None,
 ) -> str:
     """Generate a self-contained visual HTML report.
 
@@ -601,6 +670,7 @@ def generate_visual_report(
 
         traces.append({
             "name": r.test_case,
+            "tags": list(((test_metadata or {}).get(r.test_case, {})).get("tags") or []),
             "diagram": _mermaid_trace(r) if has_steps else "",
             "has_steps": has_steps,
             "passed": r.passed,
@@ -630,8 +700,9 @@ def generate_visual_report(
             "output_rationale": output_rationale,
         })
     actual_results_dict = {r.test_case: r for r in results}
-    diff_rows = _diff_rows(diffs or [], golden_traces, actual_results_dict)
+    diff_rows = _diff_rows(diffs or [], golden_traces, actual_results_dict, test_metadata)
     timeline = _timeline_data(results)
+    behavior_summary = _behavior_summary(results, diff_rows, test_metadata, healing_summary)
 
     # Build comparison data if multiple runs provided
     compare_data = None
@@ -698,6 +769,8 @@ def generate_visual_report(
         compare=compare_data,
         default_tab=default_tab or "overview",
         dashboard=dashboard,
+        behavior_summary=behavior_summary,
+        active_tags=active_tags or [],
         healing=healing_summary.model_dump() if healing_summary is not None else None,
         model_runtime=model_runtime_summary.model_dump() if model_runtime_summary is not None else None,
         effective_all_passed=effective_all_passed,
@@ -1027,6 +1100,12 @@ table td,table th{transition:background .1s}
       {% endif %}
     </div>
     {% endif %}
+    {% if active_tags %}
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px 2px">
+      <span class="badge b-blue">Filtered by tags</span>
+      {% for tag in active_tags %}<span class="badge b-cyan">{{ tag }}</span>{% endfor %}
+    </div>
+    {% endif %}
     {% if healing %}
     <div class="healing-grid">
       <div class="card" style="margin-bottom:0">
@@ -1101,6 +1180,26 @@ table td,table th{transition:background .1s}
         {% endfor %}
       </div>
       {% endif %}
+    </div>
+    {% endif %}
+    {% if behavior_summary %}
+    <div class="card">
+      <div class="card-title">Behavior Summary</div>
+      <table class="ev-table">
+        <thead><tr><th>Behavior</th><th>Total</th><th>Passed</th><th>Changed</th><th>Regressions</th><th>Healed</th></tr></thead>
+        <tbody>
+          {% for row in behavior_summary %}
+          <tr>
+            <td style="font-weight:700">{{ row.tag }}</td>
+            <td class="mono num">{{ row.total }}</td>
+            <td class="mono num" style="color:var(--green-bright)">{{ row.passed }}</td>
+            <td class="mono num" style="color:var(--yellow-bright)">{{ row.changed }}</td>
+            <td class="mono num" style="color:var(--red-bright)">{{ row.regressions }}</td>
+            <td class="mono num" style="color:var(--blue-bright)">{{ row.healed }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
     {% endif %}
     {% if not judge_usage or not judge_usage.call_count %}
@@ -1180,6 +1279,7 @@ table td,table th{transition:background .1s}
           <span class="badge {% if t.passed %}b-green{% else %}b-red{% endif %}">{% if t.passed %}✓{% else %}✗{% endif %}</span>
           <span class="item-name">{{ t.name }}</span>
           <div class="item-meta">
+            {% for tag in t.tags %}<span class="badge b-blue">{{ tag }}</span>{% endfor %}
             <span class="mc" style="color:{% if t.score >= 80 %}var(--green-bright){% elif t.score >= 60 %}var(--yellow-bright){% else %}var(--red-bright){% endif %}">{{ t.score }}/100</span>
             {% if t.cost != "$0" %}<span class="mc">💰 {{ t.cost }}</span>{% endif %}
             <span class="mc">⚡ {{ t.latency }}</span>
@@ -1270,6 +1370,7 @@ table td,table th{transition:background .1s}
             {% endfor %}
           {% endif %}
           {% if d.model_changed %}<span class="badge b-red">Model ID changed</span>{% elif d.runtime_fingerprint_changed %}<span class="badge b-yellow">Runtime fingerprint changed</span>{% endif %}
+          {% for tag in d.tags %}<span class="badge b-blue">{{ tag }}</span>{% endfor %}
           <span class="diff-name">{{ d.name }}</span>
           {% if d.actual_score is not none %}<span class="mc" title="Weighted score: tool accuracy (30%) + output quality (50%) + sequence correctness (20%). Baseline → Current." style="color:{% if d.actual_score >= 80 %}var(--green-bright){% elif d.actual_score >= 60 %}var(--yellow-bright){% else %}var(--red-bright){% endif %}">{{ d.baseline_score }} → {{ d.actual_score }}</span>{% endif %}
           {% if d.score_delta != 0 %}<span class="badge {% if d.score_delta > 0 %}b-green{% else %}b-red{% endif %}" title="Score change from baseline snapshot">{% if d.score_delta > 0 %}+{% endif %}{{ d.score_delta }}</span>{% endif %}
@@ -1290,6 +1391,16 @@ table td,table th{transition:background .1s}
           <span class="mono" style="color:var(--text-3)">{{ d.golden_runtime_fingerprint }}</span>
           <span style="color:var(--text-4)"> → </span>
           <span class="mono" style="color:var(--text)">{{ d.actual_runtime_fingerprint }}</span>
+        </div>
+        {% endif %}
+        {% if d.root_cause_summary %}
+        <div style="padding:12px 18px;border-top:1px solid var(--border);font-size:12px;color:var(--text-2)">
+          <div class="col-title" style="margin-bottom:6px">Why This Changed</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+            {% if d.root_cause_category %}<span class="badge b-yellow">{{ d.root_cause_category }}</span>{% endif %}
+          </div>
+          <div>{{ d.root_cause_summary }}</div>
+          {% if d.root_cause_fix %}<div style="margin-top:6px;color:var(--text-3)">Suggested fix: {{ d.root_cause_fix }}</div>{% endif %}
         </div>
         {% endif %}
         <div class="diff-cols">

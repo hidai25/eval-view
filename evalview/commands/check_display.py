@@ -139,6 +139,84 @@ def _print_root_cause(root_cause: "RootCauseAnalysis") -> None:
     ))
 
 
+def _build_behavior_summary(
+    diffs: List[Tuple[str, "TraceDiff"]],
+    test_metadata: Optional[Dict[str, Dict[str, Any]]] = None,
+    healing_summary: Optional["HealingSummary"] = None,
+) -> List[Dict[str, Any]]:
+    from collections import defaultdict
+    from evalview.core.diff import DiffStatus
+    from evalview.core.healing import HealingAction
+
+    heal_by_name: Dict[str, Any] = {}
+    if healing_summary:
+        heal_by_name = {r.test_name: r for r in healing_summary.results}
+
+    grouped: Dict[str, Dict[str, int]] = defaultdict(
+        lambda: {
+            "total": 0,
+            "passed": 0,
+            "changed": 0,
+            "regressions": 0,
+            "healed": 0,
+            "review": 0,
+            "blocked": 0,
+        }
+    )
+
+    for name, diff in diffs:
+        meta = (test_metadata or {}).get(name, {})
+        tags = list(meta.get("tags") or [])
+        buckets = tags or ["untagged"]
+        heal_result = heal_by_name.get(name)
+
+        for tag in buckets:
+            row = grouped[tag]
+            row["total"] += 1
+            if diff.overall_severity == DiffStatus.PASSED:
+                row["passed"] += 1
+            elif diff.overall_severity == DiffStatus.REGRESSION:
+                row["regressions"] += 1
+            else:
+                row["changed"] += 1
+
+            if heal_result:
+                if heal_result.healed:
+                    row["healed"] += 1
+                elif heal_result.diagnosis.action == HealingAction.FLAG_REVIEW:
+                    row["review"] += 1
+                elif heal_result.diagnosis.action == HealingAction.BLOCKED:
+                    row["blocked"] += 1
+
+    return [
+        {"tag": tag, **counts}
+        for tag, counts in sorted(grouped.items(), key=lambda item: item[0])
+    ]
+
+
+def _print_behavior_summary(summary_rows: List[Dict[str, Any]]) -> None:
+    if not summary_rows:
+        return
+
+    console.print("  [bold]By behavior:[/bold]")
+    for row in summary_rows:
+        parts = [f"{row['total']} test{'s' if row['total'] != 1 else ''}"]
+        if row["passed"]:
+            parts.append(f"{row['passed']} passed")
+        if row["changed"]:
+            parts.append(f"{row['changed']} changed")
+        if row["regressions"]:
+            parts.append(f"{row['regressions']} regression{'s' if row['regressions'] != 1 else ''}")
+        if row["healed"]:
+            parts.append(f"{row['healed']} healed")
+        if row["review"]:
+            parts.append(f"{row['review']} review")
+        if row["blocked"]:
+            parts.append(f"{row['blocked']} blocked")
+        console.print(f"  - {row['tag']}: {', '.join(parts)}")
+    console.print()
+
+
 def _print_model_runtime_summary(summary: Optional["ModelRuntimeChangeSummary"]) -> None:
     """Print a run-level model/runtime change summary when detected."""
     from rich.panel import Panel
@@ -278,6 +356,7 @@ def _display_check_results(
     for name, diff in diffs:
         rc = _ai_rc.get(name) or analyze_root_cause(diff)
         root_cause_by_name[name] = rc
+    behavior_summary = _build_behavior_summary(diffs, test_metadata, healing_summary)
 
     if json_output:
         output = {
@@ -362,6 +441,8 @@ def _display_check_results(
             }
         if model_runtime_summary:
             output["model_runtime"] = model_runtime_summary.model_dump()
+        if behavior_summary:
+            output["behavior_summary"] = behavior_summary
         print(json.dumps(output, indent=2))
     else:
         # Console output with personality
@@ -536,6 +617,9 @@ def _display_check_results(
                     console.print(f"{severity_icon}: {name}{score_part}{confidence_str}")
 
                 meta = (test_metadata or {}).get(name, {})
+                tags = list(meta.get("tags") or [])
+                if tags:
+                    console.print(f"    [dim]Tags:[/dim] {', '.join(tags)}")
                 if meta.get("is_multi_turn"):
                     behavior_class = str(meta.get("behavior_class") or "multi_turn").replace("_", " ")
                     console.print(f"    [dim]Multi-turn path:[/dim] {behavior_class}")
@@ -657,6 +741,8 @@ def _display_check_results(
                 if healing_summary.audit_path:
                     console.print(f"  [dim]Audit log: {healing_summary.audit_path}[/dim]")
                 console.print()
+
+            _print_behavior_summary(behavior_summary)
 
             if analysis.get("has_unresolved_failures", analysis["has_regressions"]):
                 Celebrations.regression_guidance("See details above")

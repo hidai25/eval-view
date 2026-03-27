@@ -106,6 +106,26 @@ def _summarize_check_targets(test_cases: List[Any], config: Any) -> tuple[list[s
     return endpoints, adapters
 
 
+def _normalize_requested_tags(tags: tuple[str, ...]) -> list[str]:
+    normalized: list[str] = []
+    for tag in tags:
+        value = str(tag).strip().lower()
+        if value and value not in normalized:
+            normalized.append(value)
+    return normalized
+
+
+def _filter_test_cases_by_tags(test_cases: List[Any], requested_tags: tuple[str, ...]) -> tuple[List[Any], list[str]]:
+    active_tags = _normalize_requested_tags(requested_tags)
+    if not active_tags:
+        return test_cases, []
+    filtered = [
+        tc for tc in test_cases
+        if set(getattr(tc, "tags", []) or []).intersection(active_tags)
+    ]
+    return filtered, active_tags
+
+
 def _print_check_failure_guidance(test_cases: List[Any], config: Any) -> None:
     endpoints, adapters = _summarize_check_targets(test_cases, config)
     if len(endpoints) > 1 or len(adapters) > 1:
@@ -221,6 +241,7 @@ def _print_baseline_context(goldens: List[Any], state: Any) -> None:
 @click.command("check")
 @click.argument("test_path", default="tests", type=click.Path(exists=True))
 @click.option("--test", "-t", help="Check only this specific test")
+@click.option("--tag", "tags", multiple=True, help="Check only tests tagged with this behavior (repeatable).")
 @click.option("--json", "json_output", is_flag=True, help="Output JSON for CI")
 @click.option("--fail-on", help="Comma-separated statuses to fail on (default: REGRESSION)")
 @click.option("--strict", is_flag=True, help="Fail on any change (REGRESSION, TOOLS_CHANGED, OUTPUT_CHANGED)")
@@ -245,7 +266,7 @@ def _print_baseline_context(goldens: List[Any], state: Any) -> None:
 @click.option("--judge", "judge_model", default=None, help="Judge model for scoring (e.g. gpt-5.4-mini, sonnet, deepseek-chat).")
 @click.option("--heal", "heal_mode", is_flag=True, default=False, help="Auto-retry flaky failures, propose candidate variants. Never touches forbidden tools.")
 @track_command("check")
-def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bool, report_path: Optional[str], csv_path: Optional[str], semantic_diff: Optional[bool], budget: Optional[float], timeout: float, dry_run: bool, ai_root_cause: bool, statistical_runs: Optional[int], auto_variant: bool, judge_model: Optional[str], heal_mode: bool):
+def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, fail_on: str, strict: bool, report_path: Optional[str], csv_path: Optional[str], semantic_diff: Optional[bool], budget: Optional[float], timeout: float, dry_run: bool, ai_root_cause: bool, statistical_runs: Optional[int], auto_variant: bool, judge_model: Optional[str], heal_mode: bool):
     """Check current behavior against snapshot baseline.
 
     This command runs tests and compares them against your saved baselines,
@@ -256,6 +277,7 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
     Examples:
         evalview check                                   # Check all tests
         evalview check --test "my-test"                  # Check one test
+        evalview check --tag tool_use --tag retrieval    # Check one behavior slice
         evalview check --json                            # JSON output for CI
         evalview check --csv results.csv                 # Export results to CSV
         evalview check --report report.html              # Generate HTML report
@@ -329,10 +351,16 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
             console.print(f"[red]❌ No test found with name: {test}[/red]\n")
             sys.exit(1)
 
+    test_cases, active_tags = _filter_test_cases_by_tags(test_cases, tags)
+    if active_tags and not test_cases:
+        console.print(f"[red]❌ No tests matched tags: {', '.join(active_tags)}[/red]\n")
+        sys.exit(1)
+
     test_metadata = {
         tc.name: {
             "is_multi_turn": bool(getattr(tc, "is_multi_turn", False)),
             "behavior_class": (tc.meta or {}).get("behavior_class"),
+            "tags": list(getattr(tc, "tags", []) or []),
         }
         for tc in test_cases
     }
@@ -382,6 +410,8 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
         tests_with_baselines = sum(1 for tc in test_cases if tc.name in golden_names)
         if not json_output:
             console.print(f"  Tests:          {len(test_cases)}")
+            if active_tags:
+                console.print(f"  Tags:           {', '.join(active_tags)}")
             console.print(f"  With baselines: {tests_with_baselines}")
             console.print(f"  API calls:      ~{len(test_cases)} (agent) + ~{len(test_cases)} (judge)")
             if budget is not None:
@@ -811,12 +841,14 @@ def check(test_path: str, test: str, json_output: bool, fail_on: str, strict: bo
             golden_traces=golden_traces,
             judge_usage=_judge_usage_summary(),
             output_path=effective_report_path,
-            auto_open=not json_output,
+            auto_open=not json_output and not bool(__import__("os").environ.get("CI")),
             title="EvalView Check Report",
             default_tab=tab,
             healing_summary=healing_summary,
             model_runtime_summary=model_runtime_summary,
             effective_all_passed=analysis["effective_all_passed"],
+            test_metadata=test_metadata,
+            active_tags=active_tags,
         )
         if not json_output:
             if auto_report:

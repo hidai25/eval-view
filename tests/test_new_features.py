@@ -522,6 +522,16 @@ class TestCLIOptions:
         opts = self._get_option_names(run)
         assert "--dry-run" in opts
 
+    def test_run_has_tag_option(self):
+        from evalview.commands.run._cmd import run
+        opts = self._get_option_names(run)
+        assert "--tag" in opts
+
+    def test_check_has_tag_option(self):
+        from evalview.commands.check_cmd import check
+        opts = self._get_option_names(check)
+        assert "--tag" in opts
+
     def test_run_judge_cache_defaults_true(self):
         """--judge-cache / --no-judge-cache defaults to True."""
         from evalview.commands.run._cmd import run

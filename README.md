@@ -4,7 +4,7 @@
 <p align="center">
   <img src="assets/logo.png" alt="EvalView" width="350">
   <br>
-  <strong>The open-source regression gate for AI agents.</strong><br>
+  <strong>The open-source behavior regression gate for AI agents.</strong><br>
   Think Playwright, but for tool-calling and multi-turn AI agents.
 </p>
 
