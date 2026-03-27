@@ -19,19 +19,19 @@
 
 ---
 
-Your agent can still return `200` and be wrong. A model update can change tool choice, skip a clarification, or degrade output quality without breaking basic tests. **EvalView surfaces those silent regressions.**
+Your agent can still return `200` and be wrong. A model or provider update can change tool choice, skip a clarification, or degrade output quality without changing your code or breaking a health check. **EvalView catches those silent regressions before users do.**
 
-**It tracks behavior drift across outputs, tools, model IDs, and runtime fingerprints, so you can tell "the provider changed" from "my system regressed."**
+**Traditional tests tell you if your agent is up. EvalView tells you if it still behaves correctly.** It tracks drift across outputs, tools, model IDs, and runtime fingerprints, so you can tell "the provider changed" from "my system regressed."
 
 [demo.mp4](https://github.com/user-attachments/assets/96d8b5f7-3561-44a1-86a4-270fb0d1d8a6)
 
 **30-second live demo.**
 
-Most eval tools report changes. EvalView helps you classify them, inspect them, and recover the boring ones safely.
+Most eval tools stop at detect and compare. EvalView helps you classify changes, inspect drift, and auto-heal the safe cases.
 
-- Detect silent regressions in outputs, tool usage, and runtime behavior
+- Catch silent regressions that normal tests miss
 - Separate provider/model drift from real system regressions
-- Auto-heal flaky failures with bounded retries, review gates, and audit logs
+- Auto-heal flaky failures with retries, review gates, and audit logs
 
 ```
   ✓ login-flow           PASSED
