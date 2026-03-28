@@ -12,7 +12,7 @@ EvalView is an open-source testing and regression detection framework for AI age
 - License: Apache 2.0 (free and open source)
 - Language: Python 3.9+
 - Install: `pip install evalview`
-- Version: 0.6.0
+- Version: 0.6.1
 - Author: EvalView Team (hidai@evalview.com)
 
 ## Links

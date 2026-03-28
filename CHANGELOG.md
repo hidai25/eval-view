@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-03-29
+
+### Added
+- **Full MCP feature parity** — all CLI flags now exposed via MCP: heal, strict, ai_root_cause, statistical, auto_variant, budget, dry_run, tag, fail_on, timeout, report, judge on run_check; variant, preview, reset on run_snapshot; new compare_agents and replay tools
+- **MCP server regression tests** — 33 test cases covering protocol, schema contracts, flag wiring, routing, timeouts, and error handling
+
+### Fixed
+- MCP run_check subprocess path now forces `--json` for stable response contract
+- MCP server sets `CI=1` to prevent `--report` from opening browser
+- MCP replay timeout increased from 30s to 120s
+- MCP subprocess calls use `stdin=DEVNULL` to prevent hangs
+
 ## [0.6.0] - 2026-03-27
 
 ### Added

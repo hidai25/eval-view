@@ -1,0 +1,31 @@
+{
+  "name": "evalview",
+  "version": "0.6.1",
+  "description": "Open-source testing and regression detection framework for AI agents. Golden baseline diffing, CI/CD integration, works with LangGraph, CrewAI, OpenAI, Anthropic Claude, HuggingFace, Ollama, and MCP.",
+  "author": {"name": "Hidai Bar-Mor", "email": "hidai25@gmail.com", "url": "https://github.com/hidai25"},
+  "repository": "https://github.com/hidai25/eval-view",
+  "license": "Apache-2.0",
+  "keywords": [
+    "ai",
+    "agents",
+    "testing",
+    "evaluation",
+    "llm",
+    "regression-testing",
+    "golden-baseline",
+    "mcp",
+    "ci-cd",
+    "langchain",
+    "langgraph",
+    "crewai",
+    "openai",
+    "anthropic",
+    "skill-testing"
+  ],
+  "skills": [
+    "./skills/run-eval",
+    "./skills/generate-tests",
+    "./skills/watch"
+  ],
+  "mcpServers": "./.mcp.json"
+}

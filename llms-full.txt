@@ -10,7 +10,7 @@
 - License: Apache 2.0 (free and open source)
 - Language: Python 3.9+
 - Install: `pip install evalview`
-- Version: 0.6.0
+- Version: 0.6.1
 - Author: EvalView Team (hidai@evalview.com)
 - Repository: https://github.com/hidai25/eval-view
 - Homepage: https://evalview.com
@@ -178,7 +178,7 @@ evalview capture --agent http://localhost:8000/invoke --multi-turn
 - Confidence intervals: 95% CI on mean scores
 
 ### CI/CD Integration
-- GitHub Action: `hidai25/eval-view@v0.6.0`
+- GitHub Action: `hidai25/eval-view@v0.6.1`
 - Exit codes: 0 (pass), 1 (fail), 2 (error)
 - PR comments: Auto-comment with regression diff, cost spikes, model changes
 - GitHub Actions job summary: Results visible in Actions UI
