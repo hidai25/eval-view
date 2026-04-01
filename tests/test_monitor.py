@@ -1,4 +1,4 @@
-"""Tests for the monitor command and Slack notifier."""
+"""Tests for the monitor command and webhook notifiers."""
 
 import asyncio
 import json
@@ -13,10 +13,12 @@ import yaml
 from evalview.commands.monitor_cmd import (
     MonitorError,
     _append_history,
+    _resolve_discord_webhook,
     _resolve_slack_webhook,
     _run_monitor_loop,
     _sleep_interruptible,
 )
+from evalview.core.discord_notifier import DiscordNotifier
 from evalview.core.diff import DiffStatus
 from evalview.core.slack_notifier import SlackNotifier
 
@@ -139,6 +141,40 @@ class TestResolveSlackWebhook:
         assert result == "https://env-url"
 
 
+class TestResolveDiscordWebhook:
+    """Test webhook URL priority: CLI flag > config > env var."""
+
+    def test_cli_flag_wins(self):
+        config = MagicMock()
+        config.get_monitor_config.return_value.discord_webhook = "https://config-url"
+        result = _resolve_discord_webhook("https://cli-url", config)
+        assert result == "https://cli-url"
+
+    def test_config_wins_over_env(self, monkeypatch):
+        monkeypatch.setenv("EVALVIEW_DISCORD_WEBHOOK", "https://env-url")
+        config = MagicMock()
+        config.get_monitor_config.return_value.discord_webhook = "https://config-url"
+        result = _resolve_discord_webhook(None, config)
+        assert result == "https://config-url"
+
+    def test_env_var_fallback(self, monkeypatch):
+        monkeypatch.setenv("EVALVIEW_DISCORD_WEBHOOK", "https://env-url")
+        result = _resolve_discord_webhook(None, None)
+        assert result == "https://env-url"
+
+    def test_returns_none_when_nothing_set(self, monkeypatch):
+        monkeypatch.delenv("EVALVIEW_DISCORD_WEBHOOK", raising=False)
+        result = _resolve_discord_webhook(None, None)
+        assert result is None
+
+    def test_config_with_no_webhook_falls_through(self, monkeypatch):
+        monkeypatch.setenv("EVALVIEW_DISCORD_WEBHOOK", "https://env-url")
+        config = MagicMock()
+        config.get_monitor_config.return_value.discord_webhook = None
+        result = _resolve_discord_webhook(None, config)
+        assert result == "https://env-url"
+
+
 # ---------------------------------------------------------------------------
 # MonitorError on missing prerequisites
 # ---------------------------------------------------------------------------
@@ -157,6 +193,7 @@ class TestMonitorPrerequisites:
                 test_path="tests",
                 interval=10,
                 slack_webhook=None,
+                discord_webhook=None,
                 fail_on="REGRESSION",
                 timeout=30.0,
                 test_filter=None,
@@ -173,6 +210,7 @@ class TestMonitorPrerequisites:
                 test_path="tests",
                 interval=10,
                 slack_webhook=None,
+                discord_webhook=None,
                 fail_on="REGRESSION",
                 timeout=30.0,
                 test_filter="nonexistent-test",
@@ -302,6 +340,96 @@ class TestSlackNotifier:
         assert result is False
 
 
+class TestDiscordNotifier:
+    """Test Discord notification formatting and delivery."""
+
+    def test_regression_alert_includes_test_names(self):
+        notifier = DiscordNotifier("https://discord.com/api/webhooks/test")
+
+        diff_reg = _make_diff("REGRESSION", score_diff=-15.0)
+        diff_tool = _make_diff("TOOLS_CHANGED")
+        diffs = [("auth-flow", diff_reg), ("search-api", diff_tool)]
+        analysis = {"has_regressions": True, "has_tools_changed": True}
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_resp = MagicMock()
+            mock_resp.raise_for_status = MagicMock()
+            mock_client.post = AsyncMock(return_value=mock_resp)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            result = asyncio.run(notifier.send_regression_alert(diffs, analysis))
+
+        assert result is True
+        call_args = mock_client.post.call_args
+        payload = call_args.kwargs.get("json") or call_args[1].get("json")
+        assert "auth-flow" in payload["content"]
+        assert "search-api" in payload["content"]
+        assert "REGRESSION" in payload["content"]
+
+    def test_regression_alert_handles_none_score_diff(self):
+        notifier = DiscordNotifier("https://discord.com/api/webhooks/test")
+
+        diff = _make_diff("REGRESSION")
+        diff.score_diff = None
+        diffs = [("my-test", diff)]
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_resp = MagicMock()
+            mock_resp.raise_for_status = MagicMock()
+            mock_client.post = AsyncMock(return_value=mock_resp)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            result = asyncio.run(notifier.send_regression_alert(diffs, {}))
+
+        assert result is True
+
+    def test_recovery_alert_message(self):
+        notifier = DiscordNotifier("https://discord.com/api/webhooks/test")
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_resp = MagicMock()
+            mock_resp.raise_for_status = MagicMock()
+            mock_client.post = AsyncMock(return_value=mock_resp)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            result = asyncio.run(notifier.send_recovery_alert(5))
+
+        assert result is True
+        call_args = mock_client.post.call_args
+        payload = call_args.kwargs.get("json") or call_args[1].get("json")
+        assert "All Clear" in payload["content"]
+        assert "5" in payload["content"]
+
+    def test_empty_diffs_returns_true(self):
+        notifier = DiscordNotifier("https://discord.com/api/webhooks/test")
+        diff = _make_diff("PASSED")
+        result = asyncio.run(notifier.send_regression_alert([("ok", diff)], {}))
+        assert result is True
+
+    def test_network_failure_returns_false(self):
+        notifier = DiscordNotifier("https://discord.com/api/webhooks/test")
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(side_effect=Exception("Network down"))
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            result = asyncio.run(notifier.send_recovery_alert(3))
+
+        assert result is False
+
+
 # ---------------------------------------------------------------------------
 # MonitorConfig
 # ---------------------------------------------------------------------------
@@ -314,6 +442,7 @@ class TestMonitorConfig:
         cfg = MonitorConfig()
         assert cfg.interval == 300
         assert cfg.slack_webhook is None
+        assert cfg.discord_webhook is None
         assert cfg.fail_on == ["REGRESSION"]
         assert cfg.timeout == 30.0
 

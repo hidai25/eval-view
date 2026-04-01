@@ -163,6 +163,7 @@ class MonitorConfig(BaseModel):
         monitor:
           interval: 300
           slack_webhook: https://hooks.slack.com/services/...
+          discord_webhook: https://discord.com/api/webhooks/...
           fail_on: [REGRESSION]
           timeout: 60
     """
@@ -175,6 +176,10 @@ class MonitorConfig(BaseModel):
     slack_webhook: Optional[str] = Field(
         default=None,
         description="Slack incoming webhook URL for regression alerts"
+    )
+    discord_webhook: Optional[str] = Field(
+        default=None,
+        description="Discord webhook URL for regression alerts"
     )
     fail_on: list = Field(
         default=["REGRESSION"],

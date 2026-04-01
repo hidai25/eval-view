@@ -95,7 +95,7 @@ def main(ctx: click.Context) -> None:
     \b
     Production:
       watch                   Re-run checks on file change (local dev)
-      monitor                 Continuous regression detection (+ Slack alerts)
+      monitor                 Continuous regression detection (+ Slack/Discord alerts)
 
     \b
     CI/CD:

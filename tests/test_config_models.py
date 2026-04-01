@@ -141,6 +141,7 @@ class TestMonitorConfig:
         c = MonitorConfig()
         assert c.interval == 300
         assert c.slack_webhook is None
+        assert c.discord_webhook is None
         assert c.fail_on == ["REGRESSION"]
         assert c.timeout == 30.0
 
