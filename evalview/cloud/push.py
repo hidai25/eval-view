@@ -31,9 +31,9 @@ def _get_api_token() -> Optional[str]:
     if token:
         return token
     try:
-        from evalview.core.config import load_config
-        config = load_config()
-        return getattr(getattr(config, "cloud", None), "api_token", None)
+        from evalview.commands.shared import _load_config_if_exists
+        config = _load_config_if_exists()
+        return getattr(getattr(config, "cloud", None), "api_token", None) if config else None
     except Exception:
         return None
 
