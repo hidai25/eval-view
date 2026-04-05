@@ -1,4 +1,18 @@
 """CLI entry point for EvalView — thin orchestrator that wires command modules."""
+import sys as _sys
+
+# Windows terminals default to cp1252, which can't encode Unicode box-drawing
+# characters and emojis used by Rich. Reconfigure stdout/stderr to UTF-8 with
+# errors='replace' so unrenderable characters become '?' instead of crashing.
+if _sys.platform == "win32":
+    try:
+        if hasattr(_sys.stdout, "reconfigure"):
+            _sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        if hasattr(_sys.stderr, "reconfigure"):
+            _sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 from importlib.metadata import version as _pkg_version, PackageNotFoundError
 
 try:
