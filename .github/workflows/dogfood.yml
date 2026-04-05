@@ -112,12 +112,16 @@ jobs:
         cp dogfood/mock-agent-tests/config.yaml .evalview/config.yaml
 
         # Create golden baselines from the deterministic mock agent first.
-        # The mock agent always returns identical responses, so snapshot is stable.
-        uv run evalview snapshot dogfood/mock-agent-tests/ 2>&1 || true
+        # --no-judge: mock-agent tests use explicit output checks, no LLM scoring needed.
+        set -x
+        uv run evalview snapshot --path dogfood/mock-agent-tests/ --no-judge 2>&1 | tee snapshot-output.txt
+        SNAPSHOT_EXIT=$?
+        set +x
+        echo "snapshot exit code: $SNAPSHOT_EXIT"
 
         # Check correct-behavior tests against golden baselines.
         # Capture exit code before tee — piping to tee would overwrite it with tee's exit code (0).
-        uv run evalview check dogfood/mock-agent-tests/ --fail-on REGRESSION --json \
+        uv run evalview check dogfood/mock-agent-tests/ --fail-on REGRESSION --no-judge --json \
           > regression-output.txt 2>&1
         EXIT_CODE=$?
         cat regression-output.txt
@@ -147,22 +151,37 @@ jobs:
         mkdir -p .evalview
         cp dogfood/config.yaml .evalview/config.yaml
 
-        # Start dogfood agent in background
-        uv run python dogfood/agent.py &
+        # Start dogfood agent in background, capturing its logs
+        uv run python dogfood/agent.py > dogfood-agent.log 2>&1 &
         AGENT_PID=$!
 
         # Wait for agent to be ready
+        AGENT_READY=false
         for i in {1..30}; do
           if curl -s http://localhost:8001/health > /dev/null 2>&1; then
-            echo "Dogfood agent ready"
+            echo "Dogfood agent ready after ${i}s"
+            AGENT_READY=true
             break
           fi
           sleep 1
         done
 
+        if [ "$AGENT_READY" = "false" ]; then
+          echo "Dogfood agent failed to start. Agent log:"
+          cat dogfood-agent.log
+          echo "exit_code=1" >> $GITHUB_OUTPUT
+          kill $AGENT_PID 2>/dev/null || true
+          exit 0
+        fi
+
         # Run dogfood tests
-        uv run evalview run dogfood/test-cases/ --sequential 2>&1 | tee dogfood-output.txt
+        uv run evalview run dogfood/test-cases/ --sequential --timeout 120 2>&1 | tee dogfood-output.txt
         EXIT_CODE=${PIPESTATUS[0]}
+
+        # Append agent log to output so failures are visible in the issue
+        echo "" >> dogfood-output.txt
+        echo "--- Agent log ---" >> dogfood-output.txt
+        cat dogfood-agent.log >> dogfood-output.txt
 
         # Cleanup
         kill $AGENT_PID 2>/dev/null || true
@@ -237,6 +256,16 @@ jobs:
               body += '```\n' + truncated + '\n```\n\n';
             } catch (e) {
               body += `Could not read output file.\n\n`;
+            }
+            // For regression failures, also include the snapshot log
+            if (check === 'regression') {
+              try {
+                const snapshotLog = fs.readFileSync('snapshot-output.txt', 'utf8');
+                const truncated = snapshotLog.length > 2000
+                  ? snapshotLog.slice(-2000) + '\n...(truncated)'
+                  : snapshotLog;
+                body += `**Snapshot log:**\n\`\`\`\n${truncated}\n\`\`\`\n\n`;
+              } catch (e) {}
             }
           }
 
