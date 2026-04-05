@@ -148,7 +148,7 @@ async def _call_openai(
         raise ImportError("Install openai: pip install openai")
 
     client = AsyncOpenAI()
-    messages: List[Dict[str, str]] = []
+    messages: List[Any] = []
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": query})
