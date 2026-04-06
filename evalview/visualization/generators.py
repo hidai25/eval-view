@@ -452,6 +452,66 @@ def _behavior_summary(
 
 # ── Timeline helpers ───────────────────────────────────────────────────────────
 
+def _compute_adapter_compare(results: List["EvaluationResult"]) -> Dict[str, Any]:
+    """Auto-detect multi-adapter runs and build cross-model comparison data.
+
+    Returns a dict with ``enabled=True`` only when ≥2 distinct adapter names
+    share at least one task name, so the Compare tab only appears when useful.
+    """
+    from collections import defaultdict
+
+    by_task: Dict[str, Dict[str, Dict]] = defaultdict(dict)
+    for r in results:
+        adapter = r.adapter_name or "unknown"
+        task = r.test_case
+        cost = 0.0
+        latency = 0.0
+        try:
+            cost = r.trace.metrics.total_cost or 0.0
+            latency = r.trace.metrics.total_latency or 0.0
+        except AttributeError:
+            pass
+        by_task[task][adapter] = {
+            "score": round(r.score, 1),
+            "passed": r.passed,
+            "latency_ms": latency,
+            "tool_accuracy": round(r.evaluations.tool_accuracy.accuracy * 100, 1),
+            "cost": cost,
+        }
+
+    all_adapters: List[str] = list(dict.fromkeys(r.adapter_name or "unknown" for r in results))
+    all_tasks: List[str] = list(dict.fromkeys(r.test_case for r in results))
+    tasks_shared = [t for t in all_tasks if len(by_task[t]) >= 2]
+    enabled = len(all_adapters) >= 2 and len(tasks_shared) >= 1
+
+    # Pre-compute per-adapter totals
+    totals: Dict[str, Dict[str, Any]] = {}
+    for adapter in all_adapters:
+        cells = [by_task[t][adapter] for t in all_tasks if adapter in by_task[t]]
+        if cells:
+            avg_score = round(sum(c["score"] for c in cells) / len(cells), 1)
+            avg_lat_s = round(sum(c["latency_ms"] for c in cells) / len(cells) / 1000, 1)
+            total_cost = sum(c["cost"] for c in cells)
+            passes = sum(1 for c in cells if c["passed"])
+            cost_display = "free" if total_cost == 0.0 else f"${total_cost:.3f}"
+        else:
+            avg_score, avg_lat_s, cost_display, passes = "—", "—", "—", 0
+        totals[adapter] = {
+            "avg_score": avg_score,
+            "avg_lat_s": avg_lat_s,
+            "cost_display": cost_display,
+            "pass_rate": f"{passes}/{len(cells)}" if cells else "—",
+        }
+
+    return {
+        "enabled": enabled,
+        "adapters": all_adapters,
+        "tasks": all_tasks,
+        "rows": {task: by_task[task] for task in all_tasks},
+        "totals": totals,
+    }
+
+
 def _timeline_data(results: List["EvaluationResult"]) -> List[Dict[str, Any]]:
     rows = []
     for r in results:
@@ -703,6 +763,7 @@ def generate_visual_report(
     diff_rows = _diff_rows(diffs or [], golden_traces, actual_results_dict, test_metadata)
     timeline = _timeline_data(results)
     behavior_summary = _behavior_summary(results, diff_rows, test_metadata, healing_summary)
+    adapter_compare = _compute_adapter_compare(results)
 
     # Build comparison data if multiple runs provided
     compare_data = None
@@ -770,6 +831,7 @@ def generate_visual_report(
         default_tab=default_tab or "overview",
         dashboard=dashboard,
         behavior_summary=behavior_summary,
+        adapter_compare=adapter_compare,
         active_tags=active_tags or [],
         healing=healing_summary.model_dump() if healing_summary is not None else None,
         model_runtime=model_runtime_summary.model_dump() if model_runtime_summary is not None else None,
@@ -1035,6 +1097,7 @@ table td,table th{transition:background .1s}
     <button class="tab {% if default_tab == 'trace' %}on{% endif %}" onclick="show('trace',this)">Execution Trace</button>
     {% if diff_rows %}<button class="tab {% if default_tab == 'diffs' %}on{% endif %}" onclick="show('diffs',this)">Diffs</button>{% endif %}
     <button class="tab {% if default_tab == 'timeline' %}on{% endif %}" onclick="show('timeline',this)">Timeline</button>
+    {% if adapter_compare and adapter_compare.enabled %}<button class="tab {% if default_tab == 'adapter-compare' %}on{% endif %}" onclick="show('adapter-compare',this)">Compare <span style="font-size:10px;opacity:.7;margin-left:3px">{{ adapter_compare.adapters|length }} models</span></button>{% endif %}
     {% if compare %}<button class="tab" onclick="show('compare',this)">Compare Runs</button>{% endif %}
   </div>
 
@@ -1497,7 +1560,87 @@ table td,table th{transition:background .1s}
     {% else %}<div class="empty"><span class="empty-icon">⏱</span>No step timing data</div>{% endif %}
   </div>
 
-  <!-- ═══════════ COMPARE ═══════════ -->
+  <!-- ═══════════ ADAPTER COMPARE ═══════════ -->
+  {% if adapter_compare and adapter_compare.enabled %}
+  <div id="p-adapter-compare" class="panel {% if default_tab == 'adapter-compare' %}on{% endif %}">
+    <div class="card">
+      <div class="card-title">Model Comparison &mdash; {{ adapter_compare.adapters|length }} models &times; {{ adapter_compare.tasks|length }} tasks</div>
+      <table class="ev-table">
+        <thead>
+          <tr>
+            <th style="width:160px">Task</th>
+            {% for adapter in adapter_compare.adapters %}
+            <th colspan="3" style="text-align:center;border-left:1px solid var(--border);color:var(--text-2);padding:8px 10px">{{ adapter }}</th>
+            {% endfor %}
+          </tr>
+          <tr>
+            <th></th>
+            {% for adapter in adapter_compare.adapters %}
+            <th style="text-align:center;border-left:1px solid var(--border);font-size:9px">Score</th>
+            <th style="text-align:center;font-size:9px">Latency</th>
+            <th style="text-align:center;font-size:9px">Tools</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for task in adapter_compare.tasks %}
+          {% set row = adapter_compare.rows[task] %}
+          <tr>
+            <td class="mono">{{ task }}</td>
+            {% for adapter in adapter_compare.adapters %}
+            {% if adapter in row %}
+            {% set cell = row[adapter] %}
+            <td style="text-align:center;border-left:1px solid var(--border)">
+              <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;
+                background:{% if cell.score >= 80 %}rgba(16,185,129,.18){% elif cell.score >= 60 %}rgba(245,158,11,.18){% else %}rgba(239,68,68,.18){% endif %};
+                color:{% if cell.score >= 80 %}var(--green-bright){% elif cell.score >= 60 %}var(--yellow-bright){% else %}var(--red-bright){% endif %}">
+                {{ cell.score }}{% if not cell.passed %} ✗{% endif %}
+              </span>
+            </td>
+            <td style="text-align:center;color:var(--text-3);font-size:12px">{{ (cell.latency_ms / 1000)|round(1) }}s</td>
+            <td style="text-align:center;color:var(--text-3);font-size:12px">{{ cell.tool_accuracy|round|int }}%</td>
+            {% else %}
+            <td colspan="3" style="text-align:center;color:var(--text-4);border-left:1px solid var(--border)">—</td>
+            {% endif %}
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr style="border-top:1px solid var(--border)">
+            <td style="color:var(--text-3);font-size:11px;font-weight:600">Avg Score</td>
+            {% for adapter in adapter_compare.adapters %}
+            <td colspan="3" style="text-align:center;font-weight:700;font-size:13px;border-left:1px solid var(--border);
+              color:{% set s = adapter_compare.totals[adapter].avg_score %}{% if s != '—' and s >= 80 %}var(--green-bright){% elif s != '—' and s >= 60 %}var(--yellow-bright){% elif s != '—' %}var(--red-bright){% else %}var(--text-3){% endif %}">
+              {{ adapter_compare.totals[adapter].avg_score }}
+            </td>
+            {% endfor %}
+          </tr>
+          <tr>
+            <td style="color:var(--text-4);font-size:11px">Avg Latency</td>
+            {% for adapter in adapter_compare.adapters %}
+            <td colspan="3" style="text-align:center;color:var(--text-3);font-size:12px;border-left:1px solid var(--border)">{{ adapter_compare.totals[adapter].avg_lat_s }}s</td>
+            {% endfor %}
+          </tr>
+          <tr>
+            <td style="color:var(--text-4);font-size:11px">Pass Rate</td>
+            {% for adapter in adapter_compare.adapters %}
+            <td colspan="3" style="text-align:center;color:var(--text-3);font-size:12px;border-left:1px solid var(--border)">{{ adapter_compare.totals[adapter].pass_rate }}</td>
+            {% endfor %}
+          </tr>
+          <tr>
+            <td style="color:var(--text-4);font-size:11px">Total Cost</td>
+            {% for adapter in adapter_compare.adapters %}
+            <td colspan="3" style="text-align:center;color:var(--text-3);font-size:12px;border-left:1px solid var(--border)">{{ adapter_compare.totals[adapter].cost_display }}</td>
+            {% endfor %}
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ═══════════ COMPARE RUNS ═══════════ -->
   {% if compare %}
   <div id="p-compare" class="panel">
     <div class="card"><div class="card-title">Pass Rate Across Runs</div><div class="chart-wrap" style="height:220px"><canvas id="cmpPassRate"></canvas></div></div>
@@ -1509,7 +1652,8 @@ table td,table th{transition:background .1s}
           <div style="font-size:11px;color:var(--text-4);margin-top:2px">{{ run.passed }}/{{ run.total }} · avg {{ run.avg_score }}/100</div>
         </td>{% endfor %}</tr></tbody></table>
     </div>
-  </div>{% endif %}
+  </div>
+  {% endif %}
 </main>
 
 <script>

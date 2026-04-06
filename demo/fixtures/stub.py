@@ -17,7 +17,15 @@ def group_by_key(items: List[Dict], key: str) -> Dict[str, List[Dict]]:
         >>> group_by_key(items, "type")
         {'a': [{'type': 'a', 'v': 1}, {'type': 'a', 'v': 3}], 'b': [{'type': 'b', 'v': 2}]}
     """
-    pass
+    result: Dict[str, List[Dict]] = {}
+    for item in items:
+        if key not in item:
+            continue
+        group = item[key]
+        if group not in result:
+            result[group] = []
+        result[group].append(item)
+    return result
 
 
 if __name__ == "__main__":

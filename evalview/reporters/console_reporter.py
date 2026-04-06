@@ -250,11 +250,15 @@ class ConsoleReporter:
                 row.append(suite_display)
             if has_difficulty:
                 row.append(difficulty_display)
+            _free_adapters = {"opencode", "goose", "ollama"}
+            _is_local = (result.adapter_name or "").lower() in _free_adapters
+            _cost = result.trace.metrics.total_cost
+            cost_display = "[dim]free[/dim]" if _is_local and _cost == 0.0 else f"${_cost:.4f}"
             row.extend([
                 adapter_display,
                 f"[{score_color}]{result.score:.1f}[/{score_color}]",
                 status,
-                f"${result.trace.metrics.total_cost:.4f}",
+                cost_display,
                 f"{result.trace.metrics.total_latency:.0f}ms",
             ])
 

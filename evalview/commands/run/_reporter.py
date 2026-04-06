@@ -278,15 +278,14 @@ def display_html_reports(
     """Generate optional HTML results report and/or HTML diff report."""
     if html_report and results:
         try:
-            from evalview.reporters.html_reporter import HTMLReporter
+            from evalview.visualization import generate_visual_report
 
-            html_path = HTMLReporter().generate(results, html_report)
+            html_path = generate_visual_report(results, output_path=html_report, auto_open=False)
             console.print("\n[bold green]📊 HTML Report Generated![/bold green]")
             console.print(f"   [link=file://{Path(html_path).absolute()}]{html_path}[/link]")
             console.print(f"   [dim]Open in browser: open {html_path}[/dim]\n")
-        except ImportError as exc:
-            console.print(f"[yellow]⚠️  Could not generate HTML report: {exc}[/yellow]")
-            console.print("[dim]Install with: pip install jinja2 plotly[/dim]\n")
+        except Exception as exc:
+            console.print(f"[yellow]⚠️  Could not generate HTML report: {exc}[/yellow]\n")
 
     if diff_report and results:
         if not diff_enabled:

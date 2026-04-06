@@ -709,9 +709,12 @@ async def _run_async(
     if results:
         total_cost = sum(r.trace.metrics.total_cost for r in results)
         total_api_calls = sum(len(r.trace.steps) for r in results)
+        _free_adapters = {"opencode", "goose", "ollama"}
+        all_local = all((r.adapter_name or "").lower() in _free_adapters for r in results)
+        cost_str = "free (local)" if all_local and total_cost == 0.0 else f"${total_cost:.4f}"
         console.print(
-            f"  [dim]💰 {len(results)} tests, {total_api_calls} API calls, "
-            f"${total_cost:.4f} total[/dim]"
+            f"  [dim]💰 {len(results)} tests, {total_api_calls} tool calls, "
+            f"{cost_str} total[/dim]"
         )
         if budget is not None and total_cost > budget:
             console.print(

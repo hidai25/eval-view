@@ -1,0 +1,1480 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EvalView: Sonnet vs Gemma vs Qwen3-Coder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --green:#10b981;--green-bright:#34d399;
+  --red:#ef4444;--red-bright:#f87171;
+  --yellow:#f59e0b;--yellow-bright:#fbbf24;
+  --blue:#2563eb;--blue-bright:#3b82f6;
+  --teal:#0d9488;--teal-bright:#14b8a6;
+  --cyan:#06b6d4;
+  --bg:#060b18;--bg-card:rgba(12,20,36,.75);
+  --border:rgba(51,65,85,.45);--border-light:rgba(71,85,105,.5);
+  --text:#f1f5f9;--text-2:#94a3b8;--text-3:#64748b;--text-4:#475569;
+  --r:16px;--r-sm:12px;--r-xs:8px;
+  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --mono:'JetBrains Mono','Fira Code','SF Mono',monospace;
+}
+html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+body{font-family:var(--font);font-size:14px;line-height:1.6;color:var(--text);min-height:100vh;overflow-x:hidden;background:var(--bg)}
+
+/* ── Header ── */
+.header{
+  position:sticky;top:0;z-index:200;
+  background:rgba(6,11,24,.85);border-bottom:1px solid var(--border);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  padding:0 40px;height:52px;display:flex;align-items:center;justify-content:space-between;
+}
+.logo{display:flex;align-items:center;gap:10px}
+.logo-icon{width:28px;height:28px;border-radius:7px;flex-shrink:0;background:linear-gradient(135deg,var(--blue-bright),var(--teal));display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 2px 10px rgba(37,99,235,.2)}
+.logo-text{font-size:14px;font-weight:700;letter-spacing:-.02em;color:var(--text)}
+.logo-sub{font-size:10px;color:var(--text-4);font-weight:400}
+.header-right{display:flex;align-items:center;gap:6px}
+
+/* ── Badges ── */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
+.b-green{background:rgba(16,185,129,.12);color:var(--green-bright);border:1px solid rgba(16,185,129,.25)}
+.b-red{background:rgba(239,68,68,.12);color:var(--red-bright);border:1px solid rgba(239,68,68,.25)}
+.b-yellow{background:rgba(245,158,11,.12);color:var(--yellow-bright);border:1px solid rgba(245,158,11,.25)}
+.b-cyan{background:rgba(6,182,212,.12);color:#67e8f9;border:1px solid rgba(6,182,212,.25)}
+
+/* ── Dashboard Gauge ── */
+.health-gauge{display:flex;align-items:center;gap:16px;padding:16px 20px}
+.gauge-ring{position:relative;width:80px;height:80px;flex-shrink:0}
+.gauge-ring svg{transform:rotate(-90deg)}
+.gauge-ring .gauge-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;letter-spacing:-.02em}
+.gauge-stats{display:flex;flex-direction:column;gap:4px}
+.gauge-stat{font-size:12px;display:flex;align-items:center;gap:6px}
+.gauge-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.confidence-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;margin-left:8px}
+.conf-high{background:rgba(239,68,68,.15);color:var(--red-bright);border:1px solid rgba(239,68,68,.2)}
+.conf-medium{background:rgba(245,158,11,.15);color:var(--yellow-bright);border:1px solid rgba(245,158,11,.2)}
+.conf-low{background:rgba(100,116,139,.15);color:var(--text-3);border:1px solid rgba(100,116,139,.2)}
+.conf-insufficient{background:rgba(100,116,139,.08);color:var(--text-4);border:1px solid rgba(100,116,139,.15)}
+.accept-box{margin:8px 18px 12px;padding:12px 16px;border-radius:var(--r-xs);border:1px solid rgba(16,185,129,.25);background:rgba(16,185,129,.06)}
+.accept-box.neutral{border-color:rgba(245,158,11,.25);background:rgba(245,158,11,.06)}
+.accept-box code{background:rgba(255,255,255,.06);padding:3px 8px;border-radius:4px;font-family:var(--mono);font-size:11px;border:1px solid var(--border);user-select:all}
+.b-blue{background:rgba(37,99,235,.12);color:var(--blue-bright);border:1px solid rgba(37,99,235,.25)}
+.b-purple{background:rgba(13,148,136,.12);color:var(--teal-bright);border:1px solid rgba(13,148,136,.25)}
+
+/* ── Layout ── */
+.main{max-width:1160px;margin:0 auto;padding:28px 36px 80px;position:relative;z-index:1}
+
+/* ── Tabs ── */
+.tabbar{display:flex;gap:0;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-sm);padding:3px;margin-bottom:28px}
+.tab{flex:1;text-align:center;background:none;border:none;color:var(--text-4);cursor:pointer;font:600 12px/1 var(--font);padding:10px 12px;border-radius:9px;transition:all .15s}
+.tab:hover{color:var(--text-2);background:rgba(255,255,255,.03)}
+.tab.on{color:#fff;background:rgba(37,99,235,.18);border:1px solid rgba(37,99,235,.3)}
+.panel{display:none}.panel.on{display:block}
+
+/* ══════════════════════════════════════════════
+   KPI STRIP — compact horizontal bar
+   ══════════════════════════════════════════════ */
+.kpi-strip{
+  display:flex;align-items:center;gap:0;
+  background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);
+  overflow:hidden;margin-bottom:14px;padding:10px 0;flex-wrap:wrap;
+}
+.kpi-item{
+  display:flex;align-items:center;gap:8px;padding:4px 20px;
+  border-right:1px solid var(--border);white-space:nowrap;
+}
+.kpi-item:last-child{border-right:none}
+.kpi-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.kpi-dot.green{background:var(--green);box-shadow:0 0 6px rgba(16,185,129,.4)}
+.kpi-dot.yellow{background:var(--yellow);box-shadow:0 0 6px rgba(245,158,11,.4)}
+.kpi-dot.red{background:var(--red);box-shadow:0 0 6px rgba(239,68,68,.4)}
+.kpi-val{font-size:13px;font-weight:700;color:var(--text)}
+.kpi-label{font-size:11px;color:var(--text-3);font-weight:500}
+
+/* ── Card ── */
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:20px 22px;margin-bottom:14px;position:relative;overflow:hidden}
+.card-title{font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px;display:flex;align-items:center;gap:7px}
+.card-title::before{content:'';width:3px;height:11px;border-radius:2px;background:var(--blue-bright)}
+.chart-wrap{position:relative}
+
+/* ── Meta row ── */
+.meta-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+@media(max-width:800px){.meta-row{grid-template-columns:1fr}}
+.meta-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px 18px}
+.meta-label{font-size:10px;font-weight:700;color:var(--text-4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
+.meta-value{font-size:14px;font-weight:700;color:var(--text)}
+.meta-sub{font-size:11px;color:var(--text-4);margin-top:3px}
+.healing-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:12px;margin-bottom:14px}
+@media(max-width:800px){.healing-grid{grid-template-columns:1fr}}
+.healing-list{display:flex;flex-direction:column;gap:8px}
+.healing-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-xs);background:rgba(255,255,255,.02)}
+.healing-name{font-weight:700;font-size:13px;color:var(--text)}
+.healing-reason{font-size:11px;color:var(--text-3);margin-top:3px}
+
+/* ── Chart row ── */
+
+/* ── Trace items ── */
+.item{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);margin-bottom:8px;overflow:hidden;transition:border-color .15s}
+.item:hover{border-color:var(--border-light)}
+.item-head{padding:12px 18px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:background .1s}
+.item-head:hover{background:rgba(255,255,255,.015)}
+.item-name{font-weight:700;font-size:14px;flex:1;letter-spacing:-.02em}
+.item-meta{display:flex;align-items:center;gap:5px;flex-shrink:0;flex-wrap:wrap}
+.mc{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.035);font-size:10px;font-weight:500;color:var(--text-3);white-space:nowrap}
+.chevron{color:var(--text);font-size:18px;transition:transform .2s;flex-shrink:0;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;background:rgba(255,255,255,.05);border:1px solid var(--border)}
+.item-head:hover .chevron{background:rgba(255,255,255,.08);border-color:var(--border-light)}
+details[open] .turn-chevron{transform:rotate(90deg)}
+.item-body{padding:18px;border-top:1px solid var(--border);background:rgba(0,0,0,.12)}
+.mermaid-box{background:rgba(0,0,0,.18);border:1px solid rgba(51,65,85,.35);border-radius:var(--r-sm);padding:14px 14px;overflow-x:auto;min-height:120px}
+.mermaid-box svg{min-width:400px;max-width:100%;height:auto;display:block;margin:0 auto}
+.mermaid-box .mermaid{min-width:500px}
+.mermaid-box line.actor-line{stroke-dasharray:4 4;stroke:rgba(100,116,139,.15) !important}
+
+/* ── Chat turns ── */
+.chat-container{margin-top:16px;padding:14px;background:rgba(0,0,0,.1);border:1px solid rgba(51,65,85,.25);border-radius:var(--r-sm)}
+.chat-header{font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid rgba(51,65,85,.25)}
+.chat-messages{display:flex;flex-direction:column;gap:3px}
+.chat-bubble{max-width:78%;padding:9px 13px;font-size:13px;line-height:1.5;border-radius:12px}
+.chat-bubble.user{align-self:flex-end;background:rgba(37,99,235,.1);border:1px solid rgba(37,99,235,.18);color:var(--text);border-bottom-right-radius:3px}
+.chat-bubble.agent{align-self:flex-start;background:rgba(255,255,255,.025);border:1px solid rgba(51,65,85,.35);color:var(--text-2);border-bottom-left-radius:3px}
+.chat-meta{display:flex;align-items:center;gap:6px;padding:4px 2px;font-size:10px;color:var(--text-4);font-weight:500}
+.chat-meta.right{justify-content:flex-end}
+.chat-tool-tag{display:inline-flex;padding:1px 6px;border-radius:3px;background:rgba(37,99,235,.07);border:1px solid rgba(37,99,235,.12);font-size:10px;font-weight:600;color:var(--blue-bright);font-family:var(--mono)}
+.chat-eval{padding:5px 9px;border-radius:6px;font-size:11px;font-weight:600;max-width:78%}
+.chat-eval.pass{align-self:flex-start;background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.18);color:var(--green-bright)}
+.chat-eval.fail{align-self:flex-start;background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.18);color:var(--red-bright)}
+
+/* ── Diffs ── */
+.diff-item{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);margin-bottom:8px;overflow:hidden}
+.diff-head{padding:12px 18px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--border)}
+.diff-name{font-weight:700;font-size:14px;flex:1;letter-spacing:-.02em}
+.diff-cols{display:grid;grid-template-columns:1fr 1fr}
+.diff-col{padding:14px 18px}
+.diff-col+.diff-col{border-left:1px solid var(--border)}
+.col-title{font-size:10px;font-weight:700;color:var(--text-4);text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px}
+.tags{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:7px}
+.tag{background:rgba(255,255,255,.035);border:1px solid rgba(51,65,85,.45);border-radius:4px;padding:2px 7px;font-size:11px;font-family:var(--mono);font-weight:500}
+.tag.add{border-color:rgba(16,185,129,.25);color:var(--green-bright);background:rgba(16,185,129,.05)}
+.tag.rem{border-color:rgba(239,68,68,.25);color:var(--red-bright);background:rgba(239,68,68,.05);text-decoration:line-through}
+.outbox{background:rgba(0,0,0,.18);border:1px solid rgba(51,65,85,.35);border-radius:var(--r-xs);padding:10px;font:12px/1.6 var(--mono);color:var(--text-3);white-space:pre-wrap;word-break:break-all;max-height:180px;overflow-y:auto}
+.difflines{background:rgba(0,0,0,.18);border:1px solid rgba(51,65,85,.35);border-radius:var(--r-xs);padding:8px;font:11px/1.6 var(--mono);max-height:180px;overflow-y:auto;margin-top:7px}
+.difflines .a{color:var(--green-bright);background:rgba(16,185,129,.04);display:block;padding:1px 4px;margin:0 -4px;border-radius:2px}
+.difflines .r{color:var(--red-bright);background:rgba(239,68,68,.04);display:block;padding:1px 4px;margin:0 -4px;border-radius:2px}
+.sim{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-3)}
+.sim-track{width:40px;height:3px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;display:inline-block;vertical-align:middle}
+.sim-fill{height:100%;border-radius:2px}
+.sim-fill.hi{background:var(--green)}.sim-fill.mid{background:var(--yellow)}.sim-fill.lo{background:var(--red)}
+.pipeline{display:flex;flex-direction:column;gap:5px;padding:12px 18px;border-top:1px solid var(--border)}
+.pipeline-row{display:flex;align-items:center;gap:3px;flex-wrap:wrap}
+.pipeline-label{font-size:10px;font-weight:700;color:var(--text-4);text-transform:uppercase;letter-spacing:.06em;width:60px;flex-shrink:0}
+.pipe-step{display:inline-flex;padding:3px 9px;border-radius:4px;font-size:11px;font-family:var(--mono);font-weight:600;background:rgba(255,255,255,.035);border:1px solid rgba(51,65,85,.45);color:var(--text-2);position:relative}
+.pipe-step+.pipe-step{margin-left:5px}
+.pipe-step+.pipe-step::before{content:'→';position:absolute;left:-12px;color:var(--text-4);font-size:9px;font-family:var(--font)}
+.pipe-step.match{border-color:rgba(37,99,235,.2);background:rgba(37,99,235,.04)}
+.pipe-step.added{border-color:rgba(16,185,129,.25);color:var(--green-bright);background:rgba(16,185,129,.05)}
+.pipe-step.removed{border-color:rgba(239,68,68,.25);color:var(--red-bright);background:rgba(239,68,68,.05);text-decoration:line-through}
+.traj-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+.traj-col .col-title{padding-bottom:6px}
+
+/* ── Tables ── */
+.ev-table{width:100%;border-collapse:collapse;font-size:13px}
+.ev-table th{text-align:left;padding:7px 10px;color:var(--text-4);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)}
+.ev-table td{padding:9px 10px;border-bottom:1px solid rgba(51,65,85,.25)}
+.ev-table tr:hover td{background:rgba(255,255,255,.012)}
+.ev-table .mono{font-family:var(--mono);font-size:12px}
+.ev-table .num{font-weight:700;font-variant-numeric:tabular-nums}
+.param-table{width:100%;border-collapse:collapse;font-size:12px}
+.param-table th{text-align:left;padding:5px 9px;color:var(--text-4);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)}
+.param-table td{padding:5px 9px;border-bottom:1px solid rgba(51,65,85,.25)}
+table td,table th{transition:background .1s}
+.empty{text-align:center;padding:64px 40px;color:var(--text-4)}
+.empty-icon{font-size:32px;margin-bottom:10px;display:block;opacity:.25}
+.empty code{background:rgba(255,255,255,.05);padding:2px 7px;border-radius:4px;font-family:var(--mono);font-size:12px;border:1px solid var(--border)}
+::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.07);border-radius:3px}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="logo">
+    <div class="logo-icon">◈</div>
+    <div><div class="logo-text">EvalView: Sonnet vs Gemma vs Qwen3-Coder</div><div class="logo-sub">2026-04-06 22:43</div></div>
+  </div>
+  <div class="header-right">
+    
+    <span class="badge b-red">✗ 1 Failed</span><span class="badge b-blue">9 Tests</span>
+  </div>
+</header>
+
+<main class="main">
+  <div class="tabbar">
+    <button class="tab on" onclick="show('overview',this)">Overview</button>
+    <button class="tab " onclick="show('trace',this)">Execution Trace</button>
+    
+    <button class="tab " onclick="show('timeline',this)">Timeline</button>
+    <button class="tab " onclick="show('adapter-compare',this)">Compare <span style="font-size:10px;opacity:.7;margin-left:3px">3 models</span></button>
+    
+  </div>
+
+  <!-- ═══════════ OVERVIEW ═══════════ -->
+  <div id="p-overview" class="panel on">
+    
+
+    <!-- KPI Strip -->
+    <div class="kpi-strip">
+      <div class="kpi-item">
+        <span class="kpi-dot green"></span>
+        <span class="kpi-val" style="color:var(--green-bright)">88.9% passed</span>
+        <span class="kpi-label">(8/9)</span>
+      </div>
+      <div class="kpi-item">
+        <span class="kpi-val" style="color:var(--green-bright)">Avg 83.2/100</span>
+      </div>
+      <div class="kpi-item">
+        <span class="kpi-val" style="color:var(--blue-bright)">$0.384814</span>
+        <span class="kpi-label">total</span>
+      </div>
+      <div class="kpi-item">
+        <span class="kpi-val">82833ms</span>
+        <span class="kpi-label">avg</span>
+      </div>
+      <div class="kpi-item">
+        <span class="kpi-val">Unknown</span>
+        <span class="kpi-label">(1,276 tokens)</span>
+      </div>
+    </div>
+    
+    <!-- Health Gauge + Trend Sparklines (or Score Per Test if no trends) -->
+    <div class="meta-row">
+      <div class="card" style="margin-bottom:0">
+        <div class="card-title">Health Gauge</div>
+        <div class="health-gauge">
+          <div class="gauge-ring">
+            <svg viewBox="0 0 36 36">
+              <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="3"/>
+              <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="var(--green-bright)" stroke-width="3" stroke-dasharray="89, 100" stroke-linecap="round"/>
+            </svg>
+            <span class="gauge-text" style="color:var(--green-bright)">89%</span>
+          </div>
+          <div class="gauge-stats">
+            <div class="gauge-stat"><span class="gauge-dot" style="background:var(--green)"></span> 8 passed</div>
+            <div class="gauge-stat"><span class="gauge-dot" style="background:var(--red)"></span> 1 failed</div>
+            
+            
+          </div>
+        </div>
+      </div>
+      
+      <div class="card" style="margin-bottom:0">
+        <div class="card-title">Score Trends</div>
+        <div style="height:100px;position:relative"><canvas id="trendChart"></canvas></div>
+      </div>
+      
+    </div>
+    
+    
+    
+    
+    
+    <div class="card">
+      <div class="card-title">Behavior Summary</div>
+      <table class="ev-table">
+        <thead><tr><th>Behavior</th><th>Total</th><th>Passed</th><th>Changed</th><th>Regressions</th><th>Healed</th></tr></thead>
+        <tbody>
+          
+          <tr>
+            <td style="font-weight:700">untagged</td>
+            <td class="mono num">9</td>
+            <td class="mono num" style="color:var(--green-bright)">8</td>
+            <td class="mono num" style="color:var(--yellow-bright)">0</td>
+            <td class="mono num" style="color:var(--red-bright)">1</td>
+            <td class="mono num" style="color:var(--blue-bright)">0</td>
+          </tr>
+          
+        </tbody>
+      </table>
+    </div>
+    
+    
+    <div style="font-size:11px;color:var(--text-4);padding:0 4px 6px;line-height:1.4">
+      No LLM judge was used — hallucination, safety, and PII checks were skipped. Run without <code style="background:rgba(255,255,255,.04);padding:1px 5px;border-radius:3px;font-family:var(--mono);font-size:10px;border:1px solid var(--border)">--no-judge</code> to enable them.
+    </div>
+    
+    
+
+    <!-- Score chart (full width) — only show separately when trends exist (otherwise it's already in the meta-row above) -->
+    
+    <div class="card">
+      <div class="card-title">Score per Test</div>
+      <div class="chart-wrap" style="height:384px"><canvas id="bars"></canvas></div>
+    </div>
+    
+
+    <!-- Cost table -->
+    <div class="card">
+      <div class="card-title">Execution Cost per Query</div>
+      <table class="ev-table">
+        
+        <thead><tr><th>Test</th><th>Model</th><th>Trace Cost</th><th>Tokens</th><th>Latency</th><th>Score</th></tr></thead>
+        <tbody>
+          <tr>
+            <td style="font-weight:600">bug-fix</td>
+            <td class="mono" style="color:var(--text-4)">Unknown</td>
+            <td class="mono num" style="color:var(--blue-bright)">$0.09042</td>
+            <td class="mono" style="color:var(--text-3)">55 tokens</td>
+            <td style="color:var(--text-3)">13016ms</td>
+            <td class="num" style="color:var(--green-bright)">87.5</td>
+          </tr><tr>
+            <td style="font-weight:600">implement</td>
+            <td class="mono" style="color:var(--text-4)">Unknown</td>
+            <td class="mono num" style="color:var(--blue-bright)">$0.100365</td>
+            <td class="mono" style="color:var(--text-3)">78 tokens</td>
+            <td style="color:var(--text-3)">18772ms</td>
+            <td class="num" style="color:var(--green-bright)">87.5</td>
+          </tr><tr>
+            <td style="font-weight:600">refactor</td>
+            <td class="mono" style="color:var(--text-4)">Unknown</td>
+            <td class="mono num" style="color:var(--blue-bright)">$0.194029</td>
+            <td class="mono" style="color:var(--text-3)">234 tokens</td>
+            <td style="color:var(--text-3)">33319ms</td>
+            <td class="num" style="color:var(--green-bright)">87.5</td>
+          </tr><tr>
+            <td style="font-weight:600">bug-fix</td>
+            <td class="mono" style="color:var(--text-4)">Unknown</td>
+            <td class="mono num" style="color:var(--text-4)">$0</td>
+            <td class="mono" style="color:var(--text-3)">48 tokens</td>
+            <td style="color:var(--text-3)">76135ms</td>
+            <td class="num" style="color:var(--yellow-bright)">73.8</td>
+          </tr><tr>
+            <td style="font-weight:600">implement</td>
+            <td class="mono" style="color:var(--text-4)">Unknown</td>
+            <td class="mono num" style="color:var(--text-4)">$0</td>
+            <td class="mono" style="color:var(--text-3)">130 tokens</td>
+            <td style="color:var(--text-3)">106006ms</td>
+            <td class="num" style="color:var(--green-bright)">87.5</td>
+          </tr><tr>
+            <td style="font-weight:600">refactor</td>
+            <td class="mono" style="color:var(--text-4)">Unknown</td>
+            <td class="mono num" style="color:var(--text-4)">$0</td>
+            <td class="mono" style="color:var(--text-3)">141 tokens</td>
+            <td style="color:var(--text-3)">113321ms</td>
+            <td class="num" style="color:var(--yellow-bright)">69.1</td>
+          </tr><tr>
+            <td style="font-weight:600">bug-fix</td>
+            <td class="mono" style="color:var(--text-4)">Unknown</td>
+            <td class="mono num" style="color:var(--text-4)">$0</td>
+            <td class="mono" style="color:var(--text-3)">225 tokens</td>
+            <td style="color:var(--text-3)">108167ms</td>
+            <td class="num" style="color:var(--green-bright)">87.5</td>
+          </tr><tr>
+            <td style="font-weight:600">implement</td>
+            <td class="mono" style="color:var(--text-4)">Unknown</td>
+            <td class="mono num" style="color:var(--text-4)">$0</td>
+            <td class="mono" style="color:var(--text-3)">168 tokens</td>
+            <td style="color:var(--text-3)">120815ms</td>
+            <td class="num" style="color:var(--green-bright)">87.5</td>
+          </tr><tr>
+            <td style="font-weight:600">refactor</td>
+            <td class="mono" style="color:var(--text-4)">Unknown</td>
+            <td class="mono num" style="color:var(--text-4)">$0</td>
+            <td class="mono" style="color:var(--text-3)">197 tokens</td>
+            <td style="color:var(--text-3)">155941ms</td>
+            <td class="num" style="color:var(--green-bright)">81.2</td>
+          </tr>
+          <tr style="background:rgba(0,0,0,.08)">
+            <td style="font-weight:800">Total</td><td style="color:var(--text-4)">—</td>
+            <td class="mono num" style="color:var(--blue-bright)">$0.384814</td>
+            <td colspan="3" style="font-size:11px;color:var(--text-4)">avg $0.042757 per query</td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="margin-top:10px;font-size:11px;color:var(--text-4);line-height:1.5">
+        Trace cost comes from the agent execution trace only. Mock or non-metered tools will show <code style="background:rgba(255,255,255,.04);padding:2px 6px;border-radius:3px;font-family:var(--mono);font-size:11px;border:1px solid var(--border)">$0</code> even when EvalView used a separate judge or local model during evaluation.
+        
+      </div>
+    </div>
+    
+  </div>
+
+  <!-- ═══════════ TRACE ═══════════ -->
+  <div id="p-trace" class="panel ">
+    
+      <div class="item">
+        <div class="item-head" onclick="tog('tr1',this)">
+          <span class="badge b-green">✓</span>
+          <span class="item-name">bug-fix</span>
+          <div class="item-meta">
+            
+            <span class="mc" style="color:var(--green-bright)">87.5/100</span>
+            <span class="mc">💰 $0.09042</span>
+            <span class="mc">⚡ 13016ms</span>
+            <span class="mc">55 tokens</span>
+            <span class="mc">🧠 Unknown</span>
+          </div>
+          <span class="chevron">▾</span>
+        </div>
+        <div id="tr1" class="item-body" >
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">
+            <span class="badge b-blue">Model: Unknown</span>
+            <span class="badge b-blue">in 1 / out 54 tokens</span><span class="badge b-blue">$0.09042</span>
+            
+            
+            
+          </div>
+          
+          <div style="background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:var(--r-xs);padding:10px 14px;margin-bottom:12px;font-size:12px">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-bottom:8px">Score Breakdown</div>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+              <div><span style="color:var(--text-4)">Tools</span> <span style="font-weight:700;color:var(--green-bright)">100.0%</span> <span style="color:var(--text-4);font-size:10px">× 30%</span></div>
+              <div><span style="color:var(--text-4)">Output</span> <span style="font-weight:700;color:var(--yellow-bright)">75.0/100</span> <span style="color:var(--text-4);font-size:10px">× 50%</span></div>
+              <div><span style="color:var(--text-4)">Sequence</span> <span style="font-weight:700;color:var(--green-bright)">Correct</span> <span style="color:var(--text-4);font-size:10px">× 20%</span></div>
+              <div style="border-left:1px solid var(--border);padding-left:16px"><span style="color:var(--text-4)">=</span> <span style="font-weight:800;font-size:14px;color:var(--green-bright)">87.5/100</span></div>
+            </div>
+            <div style="margin-top:8px;font-size:11px;color:var(--text-3);border-top:1px solid var(--border);padding-top:8px">[DETERMINISTIC] All expected strings found; Output has reasonable length</div>
+          </div>
+          
+          <div style="background:rgba(37,99,235,.05);border:1px solid rgba(37,99,235,.12);border-radius:var(--r-xs);padding:9px 12px;margin-bottom:12px;font-size:13px;color:var(--text-2)">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-right:6px">Query</span>There is a bug in buggy.py. The find_max function uses range(1, len(numbers) - 1) which means it never checks the last element. Fix the bug so the function correctly returns the maximum value including the last element. After fixing, run the file to confirm it prints 9.
+
+          </div>
+          
+          <div class="mermaid-box"><div class="mermaid">sequenceDiagram
+    participant User
+    participant Agent
+    participant T0 as read_file
+    participant T1 as edit_file
+    participant T2 as bash
+    User->>Agent: There is a bug in buggy.py.
+    Agent->>T0: filePath=/Users/hidaibar-mor...
+    T0-->Agent: path/Users/hidaibar-mor/Down...
+    Agent->>T1: filePath=/Users/hidaibar-mor...
+    T1-->Agent: Index: /Users/hidaibar-mor/D...
+    Agent->>T2: command=python buggy.py, des...
+    T2-->Agent: 9
+    Agent-->>User: Fixed. The bug was range1, l...</div></div>
+          
+          
+          <div class="chat-container">
+            <div class="chat-header">Conversation Turns</div>
+            <div class="chat-messages">
+            
+              <div class="chat-meta right">Turn 1 · <span class="chat-tool-tag">read_file</span> <span class="chat-tool-tag">edit_file</span> <span class="chat-tool-tag">bash</span>  · ⚡ 13016.9ms · 💰 $0.090420</div>
+              <div class="chat-bubble user">There is a bug in buggy.py. The find_max function uses range(1, len(numbers) - 1) which means it never checks the last element. Fix the bug so the function correctly returns the maximum value including the last element. After fixing, run the file to confirm it prints 9.
+</div>
+              <div class="chat-bubble agent">Fixed. The bug was range(1, len(numbers) - 1) which excluded the last index. Changed to range(1, len(numbers)) so all elements are checked. Output is 9 as expected.</div>
+              
+            </div>
+          </div>
+          
+          
+        </div>
+      </div>
+    
+      <div class="item">
+        <div class="item-head" onclick="tog('tr2',this)">
+          <span class="badge b-green">✓</span>
+          <span class="item-name">implement</span>
+          <div class="item-meta">
+            
+            <span class="mc" style="color:var(--green-bright)">87.5/100</span>
+            <span class="mc">💰 $0.100365</span>
+            <span class="mc">⚡ 18772ms</span>
+            <span class="mc">78 tokens</span>
+            <span class="mc">🧠 Unknown</span>
+          </div>
+          <span class="chevron">▾</span>
+        </div>
+        <div id="tr2" class="item-body" style="display:none">
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">
+            <span class="badge b-blue">Model: Unknown</span>
+            <span class="badge b-blue">in 1 / out 77 tokens</span><span class="badge b-blue">$0.100365</span>
+            
+            
+            
+          </div>
+          
+          <div style="background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:var(--r-xs);padding:10px 14px;margin-bottom:12px;font-size:12px">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-bottom:8px">Score Breakdown</div>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+              <div><span style="color:var(--text-4)">Tools</span> <span style="font-weight:700;color:var(--green-bright)">100.0%</span> <span style="color:var(--text-4);font-size:10px">× 30%</span></div>
+              <div><span style="color:var(--text-4)">Output</span> <span style="font-weight:700;color:var(--yellow-bright)">75.0/100</span> <span style="color:var(--text-4);font-size:10px">× 50%</span></div>
+              <div><span style="color:var(--text-4)">Sequence</span> <span style="font-weight:700;color:var(--green-bright)">Correct</span> <span style="color:var(--text-4);font-size:10px">× 20%</span></div>
+              <div style="border-left:1px solid var(--border);padding-left:16px"><span style="color:var(--text-4)">=</span> <span style="font-weight:800;font-size:14px;color:var(--green-bright)">87.5/100</span></div>
+            </div>
+            <div style="margin-top:8px;font-size:11px;color:var(--text-3);border-top:1px solid var(--border);padding-top:8px">[DETERMINISTIC] All expected strings found; Output has reasonable length</div>
+          </div>
+          
+          <div style="background:rgba(37,99,235,.05);border:1px solid rgba(37,99,235,.12);border-radius:var(--r-xs);padding:9px 12px;margin-bottom:12px;font-size:13px;color:var(--text-2)">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-right:6px">Query</span>Implement the group_by_key() function in stub.py. The docstring and type signature are already there — the body is just pass. Implement it, then run the __main__ block to verify it prints the correctly grouped output.
+
+          </div>
+          
+          <div class="mermaid-box"><div class="mermaid">sequenceDiagram
+    participant User
+    participant Agent
+    participant T0 as read_file
+    participant T1 as edit_file
+    participant T2 as bash
+    User->>Agent: Implement the group_by_key f...
+    Agent->>T0: filePath=/Users/hidaibar-mor...
+    T0-->Agent: path/Users/hidaibar-mor/Down...
+    Agent->>T0: filePath=/Users/hidaibar-mor...
+    T0-->Agent: path/Users/hidaibar-mor/Down...
+    Agent->>T1: filePath=/Users/hidaibar-mor...
+    T1-->Agent: Index: /Users/hidaibar-mor/D...
+    Agent->>T2: command=python stub.py, desc...
+    T2-->Agent: fruit: type: fruit,
+    Agent-->>User: Implementation is correct. T...</div></div>
+          
+          
+          <div class="chat-container">
+            <div class="chat-header">Conversation Turns</div>
+            <div class="chat-messages">
+            
+              <div class="chat-meta right">Turn 1 · <span class="chat-tool-tag">read_file</span> <span class="chat-tool-tag">read_file</span> <span class="chat-tool-tag">edit_file</span> <span class="chat-tool-tag">bash</span>  · ⚡ 18772.4ms · 💰 $0.100365</div>
+              <div class="chat-bubble user">Implement the group_by_key() function in stub.py. The docstring and type signature are already there — the body is just pass. Implement it, then run the __main__ block to verify it prints the correctly grouped output.
+</div>
+              <div class="chat-bubble agent">Implementation is correct. The function:
+
+1. Iterates over each item, skipping any missing the target key
+2. Uses the key&#39;s value as the group name
+3. Appends each item to its group&#39;s list
+
+Output matches the expected behavior — fruit maps to apple and banana, veggie maps to carrot.</div>
+              
+            </div>
+          </div>
+          
+          
+        </div>
+      </div>
+    
+      <div class="item">
+        <div class="item-head" onclick="tog('tr3',this)">
+          <span class="badge b-green">✓</span>
+          <span class="item-name">refactor</span>
+          <div class="item-meta">
+            
+            <span class="mc" style="color:var(--green-bright)">87.5/100</span>
+            <span class="mc">💰 $0.194029</span>
+            <span class="mc">⚡ 33319ms</span>
+            <span class="mc">234 tokens</span>
+            <span class="mc">🧠 Unknown</span>
+          </div>
+          <span class="chevron">▾</span>
+        </div>
+        <div id="tr3" class="item-body" style="display:none">
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">
+            <span class="badge b-blue">Model: Unknown</span>
+            <span class="badge b-blue">in 1 / out 233 tokens</span><span class="badge b-blue">$0.194029</span>
+            
+            
+            
+          </div>
+          
+          <div style="background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:var(--r-xs);padding:10px 14px;margin-bottom:12px;font-size:12px">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-bottom:8px">Score Breakdown</div>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+              <div><span style="color:var(--text-4)">Tools</span> <span style="font-weight:700;color:var(--green-bright)">100.0%</span> <span style="color:var(--text-4);font-size:10px">× 30%</span></div>
+              <div><span style="color:var(--text-4)">Output</span> <span style="font-weight:700;color:var(--yellow-bright)">75.0/100</span> <span style="color:var(--text-4);font-size:10px">× 50%</span></div>
+              <div><span style="color:var(--text-4)">Sequence</span> <span style="font-weight:700;color:var(--green-bright)">Correct</span> <span style="color:var(--text-4);font-size:10px">× 20%</span></div>
+              <div style="border-left:1px solid var(--border);padding-left:16px"><span style="color:var(--text-4)">=</span> <span style="font-weight:800;font-size:14px;color:var(--green-bright)">87.5/100</span></div>
+            </div>
+            <div style="margin-top:8px;font-size:11px;color:var(--text-3);border-top:1px solid var(--border);padding-top:8px">[DETERMINISTIC] All expected strings found; Output has reasonable length</div>
+          </div>
+          
+          <div style="background:rgba(37,99,235,.05);border:1px solid rgba(37,99,235,.12);border-radius:var(--r-xs);padding:9px 12px;margin-bottom:12px;font-size:13px;color:var(--text-2)">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-right:6px">Query</span>Refactor the function p() in messy.py. It has poor naming, deeply nested conditionals, and uses type() instead of isinstance(). Rewrite it to be clean and readable while preserving the exact same behaviour: filter out None values, strip whitespace from non-empty strings, and pass through all other types unchanged. Then run the file to confirm it still prints {&#39;name&#39;: &#39;Alice&#39;, &#39;age&#39;: 30}.
+
+          </div>
+          
+          <div class="mermaid-box"><div class="mermaid">sequenceDiagram
+    participant User
+    participant Agent
+    participant T0 as read_file
+    participant T1 as todowrite
+    participant T2 as edit_file
+    participant T3 as bash
+    User->>Agent: Refactor the function p in m...
+    Agent->>T0: filePath=/Users/hidaibar-mor...
+    T0-->Agent: path/Users/hidaibar-mor/Down...
+    Agent->>T1: todos=content: Refact
+    T1-->Agent: content: Refactor
+    Agent->>T2: filePath=/Users/hidaibar-mor...
+    T2-->Agent: Index: /Users/hidaibar-mor/D...
+    Agent->>T2: filePath=/Users/hidaibar-mor...
+    T2-->Agent: Index: /Users/hidaibar-mor/D...
+    Agent->>T1: todos=content: Refact
+    T1-->Agent: content: Refactor
+    Agent->>T3: command=python3 messy.py, de...
+    T3-->Agent: name: Alice, age: 30
+    Agent->>T1: todos=content: Refact
+    T1-->Agent: content: Refactor
+    Agent-->>User: Output confirmed: name: Alic...</div></div>
+          
+          
+          <div class="chat-container">
+            <div class="chat-header">Conversation Turns</div>
+            <div class="chat-messages">
+            
+              <div class="chat-meta right">Turn 1 · <span class="chat-tool-tag">read_file</span> <span class="chat-tool-tag">todowrite</span> <span class="chat-tool-tag">edit_file</span> <span class="chat-tool-tag">edit_file</span> <span class="chat-tool-tag">todowrite</span> <span class="chat-tool-tag">bash</span> <span class="chat-tool-tag">todowrite</span>  · ⚡ 33319.9ms · 💰 $0.194029</div>
+              <div class="chat-bubble user">Refactor the function p() in messy.py. It has poor naming, deeply nested conditionals, and uses type() instead of isinstance(). Rewrite it to be clean and readable while preserving the exact same behaviour: filter out None values, strip whitespace from non-empty strings, and pass through all other types unchanged. Then run the file to confirm it still prints {&#39;name&#39;: &#39;Alice&#39;, &#39;age&#39;: 30}.
+</div>
+              <div class="chat-bubble agent">Output confirmed: {&#39;name&#39;: &#39;Alice&#39;, &#39;age&#39;: 30}.
+
+Here&#39;s a summary of every change made to messy.py:
+
+| Before | After | Reason |
+|--------|-------|--------|
+| def p(d) | def clean_record(record) | Descriptive name for function and parameter |
+| r = {} | result = {} | Meaningful variable name |
+| if d[k] != None | if value is None: continue | Use is None; early-continue flattens nesting |
+| type(d[k]) == str | isinstance(value, str) | Correct idiom; works with subclasses |
+| Triple-nested if | Two-level if/else | Eliminated unnecessary nesting |
+| Empty else: pass | Implicit (no branch) | Removed dead code |
+| Added docstring | — | Documents the function&#39;s contract |</div>
+              
+            </div>
+          </div>
+          
+          
+        </div>
+      </div>
+    
+      <div class="item">
+        <div class="item-head" onclick="tog('tr4',this)">
+          <span class="badge b-green">✓</span>
+          <span class="item-name">bug-fix</span>
+          <div class="item-meta">
+            
+            <span class="mc" style="color:var(--yellow-bright)">73.8/100</span>
+            
+            <span class="mc">⚡ 76135ms</span>
+            <span class="mc">48 tokens</span>
+            <span class="mc">🧠 Unknown</span>
+          </div>
+          <span class="chevron">▾</span>
+        </div>
+        <div id="tr4" class="item-body" style="display:none">
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">
+            <span class="badge b-blue">Model: Unknown</span>
+            <span class="badge b-blue">in 42 / out 6 tokens</span>
+            
+            
+            
+          </div>
+          
+          <div style="background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:var(--r-xs);padding:10px 14px;margin-bottom:12px;font-size:12px">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-bottom:8px">Score Breakdown</div>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+              <div><span style="color:var(--text-4)">Tools</span> <span style="font-weight:700;color:var(--green-bright)">100.0%</span> <span style="color:var(--text-4);font-size:10px">× 30%</span></div>
+              <div><span style="color:var(--text-4)">Output</span> <span style="font-weight:700;color:var(--red-bright)">47.5/100</span> <span style="color:var(--text-4);font-size:10px">× 50%</span></div>
+              <div><span style="color:var(--text-4)">Sequence</span> <span style="font-weight:700;color:var(--green-bright)">Correct</span> <span style="color:var(--text-4);font-size:10px">× 20%</span></div>
+              <div style="border-left:1px solid var(--border);padding-left:16px"><span style="color:var(--text-4)">=</span> <span style="font-weight:800;font-size:14px;color:var(--yellow-bright)">73.8/100</span></div>
+            </div>
+            <div style="margin-top:8px;font-size:11px;color:var(--text-3);border-top:1px solid var(--border);padding-top:8px">[DETERMINISTIC] Missing: fixed; Output is very short</div>
+          </div>
+          
+          <div style="background:rgba(37,99,235,.05);border:1px solid rgba(37,99,235,.12);border-radius:var(--r-xs);padding:9px 12px;margin-bottom:12px;font-size:13px;color:var(--text-2)">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-right:6px">Query</span>There is a bug in buggy.py. The find_max function uses range(1, len(numbers) - 1) which means it never checks the last element. Fix the bug so the function correctly returns the maximum value including the last element. After fixing, run the file to confirm it prints 9.
+
+          </div>
+          
+          <div class="mermaid-box"><div class="mermaid">sequenceDiagram
+    participant User
+    participant Agent
+    participant T0 as glob
+    participant T1 as read_file
+    participant T2 as edit_file
+    participant T3 as bash
+    User->>Agent: There is a bug in buggy.py.
+    Agent->>T0: pattern=buggy.py
+    T0-->Agent: /Users/hidaibar-mor/Download...
+    Agent->>T1: filePath=/Users/hidaibar-mor...
+    T1-->Agent: path/Users/hidaibar-mor/Down...
+    Agent->>T2: filePath=/Users/hidaibar-mor...
+    T2-->Agent: Index: /Users/hidaibar-mor/D...
+    Agent->>T3: command=python3 buggy.py, de...
+    T3-->Agent: 9
+    Agent-->>User: 9</div></div>
+          
+          
+          <div class="chat-container">
+            <div class="chat-header">Conversation Turns</div>
+            <div class="chat-messages">
+            
+              <div class="chat-meta right">Turn 1 · <span class="chat-tool-tag">glob</span> <span class="chat-tool-tag">read_file</span> <span class="chat-tool-tag">edit_file</span> <span class="chat-tool-tag">bash</span>  · ⚡ 76136.0ms · 💰 $0</div>
+              <div class="chat-bubble user">There is a bug in buggy.py. The find_max function uses range(1, len(numbers) - 1) which means it never checks the last element. Fix the bug so the function correctly returns the maximum value including the last element. After fixing, run the file to confirm it prints 9.
+</div>
+              <div class="chat-bubble agent">9</div>
+              
+            </div>
+          </div>
+          
+          
+        </div>
+      </div>
+    
+      <div class="item">
+        <div class="item-head" onclick="tog('tr5',this)">
+          <span class="badge b-green">✓</span>
+          <span class="item-name">implement</span>
+          <div class="item-meta">
+            
+            <span class="mc" style="color:var(--green-bright)">87.5/100</span>
+            
+            <span class="mc">⚡ 106006ms</span>
+            <span class="mc">130 tokens</span>
+            <span class="mc">🧠 Unknown</span>
+          </div>
+          <span class="chevron">▾</span>
+        </div>
+        <div id="tr5" class="item-body" style="display:none">
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">
+            <span class="badge b-blue">Model: Unknown</span>
+            <span class="badge b-blue">in 118 / out 12 tokens</span>
+            
+            
+            
+          </div>
+          
+          <div style="background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:var(--r-xs);padding:10px 14px;margin-bottom:12px;font-size:12px">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-bottom:8px">Score Breakdown</div>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+              <div><span style="color:var(--text-4)">Tools</span> <span style="font-weight:700;color:var(--green-bright)">100.0%</span> <span style="color:var(--text-4);font-size:10px">× 30%</span></div>
+              <div><span style="color:var(--text-4)">Output</span> <span style="font-weight:700;color:var(--yellow-bright)">75.0/100</span> <span style="color:var(--text-4);font-size:10px">× 50%</span></div>
+              <div><span style="color:var(--text-4)">Sequence</span> <span style="font-weight:700;color:var(--green-bright)">Correct</span> <span style="color:var(--text-4);font-size:10px">× 20%</span></div>
+              <div style="border-left:1px solid var(--border);padding-left:16px"><span style="color:var(--text-4)">=</span> <span style="font-weight:800;font-size:14px;color:var(--green-bright)">87.5/100</span></div>
+            </div>
+            <div style="margin-top:8px;font-size:11px;color:var(--text-3);border-top:1px solid var(--border);padding-top:8px">[DETERMINISTIC] All expected strings found; Output has reasonable length</div>
+          </div>
+          
+          <div style="background:rgba(37,99,235,.05);border:1px solid rgba(37,99,235,.12);border-radius:var(--r-xs);padding:9px 12px;margin-bottom:12px;font-size:13px;color:var(--text-2)">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-right:6px">Query</span>Implement the group_by_key() function in stub.py. The docstring and type signature are already there — the body is just pass. Implement it, then run the __main__ block to verify it prints the correctly grouped output.
+
+          </div>
+          
+          <div class="mermaid-box"><div class="mermaid">sequenceDiagram
+    participant User
+    participant Agent
+    participant T0 as glob
+    participant T1 as read_file
+    participant T2 as edit_file
+    participant T3 as bash
+    User->>Agent: Implement the group_by_key f...
+    Agent->>T0: pattern=stub.py
+    T0-->Agent: /Users/hidaibar-mor/Download...
+    Agent->>T1: filePath=/Users/hidaibar-mor...
+    T1-->Agent: path/Users/hidaibar-mor/Down...
+    Agent->>T2: filePath=/Users/hidaibar-mor...
+    T2-->Agent: Index: /Users/hidaibar-mor/D...
+    Agent->>T3: command=python3 stub.py, des...
+    T3-->Agent: fruit: type: fruit,
+    Agent-->>User: The implementation is correc...</div></div>
+          
+          
+          <div class="chat-container">
+            <div class="chat-header">Conversation Turns</div>
+            <div class="chat-messages">
+            
+              <div class="chat-meta right">Turn 1 · <span class="chat-tool-tag">glob</span> <span class="chat-tool-tag">read_file</span> <span class="chat-tool-tag">edit_file</span> <span class="chat-tool-tag">bash</span>  · ⚡ 106006.3ms · 💰 $0</div>
+              <div class="chat-bubble user">Implement the group_by_key() function in stub.py. The docstring and type signature are already there — the body is just pass. Implement it, then run the __main__ block to verify it prints the correctly grouped output.
+</div>
+              <div class="chat-bubble agent">The implementation is correct and verified.</div>
+              
+            </div>
+          </div>
+          
+          
+        </div>
+      </div>
+    
+      <div class="item">
+        <div class="item-head" onclick="tog('tr6',this)">
+          <span class="badge b-red">✗</span>
+          <span class="item-name">refactor</span>
+          <div class="item-meta">
+            
+            <span class="mc" style="color:var(--yellow-bright)">69.1/100</span>
+            
+            <span class="mc">⚡ 113321ms</span>
+            <span class="mc">141 tokens</span>
+            <span class="mc">🧠 Unknown</span>
+          </div>
+          <span class="chevron">▾</span>
+        </div>
+        <div id="tr6" class="item-body" style="display:none">
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">
+            <span class="badge b-blue">Model: Unknown</span>
+            <span class="badge b-blue">in 59 / out 82 tokens</span>
+            
+            
+            
+          </div>
+          
+          <div style="background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:var(--r-xs);padding:10px 14px;margin-bottom:12px;font-size:12px">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-bottom:8px">Score Breakdown</div>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+              <div><span style="color:var(--text-4)">Tools</span> <span style="font-weight:700;color:var(--yellow-bright)">66.7%</span> <span style="color:var(--text-4);font-size:10px">× 30%</span></div>
+              <div><span style="color:var(--text-4)">Output</span> <span style="font-weight:700;color:var(--yellow-bright)">58.2/100</span> <span style="color:var(--text-4);font-size:10px">× 50%</span></div>
+              <div><span style="color:var(--text-4)">Sequence</span> <span style="font-weight:700;color:var(--green-bright)">Correct</span> <span style="color:var(--text-4);font-size:10px">× 20%</span></div>
+              <div style="border-left:1px solid var(--border);padding-left:16px"><span style="color:var(--text-4)">=</span> <span style="font-weight:800;font-size:14px;color:var(--yellow-bright)">69.1/100</span></div>
+            </div>
+            <div style="margin-top:8px;font-size:11px;color:var(--text-3);border-top:1px solid var(--border);padding-top:8px">[DETERMINISTIC] Missing: def ; Output has reasonable length</div>
+          </div>
+          
+          <div style="background:rgba(37,99,235,.05);border:1px solid rgba(37,99,235,.12);border-radius:var(--r-xs);padding:9px 12px;margin-bottom:12px;font-size:13px;color:var(--text-2)">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-right:6px">Query</span>Refactor the function p() in messy.py. It has poor naming, deeply nested conditionals, and uses type() instead of isinstance(). Rewrite it to be clean and readable while preserving the exact same behaviour: filter out None values, strip whitespace from non-empty strings, and pass through all other types unchanged. Then run the file to confirm it still prints {&#39;name&#39;: &#39;Alice&#39;, &#39;age&#39;: 30}.
+
+          </div>
+          
+          <div style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.18);border-radius:var(--r-xs);padding:10px 14px;margin-bottom:12px">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--red-bright);margin-bottom:6px">Why it failed</div>
+            <ul style="margin:0;padding-left:18px;font-size:12px;color:var(--text-2)"><li style="margin-bottom:3px">Score 69.1 below minimum 70.0</li></ul>
+          </div>
+          <div class="mermaid-box"><div class="mermaid">sequenceDiagram
+    participant User
+    participant Agent
+    participant T0 as glob
+    participant T1 as read_file
+    participant T2 as write_file
+    participant T3 as bash
+    User->>Agent: Refactor the function p in m...
+    Agent->>T0: pattern=messy.py
+    T0-->Agent: /Users/hidaibar-mor/Download...
+    Agent->>T1: filePath=/Users/hidaibar-mor...
+    T1-->Agent: path/Users/hidaibar-mor/Down...
+    Agent->>T2: content=def clean_datadata:,...
+    T2-->Agent: Wrote file successfully.
+    Agent->>T3: command=python3 messy.py, de...
+    T3-->Agent: name: Alice, age: 30
+    Agent-->>User: The function p has been refa...</div></div>
+          
+          
+          <div class="chat-container">
+            <div class="chat-header">Conversation Turns</div>
+            <div class="chat-messages">
+            
+              <div class="chat-meta right">Turn 1 · <span class="chat-tool-tag">glob</span> <span class="chat-tool-tag">read_file</span> <span class="chat-tool-tag">write_file</span> <span class="chat-tool-tag">bash</span>  · ⚡ 113321.6ms · 💰 $0</div>
+              <div class="chat-bubble user">Refactor the function p() in messy.py. It has poor naming, deeply nested conditionals, and uses type() instead of isinstance(). Rewrite it to be clean and readable while preserving the exact same behaviour: filter out None values, strip whitespace from non-empty strings, and pass through all other types unchanged. Then run the file to confirm it still prints {&#39;name&#39;: &#39;Alice&#39;, &#39;age&#39;: 30}.
+</div>
+              <div class="chat-bubble agent">The function p() has been refactored to clean_data() in messy.py. It now uses isinstance(), avoids deep nesting, and follows clean naming conventions while preserving the original behavior.
+
+Verification:
+`bash
+python3 messy.py
+Output: {&#39;name&#39;: &#39;Alice&#39;, &#39;age&#39;: 30}
+`</div>
+              
+            </div>
+          </div>
+          
+          
+        </div>
+      </div>
+    
+      <div class="item">
+        <div class="item-head" onclick="tog('tr7',this)">
+          <span class="badge b-green">✓</span>
+          <span class="item-name">bug-fix</span>
+          <div class="item-meta">
+            
+            <span class="mc" style="color:var(--green-bright)">87.5/100</span>
+            
+            <span class="mc">⚡ 108167ms</span>
+            <span class="mc">225 tokens</span>
+            <span class="mc">🧠 Unknown</span>
+          </div>
+          <span class="chevron">▾</span>
+        </div>
+        <div id="tr7" class="item-body" style="display:none">
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">
+            <span class="badge b-blue">Model: Unknown</span>
+            <span class="badge b-blue">in 160 / out 65 tokens</span>
+            
+            
+            
+          </div>
+          
+          <div style="background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:var(--r-xs);padding:10px 14px;margin-bottom:12px;font-size:12px">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-bottom:8px">Score Breakdown</div>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+              <div><span style="color:var(--text-4)">Tools</span> <span style="font-weight:700;color:var(--green-bright)">100.0%</span> <span style="color:var(--text-4);font-size:10px">× 30%</span></div>
+              <div><span style="color:var(--text-4)">Output</span> <span style="font-weight:700;color:var(--yellow-bright)">75.0/100</span> <span style="color:var(--text-4);font-size:10px">× 50%</span></div>
+              <div><span style="color:var(--text-4)">Sequence</span> <span style="font-weight:700;color:var(--green-bright)">Correct</span> <span style="color:var(--text-4);font-size:10px">× 20%</span></div>
+              <div style="border-left:1px solid var(--border);padding-left:16px"><span style="color:var(--text-4)">=</span> <span style="font-weight:800;font-size:14px;color:var(--green-bright)">87.5/100</span></div>
+            </div>
+            <div style="margin-top:8px;font-size:11px;color:var(--text-3);border-top:1px solid var(--border);padding-top:8px">[DETERMINISTIC] All expected strings found; Output has reasonable length</div>
+          </div>
+          
+          <div style="background:rgba(37,99,235,.05);border:1px solid rgba(37,99,235,.12);border-radius:var(--r-xs);padding:9px 12px;margin-bottom:12px;font-size:13px;color:var(--text-2)">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-right:6px">Query</span>There is a bug in buggy.py. The find_max function uses range(1, len(numbers) - 1) which means it never checks the last element. Fix the bug so the function correctly returns the maximum value including the last element. After fixing, run the file to confirm it prints 9.
+
+          </div>
+          
+          <div class="mermaid-box"><div class="mermaid">sequenceDiagram
+    participant User
+    participant Agent
+    participant T0 as read_file
+    participant T1 as edit_file
+    participant T2 as bash
+    participant T3 as todowrite
+    User->>Agent: There is a bug in buggy.py.
+    Agent->>T0: filePath=/Users/hidaibar-mor...
+    T0-->Agent: path/Users/hidaibar-mor/Down...
+    Agent->>T1: filePath=/Users/hidaibar-mor...
+    T1-->Agent: Index: /Users/hidaibar-mor/D...
+    Agent->>T2: command=cd /Users/hidaibar-m...
+    T2-->Agent: 9
+    Agent->>T3: todos=content: Fix th
+    T3-->Agent: content: Fix the
+    Agent-->>User: The bug has been fixed. I co...</div></div>
+          
+          
+          <div class="chat-container">
+            <div class="chat-header">Conversation Turns</div>
+            <div class="chat-messages">
+            
+              <div class="chat-meta right">Turn 1 · <span class="chat-tool-tag">read_file</span> <span class="chat-tool-tag">edit_file</span> <span class="chat-tool-tag">bash</span> <span class="chat-tool-tag">todowrite</span>  · ⚡ 108167.5ms · 💰 $0</div>
+              <div class="chat-bubble user">There is a bug in buggy.py. The find_max function uses range(1, len(numbers) - 1) which means it never checks the last element. Fix the bug so the function correctly returns the maximum value including the last element. After fixing, run the file to confirm it prints 9.
+</div>
+              <div class="chat-bubble agent">The bug has been fixed. I corrected the range in the find_max function from range(1, len(numbers) - 1) to range(1, len(numbers)) so that it now includes the last element in the comparison. When I ran the file, it correctly printed 9 as expected.</div>
+              
+            </div>
+          </div>
+          
+          
+        </div>
+      </div>
+    
+      <div class="item">
+        <div class="item-head" onclick="tog('tr8',this)">
+          <span class="badge b-green">✓</span>
+          <span class="item-name">implement</span>
+          <div class="item-meta">
+            
+            <span class="mc" style="color:var(--green-bright)">87.5/100</span>
+            
+            <span class="mc">⚡ 120815ms</span>
+            <span class="mc">168 tokens</span>
+            <span class="mc">🧠 Unknown</span>
+          </div>
+          <span class="chevron">▾</span>
+        </div>
+        <div id="tr8" class="item-body" style="display:none">
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">
+            <span class="badge b-blue">Model: Unknown</span>
+            <span class="badge b-blue">in 64 / out 104 tokens</span>
+            
+            
+            
+          </div>
+          
+          <div style="background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:var(--r-xs);padding:10px 14px;margin-bottom:12px;font-size:12px">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-bottom:8px">Score Breakdown</div>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+              <div><span style="color:var(--text-4)">Tools</span> <span style="font-weight:700;color:var(--green-bright)">100.0%</span> <span style="color:var(--text-4);font-size:10px">× 30%</span></div>
+              <div><span style="color:var(--text-4)">Output</span> <span style="font-weight:700;color:var(--yellow-bright)">75.0/100</span> <span style="color:var(--text-4);font-size:10px">× 50%</span></div>
+              <div><span style="color:var(--text-4)">Sequence</span> <span style="font-weight:700;color:var(--green-bright)">Correct</span> <span style="color:var(--text-4);font-size:10px">× 20%</span></div>
+              <div style="border-left:1px solid var(--border);padding-left:16px"><span style="color:var(--text-4)">=</span> <span style="font-weight:800;font-size:14px;color:var(--green-bright)">87.5/100</span></div>
+            </div>
+            <div style="margin-top:8px;font-size:11px;color:var(--text-3);border-top:1px solid var(--border);padding-top:8px">[DETERMINISTIC] All expected strings found; Output has reasonable length</div>
+          </div>
+          
+          <div style="background:rgba(37,99,235,.05);border:1px solid rgba(37,99,235,.12);border-radius:var(--r-xs);padding:9px 12px;margin-bottom:12px;font-size:13px;color:var(--text-2)">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-right:6px">Query</span>Implement the group_by_key() function in stub.py. The docstring and type signature are already there — the body is just pass. Implement it, then run the __main__ block to verify it prints the correctly grouped output.
+
+          </div>
+          
+          <div class="mermaid-box"><div class="mermaid">sequenceDiagram
+    participant User
+    participant Agent
+    participant T0 as read_file
+    participant T1 as edit_file
+    participant T2 as bash
+    User->>Agent: Implement the group_by_key f...
+    Agent->>T0: filePath=/Users/hidaibar-mor...
+    T0-->Agent: path/Users/hidaibar-mor/Down...
+    Agent->>T1: filePath=/Users/hidaibar-mor...
+    T1-->Agent: Index: /Users/hidaibar-mor/D...
+    Agent->>T2: command=cd /Users/hidaibar-m...
+    T2-->Agent: fruit: type: fruit,
+    Agent-->>User: The implementation is workin...</div></div>
+          
+          
+          <div class="chat-container">
+            <div class="chat-header">Conversation Turns</div>
+            <div class="chat-messages">
+            
+              <div class="chat-meta right">Turn 1 · <span class="chat-tool-tag">read_file</span> <span class="chat-tool-tag">edit_file</span> <span class="chat-tool-tag">bash</span>  · ⚡ 120815.9ms · 💰 $0</div>
+              <div class="chat-bubble user">Implement the group_by_key() function in stub.py. The docstring and type signature are already there — the body is just pass. Implement it, then run the __main__ block to verify it prints the correctly grouped output.
+</div>
+              <div class="chat-bubble agent">The implementation is working correctly. The function groups the items by the specified key (&#34;type&#34;) and produces the expected output:
+
+`
+{&#39;fruit&#39;: [{&#39;type&#39;: &#39;fruit&#39;, &#39;name&#39;: &#39;apple&#39;}, {&#39;type&#39;: &#39;fruit&#39;, &#39;name&#39;: &#39;banana&#39;}], &#39;veggie&#39;: [{&#39;type&#39;: &#39;veggie&#39;, &#39;name&#39;: &#39;carrot&#39;}]}
+`
+
+This matches the expected behavior from the docstring example, where items with the same &#34;type&#34; value are grouped together in lists.</div>
+              
+            </div>
+          </div>
+          
+          
+        </div>
+      </div>
+    
+      <div class="item">
+        <div class="item-head" onclick="tog('tr9',this)">
+          <span class="badge b-green">✓</span>
+          <span class="item-name">refactor</span>
+          <div class="item-meta">
+            
+            <span class="mc" style="color:var(--green-bright)">81.2/100</span>
+            
+            <span class="mc">⚡ 155941ms</span>
+            <span class="mc">197 tokens</span>
+            <span class="mc">🧠 Unknown</span>
+          </div>
+          <span class="chevron">▾</span>
+        </div>
+        <div id="tr9" class="item-body" style="display:none">
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">
+            <span class="badge b-blue">Model: Unknown</span>
+            <span class="badge b-blue">in 27 / out 170 tokens</span>
+            
+            
+            
+          </div>
+          
+          <div style="background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:var(--r-xs);padding:10px 14px;margin-bottom:12px;font-size:12px">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-bottom:8px">Score Breakdown</div>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+              <div><span style="color:var(--text-4)">Tools</span> <span style="font-weight:700;color:var(--green-bright)">100.0%</span> <span style="color:var(--text-4);font-size:10px">× 30%</span></div>
+              <div><span style="color:var(--text-4)">Output</span> <span style="font-weight:700;color:var(--yellow-bright)">62.5/100</span> <span style="color:var(--text-4);font-size:10px">× 50%</span></div>
+              <div><span style="color:var(--text-4)">Sequence</span> <span style="font-weight:700;color:var(--green-bright)">Correct</span> <span style="color:var(--text-4);font-size:10px">× 20%</span></div>
+              <div style="border-left:1px solid var(--border);padding-left:16px"><span style="color:var(--text-4)">=</span> <span style="font-weight:800;font-size:14px;color:var(--green-bright)">81.2/100</span></div>
+            </div>
+            <div style="margin-top:8px;font-size:11px;color:var(--text-3);border-top:1px solid var(--border);padding-top:8px">[DETERMINISTIC] Missing: def ; Output has reasonable length</div>
+          </div>
+          
+          <div style="background:rgba(37,99,235,.05);border:1px solid rgba(37,99,235,.12);border-radius:var(--r-xs);padding:9px 12px;margin-bottom:12px;font-size:13px;color:var(--text-2)">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-right:6px">Query</span>Refactor the function p() in messy.py. It has poor naming, deeply nested conditionals, and uses type() instead of isinstance(). Rewrite it to be clean and readable while preserving the exact same behaviour: filter out None values, strip whitespace from non-empty strings, and pass through all other types unchanged. Then run the file to confirm it still prints {&#39;name&#39;: &#39;Alice&#39;, &#39;age&#39;: 30}.
+
+          </div>
+          
+          <div class="mermaid-box"><div class="mermaid">sequenceDiagram
+    participant User
+    participant Agent
+    participant T0 as read_file
+    participant T1 as edit_file
+    participant T2 as bash
+    User->>Agent: Refactor the function p in m...
+    Agent->>T0: filePath=/Users/hidaibar-mor...
+    T0-->Agent: path/Users/hidaibar-mor/Down...
+    Agent->>T1: filePath=/Users/hidaibar-mor...
+    T1-->Agent: Index: /Users/hidaibar-mor/D...
+    Agent->>T1: filePath=/Users/hidaibar-mor...
+    T1-->Agent: Index: /Users/hidaibar-mor/D...
+    Agent->>T2: command=cd /Users/hidaibar-m...
+    T2-->Agent: name: Alice, age: 30
+    Agent->>T1: filePath=/Users/hidaibar-mor...
+    T1-->Agent: Index: /Users/hidaibar-mor/D...
+    Agent->>T2: command=cd /Users/hidaibar-m...
+    T2-->Agent: name: Alice, age: 30,
+    Agent->>T0: filePath=/Users/hidaibar-mor...
+    T0-->Agent: path/Users/hidaibar-mor/Down...
+    Agent->>T1: filePath=/Users/hidaibar-mor...
+    T1-->Agent: Index: /Users/hidaibar-mor/D...
+    Agent->>T2: command=cd /Users/hidaibar-m...
+    T2-->Agent: name: Alice, age: 30
+    Agent-->>User: The refactored function now</div></div>
+          
+          
+          <div class="chat-container">
+            <div class="chat-header">Conversation Turns</div>
+            <div class="chat-messages">
+            
+              <div class="chat-meta right">Turn 1 · <span class="chat-tool-tag">read_file</span> <span class="chat-tool-tag">edit_file</span> <span class="chat-tool-tag">edit_file</span> <span class="chat-tool-tag">bash</span> <span class="chat-tool-tag">edit_file</span> <span class="chat-tool-tag">bash</span> <span class="chat-tool-tag">read_file</span> <span class="chat-tool-tag">edit_file</span> <span class="chat-tool-tag">bash</span>  · ⚡ 155941.4ms · 💰 $0</div>
+              <div class="chat-bubble user">Refactor the function p() in messy.py. It has poor naming, deeply nested conditionals, and uses type() instead of isinstance(). Rewrite it to be clean and readable while preserving the exact same behaviour: filter out None values, strip whitespace from non-empty strings, and pass through all other types unchanged. Then run the file to confirm it still prints {&#39;name&#39;: &#39;Alice&#39;, &#39;age&#39;: 30}.
+</div>
+              <div class="chat-bubble agent">The refactored function now works correctly and produces the expected output. Here&#39;s a summary of what I did to refactor the function:
+
+1. Renamed p() to process_data() for better readability and clarity
+2. Eliminated deeply nested conditionals by restructuring the logic
+3. Replaced type(d[k]) == str with isinstance(value, str) for better practice
+4. Simplified the logic to filter out None values, strip whitespace from non-empty strings, and pass through all other types unchanged
+5. Ensured the exact same behavior is preserved
+
+The function now correctly:
+- Filters out None values
+- Strips whitespace from non-empty strings
+- Passes through all other types unchanged
+- Produces the expected output {&#39;name&#39;: &#39;Alice&#39;, &#39;age&#39;: 30}</div>
+              
+            </div>
+          </div>
+          
+          
+        </div>
+      </div>
+    
+  </div>
+
+  <!-- ═══════════ DIFFS ═══════════ -->
+  
+
+  <!-- ═══════════ TIMELINE ═══════════ -->
+  <div id="p-timeline" class="panel ">
+    
+    <!-- Timeline KPI strip -->
+    <div class="kpi-strip" style="margin-bottom:12px">
+      <div class="kpi-item">
+        <span class="kpi-val">42</span>
+        <span class="kpi-label">steps</span>
+      </div>
+      <div class="kpi-item">
+        <span class="kpi-val" style="color:var(--blue-bright)">82833ms</span>
+        <span class="kpi-label">avg latency</span>
+      </div>
+      <div class="kpi-item">
+        <span class="kpi-val" style="color:var(--blue-bright)">$0.384814</span>
+        <span class="kpi-label">total cost</span>
+      </div>
+      <div class="kpi-item">
+        <span class="kpi-val">9</span>
+        <span class="kpi-label">tests</span>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="card" style="margin-bottom:0">
+        <div class="card-title">Step Latencies</div>
+        <div style="position:relative;height:1552px"><canvas id="tlChart"></canvas></div>
+      </div>
+      <div class="card" style="margin-bottom:0">
+        <div class="card-title">Step Cost</div>
+        <div style="position:relative;height:1552px"><canvas id="tlCostChart"></canvas></div>
+      </div>
+    </div>
+    
+  </div>
+
+  <!-- ═══════════ ADAPTER COMPARE ═══════════ -->
+  
+  <div id="p-adapter-compare" class="panel ">
+    <div class="card">
+      <div class="card-title">Model Comparison &mdash; 3 models &times; 3 tasks</div>
+      <table class="ev-table">
+        <thead>
+          <tr>
+            <th style="width:160px">Task</th>
+            
+            <th colspan="3" style="text-align:center;border-left:1px solid var(--border);color:var(--text-2);padding:8px 10px">sonnet-4.6</th>
+            
+            <th colspan="3" style="text-align:center;border-left:1px solid var(--border);color:var(--text-2);padding:8px 10px">gemma-4-27b</th>
+            
+            <th colspan="3" style="text-align:center;border-left:1px solid var(--border);color:var(--text-2);padding:8px 10px">qwen3-coder-30b</th>
+            
+          </tr>
+          <tr>
+            <th></th>
+            
+            <th style="text-align:center;border-left:1px solid var(--border);font-size:9px">Score</th>
+            <th style="text-align:center;font-size:9px">Latency</th>
+            <th style="text-align:center;font-size:9px">Tools</th>
+            
+            <th style="text-align:center;border-left:1px solid var(--border);font-size:9px">Score</th>
+            <th style="text-align:center;font-size:9px">Latency</th>
+            <th style="text-align:center;font-size:9px">Tools</th>
+            
+            <th style="text-align:center;border-left:1px solid var(--border);font-size:9px">Score</th>
+            <th style="text-align:center;font-size:9px">Latency</th>
+            <th style="text-align:center;font-size:9px">Tools</th>
+            
+          </tr>
+        </thead>
+        <tbody>
+          
+          
+          <tr>
+            <td class="mono">bug-fix</td>
+            
+            
+            
+            <td style="text-align:center;border-left:1px solid var(--border)">
+              <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;
+                background:rgba(16,185,129,.18);
+                color:var(--green-bright)">
+                87.5
+              </span>
+            </td>
+            <td style="text-align:center;color:var(--text-3);font-size:12px">13.0s</td>
+            <td style="text-align:center;color:var(--text-3);font-size:12px">100%</td>
+            
+            
+            
+            
+            <td style="text-align:center;border-left:1px solid var(--border)">
+              <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;
+                background:rgba(245,158,11,.18);
+                color:var(--yellow-bright)">
+                73.8
+              </span>
+            </td>
+            <td style="text-align:center;color:var(--text-3);font-size:12px">76.1s</td>
+            <td style="text-align:center;color:var(--text-3);font-size:12px">100%</td>
+            
+            
+            
+            
+            <td style="text-align:center;border-left:1px solid var(--border)">
+              <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;
+                background:rgba(16,185,129,.18);
+                color:var(--green-bright)">
+                87.5
+              </span>
+            </td>
+            <td style="text-align:center;color:var(--text-3);font-size:12px">108.2s</td>
+            <td style="text-align:center;color:var(--text-3);font-size:12px">100%</td>
+            
+            
+          </tr>
+          
+          
+          <tr>
+            <td class="mono">implement</td>
+            
+            
+            
+            <td style="text-align:center;border-left:1px solid var(--border)">
+              <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;
+                background:rgba(16,185,129,.18);
+                color:var(--green-bright)">
+                87.5
+              </span>
+            </td>
+            <td style="text-align:center;color:var(--text-3);font-size:12px">18.8s</td>
+            <td style="text-align:center;color:var(--text-3);font-size:12px">100%</td>
+            
+            
+            
+            
+            <td style="text-align:center;border-left:1px solid var(--border)">
+              <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;
+                background:rgba(16,185,129,.18);
+                color:var(--green-bright)">
+                87.5
+              </span>
+            </td>
+            <td style="text-align:center;color:var(--text-3);font-size:12px">106.0s</td>
+            <td style="text-align:center;color:var(--text-3);font-size:12px">100%</td>
+            
+            
+            
+            
+            <td style="text-align:center;border-left:1px solid var(--border)">
+              <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;
+                background:rgba(16,185,129,.18);
+                color:var(--green-bright)">
+                87.5
+              </span>
+            </td>
+            <td style="text-align:center;color:var(--text-3);font-size:12px">120.8s</td>
+            <td style="text-align:center;color:var(--text-3);font-size:12px">100%</td>
+            
+            
+          </tr>
+          
+          
+          <tr>
+            <td class="mono">refactor</td>
+            
+            
+            
+            <td style="text-align:center;border-left:1px solid var(--border)">
+              <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;
+                background:rgba(16,185,129,.18);
+                color:var(--green-bright)">
+                87.5
+              </span>
+            </td>
+            <td style="text-align:center;color:var(--text-3);font-size:12px">33.3s</td>
+            <td style="text-align:center;color:var(--text-3);font-size:12px">100%</td>
+            
+            
+            
+            
+            <td style="text-align:center;border-left:1px solid var(--border)">
+              <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;
+                background:rgba(245,158,11,.18);
+                color:var(--yellow-bright)">
+                69.1 ✗
+              </span>
+            </td>
+            <td style="text-align:center;color:var(--text-3);font-size:12px">113.3s</td>
+            <td style="text-align:center;color:var(--text-3);font-size:12px">67%</td>
+            
+            
+            
+            
+            <td style="text-align:center;border-left:1px solid var(--border)">
+              <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;
+                background:rgba(16,185,129,.18);
+                color:var(--green-bright)">
+                81.2
+              </span>
+            </td>
+            <td style="text-align:center;color:var(--text-3);font-size:12px">155.9s</td>
+            <td style="text-align:center;color:var(--text-3);font-size:12px">100%</td>
+            
+            
+          </tr>
+          
+        </tbody>
+        <tfoot>
+          <tr style="border-top:1px solid var(--border)">
+            <td style="color:var(--text-3);font-size:11px;font-weight:600">Avg Score</td>
+            
+            <td colspan="3" style="text-align:center;font-weight:700;font-size:13px;border-left:1px solid var(--border);
+              color:var(--green-bright)">
+              87.5
+            </td>
+            
+            <td colspan="3" style="text-align:center;font-weight:700;font-size:13px;border-left:1px solid var(--border);
+              color:var(--yellow-bright)">
+              76.8
+            </td>
+            
+            <td colspan="3" style="text-align:center;font-weight:700;font-size:13px;border-left:1px solid var(--border);
+              color:var(--green-bright)">
+              85.4
+            </td>
+            
+          </tr>
+          <tr>
+            <td style="color:var(--text-4);font-size:11px">Avg Latency</td>
+            
+            <td colspan="3" style="text-align:center;color:var(--text-3);font-size:12px;border-left:1px solid var(--border)">21.7s</td>
+            
+            <td colspan="3" style="text-align:center;color:var(--text-3);font-size:12px;border-left:1px solid var(--border)">98.5s</td>
+            
+            <td colspan="3" style="text-align:center;color:var(--text-3);font-size:12px;border-left:1px solid var(--border)">128.3s</td>
+            
+          </tr>
+          <tr>
+            <td style="color:var(--text-4);font-size:11px">Pass Rate</td>
+            
+            <td colspan="3" style="text-align:center;color:var(--text-3);font-size:12px;border-left:1px solid var(--border)">3/3</td>
+            
+            <td colspan="3" style="text-align:center;color:var(--text-3);font-size:12px;border-left:1px solid var(--border)">2/3</td>
+            
+            <td colspan="3" style="text-align:center;color:var(--text-3);font-size:12px;border-left:1px solid var(--border)">3/3</td>
+            
+          </tr>
+          <tr>
+            <td style="color:var(--text-4);font-size:11px">Total Cost</td>
+            
+            <td colspan="3" style="text-align:center;color:var(--text-3);font-size:12px;border-left:1px solid var(--border)">$0.385</td>
+            
+            <td colspan="3" style="text-align:center;color:var(--text-3);font-size:12px;border-left:1px solid var(--border)">free</td>
+            
+            <td colspan="3" style="text-align:center;color:var(--text-3);font-size:12px;border-left:1px solid var(--border)">free</td>
+            
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+  
+
+  <!-- ═══════════ COMPARE RUNS ═══════════ -->
+  
+</main>
+
+<script>
+mermaid.initialize({startOnLoad:true,theme:'dark',securityLevel:'loose',useMaxWidth:true,
+  themeVariables:{darkMode:true,background:'transparent',primaryColor:'rgba(37,99,235,.1)',primaryTextColor:'#e2e8f0',primaryBorderColor:'rgba(37,99,235,.25)',lineColor:'rgba(100,116,139,.3)',secondaryColor:'rgba(16,185,129,.06)',tertiaryColor:'rgba(6,182,212,.06)',noteBkgColor:'rgba(37,99,235,.05)',noteTextColor:'#94a3b8',noteBorderColor:'rgba(37,99,235,.15)',actorBkg:'rgba(37,99,235,.08)',actorBorder:'rgba(37,99,235,.2)',actorTextColor:'#e2e8f0',signalColor:'#64748b',signalTextColor:'#cbd5e1'},
+  sequence:{useMaxWidth:true,width:180,wrap:false,actorFontFamily:'Inter,sans-serif',noteFontFamily:'Inter,sans-serif',messageFontFamily:'Inter,sans-serif',actorFontSize:15,messageFontSize:14,noteFontSize:13,boxTextMargin:12,mirrorActors:false,messageAlign:'center',actorMargin:50,bottomMarginAdj:4,diagramMarginX:20,diagramMarginY:16}
+});
+function show(id,btn){document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));document.getElementById('p-'+id).classList.add('on');btn.classList.add('on')}
+function tog(id,head){const el=document.getElementById(id);const o=el.style.display!=='none';el.style.display=o?'none':'block';head.querySelector('.chevron').style.transform=o?'':'rotate(180deg)'}
+function togTraj(trigger){const grid=trigger.nextElementSibling;const open=grid.style.display!=='none';grid.style.display=open?'none':'grid';trigger.querySelector('.chevron').style.transform=open?'':'rotate(180deg)';if(!open&&!grid.dataset.rendered){grid.dataset.rendered='1';const divs=grid.querySelectorAll('.mermaid-lazy');const src=[grid.dataset.golden,grid.dataset.actual];divs.forEach(function(d,i){if(src[i]){d.classList.add('mermaid');d.textContent=src[i];mermaid.init(undefined,d)}})}}
+
+
+(function(){
+  const scores=[87.5, 87.5, 87.5, 73.75, 87.5, 69.1, 87.5, 87.5, 81.25],names=["bug-fix", "implement", "refactor", "bug-fix", "implement", "refactor", "bug-fix", "implement", "refactor"];
+  const tc='rgba(100,116,139,.6)',gc='rgba(255,255,255,.025)';
+  const tt={backgroundColor:'rgba(6,11,24,.95)',borderColor:'rgba(51,65,85,.5)',borderWidth:1,titleFont:{family:'Inter',weight:'700',size:11},bodyFont:{family:'Inter',size:11},padding:8,cornerRadius:6};
+
+  const sorted=names.map((n,i)=>({name:n,score:scores[i]})).sort((a,b)=>b.score-a.score);
+  /* Warning stripes for low scores */
+  const barBg=sorted.map(s=>{
+    if(s.score>=80) return 'rgba(16,185,129,.35)';
+    if(s.score>=60) return 'rgba(245,158,11,.35)';
+    return 'rgba(239,68,68,.35)';
+  });
+  const barBorder=sorted.map(s=>{
+    if(s.score>=80) return 'rgba(16,185,129,.55)';
+    if(s.score>=60) return 'rgba(245,158,11,.55)';
+    return 'rgba(239,68,68,.55)';
+  });
+  new Chart(document.getElementById('bars'),{type:'bar',
+    data:{labels:sorted.map(s=>s.name),datasets:[{label:'Score',data:sorted.map(s=>s.score),backgroundColor:barBg,borderColor:barBorder,borderWidth:1,borderRadius:3,borderSkipped:false,barPercentage:.55,categoryPercentage:.8}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      scales:{x:{min:0,max:100,grid:{color:gc},ticks:{color:tc,font:{family:'Inter',size:9},stepSize:25},border:{display:false}},y:{grid:{display:false},ticks:{color:'rgba(203,213,225,.7)',font:{family:'Inter',size:11,weight:'600'},padding:4,mirror:false},border:{display:false},afterFit:function(axis){var maxLen=0;sorted.forEach(function(s){var w=s.name.length*7;if(w>maxLen)maxLen=w});axis.width=Math.min(Math.max(maxLen,140),280)}}},
+      plugins:{legend:{display:false},tooltip:{...tt,callbacks:{label:ctx=>` Score: ${ctx.raw}/100`}}}}});
+})();
+
+
+
+(function(){
+  const tl=[{"cost": 0.03014, "label": "bug-fix \u203a read_file", "latency": 17.0, "success": true, "test": "bug-fix", "tool": "read_file"}, {"cost": 0.03014, "label": "bug-fix \u203a edit_file", "latency": 501.0, "success": true, "test": "bug-fix", "tool": "edit_file"}, {"cost": 0.03014, "label": "bug-fix \u203a bash", "latency": 50.0, "success": true, "test": "bug-fix", "tool": "bash"}, {"cost": 0.025091, "label": "implement \u203a read_file", "latency": 3.0, "success": true, "test": "implement", "tool": "read_file"}, {"cost": 0.025091, "label": "implement \u203a read_file", "latency": 0.0, "success": true, "test": "implement", "tool": "read_file"}, {"cost": 0.025091, "label": "implement \u203a edit_file", "latency": 461.0, "success": true, "test": "implement", "tool": "edit_file"}, {"cost": 0.025091, "label": "implement \u203a bash", "latency": 108.0, "success": true, "test": "implement", "tool": "bash"}, {"cost": 0.027718, "label": "refactor \u203a read_file", "latency": 6.0, "success": true, "test": "refactor", "tool": "read_file"}, {"cost": 0.027718, "label": "refactor \u203a todowrite", "latency": 0.0, "success": true, "test": "refactor", "tool": "todowrite"}, {"cost": 0.027718, "label": "refactor \u203a edit_file", "latency": 485.0, "success": true, "test": "refactor", "tool": "edit_file"}, {"cost": 0.027718, "label": "refactor \u203a edit_file", "latency": 426.0, "success": true, "test": "refactor", "tool": "edit_file"}, {"cost": 0.027718, "label": "refactor \u203a todowrite", "latency": 1.0, "success": true, "test": "refactor", "tool": "todowrite"}, {"cost": 0.027718, "label": "refactor \u203a bash", "latency": 125.0, "success": true, "test": "refactor", "tool": "bash"}, {"cost": 0.027718, "label": "refactor \u203a todowrite", "latency": 1.0, "success": true, "test": "refactor", "tool": "todowrite"}, {"cost": 0.0, "label": "bug-fix \u203a glob", "latency": 68.0, "success": true, "test": "bug-fix", "tool": "glob"}, {"cost": 0.0, "label": "bug-fix \u203a read_file", "latency": 19.0, "success": true, "test": "bug-fix", "tool": "read_file"}, {"cost": 0.0, "label": "bug-fix \u203a edit_file", "latency": 532.0, "success": true, "test": "bug-fix", "tool": "edit_file"}, {"cost": 0.0, "label": "bug-fix \u203a bash", "latency": 163.0, "success": true, "test": "bug-fix", "tool": "bash"}, {"cost": 0.0, "label": "implement \u203a glob", "latency": 67.0, "success": true, "test": "implement", "tool": "glob"}, {"cost": 0.0, "label": "implement \u203a read_file", "latency": 13.0, "success": true, "test": "implement", "tool": "read_file"}, {"cost": 0.0, "label": "implement \u203a edit_file", "latency": 520.0, "success": true, "test": "implement", "tool": "edit_file"}, {"cost": 0.0, "label": "implement \u203a bash", "latency": 143.0, "success": true, "test": "implement", "tool": "bash"}, {"cost": 0.0, "label": "refactor \u203a glob", "latency": 74.0, "success": true, "test": "refactor", "tool": "glob"}, {"cost": 0.0, "label": "refactor \u203a read_file", "latency": 15.0, "success": true, "test": "refactor", "tool": "read_file"}, {"cost": 0.0, "label": "refactor \u203a write_file", "latency": 518.0, "success": true, "test": "refactor", "tool": "write_file"}, {"cost": 0.0, "label": "refactor \u203a bash", "latency": 142.0, "success": true, "test": "refactor", "tool": "bash"}, {"cost": 0.0, "label": "bug-fix \u203a read_file", "latency": 13.0, "success": true, "test": "bug-fix", "tool": "read_file"}, {"cost": 0.0, "label": "bug-fix \u203a edit_file", "latency": 552.0, "success": true, "test": "bug-fix", "tool": "edit_file"}, {"cost": 0.0, "label": "bug-fix \u203a bash", "latency": 133.0, "success": true, "test": "bug-fix", "tool": "bash"}, {"cost": 0.0, "label": "bug-fix \u203a todowrite", "latency": 1.0, "success": true, "test": "bug-fix", "tool": "todowrite"}, {"cost": 0.0, "label": "implement \u203a read_file", "latency": 19.0, "success": true, "test": "implement", "tool": "read_file"}, {"cost": 0.0, "label": "implement \u203a edit_file", "latency": 526.0, "success": true, "test": "implement", "tool": "edit_file"}, {"cost": 0.0, "label": "implement \u203a bash", "latency": 190.0, "success": true, "test": "implement", "tool": "bash"}, {"cost": 0.0, "label": "refactor \u203a read_file", "latency": 33.0, "success": true, "test": "refactor", "tool": "read_file"}, {"cost": 0.0, "label": "refactor \u203a edit_file", "latency": 540.0, "success": true, "test": "refactor", "tool": "edit_file"}, {"cost": 0.0, "label": "refactor \u203a edit_file", "latency": 578.0, "success": true, "test": "refactor", "tool": "edit_file"}, {"cost": 0.0, "label": "refactor \u203a bash", "latency": 181.0, "success": true, "test": "refactor", "tool": "bash"}, {"cost": 0.0, "label": "refactor \u203a edit_file", "latency": 479.0, "success": true, "test": "refactor", "tool": "edit_file"}, {"cost": 0.0, "label": "refactor \u203a bash", "latency": 138.0, "success": true, "test": "refactor", "tool": "bash"}, {"cost": 0.0, "label": "refactor \u203a read_file", "latency": 3.0, "success": true, "test": "refactor", "tool": "read_file"}, {"cost": 0.0, "label": "refactor \u203a edit_file", "latency": 478.0, "success": true, "test": "refactor", "tool": "edit_file"}, {"cost": 0.0, "label": "refactor \u203a bash", "latency": 110.0, "success": true, "test": "refactor", "tool": "bash"}];if(!tl.length)return;
+  const labels=tl.map(r=>r.label||(r.test+' \u203a '+r.tool));const vals=tl.map(r=>r.latency||0);const costs=tl.map(r=>r.cost||0);
+  const maxLat=Math.max(...vals,0);
+  const tt={backgroundColor:'rgba(6,11,24,.95)',borderColor:'rgba(51,65,85,.5)',borderWidth:1,titleFont:{family:'Inter',weight:'700'},bodyFont:{family:'Inter'},padding:8,cornerRadius:6};
+  /* Color palette per test — distinct hues */
+  const palette=[
+    {bg:'rgba(37,99,235,.4)',border:'rgba(37,99,235,.65)'},
+    {bg:'rgba(16,185,129,.4)',border:'rgba(16,185,129,.65)'},
+    {bg:'rgba(245,158,11,.4)',border:'rgba(245,158,11,.65)'},
+    {bg:'rgba(168,85,247,.4)',border:'rgba(168,85,247,.65)'},
+    {bg:'rgba(6,182,212,.4)',border:'rgba(6,182,212,.65)'},
+    {bg:'rgba(239,68,68,.4)',border:'rgba(239,68,68,.65)'},
+    {bg:'rgba(236,72,153,.4)',border:'rgba(236,72,153,.65)'},
+    {bg:'rgba(132,204,22,.4)',border:'rgba(132,204,22,.65)'},
+  ];
+  const tests=[...new Set(tl.map(r=>r.test))];
+  const testIdx=Object.fromEntries(tests.map((t,i)=>[t,i%palette.length]));
+  const colors=tl.map(r=>r.success?palette[testIdx[r.test]].bg:'rgba(239,68,68,.45)');
+  const borders=tl.map(r=>r.success?palette[testIdx[r.test]].border:'rgba(239,68,68,.65)');
+  const chartOpts={indexAxis:'y',responsive:true,maintainAspectRatio:false,scales:{x:{suggestedMax:maxLat>0?maxLat*1.15:1,grid:{color:'rgba(255,255,255,.025)'},ticks:{color:'rgba(100,116,139,.5)',font:{family:'Inter',size:9},callback:v=>v+'ms'},border:{display:false}},y:{grid:{display:false},ticks:{color:'rgba(203,213,225,.6)',font:{family:'Inter',size:10,weight:'500'}},border:{display:false}}},plugins:{legend:{display:false},tooltip:{...tt,callbacks:{label:ctx=>` ${ctx.raw}ms`,afterLabel:ctx=>` Cost: $${(costs[ctx.dataIndex]||0).toFixed(6)}`,title:ctx=>ctx[0].label}}}};
+  new Chart(document.getElementById('tlChart'),{type:'bar',data:{labels,datasets:[{label:'ms',data:vals,backgroundColor:colors,borderColor:borders,borderWidth:1,borderRadius:3,borderSkipped:false,barPercentage:.6}]},options:chartOpts});
+  /* Cost chart */
+  const maxCost=Math.max(...costs,0.000001);
+  new Chart(document.getElementById('tlCostChart'),{type:'bar',data:{labels,datasets:[{label:'$',data:costs,backgroundColor:colors,borderColor:borders,borderWidth:1,borderRadius:3,borderSkipped:false,barPercentage:.6}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,scales:{x:{suggestedMax:maxCost>0?maxCost*1.15:0.001,grid:{color:'rgba(255,255,255,.025)'},ticks:{color:'rgba(100,116,139,.5)',font:{family:'Inter',size:9},callback:v=>'$'+v.toFixed(4)},border:{display:false}},y:{grid:{display:false},ticks:{color:'rgba(203,213,225,.6)',font:{family:'Inter',size:10,weight:'500'}},border:{display:false}}},plugins:{legend:{display:false},tooltip:{...tt,callbacks:{label:ctx=>` $${ctx.raw.toFixed(6)}`,title:ctx=>ctx[0].label}}}}});
+})();
+
+
+
+
+
+</script>
+
+<!-- Share bar -->
+<div style="position:fixed;bottom:0;left:0;right:0;z-index:100;background:rgba(6,11,24,.9);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--border);padding:8px 24px;display:flex;align-items:center;justify-content:space-between;font-family:var(--font);font-size:11px;color:var(--text-4)">
+  <span>Built with <a href="https://github.com/hidai25/eval-view" target="_blank" rel="noopener" style="color:var(--blue-bright);text-decoration:none;font-weight:600">EvalView</a> <span style="opacity:.25;margin:0 5px">|</span> Agent testing &amp; regression detection</span>
+  <span style="display:flex;align-items:center;gap:5px">
+    <a href="https://twitter.com/intent/tweet?text=Testing%20my%20AI%20agent%20with%20EvalView%20%E2%80%94%20catches%20regressions%20before%20they%20ship.%20%F0%9F%9B%A1%EF%B8%8F&url=https%3A%2F%2Fgithub.com%2Fhidai25%2Feval-view" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:3px;padding:4px 10px;border-radius:5px;background:rgba(29,155,240,.08);color:#1d9bf0;text-decoration:none;font-weight:600;font-size:10px;border:1px solid rgba(29,155,240,.1)"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>Share</a>
+    <a href="https://github.com/hidai25/eval-view" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:3px;padding:4px 10px;border-radius:5px;background:rgba(255,255,255,.03);color:var(--text-2);text-decoration:none;font-weight:600;font-size:10px;border:1px solid var(--border)"><svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>Star</a>
+  </span>
+</div>
+<div style="height:40px"></div>
+
+</body>
+</html>

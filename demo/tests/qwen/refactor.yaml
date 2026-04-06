@@ -3,7 +3,7 @@ description: "Refactor p() in messy.py for readability — Qwen3 Coder 30B (loca
 
 adapter: opencode
 adapter_config:
-  model: ollama/qwen3-coder:30b
+  model: llamacpp-qwen/qwen3-coder-30b
   timeout: 360
 
 input:

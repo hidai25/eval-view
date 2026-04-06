@@ -139,13 +139,11 @@ def report(results_file: str, detailed: bool, html: str):
 
     if html:
         try:
-            from evalview.reporters.html_reporter import HTMLReporter
-            html_reporter = HTMLReporter()
-            html_path = html_reporter.generate(results, html)
+            from evalview.visualization import generate_visual_report
+            html_path = generate_visual_report(results, output_path=html, auto_open=False)
             console.print(f"[green]✅ HTML report saved to: {html_path}[/green]\n")
-        except ImportError as e:
-            console.print(f"[yellow]⚠️  Could not generate HTML report: {e}[/yellow]")
-            console.print("[dim]Install with: pip install jinja2 plotly[/dim]\n")
+        except Exception as e:
+            console.print(f"[yellow]⚠️  Could not generate HTML report: {e}[/yellow]\n")
         return
 
     reporter = ConsoleReporter()

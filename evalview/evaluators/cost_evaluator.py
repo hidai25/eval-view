@@ -29,8 +29,13 @@ class CostEvaluator:
         max_cost = test_case.thresholds.max_cost
         threshold = max_cost if max_cost is not None else float("inf")
 
-        # Warn if cost tracking isn't working
-        if total_cost == 0.0 and trace.metrics.total_tokens is None:
+        # Local/free adapters (opencode with local models, goose, ollama) don't emit cost data — that's expected.
+        # Only warn for cloud HTTP adapters where $0.00 signals a misconfiguration.
+        _FREE_ADAPTERS = {"opencode", "goose", "ollama"}
+        adapter_type = (test_case.adapter or "").lower()
+        is_local = adapter_type in _FREE_ADAPTERS
+
+        if total_cost == 0.0 and trace.metrics.total_tokens is None and not is_local:
             logger.warning(
                 "⚠️  Cost tracking shows $0.00. Your agent may not be emitting cost data.\n"
                 "   For streaming agents: emit {'type': 'usage', 'data': {...}} events\n"
