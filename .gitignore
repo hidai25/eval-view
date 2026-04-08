@@ -54,6 +54,7 @@ tests/test-cases/*.yaml
 tmp/
 code-review.md
 tests.yaml
+marketing/
 
 # Registry tokens
 .mcpregistry_*

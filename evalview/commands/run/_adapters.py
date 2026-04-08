@@ -59,7 +59,9 @@ def build_adapter(
             verbose=verbose,
             model_config=model_config,
             assistant_id=cfg.get("assistant_id", "agent"),
-            allow_private_urls=allow_private_urls,
+            allow_private_urls=allow_private_urls or cfg.get("allow_private_urls", False),
+            input_key=cfg.get("input_key"),
+            graph_config=cfg.get("graph_config"),
         )
 
     if adapter_type == "crewai":

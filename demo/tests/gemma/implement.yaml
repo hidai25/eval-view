@@ -3,7 +3,7 @@ description: "Implement group_by_key() from stub — Gemma 4 27B (local)"
 
 adapter: opencode
 adapter_config:
-  model: llamacpp-gemma/gemma-4-26b
+  model: ollama/gemma4:26b
   timeout: 360
 
 input:

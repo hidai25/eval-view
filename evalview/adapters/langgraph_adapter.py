@@ -51,6 +51,8 @@ class LangGraphAdapter(AgentAdapter):
         use_cloud_api: Optional[bool] = None,  # Auto-detect if None
         allow_private_urls: bool = False,
         allowed_hosts: Optional[Set[str]] = None,
+        input_key: Optional[str] = None,  # Custom input key, e.g. "research_topic"
+        graph_config: Optional[Dict[str, Any]] = None,  # Extra config passed to the run
     ):
         # Set SSRF protection settings before validation
         self.allow_private_urls = allow_private_urls
@@ -65,6 +67,8 @@ class LangGraphAdapter(AgentAdapter):
         self.verbose = verbose
         self.model_config = model_config or {}
         self.assistant_id = assistant_id or "agent"  # Default assistant ID
+        self.input_key = input_key  # Custom input key (None = use messages format)
+        self.graph_config = graph_config or {}  # Extra config for the run
         self._last_raw_response = None  # For debug mode
 
         # Auto-detect Cloud API if not specified
@@ -122,11 +126,20 @@ class LangGraphAdapter(AgentAdapter):
                 logger.debug(f"Created thread: {thread_id}")
 
             # Step 2: Create run with streaming
-            run_payload = {
+            input_key = context.get("input_key", self.input_key)
+            if input_key:
+                run_input = {input_key: query}
+            else:
+                run_input = {"messages": [{"role": "user", "content": query}]}
+
+            graph_config = context.get("graph_config", self.graph_config)
+            run_payload: Dict[str, Any] = {
                 "assistant_id": assistant_id,
-                "input": {"messages": [{"role": "user", "content": query}]},
+                "input": run_input,
                 "stream_mode": ["values", "updates"],
             }
+            if graph_config:
+                run_payload["config"] = graph_config
 
             steps: List[StepTrace] = []
             final_output = ""
@@ -175,6 +188,20 @@ class LangGraphAdapter(AgentAdapter):
                                     agent_data = data["agent"]
                                     if isinstance(agent_data, dict) and "messages" in agent_data:
                                         messages_to_process = agent_data["messages"]
+
+                                # Fallback: scan node outputs for common text fields
+                                # Handles graphs that don't use messages (e.g. local-deep-researcher
+                                # emits {"finalize_summary": {"running_summary": "..."}} )
+                                if not messages_to_process and isinstance(data, dict):
+                                    _TEXT_KEYS = ("running_summary", "output", "result", "answer", "response", "text", "content")
+                                    for node_data in data.values():
+                                        if not isinstance(node_data, dict):
+                                            continue
+                                        for key in _TEXT_KEYS:
+                                            val = node_data.get(key)
+                                            if val and isinstance(val, str):
+                                                final_output = val
+                                                break
 
                                 # Process all messages
                                 if messages_to_process and isinstance(messages_to_process, list):
