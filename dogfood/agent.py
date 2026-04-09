@@ -76,7 +76,7 @@ def execute_command(cmd: str) -> str:
             shell=True,
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=30,
             cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         )
         output = result.stdout

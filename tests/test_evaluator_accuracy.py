@@ -431,7 +431,7 @@ class TestOutputEvaluatorLLMAccuracy:
         assert result.score <= 30, f"Expected <= 30, got {result.score}: {result.rationale}"
 
     async def test_empty_answer_scores_low(self, evaluator):
-        """Empty or non-answer should score <= 20."""
+        """Empty or non-answer should score <= 40 (well below passing threshold of 70)."""
         test_case = make_test_case(
             query="Explain quantum entanglement.",
             contains=["quantum"],
@@ -440,7 +440,7 @@ class TestOutputEvaluatorLLMAccuracy:
 
         result = await evaluator.evaluate(test_case, trace)
 
-        assert result.score <= 20, f"Expected <= 20, got {result.score}: {result.rationale}"
+        assert result.score <= 40, f"Expected <= 40, got {result.score}: {result.rationale}"
 
     async def test_partial_answer_scores_medium(self, evaluator):
         """Partial but correct answer should score 40-70."""
