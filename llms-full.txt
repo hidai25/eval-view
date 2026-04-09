@@ -57,6 +57,7 @@ pip install evalview
 evalview init        # Detect agent, create starter suite
 evalview snapshot    # Save current behavior as baseline
 evalview check       # Catch regressions after every change
+evalview model-check # Detect silent drift in closed models (Claude, GPT, ...)
 evalview demo        # See it live, no API key needed
 ```
 

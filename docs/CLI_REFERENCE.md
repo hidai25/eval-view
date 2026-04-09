@@ -163,6 +163,51 @@ evalview check --budget 0.50               # Cap spend at $0.50
 
 The terminal output and HTML report surface the classification (`declared` or `suspected`), confidence, runtime fingerprint diff, and retry evidence from `evalview check --heal` when available.
 
+## `evalview model-check`
+
+Detect silent drift in a closed-weight model (Claude, GPT, ...) against
+a fixed canary suite. No agent required. No LLM judge. See
+[MODEL_CHECK.md](MODEL_CHECK.md) for the full rationale and output format.
+
+```bash
+evalview model-check [OPTIONS]
+
+Options:
+  --model TEXT              Model id (required, e.g. claude-opus-4-5-20251101)
+  --provider TEXT           anthropic | openai (auto-detected from model id)
+  --suite PATH              Custom canary YAML (default: bundled public canary)
+  --runs INTEGER            Runs per prompt for variance (default: 3)
+  --budget FLOAT            Maximum USD spend (default: 2.00)
+  --dry-run                 Print a cost estimate and exit
+  --pin                     Pin this run as the new reference
+  --reset-reference         Delete existing reference before this run
+  --out PATH                Write full JSON results to a file
+  --no-save                 Do not persist the snapshot
+  --json                    Emit JSON instead of human output
+```
+
+### Examples
+
+```bash
+# First run: saves baseline automatically
+evalview model-check --model claude-opus-4-5-20251101
+
+# Preview cost only (no API calls)
+evalview model-check --model gpt-5.4 --dry-run
+
+# Custom suite for your own prompts
+evalview model-check --model gpt-5.4 --suite ./my-canary.yaml
+
+# CI wrapper: exit 0 = no drift, 1 = drift, 2 = error
+evalview model-check --model claude-opus-4-5-20251101 --json > result.json
+```
+
+### Exit codes
+
+- `0` — no drift detected
+- `1` — drift detected (any `MODEL` classification)
+- `2` — usage error (missing API key, suite error, cost over budget)
+
 ## `evalview generate`
 
 Generate a draft regression suite from a live agent or existing traffic logs.

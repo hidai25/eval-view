@@ -22,6 +22,23 @@ AI agents break silently. When you change a prompt, swap a model, or update a to
 ### Is EvalView free?
 Yes. EvalView is **free and open source** under the Apache 2.0 license. You pay only for LLM API calls if you use optional LLM-as-judge evaluation. Use Ollama for completely free, fully offline evaluation.
 
+### What's the difference between `evalview check` and `evalview model-check`?
+They answer different questions:
+
+- **`evalview check`** checks *your agent* against golden baselines you
+  recorded. Use it when you want to know whether a code change, prompt
+  change, or model swap broke behavior in your system.
+- **`evalview model-check`** checks *the closed model underneath your
+  agent* against a fixed canary suite. Use it when you want to know
+  whether `claude-opus-4-5` or `gpt-5.4` itself silently changed
+  behavior, independent of anything in your code.
+
+Both commands share drift-classification machinery and complement each
+other. A failing `check` plus a drifted `model-check` on the same day
+strongly suggests the provider updated the model; a failing `check`
+with a clean `model-check` points back at your own changes. See
+[docs/MODEL_CHECK.md](MODEL_CHECK.md) for the full rationale.
+
 ---
 
 ## How It Compares

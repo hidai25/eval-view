@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`evalview model-check`** — new command that detects silent drift in
+  closed-weight models (Claude, GPT, ...) by running a small structural
+  canary suite directly against the provider. Three-anchor comparison
+  (reference / previous / trend), dry-run cost estimation, honest
+  per-provider fingerprint strength labeling, custom suites via
+  `--suite`, suite-hash enforcement for rotation safety. See
+  `docs/MODEL_CHECK.md`.
+- Bundled canary suite (`evalview/benchmarks/canary/suite.v1.public.yaml`):
+  15 structural prompts across four scorer families (tool choice,
+  JSON schema, refusal, exact match). Versioned, hash-pinned, and
+  rotated via a held-out companion suite.
+- `DriftKind` + `DriftConfidence` enums (`core/drift_kind.py`) — unified
+  drift taxonomy orthogonal to `DiffStatus`. Reserved values for
+  MCP contract drift so the planned P0 roadmap item does not refactor
+  the taxonomy again.
+- `core/model_snapshots.py` — timestamped snapshot store with auto-pin
+  first-run reference, hash-enforced compatibility checks, and
+  automatic pruning to the last 50 snapshots per model.
+- `core/model_check_scoring.py` — pure-function structural scorers
+  (`tool_choice`, `json_schema`, `refusal`, `exact_match`). No LLM
+  judge dependency, no calibration requirement.
+- `core/canary_suite.py` — loader and content hasher for canary YAMLs.
+- `anthropic` adapter is now registered in `core/adapter_factory.py`
+  so it can be driven from config or `evalview model-check`.
+- New tests: 94 net new tests covering the snapshot store, scorers,
+  canary loader, and command integration (all against mocked
+  adapters — no real API calls in CI).
+
+### Changed
+- `TraceDiff` gains two optional fields: `drift_kind` and
+  `drift_confidence`. Both default to `None`; existing callers are
+  unaffected.
+- `REFUSAL_PATTERNS` promoted to a public constant in
+  `evalview/test_generation.py` so the model-check scorers can reuse
+  the single source of truth without duplication. The legacy
+  `_REFUSAL_PATTERNS` name is kept as an alias.
+
 ## [0.6.1] - 2026-03-29
 
 ### Added
