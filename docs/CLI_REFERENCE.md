@@ -167,36 +167,45 @@ The terminal output and HTML report surface the classification (`declared` or `s
 
 Detect silent drift in a closed-weight model (Claude, GPT, ...) against
 a fixed canary suite. No agent required. No LLM judge. See
-[MODEL_CHECK.md](MODEL_CHECK.md) for the full rationale and output format.
+[MODEL_CHECK.md](MODEL_CHECK.md) for the full rationale, classification
+table, and per-provider signal strength.
+
+**v1 supports Anthropic.** OpenAI, Mistral, Cohere, and local providers
+land in v1.1.
 
 ```bash
 evalview model-check [OPTIONS]
 
 Options:
-  --model TEXT              Model id (required, e.g. claude-opus-4-5-20251101)
-  --provider TEXT           anthropic | openai (auto-detected from model id)
-  --suite PATH              Custom canary YAML (default: bundled public canary)
-  --runs INTEGER            Runs per prompt for variance (default: 3)
-  --budget FLOAT            Maximum USD spend (default: 2.00)
-  --dry-run                 Print a cost estimate and exit
-  --pin                     Pin this run as the new reference
-  --reset-reference         Delete existing reference before this run
-  --out PATH                Write full JSON results to a file
-  --no-save                 Do not persist the snapshot
-  --json                    Emit JSON instead of human output
+  --model TEXT          Model id (required, e.g. claude-opus-4-5-20251101)
+  --provider TEXT       Provider override (v1: anthropic). Auto-detected
+                        from --model when omitted.
+  --suite PATH          Custom canary YAML (default: bundled public canary)
+  --runs INTEGER        Runs per prompt for variance (default: 3)
+  --budget FLOAT        Hard cap on USD spend; refuses to run if estimate
+                        exceeds (default: 2.00)
+  --dry-run             Print a cost estimate and exit without API calls
+  --pin                 Pin this run as the new reference for the model
+  --reset-reference     Delete existing reference before saving this run
+  --out PATH            Write full JSON snapshot+comparison to a file
+  --no-save             Do not persist the snapshot to disk
+  --json                Emit machine-readable JSON instead of human output
 ```
 
 ### Examples
 
 ```bash
-# First run: saves baseline automatically
+# First run: saves baseline automatically (auto-pins as reference)
 evalview model-check --model claude-opus-4-5-20251101
 
-# Preview cost only (no API calls)
-evalview model-check --model gpt-5.4 --dry-run
+# Preview cost only — no API calls made
+evalview model-check --model claude-opus-4-5-20251101 --dry-run
 
-# Custom suite for your own prompts
-evalview model-check --model gpt-5.4 --suite ./my-canary.yaml
+# Run with a larger budget cap
+evalview model-check --model claude-opus-4-5-20251101 --budget 5.00
+
+# Use your own custom canary suite
+evalview model-check --model claude-opus-4-5-20251101 --suite ./my-canary.yaml
 
 # CI wrapper: exit 0 = no drift, 1 = drift, 2 = error
 evalview model-check --model claude-opus-4-5-20251101 --json > result.json
@@ -204,9 +213,9 @@ evalview model-check --model claude-opus-4-5-20251101 --json > result.json
 
 ### Exit codes
 
-- `0` — no drift detected
-- `1` — drift detected (any `MODEL` classification)
-- `2` — usage error (missing API key, suite error, cost over budget)
+- `0` — no drift detected (or first-time baseline saved)
+- `1` — drift detected (any `MODEL` classification on any comparison)
+- `2` — usage error (bad args, missing API key, suite error, cost over budget)
 
 ## `evalview generate`
 

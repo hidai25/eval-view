@@ -66,9 +66,9 @@ evalview check       # Catch regressions after every change
 
 That's it. Three commands to regression-test any AI agent. `init` auto-detects your agent type (chat, tool-use, multi-step, RAG, coding) and configures the right evaluators, thresholds, and assertions.
 
-### Catch silent drift in closed models (Claude, GPT, ...)
+### Catch silent drift in closed models (Claude today, GPT in v1.1)
 
-Worried that `claude-opus-4-5` or `gpt-5.4` might behave differently next week without warning? `evalview model-check` runs a small, fixed canary suite directly against the provider and tells you when the model itself has drifted — no agent required, no LLM judge, no calibration.
+Worried that `claude-opus-4-5` might behave differently next week without warning? `evalview model-check` runs a small, fixed canary suite directly against the provider and tells you when the model itself has drifted — no agent required, no LLM judge, no calibration.
 
 ```bash
 # First run saves a baseline snapshot
@@ -78,7 +78,7 @@ evalview model-check --model claude-opus-4-5-20251101
 evalview model-check --model claude-opus-4-5-20251101
 ```
 
-Uses structural checks only (tool choice, JSON schema, refusal, exact match), so drift signal is real and not judge noise. Ships with a bundled 15-prompt canary; bring your own suite with `--suite`. See [docs/MODEL_CHECK.md](docs/MODEL_CHECK.md).
+Uses structural checks only (tool choice, JSON schema, refusal, exact match), so the drift signal is real and not judge noise. Ships with a bundled 15-prompt canary; bring your own suite with `--suite`. v1 supports Anthropic; OpenAI/Mistral/Cohere land in v1.1. See [docs/MODEL_CHECK.md](docs/MODEL_CHECK.md).
 
 <details>
 <summary><strong>Other install methods</strong></summary>

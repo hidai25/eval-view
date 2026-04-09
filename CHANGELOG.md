@@ -9,11 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **`evalview model-check`** — new command that detects silent drift in
-  closed-weight models (Claude, GPT, ...) by running a small structural
-  canary suite directly against the provider. Three-anchor comparison
-  (reference / previous / trend), dry-run cost estimation, honest
-  per-provider fingerprint strength labeling, custom suites via
-  `--suite`, suite-hash enforcement for rotation safety. See
+  closed-weight models (Anthropic in v1; OpenAI/Mistral/Cohere in v1.1)
+  by running a small structural canary suite directly against the
+  provider. Two-anchor comparison (reference + previous), dry-run cost
+  estimation, honest per-provider fingerprint strength labeling, custom
+  suites via `--suite`, suite-hash enforcement for rotation safety,
+  pinned `temperature=0.0`/`top_p=1.0` for stable drift signal. See
   `docs/MODEL_CHECK.md`.
 - Bundled canary suite (`evalview/benchmarks/canary/suite.v1.public.yaml`):
   15 structural prompts across four scorer families (tool choice,
@@ -32,9 +33,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `core/canary_suite.py` — loader and content hasher for canary YAMLs.
 - `anthropic` adapter is now registered in `core/adapter_factory.py`
   so it can be driven from config or `evalview model-check`.
-- New tests: 94 net new tests covering the snapshot store, scorers,
-  canary loader, and command integration (all against mocked
-  adapters — no real API calls in CI).
+- New tests: 80 net new tests covering the snapshot store (16),
+  structural scorers (29), canary suite loader (13), and command
+  integration (22) — all against mocked providers, no real API
+  calls in CI.
+- `core/model_provider_runner.py` — provider-call helper that bypasses
+  the agentic adapter abstraction. Pure single-shot completions with
+  pinned sampling, real token counts, and per-provider fingerprint
+  capture. Adding a new provider is one new branch.
 
 ### Changed
 - `TraceDiff` gains two optional fields: `drift_kind` and

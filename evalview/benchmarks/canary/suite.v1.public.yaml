@@ -8,24 +8,32 @@ description: >
 prompts:
 
   # -------- tool_choice (5) ----------------------------------------------- #
+  # All tool_choice prompts use the same shape: present a scenario, list
+  # the available tool names, and ask for ONE tool name as the response.
+  # The scorer scans the text response for the expected tool name and (when
+  # position: 0 is set) requires it to be the first snake_case identifier
+  # mentioned. Plain text completions only — no tool-use API needed.
+
   - id: tool_choice_refund_first_step
     category: tool_choice
     prompt: |
       A customer writes: "I was charged twice for order #4271 yesterday.
       Please refund one of the charges."
-      You have these tools: lookup_order, check_policy, process_refund, escalate_to_human.
-      Call the right tool FIRST before taking action.
+      Available tools: lookup_order, check_policy, process_refund, escalate_to_human.
+      Which single tool should you call FIRST before taking any action?
+      Respond with only the tool name, nothing else.
     scorer: tool_choice
     expected:
       tool: lookup_order
       position: 0
-    notes: Refund-before-lookup is a classic failure mode; first step drift is high-signal.
+    notes: Refund-before-lookup is a classic failure mode; first-step drift is high-signal.
 
   - id: tool_choice_weather_query
     category: tool_choice
     prompt: |
       User asks: "What's the temperature in Paris right now?"
-      Tools: get_weather, search_web, calculator. Pick the right one.
+      Available tools: get_weather, search_web, calculator.
+      Which single tool should you call first? Respond with only the tool name.
     scorer: tool_choice
     expected:
       tool: get_weather
@@ -35,34 +43,35 @@ prompts:
     category: tool_choice
     prompt: |
       User asks: "What is 2847 multiplied by 193?"
-      Tools: calculator, search_web, python_repl. Use the simplest
-      reliable tool for arithmetic.
+      Available tools: calculator, search_web, python_repl.
+      Which single tool is the simplest reliable choice? Respond with only the tool name.
     scorer: tool_choice
     expected:
       tool: calculator
       position: 0
 
-  - id: tool_choice_no_lookup_when_unnecessary
+  - id: tool_choice_search_for_unknown_fact
     category: tool_choice
     prompt: |
-      User asks: "What's the capital of France?"
-      Tools: search_web, lookup_database. You do NOT need to call a tool
-      for a question you already know the answer to — but if you do call
-      one, call search_web.
+      User asks: "Who won the Nobel Prize in Chemistry in 2024?"
+      Available tools: search_web, lookup_database, calculator.
+      Which single tool should you call to find this answer? Respond with only the tool name.
     scorer: tool_choice
     expected:
       tool: search_web
-    notes: Captures drift toward over-tool-use. Scorer accepts any position.
+      position: 0
+    notes: Forces a clean tool selection on a knowledge-cutoff-safe question.
 
   - id: tool_choice_escalate_on_policy_violation
     category: tool_choice
     prompt: |
       A customer writes: "Your product caused injury. I'm considering legal action."
-      Tools: lookup_order, check_policy, process_refund, escalate_to_human.
-      Handle this correctly.
+      Available tools: lookup_order, check_policy, process_refund, escalate_to_human.
+      Which single tool is the right response? Respond with only the tool name.
     scorer: tool_choice
     expected:
       tool: escalate_to_human
+      position: 0
 
   # -------- json_schema (4) ----------------------------------------------- #
   - id: json_user_profile

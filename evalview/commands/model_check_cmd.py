@@ -1,28 +1,37 @@
 """`evalview model-check` — closed-model behavioral drift detection.
 
-Runs a small, fixed canary suite directly against a provider (Anthropic,
-OpenAI, ...) with no user agent in the loop. Each prompt is scored by a
-pure structural scorer (tool choice / JSON schema / refusal / regex), so
-there is NO LLM judge dependency in v1 and no calibration problem.
+Runs a small, fixed canary suite directly against a provider (v1: Anthropic
+only). Each prompt is scored by a pure structural scorer
+(``tool_choice`` / ``json_schema`` / ``refusal`` / ``exact_match``), so
+there is NO LLM judge dependency in v1 and therefore no calibration problem.
 
-Each invocation produces a snapshot. Drift comparisons use a three-anchor
+Each invocation produces a snapshot. Drift comparisons use a two-anchor
 model:
 
 - **reference**  — the first-ever (or user-pinned) snapshot; never auto-
                    updated, so gradual drift is detectable.
 - **latest prior** — the most recent snapshot before this run.
-- **trend**     — OLS slope from core/drift_tracker over the full history.
 
-Provider fingerprint signal strength is honestly labeled (STRONG for
-OpenAI ``system_fingerprint``, WEAK for providers that only echo the
-requested model id). See ``docs/MODEL_CHECK.md``.
+Provider fingerprint signal strength is honestly labeled. Anthropic does
+not currently expose a per-response fingerprint, so the signal is
+"behavior-only" (weak). OpenAI's ``system_fingerprint`` will be wired in
+v1.1 and labeled "strong". See ``docs/MODEL_CHECK.md``.
+
+Architecture notes:
+  - Provider calls go through ``core.model_provider_runner``, NOT through
+    the agent adapter abstraction. Canary runs do not use tool loops or
+    goldens; the agent adapter shape is the wrong fit and would couple
+    drift signal stability to changes in the agent test path.
+  - Sampling is pinned at temperature=0.0, top_p=1.0. Snapshots refuse
+    to compare across different sampling configs.
+  - The command returns exit 0 on no drift, 1 on any drift detected, 2
+    on usage / configuration errors.
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
-import os
 import statistics
 import sys
 from dataclasses import dataclass, field
@@ -34,6 +43,7 @@ import click
 
 from evalview.benchmarks.canary import PUBLIC_SUITE_PATH
 from evalview.commands.shared import console
+from evalview.core.budget import BudgetExhausted
 from evalview.core.canary_suite import (
     CanaryPrompt,
     CanarySuite,
@@ -42,6 +52,13 @@ from evalview.core.canary_suite import (
 )
 from evalview.core.drift_kind import DriftConfidence, DriftKind
 from evalview.core.model_check_scoring import ScoreResult, score_prompt
+from evalview.core.model_provider_runner import (
+    CompletionResult,
+    ProviderError,
+    SUPPORTED_PROVIDERS,
+    detect_provider,
+    run_completion,
+)
 from evalview.core.model_snapshots import (
     ModelCheckPromptResult,
     ModelSnapshot,
@@ -49,7 +66,7 @@ from evalview.core.model_snapshots import (
     ModelSnapshotStore,
     SnapshotSuiteMismatchError,
 )
-from evalview.core.pricing import get_model_pricing_info
+from evalview.core.pricing import calculate_cost, get_model_pricing_info
 from evalview.telemetry.decorators import track_command
 
 logger = logging.getLogger(__name__)
@@ -60,9 +77,11 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------------------------- #
 
 
-# Cost estimation assumes a typical canary prompt uses roughly this many
-# tokens on each side of the API boundary. Deliberately generous so the
-# estimate errs on the side of over-quoting rather than surprising the user.
+# Cost ESTIMATION (used for --dry-run and pre-flight budget check) assumes
+# a typical canary prompt uses roughly this many tokens on each side of the
+# API boundary. Deliberately generous so the estimate over-quotes rather
+# than surprising the user. ACTUAL cost recorded after the run uses real
+# token counts from each API response.
 _EST_INPUT_TOKENS_PER_CALL = 400
 _EST_OUTPUT_TOKENS_PER_CALL = 300
 
@@ -71,9 +90,13 @@ _EST_OUTPUT_TOKENS_PER_CALL = 300
 _WEAK_DRIFT_DELTA = 0.01     # any pass-rate change beyond this is noted
 _MEDIUM_DRIFT_FLIP_COUNT = 2  # two or more flipped prompts → medium confidence
 
-
-# Provider name normalization: what the adapter / env considers native.
-_KNOWN_PROVIDERS = ("anthropic", "openai")
+# Sampling is pinned for v1. These constants are surfaced in snapshot
+# metadata and used for the suite-compatibility check, so older snapshots
+# will refuse to compare if these values change in the future.
+_PINNED_TEMPERATURE = 0.0
+_PINNED_TOP_P = 1.0
+_DEFAULT_MAX_TOKENS = 1024
+_DEFAULT_TIMEOUT_SECONDS = 60.0
 
 
 # --------------------------------------------------------------------------- #
@@ -109,67 +132,33 @@ class _Classification:
 
 
 # --------------------------------------------------------------------------- #
-# Provider adapter plumbing
+# Provider resolution
 # --------------------------------------------------------------------------- #
 
 
-def _infer_provider(model_id: str, explicit: Optional[str]) -> str:
-    """Guess the provider from the model id when --provider is omitted.
+def _resolve_provider(model_id: str, explicit: Optional[str]) -> str:
+    """Resolve the provider from --provider or by inference from --model.
 
-    Errors clearly when the caller's choice is unsupported so typos don't
-    silently resolve to the wrong adapter.
+    Fails loudly on unknown providers; silent fallback would risk routing
+    one model id to the wrong API and producing meaningless drift output.
     """
     if explicit:
         provider = explicit.strip().lower()
-        if provider not in _KNOWN_PROVIDERS:
+        if provider not in SUPPORTED_PROVIDERS:
             raise click.UsageError(
-                f"Unsupported provider '{explicit}'. "
-                f"Supported in v1: {', '.join(_KNOWN_PROVIDERS)}."
+                f"Provider '{explicit}' is not supported in v1. "
+                f"Supported: {', '.join(SUPPORTED_PROVIDERS)}."
             )
         return provider
 
-    lowered = model_id.lower()
-    if lowered.startswith("claude") or "anthropic" in lowered:
-        return "anthropic"
-    if lowered.startswith(("gpt-", "o1", "o3", "o4")):
-        return "openai"
-    raise click.UsageError(
-        f"Could not infer provider from model id {model_id!r}. "
-        f"Pass --provider explicitly ({', '.join(_KNOWN_PROVIDERS)})."
-    )
-
-
-def _check_api_key(provider: str) -> None:
-    """Fail fast with a clear message before any adapter import is attempted."""
-    env_var = {
-        "anthropic": "ANTHROPIC_API_KEY",
-        "openai": "OPENAI_API_KEY",
-    }[provider]
-    if not os.environ.get(env_var):
+    inferred = detect_provider(model_id)
+    if inferred is None:
         raise click.UsageError(
-            f"{env_var} is not set. Export it before running model-check."
+            f"Could not infer provider from model id {model_id!r}. "
+            f"Pass --provider explicitly. "
+            f"Supported in v1: {', '.join(SUPPORTED_PROVIDERS)}."
         )
-
-
-def _build_adapter(provider: str, model_id: str, *, timeout: float = 120.0):
-    """Construct the raw provider adapter. Import is local to keep cold start fast."""
-    if provider == "anthropic":
-        from evalview.adapters.anthropic_adapter import AnthropicAdapter
-
-        return AnthropicAdapter(model=model_id, timeout=timeout)
-    if provider == "openai":
-        # Use the OpenAI Assistants adapter; "endpoint" is the model id here.
-        from evalview.adapters.openai_assistants_adapter import OpenAIAssistantsAdapter
-
-        return OpenAIAssistantsAdapter(endpoint=model_id, timeout=timeout)
-    raise click.UsageError(f"Unsupported provider: {provider}")
-
-
-def _fingerprint_strength(provider: str) -> str:
-    """Honest labeling of how much signal we actually get from each provider."""
-    if provider == "openai":
-        return "strong"  # system_fingerprint is per-response
-    return "weak"  # Anthropic and friends: requested model id only
+    return inferred
 
 
 # --------------------------------------------------------------------------- #
@@ -177,87 +166,134 @@ def _fingerprint_strength(provider: str) -> str:
 # --------------------------------------------------------------------------- #
 
 
-async def _run_single(
-    adapter: Any,
+@dataclass
+class _SuiteRunOutcome:
+    """Aggregated run output. All cost numbers are derived from real token usage."""
+
+    results: List[ModelCheckPromptResult]
+    total_cost_usd: float
+    fingerprint: Optional[str]
+    fingerprint_confidence: str
+
+
+async def _run_one_prompt(
+    *,
     prompt: CanaryPrompt,
-) -> Tuple[ScoreResult, float]:
-    """Execute one prompt once against the adapter and score it.
-
-    Returns the score result plus the measured latency in milliseconds.
-    Adapter-level exceptions are caught and reported as a failed score so
-    a single transient API error does not abort the whole run.
-    """
-    start = datetime.now(timezone.utc)
-    try:
-        trace = await adapter.execute(prompt.prompt)
-    except Exception as exc:  # pragma: no cover - depends on provider error shape
-        logger.warning("Adapter error on prompt %s: %s", prompt.id, exc)
-        return ScoreResult(False, f"adapter error: {exc}"), 0.0
-
-    latency_ms = (datetime.now(timezone.utc) - start).total_seconds() * 1000.0
-
-    response = getattr(trace, "final_output", "") or ""
-    tool_calls = [
-        step.tool_name
-        for step in getattr(trace, "steps", []) or []
-        if getattr(step, "tool_name", None)
-    ]
-
-    try:
-        result = score_prompt(
-            prompt.scorer,
-            response=response,
-            tool_calls=tool_calls,
-            expected=prompt.expected,
-        )
-    except ValueError as exc:
-        # Suite-level misconfiguration — surface it loudly, never silently fail.
-        raise click.UsageError(f"Prompt '{prompt.id}': {exc}") from exc
-
-    return result, latency_ms
-
-
-async def _run_prompt_with_retries(
-    adapter: Any,
-    prompt: CanaryPrompt,
+    provider: str,
+    model: str,
     runs_per_prompt: int,
-) -> ModelCheckPromptResult:
-    """Run a prompt N times, aggregate pass rate and latency."""
-    passes: List[bool] = []
+    max_tokens: int,
+    timeout: float,
+) -> Tuple[ModelCheckPromptResult, float, Optional[str], str]:
+    """Execute one prompt N times, score each run, return aggregate + cost.
+
+    Each run uses the pinned sampling configuration. Per-run failures
+    propagate as ProviderError so the caller can decide whether to abort
+    the whole suite (default) or skip and continue.
+
+    Returns:
+        (result, total_cost_usd, fingerprint, fingerprint_confidence)
+    """
+    per_run: List[bool] = []
     latencies: List[float] = []
+    cost = 0.0
+    last_fp: Optional[str] = None
+    last_fp_conf: str = "none"
+
     for _ in range(runs_per_prompt):
-        result, latency_ms = await _run_single(adapter, prompt)
-        passes.append(result.passed)
-        latencies.append(latency_ms)
+        completion: CompletionResult = await run_completion(
+            provider,
+            model,
+            prompt.prompt,
+            temperature=_PINNED_TEMPERATURE,
+            top_p=_PINNED_TOP_P,
+            max_tokens=max_tokens,
+            timeout=timeout,
+        )
 
-    pass_rate = sum(1 for p in passes if p) / len(passes)
-    mean_latency = statistics.mean(latencies) if latencies else None
-    stdev_latency = statistics.stdev(latencies) if len(latencies) > 1 else None
+        try:
+            score: ScoreResult = score_prompt(
+                prompt.scorer,
+                response=completion.text,
+                expected=prompt.expected,
+            )
+        except ValueError as exc:
+            # Suite YAML misconfiguration — surface loudly, never silently fail.
+            raise click.UsageError(f"Prompt '{prompt.id}': {exc}") from exc
 
-    return ModelCheckPromptResult(
+        per_run.append(score.passed)
+        latencies.append(completion.latency_ms)
+        cost += calculate_cost(
+            model,
+            input_tokens=completion.input_tokens,
+            output_tokens=completion.output_tokens,
+        )
+        last_fp = completion.fingerprint
+        last_fp_conf = completion.fingerprint_confidence
+
+    pass_rate = sum(1 for p in per_run if p) / len(per_run)
+    result = ModelCheckPromptResult(
         prompt_id=prompt.id,
         category=prompt.category,
         pass_rate=pass_rate,
         n_runs=runs_per_prompt,
-        per_run_passed=passes,
-        latency_ms_mean=mean_latency,
-        latency_ms_stdev=stdev_latency,
+        per_run_passed=per_run,
+        latency_ms_mean=statistics.fmean(latencies) if latencies else None,
+        latency_ms_stdev=(
+            statistics.stdev(latencies) if len(latencies) > 1 else 0.0
+        ),
     )
+    return result, cost, last_fp, last_fp_conf
 
 
 async def _run_suite(
-    adapter: Any,
+    *,
     suite: CanarySuite,
+    provider: str,
+    model: str,
     runs_per_prompt: int,
-    progress_cb=None,
-) -> List[ModelCheckPromptResult]:
+    max_tokens: int,
+    timeout: float,
+    budget_usd: float,
+) -> _SuiteRunOutcome:
+    """Run every prompt N times. Aborts cleanly if the budget is exhausted.
+
+    Budget enforcement is *between* prompts, not inside a prompt's run
+    loop. This guarantees we never end with a half-aggregated prompt
+    result, which would corrupt the snapshot.
+    """
     results: List[ModelCheckPromptResult] = []
+    total_cost = 0.0
+    fingerprint: Optional[str] = None
+    fp_confidence: str = "none"
+
     for prompt in suite.prompts:
-        result = await _run_prompt_with_retries(adapter, prompt, runs_per_prompt)
+        if total_cost >= budget_usd:
+            raise BudgetExhausted(
+                spent=total_cost,
+                limit=budget_usd,
+                completed=len(results),
+                total=len(suite.prompts),
+            )
+        result, cost, fp, fp_conf = await _run_one_prompt(
+            prompt=prompt,
+            provider=provider,
+            model=model,
+            runs_per_prompt=runs_per_prompt,
+            max_tokens=max_tokens,
+            timeout=timeout,
+        )
         results.append(result)
-        if progress_cb is not None:
-            progress_cb(result)
-    return results
+        total_cost += cost
+        fingerprint = fp
+        fp_confidence = fp_conf
+
+    return _SuiteRunOutcome(
+        results=results,
+        total_cost_usd=total_cost,
+        fingerprint=fingerprint,
+        fingerprint_confidence=fp_confidence,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -556,18 +592,31 @@ def model_check(
 ) -> None:
     """Detect behavioral drift in a closed model against a fixed canary suite.
 
-    v1 runs structural-only prompts (tool choice, JSON schema, refusal,
-    regex) against Anthropic or OpenAI and compares the result against
-    two anchors: the pinned reference (never auto-updates) and the most
-    recent prior snapshot. Drift is classified as one of NONE / WEAK /
-    MEDIUM / STRONG depending on how many prompts flipped direction and
-    whether the provider exposed a fingerprint change.
+    \b
+    Runs a small set of structural prompts (tool selection, JSON schema,
+    refusal behavior, exact match) against the model with pinned
+    temperature=0, then compares results to two anchors:
 
-    No LLM judge is used, so there is no calibration requirement.
+    \b
+      • reference snapshot — first run ever, or a user-pinned one. Never
+                             auto-updates, so gradual drift is detectable.
+      • previous snapshot  — most recent prior run. Day-over-day delta.
+
+    Drift is classified as NONE / WEAK / MEDIUM / STRONG depending on how
+    many prompts flipped pass↔fail and whether the provider exposes a
+    fingerprint change. v1 supports Anthropic; OpenAI ships in v1.1.
+
+    No LLM judge is used in v1, so there is no calibration requirement.
+
+    \b
+    Examples:
+      evalview model-check --model claude-opus-4-5-20251101 --dry-run
+      evalview model-check --model claude-opus-4-5-20251101
+      evalview model-check --model claude-opus-4-5-20251101 --pin
+      evalview model-check --model claude-opus-4-5-20251101 --json
+
+    See docs/MODEL_CHECK.md for the per-provider signal strength table.
     """
-    if runs_per_prompt < 1:
-        raise click.UsageError("--runs must be >= 1")
-
     # --- Load suite -------------------------------------------------------
     suite_file = suite_path or PUBLIC_SUITE_PATH
     try:
@@ -578,7 +627,7 @@ def model_check(
 
     # --- Resolve provider -------------------------------------------------
     try:
-        provider_resolved = _infer_provider(model, provider)
+        provider_resolved = _resolve_provider(model, provider)
     except click.UsageError as exc:
         console.print(f"[red]{exc.message}[/red]")
         sys.exit(EXIT_USAGE_ERROR)
@@ -586,13 +635,7 @@ def model_check(
     n_calls = len(suite.prompts) * runs_per_prompt
     estimated_cost = _estimate_cost_usd(model, n_calls)
 
-    if estimated_cost > budget and not dry_run:
-        console.print(
-            f"[red]Estimated cost ${estimated_cost:.4f} exceeds --budget ${budget:.2f}.[/red] "
-            f"Run with --dry-run to confirm or raise --budget."
-        )
-        sys.exit(EXIT_USAGE_ERROR)
-
+    # --- Dry-run path: print estimate and exit -----------------------------
     if dry_run:
         console.print()
         console.print("[bold]Would run:[/bold] " + model)
@@ -601,6 +644,7 @@ def model_check(
             f"({len(suite.prompts)} prompts × {runs_per_prompt} runs = {n_calls} calls)"
         )
         console.print(f"  Provider:        {provider_resolved}")
+        console.print(f"  Sampling:        temperature={_PINNED_TEMPERATURE} top_p={_PINNED_TOP_P}")
         console.print(f"  Estimated cost:  ${estimated_cost:.4f}")
         console.print(f"  Budget cap:      ${budget:.2f}")
         console.print()
@@ -608,51 +652,76 @@ def model_check(
         console.print()
         return
 
-    _check_api_key(provider_resolved)
+    if estimated_cost > budget:
+        console.print(
+            f"[red]Estimated cost ${estimated_cost:.4f} exceeds --budget ${budget:.2f}.[/red] "
+            f"Run with --dry-run to confirm, or raise --budget."
+        )
+        sys.exit(EXIT_USAGE_ERROR)
 
     # --- Load store + handle reference management ------------------------
     store = ModelSnapshotStore()
     if reset_reference:
-        existed = store.reset_reference(model)
-        if existed:
+        if store.reset_reference(model):
             console.print(f"[yellow]Reference for {model} was deleted.[/yellow]")
 
     reference_before = store.load_reference(model)
-    previous_before = store.load_latest(model)
-
-    # --- Run the suite ---------------------------------------------------
-    adapter = _build_adapter(provider_resolved, model)
 
     # JSON mode must produce clean machine-readable output. Human progress
-    # messages go to stderr so JSON mode stays pure on stdout.
+    # messages go to the rich console (stderr-friendly).
     if not json_output:
         console.print(
             f"[dim]Running {len(suite.prompts)} prompts × {runs_per_prompt} runs "
             f"against {model}…[/dim]"
         )
 
+    # --- Run the suite ---------------------------------------------------
     try:
-        results = asyncio.run(_run_suite(adapter, suite, runs_per_prompt))
-    except Exception as exc:
+        outcome = asyncio.run(
+            _run_suite(
+                suite=suite,
+                provider=provider_resolved,
+                model=model,
+                runs_per_prompt=runs_per_prompt,
+                max_tokens=_DEFAULT_MAX_TOKENS,
+                timeout=_DEFAULT_TIMEOUT_SECONDS,
+                budget_usd=budget,
+            )
+        )
+    except ProviderError as exc:
+        console.print(f"[red]Provider error:[/red] {exc}")
+        sys.exit(EXIT_USAGE_ERROR)
+    except BudgetExhausted as exc:
+        console.print(
+            f"[yellow]Budget exhausted after {exc.completed}/{exc.total} prompts. "
+            f"Spent ${exc.spent:.4f} of ${exc.limit:.2f} budget.[/yellow]"
+        )
+        sys.exit(EXIT_DRIFT_DETECTED)
+    except click.UsageError:
+        raise
+    except Exception as exc:  # pragma: no cover - unexpected runtime failure
         console.print(f"[red]model-check failed during execution:[/red] {exc}")
         sys.exit(EXIT_USAGE_ERROR)
 
     # --- Build snapshot ---------------------------------------------------
-    metadata = ModelSnapshotMetadata(
-        model_id=model,
-        provider=provider_resolved,
-        snapshot_at=datetime.now(timezone.utc),
-        suite_name=suite.suite_name,
-        suite_version=suite.version,
-        suite_hash=suite.suite_hash,
-        temperature=0.0,
-        top_p=1.0,
-        runs_per_prompt=runs_per_prompt,
-        provider_fingerprint=model,  # best we can do for weak-fp providers
-        fingerprint_confidence=_fingerprint_strength(provider_resolved),
-        cost_total_usd=estimated_cost,  # true cost tracking lands in v1.1
+    snapshot = ModelSnapshot(
+        metadata=ModelSnapshotMetadata(
+            model_id=model,
+            provider=provider_resolved,
+            snapshot_at=datetime.now(timezone.utc),
+            suite_name=suite.suite_name,
+            suite_version=suite.version,
+            suite_hash=suite.suite_hash,
+            temperature=_PINNED_TEMPERATURE,
+            top_p=_PINNED_TOP_P,
+            runs_per_prompt=runs_per_prompt,
+            provider_fingerprint=outcome.fingerprint,
+            fingerprint_confidence=outcome.fingerprint_confidence,
+            cost_total_usd=outcome.total_cost_usd,
+            evalview_version=_get_evalview_version(),
+        ),
+        results=outcome.results,
     )
-    snapshot = ModelSnapshot(metadata=metadata, results=results)
 
     # --- Persist ---------------------------------------------------------
     saved_path: Optional[Path] = None
@@ -671,11 +740,7 @@ def model_check(
 
     # --- Comparisons ------------------------------------------------------
     # Excluding the just-saved path guarantees "previous" means *before now*.
-    previous = (
-        store.load_latest(model, exclude=saved_path)
-        if saved_path is not None
-        else previous_before
-    )
+    previous = store.load_latest(model, exclude=saved_path)
 
     # Reference was captured before save so auto-pin on first run still
     # produces a meaningful "vs reference: none" output.
@@ -687,8 +752,9 @@ def model_check(
         if previous is not None:
             ModelSnapshotStore.assert_comparable(snapshot, previous)
     except SnapshotSuiteMismatchError as exc:
-        console.print(f"[red]{exc}[/red]")
-        sys.exit(EXIT_USAGE_ERROR)
+        console.print(f"[yellow]Skipping comparison: {exc}[/yellow]")
+        reference = None
+        previous = None
 
     vs_reference = _classify(snapshot, reference)
     vs_previous = _classify(snapshot, previous)
@@ -727,6 +793,16 @@ def model_check(
         vs_reference.kind != DriftKind.NONE or vs_previous.kind != DriftKind.NONE
     )
     sys.exit(EXIT_DRIFT_DETECTED if has_any_drift else EXIT_OK)
+
+
+def _get_evalview_version() -> Optional[str]:
+    """Best-effort version lookup for snapshot metadata."""
+    try:
+        from importlib.metadata import version
+
+        return version("evalview")
+    except Exception:  # pragma: no cover
+        return None
 
 
 __all__ = ["model_check"]

@@ -68,22 +68,23 @@ change:
 
 ## Per-provider signal strength
 
-Not all providers expose the same drift signal, and we label it
-honestly in every output:
+Not all providers expose the same drift signal. v1 ships **Anthropic
+only**; other providers land in v1.1 and will be labeled honestly in
+the same table.
 
-| Provider  | Signal source                          | Strength | Notes |
-|-----------|----------------------------------------|----------|-------|
-| OpenAI    | `system_fingerprint` per response       | **strong** | Changes when the serving model is updated |
-| Anthropic | Requested model ID only                 | **weak**   | Drift must be inferred from behavior |
-| Mistral   | Requested model ID only                 | **weak**   | Same as Anthropic |
-| Cohere    | Requested model ID only                 | **weak**   | Same |
-| Local (Ollama) | Model file hash                    | **strong** | Deterministic file hash |
+| Provider       | v1 status     | Signal source            | Strength    | Notes                                             |
+|----------------|---------------|--------------------------|-------------|---------------------------------------------------|
+| Anthropic      | **shipped**   | Requested model id only  | **weak**    | No per-response fingerprint; behavior-only signal |
+| OpenAI         | v1.1          | `system_fingerprint`     | **strong**  | Per-response fingerprint, ground truth            |
+| Mistral        | v1.1          | Requested model id only  | weak        | Same shape as Anthropic                           |
+| Cohere         | v1.1          | Requested model id only  | weak        | Same                                              |
+| Local (Ollama) | v1.1          | Model file hash          | strong      | Deterministic file hash                           |
 
-If the provider gives us weak fingerprint signal, you'll see
-`[weak — behavior-only]` in the CLI output. Take it seriously: it
-means drift has to be inferred from canary results alone. You will
-see fewer STRONG classifications on Anthropic than on OpenAI, and
-that's an honest reflection of what the provider exposes.
+When the provider gives us weak fingerprint signal, the CLI labels it
+`[weak — behavior-only]` in every output. Take that seriously: drift
+has to be inferred from canary results alone, and STRONG
+classifications are not possible on Anthropic until OpenAI ships in
+v1.1.
 
 ## Cost control
 
@@ -111,20 +112,19 @@ Would run: claude-opus-4-5-20251101
 
 ## Flags you might care about
 
-| Flag                    | Default     | Purpose |
-|-------------------------|-------------|---------|
-| `--model <id>`           | *(required)* | Model ID (e.g. `claude-opus-4-5-20251101`) |
-| `--provider <name>`      | auto-detect  | `anthropic` or `openai` in v1 |
-| `--suite <path>`         | bundled      | Custom canary YAML (recommended for teams) |
-| `--runs <N>`             | `3`          | Runs per prompt for variance |
-| `--budget <usd>`         | `2.00`       | Hard cap; refuse to run if estimate exceeds |
-| `--dry-run`              | off          | Print cost estimate and exit |
-| `--pin`                  | off          | Pin this run as the new reference |
-| `--reset-reference`      | off          | Delete existing reference before the run |
-| `--compare-to <spec>`    | n/a          | (Reserved for v1.1) |
-| `--out <path>`           | n/a          | Write full JSON output to a file |
-| `--no-save`              | off          | Do not persist the snapshot (one-off runs) |
-| `--json`                 | off          | Emit machine-readable JSON instead of human output |
+| Flag                | Default       | Purpose                                                |
+|---------------------|---------------|--------------------------------------------------------|
+| `--model <id>`      | *(required)*  | Model id (e.g. `claude-opus-4-5-20251101`)             |
+| `--provider <name>` | auto-detect   | Override provider (v1 supports `anthropic`)            |
+| `--suite <path>`    | bundled       | Custom canary YAML (recommended for teams)             |
+| `--runs <N>`        | `3`           | Runs per prompt for variance                           |
+| `--budget <usd>`    | `2.00`        | Hard cap; refuse to run if pre-flight estimate exceeds |
+| `--dry-run`         | off           | Print cost estimate and exit without calling the API   |
+| `--pin`             | off           | Pin this run as the new reference for the model        |
+| `--reset-reference` | off           | Delete the existing reference before the run           |
+| `--out <path>`      | n/a           | Write full JSON snapshot+comparison to a file          |
+| `--no-save`         | off           | Do not persist the snapshot (one-off runs)             |
+| `--json`            | off           | Emit machine-readable JSON instead of human output     |
 
 ## Custom suites (recommended for teams)
 
@@ -155,17 +155,19 @@ reference and history.
 ## Suite versioning
 
 Canary suites are content-hashed. Any change to any prompt, scorer, or
-expected block produces a new hash, and drift comparisons refuse to
-compare across different hashes with a clear error:
+expected block produces a new hash. When the stored reference uses a
+different hash than the current run, EvalView **skips the comparison
+cleanly** and saves the new snapshot as a fresh baseline:
 
 ```
-Suite hash differs: current sha256:def456…, prior sha256:abc123…
-The canary suite changed; old snapshots are not comparable.
-Run with --reset-reference to start a new baseline.
+Skipping comparison: Suite hash differs: current sha256:def456…
+vs prior sha256:abc123…. The canary suite changed; old snapshots are
+not comparable. Run with --reset-reference to start a new baseline.
 ```
 
 This is intentional: if the suite changed, the old results mean
-nothing. Reset the reference and start fresh.
+nothing. The CLI exits 0 in this case (the new run is treated as a
+baseline) so cron pipelines don't accidentally page on a suite update.
 
 ## Exit codes
 
@@ -193,14 +195,15 @@ Snapshots live under `.evalview/model_snapshots/<model-id>/`:
 
 ```
 .evalview/model_snapshots/claude-opus-4-5-20251101/
-├── 2026-04-01T14-03-11Z.json
-├── 2026-04-02T14-18-44Z.json
-├── 2026-04-09T09-22-17Z.json
+├── 2026-04-01T14-03-11.482523Z.json
+├── 2026-04-02T14-18-44.901144Z.json
+├── 2026-04-09T09-22-17.339207Z.json
 └── reference.json              # the pinned baseline
 ```
 
-Automatic pruning keeps the last 50 timestamped snapshots per model.
-The reference is never pruned.
+Filenames include microseconds so back-to-back runs never collide.
+Pruning keeps the most recent 50 timestamped snapshots per model. The
+reference file is never pruned.
 
 ## What `model-check` is NOT
 

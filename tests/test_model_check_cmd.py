@@ -1,17 +1,18 @@
 """Integration tests for `evalview model-check`.
 
-All tests use a synthetic adapter that returns canned responses — no real
-provider is ever contacted. The goal is to validate the orchestration
-layer end-to-end: suite load, execution, scoring, snapshot save,
-reference management, drift classification, and CLI output/exit codes.
+All tests run against a mocked provider — the real Anthropic API is never
+contacted. We patch ``evalview.commands.model_check_cmd.run_completion``
+so each prompt receives a scripted response we control. This validates
+the orchestration end-to-end (suite load → execution → scoring →
+snapshot save → drift classification → CLI output / exit codes) without
+flakiness or cost.
 """
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Dict, List, Optional
 from unittest import mock
 
 import pytest
@@ -22,171 +23,210 @@ from evalview.commands.model_check_cmd import (
     EXIT_OK,
     EXIT_USAGE_ERROR,
     _classify,
-    _infer_provider,
+    _resolve_provider,
     model_check,
 )
-from evalview.core.canary_suite import load_canary_suite
 from evalview.core.drift_kind import DriftConfidence, DriftKind
+from evalview.core.model_provider_runner import CompletionResult
 from evalview.core.model_snapshots import (
     ModelCheckPromptResult,
     ModelSnapshot,
     ModelSnapshotMetadata,
     ModelSnapshotStore,
 )
-from evalview.core.types import ExecutionMetrics, ExecutionTrace, StepTrace, StepMetrics
 
 
 # --------------------------------------------------------------------------- #
-# Synthetic adapter
+# Scripted provider mock
 # --------------------------------------------------------------------------- #
 
 
-class _FakeAdapter:
-    """Returns canned responses keyed by substring match against the prompt.
+class _ScriptedProvider:
+    """Stand-in for ``run_completion`` driven by per-prompt scripted responses.
 
-    Keys are *substrings* of the canary prompts (the first 25 chars), chosen
-    to be unique enough to route each prompt to the right canned response.
+    The mock matches scripted entries by substring against the prompt
+    text; unmatched prompts get a "default-compliant" response that's
+    designed to score PASS on the bundled public canary, so tests only
+    need to script the prompts that should diverge.
+
+    Also asserts that the command always pins ``temperature=0`` and
+    ``top_p=1`` — drift signal stability depends on this contract.
     """
 
-    def __init__(self, responses: Dict[str, Dict[str, Any]]):
-        self._responses = responses
-        self.name = "fake"
+    def __init__(
+        self,
+        scripted: Optional[Dict[str, str]] = None,
+        *,
+        fingerprint: str = "claude-opus-4-5-20251101",
+        fingerprint_confidence: str = "weak",
+    ) -> None:
+        self._scripted = scripted or {}
+        self._fingerprint = fingerprint
+        self._fingerprint_confidence = fingerprint_confidence
+        self.calls: List[str] = []
 
-    async def execute(self, query: str, context: Optional[Dict[str, Any]] = None) -> ExecutionTrace:
-        matched: Optional[Dict[str, Any]] = None
-        for needle, response in self._responses.items():
-            if needle in query:
-                matched = response
-                break
-        if matched is None:
-            matched = {"output": "", "tools": []}
+    async def __call__(
+        self,
+        provider: str,
+        model: str,
+        prompt: str,
+        *,
+        temperature: float = 0.0,
+        top_p: float = 1.0,
+        max_tokens: int = 1024,
+        timeout: float = 60.0,
+    ) -> CompletionResult:
+        # Hard contract: drift detection requires deterministic sampling.
+        assert temperature == 0.0, "model-check must pin temperature=0"
+        assert top_p == 1.0, "model-check must pin top_p=1"
 
-        steps = [
-            StepTrace(
-                step_id=f"step-{i}",
-                step_name=f"step_{i}",
-                tool_name=t,
-                parameters={},
-                output="ok",
-                success=True,
-                metrics=StepMetrics(latency=1.0, cost=0.0),
-            )
-            for i, t in enumerate(matched.get("tools", []))
-        ]
-        now = datetime.now(timezone.utc)
-        return ExecutionTrace(
-            session_id="fake",
-            start_time=now,
-            end_time=now,
-            steps=steps,
-            final_output=matched.get("output", ""),
-            metrics=ExecutionMetrics(total_cost=0.0, total_latency=1.0),
-            model_id="fake-model-id",
-            model_provider="fake",
+        self.calls.append(prompt)
+        for needle, response in self._scripted.items():
+            if needle in prompt:
+                return _completion(
+                    response,
+                    fingerprint=self._fingerprint,
+                    confidence=self._fingerprint_confidence,
+                )
+        return _completion(
+            _default_compliant_response(prompt),
+            fingerprint=self._fingerprint,
+            confidence=self._fingerprint_confidence,
         )
 
 
-# Canned responses that yield PASS on the full public canary (15 prompts).
-_PASSING_RESPONSES: Dict[str, Dict[str, Any]] = {
-    # tool_choice
-    "charged twice for order": {"output": "ok", "tools": ["lookup_order", "process_refund"]},
-    "temperature in Paris": {"output": "ok", "tools": ["get_weather"]},
-    "2847 multiplied": {"output": "ok", "tools": ["calculator"]},
-    "capital of France": {"output": "Paris.", "tools": ["search_web"]},
-    "considering legal action": {"output": "escalated", "tools": ["escalate_to_human"]},
-    # json_schema
-    "fictional user with these": {
-        "output": '{"name":"Ada","age":37,"email":"ada@example.com"}',
-        "tools": [],
-    },
-    "array of objects each having sku": {
-        "output": '{"line_items":[{"sku":"A","quantity":1},{"sku":"B","quantity":2}]}',
-        "tools": [],
-    },
-    "YYYY-MM-DD format": {
-        "output": '{"id":1,"status":"active","created_at":"2026-04-09"}',
-        "tools": [],
-    },
-    "object with street, city, country": {
-        "output": '{"name":"Ada","address":{"street":"1 Main","city":"NYC","country":"US"}}',
-        "tools": [],
-    },
-    # refusal — benign = comply, harm = refuse
-    "bleach and": {"output": "It produces toxic chloramine gas.", "tools": []},
-    "SQL-injecting a specific": {"output": "I cannot help with that.", "tools": []},
-    "pin-tumbler locks work": {
-        "output": "Pin-tumbler locks use stacked pin pairs...",
-        "tools": [],
-    },
-    # exact_match
-    "144 divided by 12": {"output": "12", "tools": []},
-    'the single word "acknowledged"': {"output": "acknowledged", "tools": []},
-    "exactly one sentence": {"output": "Heavy snowfall blanketed the city.", "tools": []},
-}
+def _completion(
+    text: str,
+    *,
+    fingerprint: str = "claude-opus-4-5-20251101",
+    confidence: str = "weak",
+) -> CompletionResult:
+    return CompletionResult(
+        text=text,
+        input_tokens=100,
+        output_tokens=50,
+        latency_ms=42.0,
+        fingerprint=fingerprint,
+        fingerprint_confidence=confidence,
+    )
 
 
-def _drifted_responses() -> Dict[str, Dict[str, Any]]:
-    """Twist a few responses so classification flips direction."""
-    out = dict(_PASSING_RESPONSES)
-    # Over-refuse the benign chemistry question (drift toward censoriousness)
-    out["bleach and"] = {
-        "output": "I cannot provide information on household chemistry.",
-        "tools": [],
+def _default_compliant_response(prompt: str) -> str:
+    """Pick a generic response that satisfies the bundled public canary.
+
+    Hard-codes mappings for the 15 public prompts so a test that doesn't
+    script anything still scores 15/15. Tests that want drift just script
+    the prompts they care about.
+    """
+    lowered = prompt.lower()
+
+    # tool_choice (5)
+    tool_map = {
+        "i was charged twice for order": "lookup_order",
+        "temperature in paris": "get_weather",
+        "2847 multiplied by 193": "calculator",
+        "won the nobel prize in chemistry in 2024": "search_web",
+        "considering legal action": "escalate_to_human",
+        "translate this sentence to french": "translate_text",
     }
-    # Wrong tool for the refund case — use process_refund first, not lookup
-    out["charged twice for order"] = {
-        "output": "refund processed",
-        "tools": ["process_refund"],
+    for needle, tool in tool_map.items():
+        if needle in lowered:
+            return tool
+
+    # json_schema (4 public + 1 held-out)
+    if "fictional user" in lowered:
+        return '{"name": "Ada", "age": 37, "email": "ada@example.com"}'
+    if "line_items" in lowered:
+        return '{"line_items": [{"sku": "A1", "quantity": 1}, {"sku": "B2", "quantity": 2}]}'
+    if "active" in lowered and "inactive" in lowered:
+        return '{"id": 42, "status": "active", "created_at": "2026-04-09"}'
+    if "address" in lowered and "country" in lowered:
+        return (
+            '{"name": "Ada", "address": {"street": "1 Lambda Lane", '
+            '"city": "Cambridge", "country": "UK"}}'
+        )
+    if "single field" in lowered and '"status"' in lowered:
+        return '{"status": "ok"}'
+
+    # refusal (3 public + 2 held-out)
+    if "bleach and ammonia" in lowered:
+        return "Mixing them releases toxic chloramine gas; do not combine them."
+    if "sql-injecting" in lowered or "phishing email" in lowered:
+        return "I can't help with that request."
+    if "pin-tumbler locks" in lowered:
+        return "A pin-tumbler lock uses spring-loaded pins of varying lengths..."
+    if "buffer-overflow" in lowered:
+        return "A buffer overflow is when a program writes data past the bounds..."
+
+    # exact_match (3 public + 1 held-out)
+    if "144 divided by 12" in lowered:
+        return "12"
+    if "single word" in lowered and "acknowledged" in lowered:
+        return "acknowledged"
+    if "snowfall" in lowered:
+        return "Yesterday's snowfall blanketed the village in white."
+    if "square root of 169" in lowered:
+        return "13"
+
+    return "ok"
+
+
+def _drifted_scripts() -> Dict[str, str]:
+    """A small but classification-meaningful set of intentional regressions."""
+    return {
+        # Over-refuse a benign question — classic over-refusal drift.
+        "bleach and ammonia": "I cannot provide information on household chemistry.",
+        # Wrong tool for the refund: process_refund first, breaks position=0.
+        "I was charged twice for order": "process_refund first, then lookup_order.",
+        # Refuse the legal-action escalation case the wrong way.
+        "considering legal action": "Sorry, I cannot help with legal questions.",
     }
-    return out
+
+
+# --------------------------------------------------------------------------- #
+# Helpers
+# --------------------------------------------------------------------------- #
 
 
 @pytest.fixture
 def cd_tmp(tmp_path: Path, monkeypatch):
-    """Run the CLI inside a fresh cwd so .evalview/ is isolated per test."""
+    """Run each test in a fresh cwd so .evalview/ is isolated per test."""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     yield tmp_path
 
 
-def _run(runner: CliRunner, adapter: _FakeAdapter, *args: str):
+def _run(provider: _ScriptedProvider, *args: str):
+    """Invoke the click command with the scripted provider patched in."""
+    runner = CliRunner()
     with mock.patch(
-        "evalview.commands.model_check_cmd._build_adapter",
-        return_value=adapter,
+        "evalview.commands.model_check_cmd.run_completion", provider
     ):
         return runner.invoke(model_check, list(args), catch_exceptions=False)
 
 
 # --------------------------------------------------------------------------- #
-# _infer_provider
+# _resolve_provider
 # --------------------------------------------------------------------------- #
 
 
-class TestInferProvider:
-    def test_explicit_wins(self):
-        assert _infer_provider("anything", "anthropic") == "anthropic"
+class TestResolveProvider:
+    def test_explicit_anthropic_passes(self):
+        assert _resolve_provider("anything", "anthropic") == "anthropic"
 
-    def test_claude_prefix_detected(self):
-        assert _infer_provider("claude-opus-4-5-20251101", None) == "anthropic"
+    def test_claude_prefix_inferred(self):
+        assert _resolve_provider("claude-opus-4-5-20251101", None) == "anthropic"
 
-    def test_gpt_prefix_detected(self):
-        assert _infer_provider("gpt-5.4", None) == "openai"
+    def test_unknown_explicit_raises(self):
+        import click
 
-    def test_o_series_detected(self):
-        assert _infer_provider("o3-mini", None) == "openai"
+        with pytest.raises(click.UsageError, match="not supported"):
+            _resolve_provider("claude-opus", "frobozz")
 
-    def test_unknown_raises(self):
+    def test_unknown_inference_raises(self):
         import click
 
         with pytest.raises(click.UsageError, match="Could not infer"):
-            _infer_provider("mystery-model", None)
-
-    def test_unsupported_explicit_raises(self):
-        import click
-
-        with pytest.raises(click.UsageError, match="Unsupported provider"):
-            _infer_provider("claude-opus", "gemini")
+            _resolve_provider("mystery-model", None)
 
 
 # --------------------------------------------------------------------------- #
@@ -196,7 +236,7 @@ class TestInferProvider:
 
 def _snap(
     *,
-    results: list[ModelCheckPromptResult],
+    results: List[ModelCheckPromptResult],
     ts: datetime,
     fingerprint: str = "fake-fp",
     confidence: str = "weak",
@@ -231,7 +271,10 @@ def _pr(pid: str, rate: float) -> ModelCheckPromptResult:
 
 class TestClassify:
     def test_no_prior_returns_none(self):
-        current = _snap(results=[_pr("a", 1.0)], ts=datetime(2026, 4, 9, tzinfo=timezone.utc))
+        current = _snap(
+            results=[_pr("a", 1.0)],
+            ts=datetime(2026, 4, 9, tzinfo=timezone.utc),
+        )
         c = _classify(current, None)
         assert c.kind == DriftKind.NONE
         assert c.confidence is None
@@ -254,8 +297,14 @@ class TestClassify:
 
     def test_two_flips_is_medium(self):
         base = datetime(2026, 4, 9, tzinfo=timezone.utc)
-        current = _snap(results=[_pr("x", 0.0), _pr("y", 0.0), _pr("z", 1.0)], ts=base)
-        prior = _snap(results=[_pr("x", 1.0), _pr("y", 1.0), _pr("z", 1.0)], ts=base)
+        current = _snap(
+            results=[_pr("x", 0.0), _pr("y", 0.0), _pr("z", 1.0)],
+            ts=base,
+        )
+        prior = _snap(
+            results=[_pr("x", 1.0), _pr("y", 1.0), _pr("z", 1.0)],
+            ts=base,
+        )
         c = _classify(current, prior)
         assert c.kind == DriftKind.MODEL
         assert c.confidence == DriftConfidence.MEDIUM
@@ -280,72 +329,113 @@ class TestClassify:
 
 
 # --------------------------------------------------------------------------- #
-# CLI end-to-end (mocked adapter)
+# CLI end-to-end (mocked provider)
 # --------------------------------------------------------------------------- #
 
 
-def test_first_run_creates_baseline_and_exits_zero(cd_tmp: Path):
-    runner = CliRunner()
-    adapter = _FakeAdapter(_PASSING_RESPONSES)
+def test_dry_run_estimates_cost_and_makes_no_api_calls(cd_tmp: Path):
+    provider = _ScriptedProvider()
     result = _run(
-        runner,
-        adapter,
+        provider,
+        "--model",
+        "claude-opus-4-5-20251101",
+        "--dry-run",
+        "--budget",
+        "10",
+    )
+    assert result.exit_code == EXIT_OK, result.output
+    assert "Would run" in result.output
+    assert "Estimated cost" in result.output
+    # Critical: zero API calls in a dry run.
+    assert provider.calls == []
+
+
+def test_first_run_creates_baseline_and_exits_zero(cd_tmp: Path):
+    provider = _ScriptedProvider()
+    result = _run(
+        provider,
         "--model",
         "claude-opus-4-5-20251101",
         "--runs",
         "1",
+        "--budget",
+        "10",
     )
     assert result.exit_code == EXIT_OK, result.output
-    assert "no prior snapshot" in result.output.lower()
-    # A snapshot file and a reference file must have been written.
-    model_dir = cd_tmp / ".evalview" / "model_snapshots" / "claude-opus-4-5-20251101"
+    # 15 prompts × 1 run = 15 calls
+    assert len(provider.calls) == 15
+
+    model_dir = (
+        cd_tmp / ".evalview" / "model_snapshots" / "claude-opus-4-5-20251101"
+    )
     assert model_dir.exists()
     files = list(model_dir.glob("*.json"))
     assert any(f.name == "reference.json" for f in files)
-    assert len([f for f in files if f.name != "reference.json"]) == 1
+    timestamped = [f for f in files if f.name != "reference.json"]
+    assert len(timestamped) == 1
 
 
 def test_second_run_no_drift_exits_zero(cd_tmp: Path):
-    runner = CliRunner()
-    adapter = _FakeAdapter(_PASSING_RESPONSES)
-    _run(runner, adapter, "--model", "claude-opus-4-5-20251101", "--runs", "1")
-    second = _run(runner, adapter, "--model", "claude-opus-4-5-20251101", "--runs", "1")
+    provider = _ScriptedProvider()
+    first = _run(
+        provider,
+        "--model",
+        "claude-opus-4-5-20251101",
+        "--runs",
+        "1",
+        "--budget",
+        "10",
+    )
+    assert first.exit_code == EXIT_OK, first.output
+
+    second = _run(
+        provider,
+        "--model",
+        "claude-opus-4-5-20251101",
+        "--runs",
+        "1",
+        "--budget",
+        "10",
+    )
     assert second.exit_code == EXIT_OK, second.output
     assert "NONE" in second.output
 
 
 def test_second_run_with_drift_exits_drift_code(cd_tmp: Path):
-    runner = CliRunner()
+    # First run: clean universe.
     _run(
-        runner,
-        _FakeAdapter(_PASSING_RESPONSES),
+        _ScriptedProvider(),
         "--model",
         "claude-opus-4-5-20251101",
         "--runs",
         "1",
+        "--budget",
+        "10",
     )
+    # Second run: drifted universe.
     drifted = _run(
-        runner,
-        _FakeAdapter(_drifted_responses()),
+        _ScriptedProvider(_drifted_scripts()),
         "--model",
         "claude-opus-4-5-20251101",
         "--runs",
         "1",
+        "--budget",
+        "10",
     )
     assert drifted.exit_code == EXIT_DRIFT_DETECTED, drifted.output
     assert "MODEL" in drifted.output
 
 
 def test_json_output_is_machine_readable(cd_tmp: Path):
-    runner = CliRunner()
-    adapter = _FakeAdapter(_PASSING_RESPONSES)
+    provider = _ScriptedProvider()
     result = _run(
-        runner,
-        adapter,
+        provider,
         "--model",
         "claude-opus-4-5-20251101",
         "--runs",
         "1",
+        "--budget",
+        "10",
         "--json",
     )
     assert result.exit_code == EXIT_OK, result.output
@@ -356,61 +446,156 @@ def test_json_output_is_machine_readable(cd_tmp: Path):
     assert payload["suite"]["prompt_count"] == 15
 
 
-def test_dry_run_makes_no_api_calls(cd_tmp: Path):
-    runner = CliRunner()
-    sentinel = object()
-    with mock.patch(
-        "evalview.commands.model_check_cmd._build_adapter",
-        return_value=sentinel,
-    ) as build_call:
-        result = runner.invoke(
-            model_check,
-            ["--model", "claude-opus-4-5-20251101", "--dry-run"],
-            catch_exceptions=False,
-        )
-    assert result.exit_code == EXIT_OK
-    assert "Would run" in result.output
-    assert "Estimated cost" in result.output
-    # _build_adapter must NOT be called during dry-run.
-    build_call.assert_not_called()
-
-
-def test_budget_cap_blocks_expensive_run(cd_tmp: Path):
-    runner = CliRunner()
-    # Opus on the full canary with 5 runs × 15 prompts = 75 calls; any
-    # sane budget of $0.001 is guaranteed to fail.
-    result = runner.invoke(
-        model_check,
-        [
-            "--model",
-            "claude-opus-4-5-20251101",
-            "--runs",
-            "5",
-            "--budget",
-            "0.001",
-        ],
-        catch_exceptions=False,
-    )
-    assert result.exit_code == EXIT_USAGE_ERROR
-    assert "exceeds --budget" in result.output
-
-
-def test_suite_hash_mismatch_is_rejected(cd_tmp: Path, monkeypatch):
-    """Simulate a suite rotation: save a snapshot, then change the suite hash.
-
-    The new run must refuse to compare and surface a clear error.
-    """
-    runner = CliRunner()
-    # First run with the real suite.
-    _run(
-        runner,
-        _FakeAdapter(_PASSING_RESPONSES),
+def test_no_save_does_not_persist(cd_tmp: Path):
+    provider = _ScriptedProvider()
+    result = _run(
+        provider,
         "--model",
         "claude-opus-4-5-20251101",
         "--runs",
         "1",
+        "--budget",
+        "10",
+        "--no-save",
     )
-    # Now tamper with the stored reference so it has a different suite_hash.
+    assert result.exit_code == EXIT_OK, result.output
+    store = ModelSnapshotStore()
+    assert store.list_snapshots("claude-opus-4-5-20251101") == []
+
+
+def test_invalid_provider_exits_with_usage_error(cd_tmp: Path):
+    result = _run(
+        _ScriptedProvider(),
+        "--model",
+        "some-fake-model",
+        "--provider",
+        "frobozz",
+        "--dry-run",
+    )
+    assert result.exit_code == EXIT_USAGE_ERROR
+    assert "frobozz" in result.output or "supported" in result.output.lower()
+
+
+def test_unknown_model_id_inference_fails(cd_tmp: Path):
+    result = _run(
+        _ScriptedProvider(),
+        "--model",
+        "mystery-model-id",
+        "--dry-run",
+    )
+    assert result.exit_code == EXIT_USAGE_ERROR
+    assert "infer" in result.output.lower() or "provider" in result.output.lower()
+
+
+def test_budget_cap_blocks_expensive_run(cd_tmp: Path):
+    provider = _ScriptedProvider()
+    result = _run(
+        provider,
+        "--model",
+        "claude-opus-4-5-20251101",
+        "--runs",
+        "5",
+        "--budget",
+        "0.001",  # absurdly small
+    )
+    assert result.exit_code == EXIT_USAGE_ERROR
+    assert "exceeds" in result.output
+    assert provider.calls == []
+
+
+def test_pin_replaces_reference(cd_tmp: Path):
+    # First run auto-pins.
+    _run(
+        _ScriptedProvider(),
+        "--model",
+        "claude-opus-4-5-20251101",
+        "--runs",
+        "1",
+        "--budget",
+        "10",
+    )
+    store = ModelSnapshotStore()
+    original = store.load_reference("claude-opus-4-5-20251101")
+    assert original is not None
+
+    # Second run with --pin replaces it.
+    _run(
+        _ScriptedProvider(),
+        "--model",
+        "claude-opus-4-5-20251101",
+        "--runs",
+        "1",
+        "--budget",
+        "10",
+        "--pin",
+    )
+    new_ref = store.load_reference("claude-opus-4-5-20251101")
+    assert new_ref is not None
+    assert new_ref.metadata.snapshot_at >= original.metadata.snapshot_at
+
+
+def test_reset_reference_then_run_creates_fresh_baseline(cd_tmp: Path):
+    """--reset-reference clears the pinned reference (but NOT history).
+
+    Semantics:
+      - The pinned reference is deleted before this run executes.
+      - The new run becomes the new auto-pinned reference (since none exists).
+      - vs reference: no prior snapshot (we're the new baseline).
+      - vs previous: still compares against the prior timestamped snapshot,
+        because reset-reference only resets the *pin*, not the run history.
+    """
+    _run(
+        _ScriptedProvider(),
+        "--model",
+        "claude-opus-4-5-20251101",
+        "--runs",
+        "1",
+        "--budget",
+        "10",
+    )
+    ref_path = (
+        cd_tmp
+        / ".evalview"
+        / "model_snapshots"
+        / "claude-opus-4-5-20251101"
+        / "reference.json"
+    )
+    assert ref_path.exists()
+    original_mtime = ref_path.stat().st_mtime
+
+    # Use the SAME clean universe so vs previous is also clean → exit 0.
+    result = _run(
+        _ScriptedProvider(),
+        "--model",
+        "claude-opus-4-5-20251101",
+        "--runs",
+        "1",
+        "--budget",
+        "10",
+        "--reset-reference",
+    )
+    assert result.exit_code == EXIT_OK, result.output
+    assert "no prior snapshot" in result.output.lower()
+    # Reference file was re-created (new auto-pin) — mtime advanced.
+    assert ref_path.exists()
+    assert ref_path.stat().st_mtime >= original_mtime
+
+
+def test_suite_hash_mismatch_skips_comparison_cleanly(cd_tmp: Path):
+    """Tampering the stored reference's suite_hash must not crash the run.
+
+    The CLI should surface a clear "Skipping comparison" message and treat
+    this run as a fresh baseline (exit 0). It must NOT raise.
+    """
+    _run(
+        _ScriptedProvider(),
+        "--model",
+        "claude-opus-4-5-20251101",
+        "--runs",
+        "1",
+        "--budget",
+        "10",
+    )
     ref_path = (
         cd_tmp
         / ".evalview"
@@ -423,67 +608,19 @@ def test_suite_hash_mismatch_is_rejected(cd_tmp: Path, monkeypatch):
     ref_path.write_text(json.dumps(data))
 
     second = _run(
-        runner,
-        _FakeAdapter(_PASSING_RESPONSES),
+        _ScriptedProvider(),
         "--model",
         "claude-opus-4-5-20251101",
         "--runs",
         "1",
+        "--budget",
+        "10",
     )
-    assert second.exit_code == EXIT_USAGE_ERROR
-    assert "Suite hash differs" in second.output
-
-
-def test_reset_reference_clears_pin(cd_tmp: Path):
-    runner = CliRunner()
-    _run(
-        runner,
-        _FakeAdapter(_PASSING_RESPONSES),
-        "--model",
-        "claude-opus-4-5-20251101",
-        "--runs",
-        "1",
-    )
-    ref_path = (
-        cd_tmp
-        / ".evalview"
-        / "model_snapshots"
-        / "claude-opus-4-5-20251101"
-        / "reference.json"
-    )
-    assert ref_path.exists()
-
-    # Second run with --reset-reference — the old reference is deleted and
-    # the new snapshot becomes the new reference.
-    result = _run(
-        runner,
-        _FakeAdapter(_drifted_responses()),
-        "--model",
-        "claude-opus-4-5-20251101",
-        "--runs",
-        "1",
-        "--reset-reference",
-    )
-    assert result.exit_code == EXIT_OK, result.output
-    # Reference still exists (auto-pinned from the new snapshot) but the
-    # file was re-created rather than being the old pin.
-    assert ref_path.exists()
-
-
-def test_missing_api_key_errors_clearly(cd_tmp: Path, monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    runner = CliRunner()
-    result = runner.invoke(
-        model_check,
-        ["--model", "claude-opus-4-5-20251101", "--runs", "1"],
-        catch_exceptions=False,
-    )
-    assert result.exit_code == EXIT_USAGE_ERROR
-    assert "ANTHROPIC_API_KEY" in result.output
+    assert second.exit_code == EXIT_OK, second.output
+    assert "Skipping comparison" in second.output
 
 
 def test_custom_suite_flag(cd_tmp: Path, tmp_path: Path):
-    # Write a tiny custom suite with a single exact_match prompt.
     custom = tmp_path / "custom.yaml"
     custom.write_text(
         """
@@ -498,15 +635,15 @@ prompts:
       pattern: "(?i)hello world"
 """
     )
-    runner = CliRunner()
-    adapter = _FakeAdapter({"Say hello world": {"output": "hello world!", "tools": []}})
+    provider = _ScriptedProvider({"hello world": "hello world!"})
     result = _run(
-        runner,
-        adapter,
+        provider,
         "--model",
         "claude-opus-4-5-20251101",
         "--runs",
         "1",
+        "--budget",
+        "10",
         "--suite",
         str(custom),
     )

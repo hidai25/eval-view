@@ -56,47 +56,61 @@ class ScoreResult:
 # --------------------------------------------------------------------------- #
 
 
+# Snake_case identifier pattern. Tool names overwhelmingly use this shape
+# (lookup_order, get_weather, process_refund). Used by score_tool_choice
+# to find "the first tool-like word" the model mentioned.
+_SNAKE_IDENT_RE = re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b", re.IGNORECASE)
+
+
 def score_tool_choice(
-    tool_calls: List[str],
+    response: str,
     expected_tool: str,
     *,
     position: Optional[int] = None,
 ) -> ScoreResult:
-    """Did the model call the expected tool?
+    """Did the model pick the expected tool, based on its text response?
+
+    The scorer is intentionally text-based, not tool-use-API-based: every
+    canary prompt is a plain text completion against the raw provider, so
+    no provider-specific tool-calling support is required. This trades
+    a small amount of rigor for a much simpler, drift-stable contract.
 
     Args:
-        tool_calls: ordered list of tool names invoked during the run
-        expected_tool: tool name that must appear
-        position: if given, require it at this index (0 = first tool).
-            If None, the tool may appear anywhere in the sequence.
-
-    Strict equality, case-sensitive — tool names are identifiers and
-    loose matching would hide real changes.
+        response: the model's full text response
+        expected_tool: snake_case tool name that must appear
+        position: if 0, additionally require that the expected tool is the
+            FIRST snake_case identifier mentioned in the response (catches
+            "I'd refund first, then look it up" failures). Other position
+            values are not supported in v1.
     """
-    if not tool_calls:
-        return ScoreResult(False, f"no tools called (expected '{expected_tool}')")
+    if not response.strip():
+        return ScoreResult(False, "empty response")
 
-    if position is not None:
-        if position < 0 or position >= len(tool_calls):
-            return ScoreResult(
-                False,
-                f"expected '{expected_tool}' at position {position}, "
-                f"but only {len(tool_calls)} tool(s) were called",
-            )
-        actual = tool_calls[position]
-        if actual == expected_tool:
-            return ScoreResult(True, f"'{expected_tool}' called at position {position}")
+    pattern = re.compile(rf"\b{re.escape(expected_tool)}\b", re.IGNORECASE)
+    if not pattern.search(response):
         return ScoreResult(
             False,
-            f"expected '{expected_tool}' at position {position}, got '{actual}'",
+            f"expected '{expected_tool}' not mentioned in response",
         )
 
-    if expected_tool in tool_calls:
-        return ScoreResult(True, f"'{expected_tool}' appears in tool sequence")
-    return ScoreResult(
-        False,
-        f"expected '{expected_tool}', actual: {tool_calls!r}",
-    )
+    if position == 0:
+        first = _SNAKE_IDENT_RE.search(response)
+        if first is None:
+            # Should not happen — the expected tool already matched above
+            # which means at least one snake_case identifier exists. Defensive.
+            return ScoreResult(False, "no snake_case identifier found in response")
+        if first.group(0).lower() != expected_tool.lower():
+            return ScoreResult(
+                False,
+                f"expected '{expected_tool}' to be the first tool mentioned, "
+                f"but '{first.group(0)}' came first",
+            )
+        return ScoreResult(
+            True,
+            f"'{expected_tool}' is the first tool mentioned",
+        )
+
+    return ScoreResult(True, f"'{expected_tool}' mentioned in response")
 
 
 def score_json_schema(response: str, schema: Dict[str, Any]) -> ScoreResult:
@@ -226,7 +240,6 @@ def score_prompt(
     scorer: str,
     *,
     response: str,
-    tool_calls: Optional[List[str]] = None,
     expected: Optional[Dict[str, Any]] = None,
 ) -> ScoreResult:
     """Top-level dispatcher used by the model-check command.
@@ -235,12 +248,11 @@ def score_prompt(
     the canary suite YAML. Validation of that dict lives here so the
     command layer does not have to know the shape of each scorer's args.
 
-    Unknown scorers fail loudly — silently returning False would hide
-    typos in the suite YAML, which is the kind of bug we should surface
-    early and clearly.
+    Every scorer is text-based — the dispatcher only needs the raw model
+    response. Unknown scorers fail loudly: silently returning False would
+    hide typos in suite YAML, which is the class of bug we want surfaced.
     """
     expected = expected or {}
-    tool_calls = tool_calls or []
 
     func = SCORERS.get(scorer)
     if func is None:
@@ -253,7 +265,7 @@ def score_prompt(
         if not tool:
             raise ValueError("tool_choice scorer requires expected.tool")
         return score_tool_choice(
-            tool_calls,
+            response,
             str(tool),
             position=expected.get("position"),
         )

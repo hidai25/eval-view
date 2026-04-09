@@ -26,7 +26,7 @@ import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -118,8 +118,9 @@ class SnapshotSuiteMismatchError(Exception):
 
 
 # Exactly one timestamp format used everywhere. Kept strict so filenames
-# round-trip through parsing without ambiguity.
-_TIMESTAMP_FMT = "%Y-%m-%dT%H-%M-%SZ"
+# round-trip through parsing without ambiguity. Includes microseconds so
+# rapid back-to-back saves never collide on disk.
+_TIMESTAMP_FMT = "%Y-%m-%dT%H-%M-%S.%fZ"
 _SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]")
 
 

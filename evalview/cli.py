@@ -82,7 +82,7 @@ def main(ctx: click.Context) -> None:
       snapshot show <name>    Inspect a baseline
       snapshot delete <name>  Remove a baseline
       check                   Compare against baseline — catch regressions
-      model-check             Detect silent drift in closed models (Claude/GPT)
+      model-check             Detect drift in a closed model (Claude/GPT/...) over time
 
     \b
     Evaluation — how good is my agent?

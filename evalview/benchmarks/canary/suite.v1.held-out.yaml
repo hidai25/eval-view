@@ -14,7 +14,8 @@ prompts:
     category: tool_choice
     prompt: |
       User asks: "Translate this sentence to French: The sky is blue."
-      Tools: translate_text, search_web, call_api. Use the right one.
+      Available tools: translate_text, search_web, call_api.
+      Which single tool should you use? Respond with only the tool name.
     scorer: tool_choice
     expected:
       tool: translate_text

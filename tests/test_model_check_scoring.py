@@ -19,45 +19,63 @@ from evalview.core.model_check_scoring import (
 
 
 class TestToolChoice:
-    def test_exact_tool_in_sequence_passes(self):
-        r = score_tool_choice(["lookup_order", "check_policy"], "lookup_order")
+    def test_tool_name_in_response_passes(self):
+        r = score_tool_choice(
+            "I would call lookup_order first to find the order.",
+            "lookup_order",
+        )
         assert r.passed
         assert "lookup_order" in r.reason
 
     def test_tool_missing_fails(self):
-        r = score_tool_choice(["search", "summarize"], "lookup_order")
-        assert not r.passed
-        assert "expected 'lookup_order'" in r.reason
-
-    def test_empty_tool_list_fails(self):
-        r = score_tool_choice([], "lookup_order")
-        assert not r.passed
-
-    def test_case_sensitive(self):
-        # Tool names are identifiers — loose matching would hide drift.
-        r = score_tool_choice(["LookupOrder"], "lookup_order")
-        assert not r.passed
-
-    def test_position_constraint_satisfied(self):
         r = score_tool_choice(
-            ["lookup_order", "process_refund"],
+            "I would search the knowledge base.",
+            "lookup_order",
+        )
+        assert not r.passed
+        assert "not mentioned" in r.reason
+
+    def test_empty_response_fails(self):
+        r = score_tool_choice("", "lookup_order")
+        assert not r.passed
+        assert "empty" in r.reason
+
+    def test_case_insensitive_match(self):
+        # Models often capitalize tool names mid-sentence; matching must
+        # tolerate this without losing drift signal.
+        r = score_tool_choice("I'd use Lookup_Order here.", "lookup_order")
+        assert r.passed
+
+    def test_word_boundary_avoids_false_match(self):
+        # 'lookup_orderly' must not satisfy 'lookup_order'
+        r = score_tool_choice("I would call lookup_orderly.", "lookup_order")
+        assert not r.passed
+
+    def test_position_zero_first_tool_satisfied(self):
+        r = score_tool_choice(
+            "First, I'd call lookup_order, then process_refund.",
             "lookup_order",
             position=0,
         )
         assert r.passed
 
-    def test_position_constraint_violated(self):
+    def test_position_zero_first_tool_violated(self):
+        # Wrong tool comes first — high-signal drift case.
         r = score_tool_choice(
-            ["process_refund", "lookup_order"],
+            "I'd process_refund right away, then lookup_order to confirm.",
             "lookup_order",
             position=0,
         )
         assert not r.passed
-        assert "position 0" in r.reason
+        assert "first" in r.reason
 
-    def test_position_out_of_range(self):
-        r = score_tool_choice(["lookup_order"], "lookup_order", position=3)
-        assert not r.passed
+    def test_position_zero_with_only_expected_tool(self):
+        r = score_tool_choice(
+            "lookup_order is the right call here.",
+            "lookup_order",
+            position=0,
+        )
+        assert r.passed
 
 
 # --------------------------------------------------------------------------- #
@@ -177,9 +195,8 @@ class TestScorePrompt:
     def test_dispatches_to_tool_choice(self):
         r = score_prompt(
             "tool_choice",
-            response="",
-            tool_calls=["lookup_order"],
-            expected={"tool": "lookup_order"},
+            response="I would call lookup_order first.",
+            expected={"tool": "lookup_order", "position": 0},
         )
         assert r.passed
 
@@ -214,7 +231,7 @@ class TestScorePrompt:
     def test_missing_required_config_raises_clearly(self):
         # Missing `tool` key for tool_choice
         with pytest.raises(ValueError, match="tool_choice scorer requires"):
-            score_prompt("tool_choice", response="", tool_calls=["x"], expected={})
+            score_prompt("tool_choice", response="ok", expected={})
 
         with pytest.raises(ValueError, match="json_schema scorer requires"):
             score_prompt("json_schema", response="{}", expected={})

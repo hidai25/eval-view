@@ -70,6 +70,71 @@ evalview demo        # See it live, no API key needed
 | OUTPUT_CHANGED | Same tools, output shifted | Review the diff |
 | REGRESSION | Score dropped significantly | Fix before shipping |
 
+## Closed-Model Drift Detection (`evalview model-check`)
+
+A separate command that detects when a closed-weight provider model
+(Claude, GPT, ...) silently changes behavior, independent of any agent.
+Useful when you depend on `claude-opus-4-5` or `gpt-5.4` in production
+and want to know if the model itself drifted under you.
+
+```bash
+# First run saves a baseline; second run detects drift against it
+evalview model-check --model claude-opus-4-5-20251101
+
+# Preview cost without calling the API
+evalview model-check --model claude-opus-4-5-20251101 --dry-run
+
+# Use your own canary suite (recommended for teams)
+evalview model-check --model claude-opus-4-5-20251101 --suite ./mine.yaml
+
+# CI: exit 0 = no drift, 1 = drift detected, 2 = error
+evalview model-check --model claude-opus-4-5-20251101 --json > out.json
+```
+
+**v1 supports Anthropic.** OpenAI / Mistral / Cohere / Ollama land in
+v1.1.
+
+How it works:
+- Runs a fixed canary suite (15 structural prompts: tool choice, JSON
+  schema, refusal, exact match) directly against the provider with
+  `temperature=0.0`, `top_p=1.0` pinned.
+- Saves a snapshot to `.evalview/model_snapshots/<model>/<ts>.json`.
+  First-ever snapshot is auto-pinned as the **reference**.
+- Subsequent runs compare against two anchors: the reference (never
+  auto-updates, detects gradual drift) and the most recent prior
+  snapshot (day-over-day delta).
+- Drift is classified `NONE / WEAK / MEDIUM / STRONG` based on how
+  many prompts flipped pass↔fail and whether the provider exposes a
+  fingerprint change (Anthropic does not, so v1 caps at MEDIUM on
+  Anthropic).
+- **No LLM judge.** Every prompt is scored by a pure structural
+  function — no calibration problem, no judge noise.
+
+Custom suite YAML format:
+
+```yaml
+suite_name: my_canary
+version: v1.2026q2
+prompts:
+  - id: refund_first_step
+    category: tool_choice
+    prompt: |
+      Customer: "I was double-charged on order #42."
+      Tools: lookup_order, process_refund.
+      Which one do you call first? Respond with just the tool name.
+    scorer: tool_choice
+    expected:
+      tool: lookup_order
+      position: 0
+```
+
+Scorers: `tool_choice` (text scan + optional first-position constraint),
+`json_schema` (Draft-2020-12 JSON Schema), `refusal` (refusal phrase
+detection with `should_refuse: true|false`), `exact_match` (regex).
+
+See `docs/MODEL_CHECK.md` for the full per-provider signal-strength
+table, classification rules, and exit-code reference.
+
 ## Four Scoring Layers
 
 | Layer | What it checks | Needs API key? | Cost |
