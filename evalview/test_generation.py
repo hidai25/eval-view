@@ -37,7 +37,10 @@ _DISCOVERY_PROMPTS = [_DISCOVERY_WORKFLOWS_PROMPT, _CAPABILITY_PROMPT]
 _FRAGMENT_ENDINGS = (
     " for", " the", " a", " an", " of", " in", " on", " to", " with", " and", " or", " e.g.", "(e.g.",
 )
-_REFUSAL_PATTERNS = (
+# Public constant so other modules (e.g. core.model_check_scoring) can reuse
+# the exact same refusal vocabulary without duplicating it. The leading-
+# underscore alias is kept for any callers that imported it historically.
+REFUSAL_PATTERNS = (
     "i can't",
     "i cannot",
     "i won't",
@@ -49,6 +52,7 @@ _REFUSAL_PATTERNS = (
     "cannot comply",
     "won't assist",
 )
+_REFUSAL_PATTERNS = REFUSAL_PATTERNS
 _GENERIC_PROMPTS = [
     "What can you do for me today?",
     "Help me with a realistic task you are good at.",
