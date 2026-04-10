@@ -63,6 +63,33 @@ class ProviderError(RuntimeError):
 # --------------------------------------------------------------------------- #
 
 
+# Cached client instance — reused across concurrent calls within one
+# asyncio.run() to share the underlying httpx connection pool.
+_anthropic_client: Optional["AsyncAnthropic"] = None  # type: ignore[name-defined]
+_anthropic_timeout: Optional[float] = None
+
+
+def _get_anthropic_client(timeout: float) -> "AsyncAnthropic":  # type: ignore[name-defined]
+    """Return a shared AsyncAnthropic client, creating it on first use.
+
+    If the timeout changes between calls (unlikely in practice — the
+    canary pins it), a new client is created. This is cheaper than
+    creating one per call but still respects config changes.
+    """
+    global _anthropic_client, _anthropic_timeout
+    try:
+        from anthropic import AsyncAnthropic
+    except ImportError as exc:
+        raise ProviderError(
+            "anthropic package not installed. Run: pip install anthropic"
+        ) from exc
+
+    if _anthropic_client is None or _anthropic_timeout != timeout:
+        _anthropic_client = AsyncAnthropic(timeout=timeout)
+        _anthropic_timeout = timeout
+    return _anthropic_client
+
+
 async def _run_anthropic(
     model: str,
     prompt: str,
@@ -74,7 +101,6 @@ async def _run_anthropic(
 ) -> CompletionResult:
     """Plain-text completion against the Anthropic Messages API."""
     try:
-        from anthropic import AsyncAnthropic
         from anthropic._exceptions import AnthropicError  # type: ignore
     except ImportError as exc:
         raise ProviderError(
@@ -86,7 +112,7 @@ async def _run_anthropic(
             "ANTHROPIC_API_KEY environment variable is not set."
         )
 
-    client = AsyncAnthropic(timeout=timeout)
+    client = _get_anthropic_client(timeout)
     started = time.perf_counter()
     try:
         response = await client.messages.create(

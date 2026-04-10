@@ -240,22 +240,46 @@ async def _run_suite(
     budget_usd: float,
     concurrency: int = _DEFAULT_CONCURRENCY,
 ) -> _SuiteRunOutcome:
-    """Run every prompt N times, with bounded concurrency.
+    """Run every prompt N times, with bounded concurrency and budget checks.
 
-    Budget enforcement is checked after each batch of concurrent prompts
-    completes. Within a batch, all prompts run to completion — we never
-    cancel a prompt mid-run, which would produce a corrupt partial result.
+    Prompts are dispatched concurrently up to ``concurrency`` (controlled
+    by an ``asyncio.Semaphore``). After each prompt completes and before
+    the next one starts, the accumulated cost is checked against the budget
+    *inside* the semaphore. This guarantees that the check always sees
+    the latest cost and that at most ``concurrency`` prompts can be
+    in-flight past any given check.
+
+    If the budget is exceeded, ``BudgetExhausted`` is raised. Because
+    ``asyncio.gather`` propagates the first exception and cancels pending
+    tasks, prompts still waiting for the semaphore are never started. A
+    prompt that has started is never cancelled mid-run — partial results
+    would corrupt the snapshot.
     """
-    results: List[ModelCheckPromptResult] = []
+    results: List[Tuple[ModelCheckPromptResult, float, Optional[str], str]] = []
     total_cost = 0.0
-    fingerprint: Optional[str] = None
-    fp_confidence: str = "none"
+    completed_count = 0
+    cost_lock = asyncio.Lock()
 
     semaphore = asyncio.Semaphore(concurrency)
 
-    async def _run_with_sem(prompt: CanaryPrompt):
+    async def _run_with_budget(prompt: CanaryPrompt):
+        nonlocal total_cost, completed_count
+
         async with semaphore:
-            return await _run_one_prompt(
+            # Budget gate: checked INSIDE the semaphore so it always sees
+            # the accumulated cost from all previously completed prompts.
+            # If checked outside, all tasks would read total_cost=0
+            # simultaneously and bypass the check.
+            async with cost_lock:
+                if total_cost >= budget_usd:
+                    raise BudgetExhausted(
+                        spent=total_cost,
+                        limit=budget_usd,
+                        completed=completed_count,
+                        total=len(suite.prompts),
+                    )
+
+            result, cost, fp, fp_conf = await _run_one_prompt(
                 prompt=prompt,
                 provider=provider,
                 model=model,
@@ -264,29 +288,30 @@ async def _run_suite(
                 timeout=timeout,
             )
 
-    # Run all prompts concurrently (bounded by semaphore).
-    # asyncio.gather preserves input order so results stay deterministic.
-    prompt_futures = [_run_with_sem(p) for p in suite.prompts]
-    completed = await asyncio.gather(*prompt_futures)
+            async with cost_lock:
+                total_cost += cost
+                completed_count += 1
 
-    for result, cost, fp, fp_conf in completed:
-        results.append(result)
-        total_cost += cost
+            return result, cost, fp, fp_conf
+
+    # asyncio.gather preserves input order so results stay deterministic.
+    # return_exceptions=False (default) means the first BudgetExhausted
+    # propagates immediately and cancels tasks still waiting on the semaphore.
+    raw_results = await asyncio.gather(*[_run_with_budget(p) for p in suite.prompts])
+
+    all_results: List[ModelCheckPromptResult] = []
+    final_cost = 0.0
+    fingerprint: Optional[str] = None
+    fp_confidence: str = "none"
+    for result, cost, fp, fp_conf in raw_results:
+        all_results.append(result)
+        final_cost += cost
         fingerprint = fp
         fp_confidence = fp_conf
 
-    # Post-run budget check (catches overruns for CI reporting).
-    if total_cost >= budget_usd:
-        raise BudgetExhausted(
-            spent=total_cost,
-            limit=budget_usd,
-            completed=len(results),
-            total=len(suite.prompts),
-        )
-
     return _SuiteRunOutcome(
-        results=results,
-        total_cost_usd=total_cost,
+        results=all_results,
+        total_cost_usd=final_cost,
         fingerprint=fingerprint,
         fingerprint_confidence=fp_confidence,
     )

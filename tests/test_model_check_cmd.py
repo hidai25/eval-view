@@ -751,3 +751,46 @@ def test_drift_threshold_flag_is_accepted(cd_tmp: Path):
         "0.05",
     )
     assert result.exit_code == EXIT_OK, result.output
+
+
+class _ExpensiveProvider(_ScriptedProvider):
+    """Provider that reports very high token counts to trigger in-flight budget."""
+
+    async def __call__(self, provider, model, prompt, **kwargs):
+        assert kwargs.get("temperature", 0.0) == 0.0
+        assert kwargs.get("top_p", 1.0) == 1.0
+        self.calls.append(prompt)
+        return CompletionResult(
+            text=_default_compliant_response(prompt),
+            input_tokens=50_000,
+            output_tokens=50_000,
+            latency_ms=42.0,
+            fingerprint="claude-opus-4-5-20251101",
+            fingerprint_confidence="weak",
+        )
+
+
+def test_inflight_budget_enforcement_stops_early(cd_tmp: Path):
+    """Budget should be enforced during execution, not just pre-flight.
+
+    The _ExpensiveProvider reports 50k tokens per side per call, which
+    makes each call cost ~$4.50. With a budget of $5 (which passes the
+    pre-flight estimate of ~$0.47), the suite should abort after 1-2
+    prompts rather than completing all 15.
+    """
+    provider = _ExpensiveProvider()
+    result = _run(
+        provider,
+        "--model",
+        "claude-opus-4-5-20251101",
+        "--runs",
+        "1",
+        "--budget",
+        "5",  # passes pre-flight estimate (~$0.47) but blows up at real cost
+        "--concurrency",
+        "1",  # sequential so budget checks happen between each prompt
+    )
+    assert result.exit_code == EXIT_USAGE_ERROR, result.output
+    assert "budget" in result.output.lower() or "Budget" in result.output
+    # Should have stopped well before completing all 15 prompts.
+    assert len(provider.calls) < 15
