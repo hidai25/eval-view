@@ -103,13 +103,22 @@ v1.1.
 
 ## Cost control
 
-Running the full canary once on Opus with the default 3 runs/prompt
-is about 45 API calls. That lands around **$0.30–0.60 per invocation**
-on Opus and roughly half that on GPT-5-mini.
+The default configuration runs 15 prompts × 1 run = **15 API calls**.
+Sampling is pinned at `temperature=0` (near-deterministic), so a
+single run per prompt is sufficient for drift detection. Use
+`--runs 3` if you want variance measurement.
+
+| Model | 15 calls (default) | 45 calls (--runs 3) |
+|-------|-------------------|---------------------|
+| **Opus** | ~$0.22 | ~$0.65 |
+| **Sonnet** | ~$0.04 | ~$0.13 |
+| **Haiku** | ~$0.01 | ~$0.03 |
 
 Every invocation enforces a budget cap (default `$2.00`) before any
 API call is made. If the estimated cost exceeds `--budget`, the
-command refuses to run and tells you the estimate.
+command refuses to run and tells you the estimate. The budget is
+also enforced in-flight — if actual API costs exceed the estimate
+(verbose output, pricing table stale), the suite aborts mid-run.
 
 Use `--dry-run` to preview the cost without touching the API:
 
@@ -119,11 +128,16 @@ evalview model-check --model claude-opus-4-5-20251101 --dry-run
 
 ```
 Would run: claude-opus-4-5-20251101
-  Suite:           canary v1.public (15 prompts × 3 runs = 45 calls)
+  Suite:           canary v1.public (15 prompts × 1 runs = 15 calls)
   Provider:        anthropic
-  Estimated cost:  $0.4725
+  Estimated cost:  $0.1575
   Budget cap:      $2.00
 ```
+
+**Why not prompt caching?** Anthropic's prompt caching requires
+a minimum of 1024 tokens per cacheable block. Canary prompts are
+15–73 tokens each — well below the threshold. A padded system
+prompt would change model behavior and invalidate snapshots.
 
 ## Flags you might care about
 
@@ -132,7 +146,7 @@ Would run: claude-opus-4-5-20251101
 | `--model <id>`            | *(required)* | Model id (e.g. `claude-opus-4-5-20251101`)             |
 | `--provider <name>`       | auto-detect | Override provider (v1 supports `anthropic`)             |
 | `--suite <path>`          | bundled   | Custom canary YAML (recommended for teams)                |
-| `--runs <N>`              | `3`       | Runs per prompt for variance                              |
+| `--runs <N>`              | `1`       | Runs per prompt (1 is sufficient at temp=0; use 3+ for variance) |
 | `--budget <usd>`          | `2.00`    | Hard cap; refuse to run if pre-flight estimate exceeds    |
 | `--dry-run`               | off       | Print cost estimate and exit without calling the API      |
 | `--pin`                   | off       | Pin this run as the new reference for the model           |

@@ -112,6 +112,12 @@ async def _run_anthropic(
             "ANTHROPIC_API_KEY environment variable is not set."
         )
 
+    # NOTE on prompt caching: Anthropic requires a minimum of 1024 tokens
+    # per cacheable block. Canary prompts are 15-73 tokens each — well
+    # below the threshold. Adding a large system prompt just to enable
+    # caching would change model behavior and invalidate existing snapshots.
+    # If the minimum drops in the future or custom suites have larger
+    # prompts, add cache_control={"type": "ephemeral"} to the content block.
     client = _get_anthropic_client(timeout)
     started = time.perf_counter()
     try:

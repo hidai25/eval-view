@@ -361,7 +361,18 @@ EXIT_USAGE_ERROR = 2
     type=click.Path(dir_okay=False, path_type=Path),
     help="Path to a custom canary suite YAML. Defaults to the bundled public canary.",
 )
-@click.option("--runs", "runs_per_prompt", default=3, show_default=True, type=int)
+@click.option(
+    "--runs",
+    "runs_per_prompt",
+    default=1,
+    show_default=True,
+    type=int,
+    help=(
+        "Runs per prompt. Default is 1 because sampling is pinned at "
+        "temperature=0 (near-deterministic). Use 3+ to measure variance "
+        "if you suspect non-determinism."
+    ),
+)
 @click.option("--budget", default=2.00, show_default=True, type=float, help="Maximum USD spend.")
 @click.option(
     "--dry-run",
