@@ -16,6 +16,7 @@ import logging
 from evalview.core.types import ExecutionTrace, StepTrace
 from evalview.core.golden import GoldenTrace
 from evalview.core.config import DiffConfig
+from evalview.core.drift_kind import DriftKind, DriftConfidence
 from evalview.core.model_runtime_detector import (
     extract_trace_model_labels,
     fingerprint_from_labels,
@@ -130,6 +131,13 @@ class TraceDiff:
     actual_runtime_fingerprint: Optional[str] = None
     golden_observed_models: List[str] = field(default_factory=list)
     actual_observed_models: List[str] = field(default_factory=list)
+
+    # Unified drift taxonomy. Orthogonal to overall_severity.
+    # Populated by features that classify drift explicitly (e.g. model-check,
+    # MCP contract drift). Left as None by the default compare() path so that
+    # behavior for existing callers is unchanged.
+    drift_kind: Optional[DriftKind] = None
+    drift_confidence: Optional[DriftConfidence] = None
 
     def summary(self) -> str:
         """Human-readable summary of differences."""

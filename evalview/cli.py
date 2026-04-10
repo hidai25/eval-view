@@ -50,6 +50,7 @@ from evalview.commands.hooks_cmd import install_hooks, uninstall_hooks
 from evalview.commands.import_cmd import import_logs
 from evalview.commands.snapshot_cmd import snapshot
 from evalview.commands.check_cmd import check, replay
+from evalview.commands.model_check_cmd import model_check
 from evalview.commands.monitor_cmd import monitor
 from evalview.commands.benchmark_cmd import benchmark_cmd
 from evalview.commands.mcp_cmd import mcp
@@ -81,6 +82,7 @@ def main(ctx: click.Context) -> None:
       snapshot show <name>    Inspect a baseline
       snapshot delete <name>  Remove a baseline
       check                   Compare against baseline — catch regressions
+      model-check             Detect drift in a closed model (Claude/GPT/...) over time
 
     \b
     Evaluation — how good is my agent?
@@ -177,6 +179,7 @@ main.add_command(uninstall_hooks, name="uninstall-hooks")
 main.add_command(import_logs, name="import")
 main.add_command(snapshot)
 main.add_command(check)
+main.add_command(model_check, name="model-check")
 main.add_command(replay)
 main.add_command(benchmark_cmd, name="benchmark")
 main.add_command(mcp)

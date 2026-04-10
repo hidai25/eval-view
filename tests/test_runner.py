@@ -74,9 +74,15 @@ class TestCreateAdapter:
             pytest.fail(f"tapescope missing from adapter_map: {e}")
 
     def test_unknown_adapter_raises(self, tmp_path):
-        """anthropic is not in adapter_map (programmatic-only) — raises ValueError."""
+        """An unknown adapter type surfaces a clear ValueError.
+
+        Note: anthropic was historically programmatic-only but is now
+        registered in the factory for use by `evalview model-check`.
+        This test uses a deliberately fictional adapter name to keep
+        the "unknown adapter → clear error" assertion meaningful.
+        """
         from evalview.core.runner import _create_adapter, _load_config
-        _write_config(tmp_path, adapter="anthropic")
+        _write_config(tmp_path, adapter="definitely-not-a-real-adapter")
         config = _load_config(tmp_path / ".evalview" / "config.yaml")
         with pytest.raises(ValueError, match="Unknown adapter"):
             _create_adapter(config)

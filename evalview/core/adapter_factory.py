@@ -26,6 +26,16 @@ def create_adapter(
 
         return MistralAdapter()
 
+    if adapter_type == "anthropic":
+        # For Anthropic, `endpoint` is interpreted as the model ID since the
+        # Anthropic SDK talks to a fixed API host. Falls back to the adapter's
+        # default model when no endpoint is supplied.
+        from evalview.adapters.anthropic_adapter import AnthropicAdapter
+
+        if endpoint:
+            return AnthropicAdapter(model=endpoint, timeout=timeout)
+        return AnthropicAdapter(timeout=timeout)
+
     if adapter_type == "opencode":
         from evalview.adapters.opencode_adapter import OpenCodeAdapter
 
@@ -50,7 +60,8 @@ def create_adapter(
     if not adapter_class:
         raise ValueError(
             f"Unknown adapter type: '{adapter_type}'. "
-            f"Supported: {', '.join(sorted(adapter_map.keys()))}, cohere, mistral"
+            f"Supported: {', '.join(sorted(adapter_map.keys()))}, "
+            f"anthropic, cohere, mistral"
         )
 
     if adapter_type == "http":

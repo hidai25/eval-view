@@ -108,6 +108,13 @@ Changelog = "https://github.com/hidai25/eval-view/blob/main/CHANGELOG.md"
 where = ["."]
 include = ["evalview*"]
 
+# Non-Python files that must ship inside the installed package.
+# The canary YAMLs are loaded at runtime by `evalview model-check` and
+# break the command if they are missing from a wheel build.
+[tool.setuptools.package-data]
+"evalview.benchmarks.canary" = ["*.yaml", "*.md"]
+"evalview.templates.patterns" = ["*.yaml"]
+
 [tool.black]
 line-length = 100
 target-version = ['py39']
