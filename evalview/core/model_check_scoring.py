@@ -82,6 +82,57 @@ def _extract_first_json_object(text: str) -> Optional[str]:
 # to find "the first tool-like word" the model mentioned.
 _SNAKE_IDENT_RE = re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b", re.IGNORECASE)
 
+# Negation phrases that, when preceding a tool name, indicate the model
+# is explicitly *not* selecting that tool.  Checked case-insensitively.
+_NEGATION_PREFIXES = (
+    "not ",
+    "don't ",
+    "do not ",
+    "don't use ",
+    "do not use ",
+    "would not ",
+    "wouldn't ",
+    "wouldn't use ",
+    "should not ",
+    "shouldn't ",
+    "shouldn't use ",
+    "never ",
+    "avoid ",
+    "instead of ",
+    "rather than ",
+    "not call ",
+    "not choose ",
+    "not select ",
+    "not invoke ",
+)
+
+
+def _is_negated(response: str, tool: str) -> bool:
+    """Check whether every occurrence of *tool* is negated in the response.
+
+    Returns True only if ALL mentions of the tool are preceded by a
+    negation phrase.  This avoids false-positives when the model discusses
+    a tool it decided against: "I would not call get_weather here; instead
+    I would use lookup_order."  In that example ``get_weather`` is negated
+    but ``lookup_order`` is not.
+    """
+    lowered = response.lower()
+    tool_lower = tool.lower()
+    pattern = re.compile(rf"\b{re.escape(tool_lower)}\b")
+
+    all_negated = True
+    found_any = False
+    for m in pattern.finditer(lowered):
+        found_any = True
+        start = m.start()
+        # Look at the text immediately preceding this mention.
+        prefix = lowered[max(0, start - 40) : start].rstrip()
+        if not any(prefix.endswith(neg.rstrip()) for neg in _NEGATION_PREFIXES):
+            all_negated = False
+            break
+
+    return found_any and all_negated
+
 
 def score_tool_choice(
     response: str,
@@ -95,6 +146,11 @@ def score_tool_choice(
     canary prompt is a plain text completion against the raw provider, so
     no provider-specific tool-calling support is required. This trades
     a small amount of rigor for a much simpler, drift-stable contract.
+
+    The scorer includes negation-awareness: if the model says "I would NOT
+    call get_weather" or "avoid get_weather", the mention is not treated
+    as a positive selection. This reduces false positives when models
+    discuss a tool they decided against in explanatory prose.
 
     Args:
         response: the model's full text response
@@ -112,6 +168,15 @@ def score_tool_choice(
         return ScoreResult(
             False,
             f"expected '{expected_tool}' not mentioned in response",
+        )
+
+    # Check negation: if every mention of the tool is negated, treat as
+    # a non-selection. This catches "I would NOT call X" prose.
+    if _is_negated(response, expected_tool):
+        return ScoreResult(
+            False,
+            f"'{expected_tool}' mentioned but negated in context "
+            f"(e.g. 'would not call {expected_tool}')",
         )
 
     if position == 0:
