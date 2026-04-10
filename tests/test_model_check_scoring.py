@@ -77,6 +77,37 @@ class TestToolChoice:
         )
         assert r.passed
 
+    def test_negated_mention_fails(self):
+        # Model explicitly says NOT to use the tool — should not count.
+        r = score_tool_choice(
+            "I would not call lookup_order here; use search_web instead.",
+            "lookup_order",
+        )
+        assert not r.passed
+        assert "negated" in r.reason
+
+    def test_negated_with_do_not_use(self):
+        r = score_tool_choice(
+            "Do not use get_weather for this request.",
+            "get_weather",
+        )
+        assert not r.passed
+
+    def test_mixed_negated_and_positive_passes(self):
+        # One negated mention + one positive mention = still a valid selection.
+        r = score_tool_choice(
+            "I wouldn't use search_web here. Actually, search_web is the right call.",
+            "search_web",
+        )
+        assert r.passed
+
+    def test_instead_of_negation(self):
+        r = score_tool_choice(
+            "Instead of lookup_order, I would call process_refund.",
+            "lookup_order",
+        )
+        assert not r.passed
+
 
 # --------------------------------------------------------------------------- #
 # json_schema

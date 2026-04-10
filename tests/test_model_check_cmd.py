@@ -22,10 +22,10 @@ from evalview.commands.model_check_cmd import (
     EXIT_DRIFT_DETECTED,
     EXIT_OK,
     EXIT_USAGE_ERROR,
-    _classify,
     _resolve_provider,
     model_check,
 )
+from evalview.core.drift_classifier import classify as _classify
 from evalview.core.drift_kind import DriftConfidence, DriftKind
 from evalview.core.model_provider_runner import CompletionResult
 from evalview.core.model_snapshots import (
@@ -326,6 +326,46 @@ class TestClassify:
         c = _classify(current, prior)
         assert c.kind == DriftKind.MODEL
         assert c.confidence == DriftConfidence.STRONG
+
+    def test_large_suite_medium_threshold_scales(self):
+        """For a 30-prompt suite, MEDIUM should require ceil(30*0.10)=3 flips, not 2."""
+        base = datetime(2026, 4, 9, tzinfo=timezone.utc)
+        # 30 prompts, 2 flipped — should be WEAK on a large suite.
+        results_current = [_pr(f"p{i}", 0.0 if i < 2 else 1.0) for i in range(30)]
+        results_prior = [_pr(f"p{i}", 1.0) for i in range(30)]
+        current = _snap(results=results_current, ts=base)
+        prior = _snap(results=results_prior, ts=base)
+        c = _classify(current, prior)
+        assert c.kind == DriftKind.MODEL
+        # 2 flips out of 30 prompts is < 10%, so it should be WEAK, not MEDIUM.
+        assert c.confidence == DriftConfidence.WEAK
+
+    def test_large_suite_medium_with_enough_flips(self):
+        """For a 30-prompt suite, 3 flips should hit MEDIUM."""
+        base = datetime(2026, 4, 9, tzinfo=timezone.utc)
+        results_current = [_pr(f"p{i}", 0.0 if i < 3 else 1.0) for i in range(30)]
+        results_prior = [_pr(f"p{i}", 1.0) for i in range(30)]
+        current = _snap(results=results_current, ts=base)
+        prior = _snap(results=results_prior, ts=base)
+        c = _classify(current, prior)
+        assert c.kind == DriftKind.MODEL
+        assert c.confidence == DriftConfidence.MEDIUM
+
+    def test_custom_thresholds_override_defaults(self):
+        """Custom weak_drift_delta and medium_flip_count should be respected."""
+        base = datetime(2026, 4, 9, tzinfo=timezone.utc)
+        # Use pass rates where `passed` is False on both (no flip), so only
+        # the delta threshold decides drift. 0.65 vs 0.67 = 0.02 delta.
+        current = _snap(results=[_pr("x", 0.65), _pr("y", 1.0)], ts=base)
+        prior = _snap(results=[_pr("x", 0.67), _pr("y", 1.0)], ts=base)
+
+        # Default threshold (0.01) should detect drift (0.02 > 0.01).
+        c_default = _classify(current, prior)
+        assert c_default.kind == DriftKind.MODEL
+
+        # Raise threshold to 0.05 — the 0.02 delta is below it, no flip → NONE.
+        c_custom = _classify(current, prior, weak_drift_delta=0.05)
+        assert c_custom.kind == DriftKind.NONE
 
 
 # --------------------------------------------------------------------------- #
@@ -649,3 +689,65 @@ prompts:
     )
     assert result.exit_code == EXIT_OK, result.output
     assert "my_canary" in result.output
+
+
+def test_keep_flag_prunes_old_snapshots(cd_tmp: Path):
+    """--keep limits how many snapshots are retained per model."""
+    provider = _ScriptedProvider()
+    # Create 5 snapshots.
+    for _ in range(5):
+        result = _run(
+            provider,
+            "--model",
+            "claude-opus-4-5-20251101",
+            "--runs",
+            "1",
+            "--budget",
+            "10",
+            "--keep",
+            "3",
+        )
+        assert result.exit_code == EXIT_OK, result.output
+
+    store = ModelSnapshotStore()
+    metas = store.list_snapshots("claude-opus-4-5-20251101")
+    # Should have been pruned to 3.
+    assert len(metas) == 3
+    # Reference is untouched.
+    assert store.load_reference("claude-opus-4-5-20251101") is not None
+
+
+def test_concurrency_flag_is_accepted(cd_tmp: Path):
+    """--concurrency should be accepted and produce the same results."""
+    provider = _ScriptedProvider()
+    result = _run(
+        provider,
+        "--model",
+        "claude-opus-4-5-20251101",
+        "--runs",
+        "1",
+        "--budget",
+        "10",
+        "--concurrency",
+        "2",
+    )
+    assert result.exit_code == EXIT_OK, result.output
+    # All 15 prompts should still have been called.
+    assert len(provider.calls) == 15
+
+
+def test_drift_threshold_flag_is_accepted(cd_tmp: Path):
+    """--drift-threshold should be accepted without error."""
+    provider = _ScriptedProvider()
+    result = _run(
+        provider,
+        "--model",
+        "claude-opus-4-5-20251101",
+        "--runs",
+        "1",
+        "--budget",
+        "10",
+        "--drift-threshold",
+        "0.05",
+    )
+    assert result.exit_code == EXIT_OK, result.output
