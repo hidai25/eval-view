@@ -93,7 +93,6 @@ async def _run_anthropic(
             model=model,
             max_tokens=max_tokens,
             temperature=temperature,
-            top_p=top_p,
             messages=[{"role": "user", "content": prompt}],
         )
     except AnthropicError as exc:  # pragma: no cover - exercised manually
