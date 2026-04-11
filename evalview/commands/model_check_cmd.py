@@ -633,14 +633,11 @@ def model_check(
         previous = None
 
     # Apply user-overridden or default thresholds.
-    classify_kwargs = {}
-    if drift_threshold is not None:
-        classify_kwargs["weak_drift_delta"] = drift_threshold
-    if medium_flip_count is not None:
-        classify_kwargs["medium_flip_count"] = medium_flip_count
+    eff_weak_delta = drift_threshold if drift_threshold is not None else DEFAULT_WEAK_DRIFT_DELTA
+    eff_flip_count = medium_flip_count if medium_flip_count is not None else DEFAULT_MEDIUM_FLIP_COUNT
 
-    vs_reference = classify(snapshot, reference, **classify_kwargs)
-    vs_previous = classify(snapshot, previous, **classify_kwargs)
+    vs_reference = classify(snapshot, reference, weak_drift_delta=eff_weak_delta, medium_flip_count=eff_flip_count)
+    vs_previous = classify(snapshot, previous, weak_drift_delta=eff_weak_delta, medium_flip_count=eff_flip_count)
 
     # --- Output ----------------------------------------------------------
     if json_output:
