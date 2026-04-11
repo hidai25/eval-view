@@ -1,6 +1,6 @@
 {
   "name": "evalview",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Drop-in Node.js middleware for EvalView — the open-source regression testing framework for AI agents. Golden baseline diffing and CI/CD integration for LangGraph, CrewAI, OpenAI, and Anthropic agents.",
   "main": "dist/index.js",
   "module": "dist/index.js",
