@@ -40,9 +40,13 @@ def _compute_check_exit_code(
 ) -> int:
     """Compute exit code based on diff results and fail conditions.
 
+    Quarantined tests are excluded from the exit code unless --strict is set.
+
     Returns:
         0 if no failures match fail conditions, 1 otherwise
     """
+    from evalview.core.quarantine import QuarantineStore
+
     if strict:
         fail_on = "REGRESSION,TOOLS_CHANGED,OUTPUT_CHANGED"
 
@@ -54,8 +58,13 @@ def _compute_check_exit_code(
     if execution_failures > 0:
         return 1
 
-    for _, diff in diffs:
+    quarantine = QuarantineStore()
+
+    for name, diff in diffs:
         if diff.overall_severity in fail_statuses:
+            # Quarantined tests don't block CI (unless --strict)
+            if not strict and quarantine.is_quarantined(name):
+                continue
             return 1
 
     return 0

@@ -477,10 +477,17 @@ def _display_check_results(
         )
 
         # --- Dashboard Scorecard ---
+        from evalview.core.quarantine import QuarantineStore
+        _q = QuarantineStore()
+
         passed_count = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.PASSED)
         tools_changed_count = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.TOOLS_CHANGED)
         output_changed_count = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.OUTPUT_CHANGED)
         regression_count = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.REGRESSION)
+        quarantined_failures = sum(
+            1 for name, d in diffs
+            if d.overall_severity != DiffStatus.PASSED and _q.is_quarantined(name)
+        )
         exec_failures = int(analysis.get("execution_failures", 0) or 0)
         total_compared = len(diffs)
         health_pct = (passed_count / total_compared * 100) if total_compared > 0 else 0.0
@@ -497,6 +504,10 @@ def _display_check_results(
                 health_pct=health_pct,
             )
             console.print(scorecard)
+            if quarantined_failures > 0:
+                console.print(
+                    f"  [dim]⏸ {quarantined_failures} quarantined test(s) failed (not blocking CI)[/dim]"
+                )
             console.print()
 
         # --- Sparkline Trends ---
@@ -615,12 +626,19 @@ def _display_check_results(
                     # Fall through to show details below
 
                 if not heal_result:
-                    # Normal (non-healing) display
-                    severity_icon = {
-                        DiffStatus.REGRESSION: "[red]\u2717 REGRESSION[/red]",
-                        DiffStatus.TOOLS_CHANGED: "[yellow]\u26a0 TOOLS_CHANGED[/yellow]",
-                        DiffStatus.OUTPUT_CHANGED: "[dim]~ OUTPUT_CHANGED[/dim]",
-                    }.get(diff.overall_severity, "?")
+                    # Check if quarantined
+                    from evalview.core.quarantine import QuarantineStore
+                    _quarantine_store = QuarantineStore()
+                    _is_quarantined = _quarantine_store.is_quarantined(name)
+
+                    if _is_quarantined:
+                        severity_icon = "[dim]⏸ QUARANTINED[/dim]"
+                    else:
+                        severity_icon = {
+                            DiffStatus.REGRESSION: "[red]\u2717 REGRESSION[/red]",
+                            DiffStatus.TOOLS_CHANGED: "[yellow]\u26a0 TOOLS_CHANGED[/yellow]",
+                            DiffStatus.OUTPUT_CHANGED: "[dim]~ OUTPUT_CHANGED[/dim]",
+                        }.get(diff.overall_severity, "?")
 
                     score_part = ""
                     if abs(diff.score_diff) > 1:

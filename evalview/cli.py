@@ -59,6 +59,7 @@ from evalview.commands.chat_cmd import chat, trace_cmd
 from evalview.commands.traces_cmd import traces
 from evalview.commands.baseline_cmd import baseline
 from evalview.commands.feedback_cmd import feedback
+from evalview.commands.quarantine_cmd import quarantine
 from evalview.commands.openclaw_cmd import openclaw
 from evalview.commands.watch_cmd import watch
 from evalview.commands.badge_cmd import badge
@@ -195,6 +196,7 @@ main.add_command(feedback)
 main.add_command(openclaw)
 main.add_command(watch)
 main.add_command(badge)
+main.add_command(quarantine)
 
 
 if __name__ == "__main__":
