@@ -139,6 +139,29 @@ def _print_root_cause(root_cause: "RootCauseAnalysis") -> None:
     ))
 
 
+def _print_recommendations(recs: list) -> None:
+    """Print actionable improvement recommendations."""
+    from rich.panel import Panel
+
+    if not recs:
+        return
+
+    lines = ["[bold]Suggested fixes:[/bold]"]
+    for rec in recs:
+        conf_color = {"high": "green", "medium": "yellow", "low": "dim"}.get(rec.confidence, "dim")
+        lines.append(
+            f"  [{conf_color}]●[/{conf_color}] [bold]{rec.action}[/bold] "
+            f"[dim]({rec.category})[/dim]"
+        )
+        lines.append(f"    [dim]{rec.detail}[/dim]")
+
+    console.print(Panel(
+        "\n".join(lines),
+        border_style="blue",
+        padding=(0, 1),
+    ))
+
+
 def _build_behavior_summary(
     diffs: List[Tuple[str, "TraceDiff"]],
     test_metadata: Optional[Dict[str, Dict[str, Any]]] = None,
@@ -668,6 +691,11 @@ def _display_check_results(
                 root_cause = root_cause_by_name.get(name)
                 if root_cause is not None:
                     _print_root_cause(root_cause)
+
+                from evalview.core.recommendations import recommend_from_trace_diff
+                recs = recommend_from_trace_diff(diff)
+                if recs:
+                    _print_recommendations(recs)
 
                 quoted = f'"{name}"' if " " in name else name
                 console.print(f"    [dim]\u2192 evalview replay {quoted}[/dim]")

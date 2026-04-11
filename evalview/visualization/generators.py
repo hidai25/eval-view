@@ -389,8 +389,18 @@ def _diff_rows(
             "root_cause_summary": getattr(root_cause, "summary", ""),
             "root_cause_category": getattr(getattr(root_cause, "category", None), "value", ""),
             "root_cause_fix": getattr(root_cause, "suggested_fix", None),
+            "recommendations": [r.to_dict() for r in _get_recommendations(d)],
         })
     return rows
+
+
+def _get_recommendations(diff):
+    """Generate recommendations for a TraceDiff (lazy import)."""
+    try:
+        from evalview.core.recommendations import recommend_from_trace_diff
+        return recommend_from_trace_diff(diff)
+    except Exception:
+        return []
 
 
 def _behavior_summary(
@@ -1464,6 +1474,18 @@ table td,table th{transition:background .1s}
           </div>
           <div>{{ d.root_cause_summary }}</div>
           {% if d.root_cause_fix %}<div style="margin-top:6px;color:var(--text-3)">Suggested fix: {{ d.root_cause_fix }}</div>{% endif %}
+        </div>
+        {% endif %}
+        {% if d.recommendations %}
+        <div style="margin-top:8px;padding:8px 12px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:8px">
+          <div style="font-size:12px;font-weight:600;color:#60a5fa;margin-bottom:4px">Suggested Fixes</div>
+          {% for rec in d.recommendations %}
+          <div style="margin-top:4px;font-size:12px">
+            <span style="color:{% if rec.confidence == 'high' %}#34d399{% elif rec.confidence == 'medium' %}#fbbf24{% else %}#94a3b8{% endif %}">●</span>
+            <strong>{{ rec.action }}</strong> <span style="color:#64748b">({{ rec.category }})</span>
+            <div style="color:#94a3b8;margin-left:16px;font-size:11px">{{ rec.detail }}</div>
+          </div>
+          {% endfor %}
         </div>
         {% endif %}
         <div class="diff-cols">
