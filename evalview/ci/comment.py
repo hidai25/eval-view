@@ -34,6 +34,51 @@ STATUS_CONFIG = {
 
 DEFAULT_STATUS = {"emoji": "\u2753", "label": "UNKNOWN"}  # ❓
 
+
+# ── Markdown safety helpers ─────────────────────────────────────────────
+#
+# PR comment content is user-controllable (test names, quarantine
+# reasons, suggested commands). A single backtick or pipe in the wrong
+# place breaks table cells or code fences and the user sees a mangled
+# comment on GitHub — not great for a product whose first impression
+# is the PR comment.
+
+
+def _md_escape_inline(value: str) -> str:
+    """Escape backticks and pipes so a string is safe inside a
+    backtick-wrapped inline code span in a markdown table cell.
+
+    We replace backticks with their HTML entity so the surrounding
+    inline-code delimiters still close cleanly, and escape pipes with a
+    backslash so they don't split the table column.
+    """
+    if not value:
+        return value
+    return value.replace("`", "&#96;").replace("|", "\\|")
+
+
+def _pick_code_fence(commands: List[str]) -> str:
+    """Return a fence delimiter that doesn't appear in any command.
+
+    Markdown fences can be arbitrary runs of 3+ backticks *or* 3+ tildes.
+    Standard ```` ``` ```` works for almost everything, but if a command
+    contains a triple-backtick we fall back to a tilde fence so the
+    content never escapes into prose.
+    """
+    if any("```" in cmd for cmd in commands):
+        return "~~~"
+    return "```"
+
+
+# Verdict display configuration (Week 2) — matches evalview.core.verdict
+# headlines so the CLI and PR comment tell the same story.
+VERDICT_CONFIG = {
+    "safe_to_ship": {"emoji": "\u2705", "label": "Safe to ship"},
+    "ship_with_quarantine": {"emoji": "\u26a0\ufe0f", "label": "Ship with quarantine"},
+    "investigate": {"emoji": "\U0001f50d", "label": "Investigate before shipping"},
+    "block_release": {"emoji": "\U0001f6d1", "label": "Block release"},
+}
+
 # Thresholds for cost/latency spike warnings
 COST_SPIKE_THRESHOLD = 0.5  # 50% increase triggers warning
 LATENCY_SPIKE_THRESHOLD = 0.5  # 50% increase triggers warning
@@ -653,15 +698,181 @@ def generate_pr_comment(
     return "\n".join(lines)
 
 
+def _build_verdict_header(verdict_data: Dict[str, Any]) -> List[str]:
+    """Build the verdict headline + reasons block.
+
+    This is the first thing reviewers see — the one-line ship/don't-ship
+    decision followed by up to 3 bulleted reasons. Designed to render
+    cleanly in a PR comment and a Slack unfurl.
+    """
+    verdict_key = str(verdict_data.get("verdict", "safe_to_ship")).lower()
+    cfg = VERDICT_CONFIG.get(verdict_key, VERDICT_CONFIG["safe_to_ship"])
+
+    lines: List[str] = [
+        f"## {cfg['emoji']} EvalView: {cfg['label']}",
+        "",
+    ]
+
+    reasons = verdict_data.get("reasons") or []
+    for reason in reasons[:4]:  # cap so we never dominate the comment
+        lines.append(f"> {reason}")
+    if reasons:
+        lines.append("")
+    return lines
+
+
+def _build_verdict_signals_table(
+    check_data: Dict[str, Any],
+    verdict_data: Dict[str, Any],
+) -> List[str]:
+    """Build the Week-2 signals table: verdict, counts, drift, cost, quarantine.
+
+    One row per signal so reviewers can scan it in two seconds.
+    """
+    summary = check_data.get("summary", {})
+    total = summary.get("total_tests", 0)
+    unchanged = summary.get("unchanged", 0)
+    regressions = summary.get("regressions", 0)
+    tools_changed = summary.get("tools_changed", 0)
+    output_changed = summary.get("output_changed", 0)
+    pass_rate = (unchanged / total * 100) if total > 0 else 0
+
+    lines: List[str] = [
+        "| Signal | Status |",
+        "|--------|--------|",
+        f"| Tests | {unchanged}/{total} unchanged ({pass_rate:.0f}%) |",
+    ]
+    if regressions:
+        lines.append(f"| Regressions | \u274c {regressions} |")
+    if tools_changed:
+        lines.append(f"| Tools changed | \u26a0\ufe0f {tools_changed} |")
+    if output_changed:
+        lines.append(f"| Output changed | \u26a0\ufe0f {output_changed} |")
+
+    # Cost delta (from Week 1 verdict payload — accurate aggregate ratio)
+    cost_delta_ratio = verdict_data.get("cost_delta_ratio")
+    if cost_delta_ratio is not None and abs(cost_delta_ratio) > 0.01:
+        pct = int(round(cost_delta_ratio * 100))
+        if pct > 0:
+            lines.append(f"| Cost | \U0001f4b8 +{pct}% vs baseline |")
+        else:
+            lines.append(f"| Cost | \U0001f4b8 {pct}% vs baseline |")
+
+    # Drift confidence
+    drift_affected = verdict_data.get("drift_affected_tests", 0)
+    if drift_affected:
+        lines.append(
+            f"| Model drift | \u26a0\ufe0f {drift_affected} test(s) trending down |"
+        )
+
+    # Quarantine health
+    quarantine = verdict_data.get("quarantine") or {}
+    q_total = quarantine.get("total", 0)
+    q_stale = quarantine.get("stale", 0)
+    if q_total:
+        if q_stale:
+            stale_tests = quarantine.get("stale_tests") or []
+            # Escape backticks/pipes in test names so a malicious or
+            # just-weird name can't break the table row.
+            preview = ", ".join(
+                f"`{_md_escape_inline(t)}`" for t in stale_tests[:2]
+            )
+            more = f" +{q_stale - 2}" if q_stale > 2 else ""
+            lines.append(
+                f"| Quarantine | {q_total} total, \u23f0 **{q_stale} stale** ({preview}{more}) |"
+            )
+        else:
+            lines.append(f"| Quarantine | {q_total} active, all fresh |")
+
+    # Model version change (existing detection, keep it)
+    model_change = _detect_model_change(check_data)
+    if model_change and model_change != "Yes":
+        lines.append(f"| Model version | {model_change} |")
+
+    return lines
+
+
+def _build_recommendation_block(verdict_data: Dict[str, Any]) -> List[str]:
+    """Render the top recommendation with its runnable command.
+
+    One recommendation — the highest-ranked one — with likely cause and
+    the first suggested command. Reviewers don't read three. They read
+    one or none.
+    """
+    recs = verdict_data.get("recommendations") or []
+    if not recs:
+        return []
+
+    top = recs[0]
+    action = top.get("action", "")
+    cause = top.get("likely_cause", "") or top.get("detail", "")
+    conf = top.get("confidence", "medium")
+    commands = top.get("suggested_commands") or []
+
+    lines: List[str] = ["### Recommended action", ""]
+    if cause:
+        lines.append(f"**Likely cause ({conf} confidence):** {cause}")
+        lines.append("")
+    lines.append(f"**{action}**")
+    if commands:
+        preview = commands[:3]
+        fence = _pick_code_fence(preview)
+        lines.append("")
+        lines.append(f"{fence}bash")
+        for cmd in preview:
+            lines.append(cmd)
+        lines.append(fence)
+    lines.append("")
+    return lines
+
+
 def generate_check_pr_comment(
     check_data: Dict[str, Any],
     run_url: Optional[str] = None,
 ) -> str:
     """Generate markdown PR comment from check --json output.
 
-    Includes cost/latency spike warnings, model change callouts,
-    and collapsible details for large change sets.
+    Week 2 upgrade: when the check output carries a `verdict` key
+    (from `_compute_verdict_payload`), the comment leads with the
+    verdict headline, a signals table, and a recommended action block.
+    Legacy format is kept as a fallback for pre-Week-1 check output.
     """
+    verdict_data = check_data.get("verdict")
+    if verdict_data:
+        return _generate_verdict_first_comment(
+            check_data, verdict_data, run_url=run_url
+        )
+
+    return _generate_legacy_check_comment(check_data, run_url=run_url)
+
+
+def _generate_verdict_first_comment(
+    check_data: Dict[str, Any],
+    verdict_data: Dict[str, Any],
+    run_url: Optional[str] = None,
+) -> str:
+    """Week-2 comment layout: verdict → signals → action → details."""
+    lines: List[str] = []
+    lines.extend(_build_verdict_header(verdict_data))
+    lines.extend(_build_verdict_signals_table(check_data, verdict_data))
+    lines.append("")
+    lines.extend(_build_recommendation_block(verdict_data))
+    lines.extend(_build_check_changes_section(check_data))
+
+    if run_url:
+        lines.append(f"[View full report]({run_url})")
+        lines.append("")
+
+    lines.append("---")
+    lines.append(COMMENT_SIGNATURE)
+    return "\n".join(lines)
+
+
+def _generate_legacy_check_comment(
+    check_data: Dict[str, Any],
+    run_url: Optional[str] = None,
+) -> str:
+    """Pre-Week-2 comment format — used when verdict payload is absent."""
     summary = check_data.get("summary", {})
     regressions = summary.get("regressions", 0)
     tools_changed = summary.get("tools_changed", 0)

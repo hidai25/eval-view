@@ -80,6 +80,9 @@ class Celebrations:
             # Don't celebrate single check, just acknowledge
             console.print("[dim]Streak started at 1. Keep it going! 🔄[/dim]\n")
 
+        elif streak == 2:
+            console.print("[green]Two clean checks in a row. 🎯[/green]\n")
+
         elif streak == STREAK_3:
             console.print(f"[green]🎯 {STREAK_3} clean checks in a row! You're on a roll.[/green]\n")
 

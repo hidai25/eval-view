@@ -63,6 +63,8 @@ from evalview.commands.quarantine_cmd import quarantine
 from evalview.commands.openclaw_cmd import openclaw
 from evalview.commands.watch_cmd import watch
 from evalview.commands.badge_cmd import badge
+from evalview.commands.log_cmd import log_cmd
+from evalview.commands.since_cmd import since_cmd
 
 
 @click.group(context_settings={"allow_interspersed_args": False})
@@ -197,6 +199,8 @@ main.add_command(openclaw)
 main.add_command(watch)
 main.add_command(badge)
 main.add_command(quarantine)
+main.add_command(log_cmd, name="log")
+main.add_command(since_cmd, name="since")
 
 
 if __name__ == "__main__":

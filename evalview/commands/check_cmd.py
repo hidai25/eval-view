@@ -37,10 +37,16 @@ def _compute_check_exit_code(
     fail_on: Optional[str],
     strict: bool,
     execution_failures: int = 0,
+    quarantine: Optional[Any] = None,
 ) -> int:
     """Compute exit code based on diff results and fail conditions.
 
     Quarantined tests are excluded from the exit code unless --strict is set.
+
+    Args:
+        quarantine: Optional pre-loaded `QuarantineStore`. Callers that also
+            compute the verdict should share a single instance to avoid a
+            double YAML read and the race window that comes with it.
 
     Returns:
         0 if no failures match fail conditions, 1 otherwise
@@ -58,7 +64,8 @@ def _compute_check_exit_code(
     if execution_failures > 0:
         return 1
 
-    quarantine = QuarantineStore()
+    if quarantine is None:
+        quarantine = QuarantineStore()
 
     for name, diff in diffs:
         if diff.overall_severity in fail_statuses:
@@ -68,6 +75,269 @@ def _compute_check_exit_code(
             return 1
 
     return 0
+
+
+from dataclasses import dataclass as _verdict_dataclass, field as _verdict_field
+
+
+@_verdict_dataclass
+class _VerdictOutput:
+    """Internal container returned by _compute_verdict_payload.
+
+    The `.payload` dict is what goes into --json output and PR comments.
+    The `.verdict` / `.reasons` / `.top_recs` fields are kept separate so
+    the console renderer doesn't have to dig through the serialized dict
+    (which would otherwise force an ugly `_raw_*` key convention).
+    """
+    payload: Dict[str, Any] = _verdict_field(default_factory=dict)
+    verdict: Any = None
+    reasons: List[str] = _verdict_field(default_factory=list)
+    top_recs: List[Any] = _verdict_field(default_factory=list)
+
+
+def _substitute_test_name(commands: List[str], test_name: str) -> List[str]:
+    """Replace `<test>` placeholders with the real test name.
+
+    Users shouldn't have to hunt for the test name — if we know it at
+    rec-time, paste it in. Supports both `<test>` and `<test_name>`.
+    """
+    out: List[str] = []
+    for cmd in commands:
+        s = cmd.replace("<test_name>", test_name).replace("<test>", test_name)
+        out.append(s)
+    return out
+
+
+def _aggregate_cost_delta_ratio(
+    diffs: List[Tuple[str, "TraceDiff"]],
+    results: List[Any],
+    golden_traces: Optional[Dict[str, Any]],
+) -> Optional[float]:
+    """Compute (current_total_cost - golden_total_cost) / golden_total_cost.
+
+    Returns None when either side is zero/missing so a missing baseline
+    never trips the cost-spike verdict rule.
+
+    Aggregation is across only the tests that were actually compared —
+    tests without a matching golden are excluded from both sides so the
+    ratio is apples-to-apples.
+    """
+    if not results or not golden_traces or not diffs:
+        return None
+
+    compared_names = {name for name, _ in diffs}
+    current_by_name: Dict[str, float] = {}
+    for r in results:
+        name = getattr(r, "test_case", None)
+        if name is None:
+            continue
+        try:
+            current_by_name[name] = float(r.trace.metrics.total_cost)
+        except AttributeError:
+            continue
+
+    current_total = 0.0
+    baseline_total = 0.0
+    for name in compared_names:
+        if name not in current_by_name:
+            continue
+        golden = golden_traces.get(name)
+        if golden is None:
+            continue
+        try:
+            baseline_cost = float(golden.trace.metrics.total_cost)
+        except AttributeError:
+            continue
+        current_total += current_by_name[name]
+        baseline_total += baseline_cost
+
+    if baseline_total <= 0 or current_total <= 0:
+        return None
+    return (current_total - baseline_total) / baseline_total
+
+
+def _dedup_recommendations(recs: List[Any]) -> List[Any]:
+    """Drop duplicate recommendations produced across multiple failing tests.
+
+    When 10 tests all fail with the same root cause (model change, tool
+    rename, etc.) the engine generates the same rec for each diff. The
+    user only needs to see it once — keep the highest-confidence copy.
+    """
+    seen: Dict[Tuple[str, str], Any] = {}
+    conf_rank = {"high": 0, "medium": 1, "low": 2}
+    for rec in recs:
+        key = (getattr(rec, "action", ""), getattr(rec, "category", ""))
+        prev = seen.get(key)
+        if prev is None:
+            seen[key] = rec
+            continue
+        if conf_rank.get(getattr(rec, "confidence", "medium"), 1) < conf_rank.get(
+            getattr(prev, "confidence", "medium"), 1
+        ):
+            seen[key] = rec
+    return list(seen.values())
+
+
+def _compute_verdict_payload(
+    *,
+    diffs: List[Tuple[str, "TraceDiff"]],
+    results: List[Any],
+    drift_tracker: Any,
+    execution_failures: int,
+    golden_traces: Optional[Dict[str, Any]] = None,
+    quarantine: Optional[Any] = None,
+) -> _VerdictOutput:
+    """Pure: derive the release verdict + top recs from check outputs.
+
+    Never raises. Returns a `_VerdictOutput` so the renderer can access
+    the raw Verdict/reasons/recs without parsing the serialized payload.
+
+    Args:
+        quarantine: Optional pre-loaded `QuarantineStore`. Share one
+            instance with `_compute_check_exit_code` per check so the
+            two stay in sync even if the YAML file changes mid-run.
+    """
+    from evalview.core.verdict import (
+        VerdictSignals,
+        compute_verdict,
+        verdict_to_dict,
+    )
+    from evalview.core.quarantine import QuarantineStore
+    from evalview.core.recommendations import recommend_from_trace_diff
+
+    try:
+        if quarantine is None:
+            quarantine = QuarantineStore()
+        quarantined = [q.test_name for q in quarantine.list_all()]
+        stale_quarantined = [q.test_name for q in quarantine.list_stale()]
+    except Exception:
+        quarantined = []
+        stale_quarantined = []
+
+    # Drift signal: count how many tests show a downward trend. We don't
+    # short-circuit — knowing "3 of 12 tests drifting" is more useful than
+    # "one test drifted, don't care about the rest."
+    drift_warnings = 0
+    drift_confidence: Optional[str] = None
+    drift_is_downward = False
+    if drift_tracker is not None:
+        for name, _ in diffs:
+            try:
+                warning = drift_tracker.detect_gradual_drift(name)
+            except Exception:
+                warning = None
+            if warning:
+                drift_warnings += 1
+        if drift_warnings > 0:
+            drift_is_downward = True
+            # detect_gradual_drift already uses OLS + threshold; treat any
+            # positive result as high confidence.
+            drift_confidence = "high"
+
+    cost_delta_ratio = _aggregate_cost_delta_ratio(diffs, results, golden_traces)
+
+    signals = VerdictSignals(
+        test_statuses=[(name, d.overall_severity.value) for name, d in diffs],
+        quarantined_tests=quarantined,
+        stale_quarantined_tests=stale_quarantined,
+        cost_delta_ratio=cost_delta_ratio,
+        drift_confidence=drift_confidence,
+        drift_is_downward=drift_is_downward,
+        execution_failures=execution_failures,
+    )
+
+    verdict, reasons = compute_verdict(signals)
+
+    # Augment the drift reason with a count if more than one test is affected.
+    if drift_warnings > 1:
+        reasons = [
+            (
+                f"{drift_warnings} tests showing downward drift "
+                "(OLS slope exceeds threshold)"
+            )
+            if r.startswith("High-confidence downward drift")
+            else r
+            for r in reasons
+        ]
+
+    payload = verdict_to_dict(verdict, reasons)
+
+    # Collect recommendations across failing diffs, substituting test names
+    # into placeholder commands so the user can copy-paste with zero edits.
+    all_recs: List[Any] = []
+    for name, d in diffs:
+        if d.overall_severity.value == "passed":
+            continue
+        try:
+            recs = recommend_from_trace_diff(d)
+        except Exception:
+            recs = []
+        for rec in recs:
+            rec.suggested_commands = _substitute_test_name(
+                getattr(rec, "suggested_commands", None) or [], name
+            )
+        all_recs.extend(recs)
+
+    all_recs = _dedup_recommendations(all_recs)
+
+    severity_rank = {"high": 0, "medium": 1, "low": 2}
+    all_recs.sort(
+        key=lambda r: (
+            severity_rank.get(getattr(r, "severity", "medium"), 1),
+            severity_rank.get(getattr(r, "confidence", "medium"), 1),
+        )
+    )
+    top_recs = all_recs[:3]
+    payload["recommendations"] = [r.to_dict() for r in top_recs]
+    if cost_delta_ratio is not None:
+        payload["cost_delta_ratio"] = round(cost_delta_ratio, 4)
+    if drift_warnings > 0:
+        payload["drift_affected_tests"] = drift_warnings
+    # Cap the stale-tests list to keep the payload bounded — consumers
+    # (PR comments, Slack, cloud) only ever show the first few names
+    # anyway. `stale` still carries the true count.
+    _STALE_PREVIEW_CAP = 10
+    payload["quarantine"] = {
+        "total": len(quarantined),
+        "stale": len(stale_quarantined),
+        "stale_tests": list(stale_quarantined[:_STALE_PREVIEW_CAP]),
+    }
+
+    return _VerdictOutput(
+        payload=payload,
+        verdict=verdict,
+        reasons=reasons,
+        top_recs=top_recs,
+    )
+
+
+def _render_verdict_panel(output: "_VerdictOutput") -> None:
+    """Console-only rendering of the verdict output."""
+    from evalview.core.verdict import render_verdict_panel
+
+    if output.verdict is None:
+        return
+
+    render_verdict_panel(output.verdict, output.reasons, console)
+
+    if not output.top_recs:
+        return
+
+    console.print("[bold]Likely cause & next actions:[/bold]\n")
+    for i, rec in enumerate(output.top_recs, 1):
+        conf = getattr(rec, "confidence", "medium")
+        sev = getattr(rec, "severity", "medium")
+        cause = getattr(rec, "likely_cause", "") or rec.detail
+        console.print(
+            f"  [bold]{i}.[/bold] {rec.action} "
+            f"[dim]({sev} severity, {conf} confidence)[/dim]"
+        )
+        if cause:
+            console.print(f"     [dim]{cause}[/dim]")
+        commands = getattr(rec, "suggested_commands", None) or []
+        for cmd in commands:
+            console.print(f"     [cyan]→ {cmd}[/cyan]")
+        console.print()
 
 
 def _all_failures_retry_healed(
@@ -814,6 +1084,22 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
         healing_summary=healing_summary,
     )
 
+    # ── Verdict layer (computed before display so --json can include it) ──
+    # One QuarantineStore for the whole check run — shared between the
+    # verdict computation and the exit-code computation to avoid a
+    # double YAML read and a race window where the two could disagree.
+    from evalview.core.quarantine import QuarantineStore as _QuarantineStore
+    shared_quarantine = _QuarantineStore()
+
+    verdict_output = _compute_verdict_payload(
+        diffs=diffs,
+        results=results,
+        drift_tracker=drift_tracker,
+        execution_failures=execution_failures,
+        golden_traces=golden_traces,
+        quarantine=shared_quarantine,
+    )
+
     # Display results
     _display_check_results(
         diffs, analysis, state, is_first_check, json_output,
@@ -824,7 +1110,12 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
         test_metadata=test_metadata,
         healing_summary=healing_summary,
         model_runtime_summary=model_runtime_summary,
+        verdict_payload=verdict_output.payload,
     )
+
+    # Render the verdict panel as the last thing the user sees (screenshotable).
+    if not json_output:
+        _render_verdict_panel(verdict_output)
 
     if execution_failures > 0 and not json_output:
         _print_check_failure_guidance(baseline_test_cases, config)
@@ -904,7 +1195,11 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
     update_badge_after_check(diffs, len(diffs))
 
     # Compute and exit with code
-    exit_code = _compute_check_exit_code(diffs, fail_on, strict, execution_failures=execution_failures)
+    exit_code = _compute_check_exit_code(
+        diffs, fail_on, strict,
+        execution_failures=execution_failures,
+        quarantine=shared_quarantine,
+    )
 
     # --heal exit code: 0 only if every failure was retry-healed
     if all_failures_retry_healed:

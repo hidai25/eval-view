@@ -17,8 +17,12 @@ Why this matters:
     trend and warns before it crosses the threshold.
 """
 
+import getpass
+import hashlib
 import json
 import logging
+import os
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from math import sqrt
@@ -27,6 +31,68 @@ from typing import Any, Dict, List, Optional, Tuple
 from evalview.core.diff import TraceDiff
 
 logger = logging.getLogger(__name__)
+
+
+def _current_git_sha(base_path: Path) -> Optional[str]:
+    """Return the short git SHA for the repo containing base_path, or None.
+
+    Uses subprocess with a short timeout so this never blocks a check run.
+    Returns None in non-git directories, detached HEAD with no commits, or
+    when git is unavailable — never raises.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=str(base_path),
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+        )
+        if result.returncode == 0:
+            sha = result.stdout.strip()
+            return sha or None
+    except (subprocess.SubprocessError, FileNotFoundError, OSError):
+        pass
+    return None
+
+
+def _current_user() -> Optional[str]:
+    """Best-effort local username — for "who ran this" attribution."""
+    try:
+        return getpass.getuser()
+    except Exception:  # pragma: no cover — extremely defensive
+        return os.environ.get("USER") or os.environ.get("USERNAME")
+
+
+def _prompt_fingerprint(base_path: Path) -> Optional[str]:
+    """Hash the contents of common prompt/config locations if they exist.
+
+    Best-effort: looks at .evalview/config.yaml and any prompts/ directory.
+    Returns a short hex digest or None. Cheap to compute.
+    """
+    candidates: List[Path] = [
+        base_path / ".evalview" / "config.yaml",
+        base_path / "prompts",
+    ]
+    hasher = hashlib.sha1()
+    found = False
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+        try:
+            if candidate.is_file():
+                hasher.update(candidate.read_bytes())
+                found = True
+            elif candidate.is_dir():
+                for child in sorted(candidate.rglob("*")):
+                    if child.is_file():
+                        hasher.update(child.read_bytes())
+                        found = True
+        except OSError:
+            continue
+    if not found:
+        return None
+    return hasher.hexdigest()[:12]
 
 # Maximum total lines kept in history.jsonl across all tests.
 # At ~200 bytes per line, 10 000 entries ≈ 2 MB — a reasonable ceiling.
@@ -100,9 +166,37 @@ class DriftTracker:
         """
         self.base_path = base_path or Path(".")
         self.history_path = self.base_path / ".evalview" / "history.jsonl"
+        # Provenance cache — fingerprint helpers (subprocess + recursive FS walk)
+        # are expensive and stable within a single check run. Compute once per
+        # DriftTracker instance; record_check() reuses the cached values.
+        self._provenance_cache: Optional[Dict[str, Optional[str]]] = None
+
+    def _provenance(self) -> Dict[str, Optional[str]]:
+        """Lazily compute and cache the run-level provenance fingerprint.
+
+        Called at most once per DriftTracker instance. A check run creates
+        one tracker and calls record_check() per test, so this keeps the
+        subprocess/FS-walk cost flat instead of linear in the test count.
+        """
+        if self._provenance_cache is None:
+            self._provenance_cache = {
+                "git_sha": _current_git_sha(self.base_path),
+                "prompt_hash": _prompt_fingerprint(self.base_path),
+                "user": _current_user(),
+            }
+        return self._provenance_cache
 
     def record_check(self, test_name: str, diff: TraceDiff) -> None:
         """Append a check result to the history log.
+
+        Each entry is enriched with a provenance fingerprint — git SHA,
+        prompt/config hash, model ID, local user — so downstream commands
+        like `evalview log` and `evalview progress` can answer "which
+        version of the agent produced this run?"
+
+        Fingerprint fields are best-effort and may be None (non-git
+        directory, missing prompts, etc.); readers must tolerate their
+        absence in older entries.
 
         Args:
             test_name: Name of the test that was checked.
@@ -112,6 +206,7 @@ class DriftTracker:
 
         output_similarity = diff.output_diff.similarity if diff.output_diff else 1.0
 
+        provenance = self._provenance()
         entry: Dict[str, Any] = {
             "ts": datetime.now().isoformat(),
             "test": test_name,
@@ -120,6 +215,12 @@ class DriftTracker:
             "output_similarity": round(output_similarity, 4),
             "tool_changes": len(diff.tool_diffs),
             "model_changed": getattr(diff, "model_changed", False),
+            # Run provenance — version fingerprint (cached per instance)
+            "git_sha": provenance["git_sha"],
+            "prompt_hash": provenance["prompt_hash"],
+            # model_id is per-test (different tests can target different models)
+            "model_id": getattr(diff, "actual_model_id", None),
+            "user": provenance["user"],
         }
 
         try:

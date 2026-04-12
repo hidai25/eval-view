@@ -356,6 +356,7 @@ def _display_check_results(
     test_metadata: Optional[Dict[str, Dict[str, Any]]] = None,
     healing_summary: Optional["HealingSummary"] = None,
     model_runtime_summary: Optional["ModelRuntimeChangeSummary"] = None,
+    verdict_payload: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Display check results in JSON or console format."""
     import json
@@ -466,6 +467,8 @@ def _display_check_results(
             output["model_runtime"] = model_runtime_summary.model_dump()
         if behavior_summary:
             output["behavior_summary"] = behavior_summary
+        if verdict_payload:
+            output["verdict"] = verdict_payload
         print(json.dumps(output, indent=2))
     else:
         # Console output with personality
@@ -547,7 +550,11 @@ def _display_check_results(
                 _print_passed_summary(diffs, result_by_name, golden_traces)
                 console.print(f"[green]{get_random_clean_check_message()}[/green]\n")
 
-                if state.current_streak >= 3:
+                # Always acknowledge the streak on a clean run — the first
+                # emotional beat after `evalview check` should be relief + pride,
+                # not silence. Celebrations.clean_check_streak handles the full
+                # range from streak=1 upward.
+                if state.current_streak >= 1:
                     Celebrations.clean_check_streak(state)
 
                 if state.total_checks >= 5 and state.total_checks % 5 == 0:
