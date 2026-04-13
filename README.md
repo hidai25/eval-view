@@ -542,6 +542,10 @@ evalview monitor --history monitor.jsonl                 # JSONL for dashboards
 
 New regressions trigger Slack alerts. Recoveries send all-clear. No spam on persistent failures.
 
+**Every alert is a promise.** The monitor requires **two consecutive failing cycles** before it pages a human — a single blip self-resolves silently and never interrupts anyone. If a test must alert on the first failure (auth, payments, PII, refund paths), mark it `gate: strict` in its YAML and it bypasses the gate, re-alerting every cycle until it passes.
+
+Suppressed failures are never hidden: `evalview slack-digest` renders a Noise section listing every test the gate swallowed, how many times it self-resolved, and a visible false-positive rate (`3 suppressed / 12 fired = 25% noise`). See [`evalview/core/noise_tracker.py`](evalview/core/noise_tracker.py) for the full design — confirmation gate, coordinated-incident collapse, and the `.evalview/noise.jsonl` metric.
+
 [Monitor config options →](docs/CLI_REFERENCE.md)
 
 ## Model Drift Detection
