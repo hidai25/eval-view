@@ -29,6 +29,7 @@ from evalview.commands.drift_cmd import (
 )
 from evalview.commands.slack_digest_cmd import _build_message, _next_action
 from evalview.core.drift_tracker import DriftTracker
+from evalview.core.noise_tracker import NoiseStats, SuppressedEntry
 
 
 def _entry(**kw: Any) -> Dict[str, Any]:
@@ -352,6 +353,132 @@ def test_build_message_green_headline_on_full_pass() -> None:
     # Inspect the raw payload — json.dumps escapes emoji to \u sequences
     # which would make the assertion lie about what's rendered in Slack.
     assert "🟢" in payload["text"]
+
+
+def test_build_message_omits_noise_section_when_no_activity() -> None:
+    """Empty noise stats should leave the digest tight — no
+    "0% noise" line that would just add clutter on a quiet week."""
+    window = {
+        "total": 10,
+        "pass_rate": 1.0,
+        "regression": 0,
+        "tools_changed": 0,
+        "output_changed": 0,
+    }
+    payload = _build_message(
+        "yesterday", window, [], [], noise_stats=NoiseStats()
+    )
+    text = json.dumps(payload)
+    assert "Noise" not in text
+    assert "suppressed" not in text
+
+
+def test_build_message_renders_noise_section_when_alerts_present() -> None:
+    window = {
+        "total": 10,
+        "pass_rate": 0.9,
+        "regression": 1,
+        "tools_changed": 0,
+        "output_changed": 0,
+    }
+    noise = NoiseStats(alerts_fired=4, real_alerts=4, suppressed=1)
+    payload = _build_message(
+        "yesterday", window, [], [], noise_stats=noise
+    )
+    text = json.dumps(payload)
+    assert "Noise" in text
+    # Publicly reported false-positive rate: 1 / (4+1) = 20%.
+    assert "20%" in text
+    assert "4 fired" in text
+    assert "1 suppressed" in text
+
+
+def test_build_message_renders_suppressed_test_list() -> None:
+    """The digest must surface the LIST of suppressed tests, not just
+    a count — otherwise suppression becomes a hidden-signal failure
+    mode. Users need to be able to see "flaky-search self-resolved 3
+    times this week" and decide whether to investigate."""
+    window = {
+        "total": 10,
+        "pass_rate": 0.9,
+        "regression": 0,
+        "tools_changed": 0,
+        "output_changed": 0,
+    }
+    noise = NoiseStats(
+        alerts_fired=2,
+        real_alerts=2,
+        suppressed=4,
+        suppressed_by_test=[
+            SuppressedEntry(test_name="flaky-search", count=3, last_seen=""),
+            SuppressedEntry(test_name="auth-retry", count=1, last_seen=""),
+        ],
+    )
+    payload = _build_message(
+        "yesterday", window, [], [], noise_stats=noise
+    )
+    # Inspect the raw payload — json.dumps escapes unicode (× becomes
+    # \u00d7) which would make the assertion lie about what's rendered.
+    rendered_text = ""
+    for block in payload["blocks"]:
+        if block.get("type") == "section":
+            rendered_text += block.get("text", {}).get("text", "") + "\n"
+    assert "flaky-search" in rendered_text
+    assert "auth-retry" in rendered_text
+    # The count annotation appears for the tests that self-resolved
+    # more than once.
+    assert "× 3" in rendered_text
+    assert "self-resolved" in rendered_text.lower()
+
+
+def test_build_message_suppressed_list_caps_at_five() -> None:
+    """Bounded list so the digest doesn't become its own firehose —
+    show the top 5 + a "…and N more" tail for the long tail."""
+    window = {
+        "total": 10,
+        "pass_rate": 1.0,
+        "regression": 0,
+        "tools_changed": 0,
+        "output_changed": 0,
+    }
+    entries = [
+        SuppressedEntry(test_name=f"t-{i}", count=1, last_seen="")
+        for i in range(8)
+    ]
+    noise = NoiseStats(
+        alerts_fired=1, real_alerts=1, suppressed=8, suppressed_by_test=entries
+    )
+    payload = _build_message(
+        "yesterday", window, [], [], noise_stats=noise
+    )
+    text = json.dumps(payload)
+    assert "and 3 more" in text
+
+
+def test_build_message_noise_section_green_when_clean() -> None:
+    """A low-noise week should lead with the green emoji — the whole
+    point of making this public is to reward being quiet."""
+    window = {
+        "total": 20,
+        "pass_rate": 1.0,
+        "regression": 0,
+        "tools_changed": 0,
+        "output_changed": 0,
+    }
+    noise = NoiseStats(alerts_fired=20, real_alerts=20, suppressed=0)
+    payload = _build_message(
+        "yesterday", window, [], [], noise_stats=noise
+    )
+    # Don't use json.dumps — it escapes emoji.
+    found_noise_block = False
+    for block in payload["blocks"]:
+        if block.get("type") == "section":
+            txt = block.get("text", {}).get("text", "")
+            if "Noise" in txt:
+                found_noise_block = True
+                assert "🟢" in txt
+                assert "0% noise" in txt
+    assert found_noise_block
 
 
 def test_next_action_prioritizes_regression() -> None:

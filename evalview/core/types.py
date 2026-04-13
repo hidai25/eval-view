@@ -214,6 +214,21 @@ class TestCase(BaseModel):
         description="Behavior tags for filtering and grouped reporting."
     )
 
+    # Optional: confirmation-gate mode. Default is "relaxed", meaning a
+    # failure must persist into a second monitor cycle before it fires an
+    # alert — this suppresses single-cycle flakes. Set to "strict" for
+    # safety-critical tests (auth, payments, PII, refund flows, etc.)
+    # where even a one-cycle blip is worth investigating immediately.
+    # Strict tests bypass the ConfirmationGate and alert on n=1.
+    gate: Optional[str] = Field(
+        default=None,
+        description=(
+            "Confirmation-gate mode: 'strict' (alert on n=1, bypass the "
+            "gate — use for safety-critical tests) or omit/None for "
+            "relaxed (wait one cycle to confirm before alerting)."
+        ),
+    )
+
     # Set to True by evalview init auto-generation. Never set by users.
     # Enables strict quality gating — generated tests with bad queries are
     # skipped before running so they don't pollute agent scores.

@@ -1,6 +1,6 @@
 """Discord webhook notifier for EvalView monitor alerts."""
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import logging
 
 import httpx
@@ -18,10 +18,43 @@ class DiscordNotifier:
         self,
         diffs: List[Tuple[str, Any]],
         analysis: Dict[str, Any],
+        incident: Optional[Any] = None,
     ) -> bool:
-        """Send a regression alert to Discord."""
+        """Send a regression alert to Discord.
+
+        When `incident` is provided, multiple correlated failures are
+        collapsed into a single incident card — see `SlackNotifier` for
+        the full rationale.
+        """
         from evalview.core.diff import DiffStatus
         from evalview.core.root_cause import analyze_root_cause
+
+        total = len(diffs)
+        passed = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.PASSED)
+
+        if incident is not None:
+            affected_lines = "\n".join(
+                f"• {name}" for name in incident.affected[:10]
+            )
+            more = ""
+            if len(incident.affected) > 10:
+                more = f"\n…and {len(incident.affected) - 10} more"
+            text = (
+                ":rotating_light: **EvalView Monitor - Incident**\n\n"
+                f"**{incident.headline}**\n"
+                f"{passed}/{total} tests passing\n\n"
+                f"{affected_lines}{more}\n\n"
+                "Run `evalview check` for full details - "
+                "investigate provider/runtime change before tweaking the agent."
+            )
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.post(self.webhook_url, json={"content": text})
+                    resp.raise_for_status()
+                    return True
+            except Exception as e:
+                logger.warning("Discord notification failed: %s", e)
+                return False
 
         failing = []
         for name, diff in diffs:
@@ -38,9 +71,6 @@ class DiscordNotifier:
 
         if not failing:
             return True
-
-        total = len(diffs)
-        passed = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.PASSED)
 
         text = (
             ":warning: **EvalView Monitor - Regression Detected**\n\n"

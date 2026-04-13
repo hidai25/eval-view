@@ -1,6 +1,6 @@
 """Slack webhook notifier for EvalView monitor alerts."""
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import logging
 
 import httpx
@@ -18,12 +18,20 @@ class SlackNotifier:
         self,
         diffs: List[Tuple[str, Any]],
         analysis: Dict[str, Any],
+        incident: Optional[Any] = None,
     ) -> bool:
         """Send a regression alert to Slack.
 
         Args:
             diffs: List of (test_name, TraceDiff) tuples.
             analysis: Output of _analyze_check_diffs.
+            incident: Optional `noise_tracker.Incident` collapsing several
+                      correlated failures into a single card. When present,
+                      the message leads with the incident headline and
+                      includes a concise list of affected tests, instead
+                      of a per-test line item for each failure. This is
+                      the "dedupe by root cause" behaviour — one Slack
+                      ping for "12 tests shifted together," not twelve.
 
         Returns:
             True if the message was sent successfully.
@@ -31,7 +39,32 @@ class SlackNotifier:
         from evalview.core.diff import DiffStatus
         from evalview.core.root_cause import analyze_root_cause
 
-        # Build the list of failing tests
+        total = len(diffs)
+        passed = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.PASSED)
+
+        # Incident-collapsed path: one headline, a short list of affected
+        # tests, and a single next-step. We deliberately do NOT emit a
+        # per-test root-cause line here — the whole point is that the
+        # shared cause is already in the headline.
+        if incident is not None:
+            affected_lines = "\n".join(
+                f"• {name}" for name in incident.affected[:10]
+            )
+            more = ""
+            if len(incident.affected) > 10:
+                more = f"\n…and {len(incident.affected) - 10} more"
+            text = (
+                f":rotating_light: *EvalView Monitor — Incident*\n\n"
+                f"*{incident.headline}*\n"
+                f"{passed}/{total} tests passing\n\n"
+                f"{affected_lines}{more}\n\n"
+                f"_Run `evalview check` for full details — "
+                f"investigate provider/runtime change before tweaking the agent._"
+            )
+            payload = {"text": text}
+            return await self._post(payload)
+
+        # Per-test line-item path (uncollapsed) — unchanged from before.
         failing = []
         for name, diff in diffs:
             root_cause = analyze_root_cause(diff)
@@ -48,9 +81,6 @@ class SlackNotifier:
         if not failing:
             return True  # Nothing to report
 
-        total = len(diffs)
-        passed = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.PASSED)
-
         text = (
             f":warning: *EvalView Monitor — Regression Detected*\n\n"
             f"{passed}/{total} tests passing\n\n"
@@ -59,7 +89,15 @@ class SlackNotifier:
         )
 
         payload = {"text": text}
+        return await self._post(payload)
 
+    async def _post(self, payload: Dict[str, Any]) -> bool:
+        """POST a payload to the configured Slack webhook.
+
+        Extracted so incident-collapsed and per-test code paths share the
+        same transport. Never raises — Slack outages should never break
+        CI pipelines that trigger the monitor.
+        """
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(self.webhook_url, json=payload)
