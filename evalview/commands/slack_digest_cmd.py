@@ -191,11 +191,11 @@ def _build_message(
     if stale_quarantine:
         n = len(stale_quarantine)
         preview_lines = []
-        for entry in stale_quarantine[:3]:
-            owner = entry.get("owner") or "<unknown>"
-            age = entry.get("age_days")
+        for stale in stale_quarantine[:3]:
+            owner = stale.get("owner") or "<unknown>"
+            age = stale.get("age_days")
             age_str = f"{age}d" if age is not None else "?"
-            preview_lines.append(f"• {entry.get('test_name')} — {owner} — {age_str}")
+            preview_lines.append(f"• {stale.get('test_name')} — {owner} — {age_str}")
         blocks.append(
             {
                 "type": "section",
@@ -355,6 +355,9 @@ def slack_digest_cmd(
         console.print(json.dumps(payload, indent=2))
         return
 
+    # The early `not webhook and not dry_run` guard above guarantees
+    # a non-None webhook by the time we reach this branch.
+    assert webhook is not None
     ok = _post_to_slack(webhook, payload)
     if ok:
         console.print("[green]✓ Digest posted to Slack.[/green]")

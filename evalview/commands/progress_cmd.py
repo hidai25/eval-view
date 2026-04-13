@@ -165,6 +165,9 @@ def _compute_delta(
         if a is None and b is not None:
             # Dropped test — don't count as either improvement or regression
             continue
+        # Both early-continues above guarantee both `a` and `b` are non-None
+        # by this point. Explicit assertion narrows mypy's Optional types.
+        assert a is not None and b is not None
         if not is_pass(b) and is_pass(a):
             improved.append((name, str(a.get("git_sha") or "") or None))
         elif is_pass(b) and not is_pass(a):
