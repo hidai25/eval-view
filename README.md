@@ -52,6 +52,32 @@ Built for **frontier-lab rigor, startup-team practicality**:
       Score: 85 → 55  Output similarity: 35%
 ```
 
+The money screen is the one-line **verdict** that lands under every check — a single ship/don't-ship decision derived from the diff, quarantine state, cost delta, and drift confidence:
+
+```
+─────────────────────────────────────────────
+ VERDICT: 🛑 BLOCK RELEASE
+─────────────────────────────────────────────
+
+  • 1 regression: billing-dispute
+  • 1 test changed behavior: refund-request
+  • Cost up 14% vs baseline
+
+Likely cause & next actions:
+
+  1. Rerun statistically to distinguish flake from real drift
+     (high severity, high confidence)
+     → evalview check --statistical 5
+
+  2. Review tool descriptions for: escalate_to_human
+     (high severity, high confidence)
+     Tool selection changed — usually a prompt edit nudged the model
+     → evalview replay refund-request --trace
+     → evalview golden update refund-request   # if the new path is correct
+```
+
+Four tiers: `SAFE_TO_SHIP`, `SHIP_WITH_QUARANTINE`, `INVESTIGATE`, `BLOCK_RELEASE`. The verdict is part of `--json` output, the PR comment, and the cloud ship page — CLI, CI, and dashboard all tell the same story.
+
 ## Quick Start
 
 ```bash
@@ -69,12 +95,13 @@ That's it. Three commands to regression-test any AI agent. `init` auto-detects y
 **After `check`, the investigative loop:**
 
 ```bash
-evalview progress --since yesterday        # what improved/regressed since then
+evalview since                             # 2-second brief: what's changed since your last run
+evalview progress --since yesterday        # delta report: what improved/regressed
 evalview drift                             # per-test sparklines + incident markers
 evalview slack-digest --webhook $SLACK     # post the daily verdict to your team
 ```
 
-These three commands turn a red ✗ into an answer — *is it real drift, a known flake, or a provider update?* — before anyone opens Slack. See [Daily Workflow →](#daily-workflow).
+These four commands turn a red ✗ into an answer — *is it real drift, a known flake, or a provider update?* — before anyone opens Slack. `since` is the habit anchor (daily open-the-terminal glance); `progress` answers "did my changes help?" with a worth-a-commit gate; `drift` visualizes the trend; `slack-digest` broadcasts the verdict. See [Daily Workflow →](#daily-workflow).
 
 ### Catch silent drift in closed models
 
@@ -128,7 +155,29 @@ evalview init --profile rag                               # Override auto-detect
 
 ## Daily Workflow
 
-Detection is only the first step. EvalView gives you the full investigative loop — so when a test goes red, you can answer *"is it real drift, a known flake, or a provider update?"* in three commands, before anyone opens Slack.
+Detection is only the first step. EvalView gives you the full investigative loop — so when a test goes red, you can answer *"is it real drift, a known flake, or a provider update?"* in four commands, before anyone opens Slack.
+
+**Open the terminal — `evalview since`**
+
+```
+╭──────────────────────────── Since your last check ─────────────────────────────╮
+│                                                                                │
+│   95%  pass rate across 14 runs                                                │
+│   ⚠  2 soft change(s)                                                          │
+│   ✨ improved: search_cases, summarize_thread                                  │
+│                                                                                │
+╰────────────────────────────────────────────────────────────────────────────────╯
+
+Drift sparklines (most-declining first)
+  ▇▆▅▄▃▂▁▂  billing-dispute
+
+🔥 Streak: 6 days of clean merges
+
+One thing to look at first:
+  → evalview replay billing-dispute
+```
+
+`evalview since` is the **2-second habit brief** — one hero number, one concern, one action. It reuses Week 1's fingerprinted history, so the "since your last check" window is accurate whether you ran it 10 minutes ago or 4 days ago. Night owls at 2am and daily shippers at 9am see the same command; the label adapts. It's the command that goes in your `.zshrc` so `evalview since` fires when you open the terminal, before the espresso machine is warm.
 
 **Morning — `evalview progress --since yesterday`**
 
@@ -508,12 +557,13 @@ Works with **LangGraph, CrewAI, OpenAI, Claude, Mistral, HuggingFace, Ollama, MC
 
 1. **`evalview init`** — detects your running agent, creates a starter test suite
 2. **`evalview snapshot`** — runs tests, saves traces as baselines
-3. **`evalview check`** — replays tests, diffs against baselines, opens HTML report
-4. **`evalview watch`** — re-runs checks on every file save
-5. **`evalview monitor`** — continuous checks in production with Slack alerts
-6. **`evalview progress --since`** — diff any two points in history with a "worth a commit" gate
-7. **`evalview drift`** — per-test sparklines, OLS slope, and incident markers
-8. **`evalview slack-digest`** — post the daily verdict to your team channel
+3. **`evalview check`** — replays tests, diffs against baselines, emits the ship/don't-ship verdict, opens HTML report
+4. **`evalview since`** — 2-second brief: what's changed since your last run (the daily habit anchor)
+5. **`evalview watch`** — re-runs checks on every file save
+6. **`evalview monitor`** — continuous checks in production with Slack alerts
+7. **`evalview progress --since`** — diff any two points in history with a "worth a commit" gate
+8. **`evalview drift`** — per-test sparklines, OLS slope, and incident markers
+9. **`evalview slack-digest`** — post the daily verdict to your team channel
 
 <details>
 <summary><strong>Snapshot management</strong></summary>

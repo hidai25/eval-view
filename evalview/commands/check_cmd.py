@@ -592,10 +592,17 @@ def _print_baseline_context(goldens: List[Any], state: Any) -> None:
 @click.option("--heal", "heal_mode", is_flag=True, default=False, help="Auto-retry flaky failures, propose candidate variants. Never touches forbidden tools.")
 @track_command("check")
 def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, fail_on: str, strict: bool, report_path: Optional[str], csv_path: Optional[str], semantic_diff: Optional[bool], budget: Optional[float], timeout: float, dry_run: bool, ai_root_cause: bool, statistical_runs: Optional[int], auto_variant: bool, judge_model: Optional[str], no_judge: bool, heal_mode: bool):
-    """Check current behavior against snapshot baseline.
+    """Decide whether it's safe to ship this agent change.
 
-    This command runs tests and compares them against your saved baselines,
-    showing only what changed. Perfect for CI/CD and daily development.
+    Replays your test suite against the saved golden baselines and emits
+    a single ship/don't-ship verdict — SAFE_TO_SHIP, SHIP_WITH_QUARANTINE,
+    INVESTIGATE, or BLOCK_RELEASE — derived from the diff, quarantine
+    state, cost delta, and drift confidence. The verdict is the one line
+    you (and your PR reviewer, and your team's Slack channel) actually
+    read; the diff details are there when you want to dig in.
+
+    Perfect for CI/CD (exits 1 on regression by default) and daily
+    development (auto-opens the HTML report when something changed).
 
     TEST_PATH is the directory containing test cases (default: tests/).
 
