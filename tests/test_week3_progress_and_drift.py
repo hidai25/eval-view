@@ -431,6 +431,40 @@ def test_build_message_renders_suppressed_test_list() -> None:
     assert "self-resolved" in rendered_text.lower()
 
 
+def test_build_message_escapes_backticks_in_suppressed_test_names() -> None:
+    """A test name containing a backtick must not break the inline
+    code span that wraps it in the digest. Same markdown-safety rule
+    Week 2 enforced for the PR comment."""
+    window = {
+        "total": 10,
+        "pass_rate": 0.9,
+        "regression": 0,
+        "tools_changed": 0,
+        "output_changed": 0,
+    }
+    noise = NoiseStats(
+        alerts_fired=1,
+        real_alerts=1,
+        suppressed=1,
+        suppressed_by_test=[
+            SuppressedEntry(
+                test_name="weird`name", count=1, last_seen=""
+            ),
+        ],
+    )
+    payload = _build_message(
+        "yesterday", window, [], [], noise_stats=noise
+    )
+    rendered = ""
+    for block in payload["blocks"]:
+        if block.get("type") == "section":
+            rendered += block.get("text", {}).get("text", "") + "\n"
+    # Escaped form must appear, raw form must not — otherwise the
+    # inline code span (wrapped in backticks) closes too early.
+    assert "weird&#96;name" in rendered
+    assert "`weird`name`" not in rendered  # would break the span
+
+
 def test_build_message_suppressed_list_caps_at_five() -> None:
     """Bounded list so the digest doesn't become its own firehose —
     show the top 5 + a "…and N more" tail for the long tail."""

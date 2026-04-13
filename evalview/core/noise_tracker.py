@@ -133,6 +133,18 @@ class ConfirmationGate:
         # the user can't accidentally forget about them.
         strict_firing = currently & strict_set
 
+        # Clean up the relaxed-mode buckets of any tests that have been
+        # promoted to strict since the last cycle. Without this, a test
+        # that was previously `pending` and then flipped to `gate: strict`
+        # would still be in `self.pending`, and this cycle's
+        # `self_resolved = self.pending - relaxed_currently` would wrongly
+        # count it as suppressed — even though it's currently firing via
+        # the strict bypass. The alert fires correctly either way, but
+        # the noise metric has to stay honest. Relaxed-mode bookkeeping
+        # only describes relaxed-mode tests.
+        self.pending -= strict_set
+        self.confirmed_alerted -= strict_set
+
         # For the relaxed-mode logic below we only consider the subset
         # of failures that are NOT strict. This keeps the buckets clean.
         relaxed_currently = currently - strict_set
@@ -338,11 +350,14 @@ class NoiseStats:
     Fields:
         alerts_fired: Number of times an alert was actually sent to a
                       notifier (not including suppressed n=1 failures).
-        real_alerts: Alerts that stayed failing in a subsequent cycle —
-                     "confirmed real" by the gate downstream.
-        suppressed: Failures that were pending but self-resolved before
-                    ever becoming an alert. The gate saved the user from
-                    these.
+        real_alerts: Equal to alerts_fired by definition — every alert
+                     that reaches this counter already survived the
+                     confirmation gate (or bypassed it via strict mode
+                     because the user explicitly asked us to skip
+                     confirmation). We keep this as a separate field
+                     for schema symmetry with `suppressed` and to leave
+                     room for a future "alerts that escalated to paged"
+                     subset if we ever split the two.
         suppressed_by_test: Per-test breakdown so the digest can render
                     "Suppressed this week: flaky-search ×3, auth-retry ×1"
                     with last-seen timestamps. Keeping this as a list

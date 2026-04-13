@@ -188,6 +188,58 @@ class TestStrictBypass:
         assert d2.alerts_to_fire == set()
         assert d2.self_resolved == set()
 
+    def test_test_promoted_to_strict_does_not_falsely_self_resolve(self):
+        """Regression guard for the strict-bucket leak:
+
+        If a test was previously pending in relaxed mode and then its
+        YAML flips to `gate: strict`, the gate used to incorrectly
+        count it as self_resolved on the next cycle (because it was
+        still in `self.pending` but removed from `relaxed_currently`).
+        The alert still fired via strict_immediate, but the noise
+        metric was wrong.
+
+        Fix: clean up strict tests from relaxed buckets before
+        computing self_resolved.
+        """
+        gate = ConfirmationGate()
+
+        # Cycle 1: "payment" fails in relaxed mode — goes pending.
+        d1 = gate.evaluate({"payment"})
+        assert d1.pending == {"payment"}
+        assert d1.self_resolved == set()
+
+        # Cycle 2: same test, now marked strict, still failing.
+        d2 = gate.evaluate({"payment"}, strict={"payment"})
+
+        # Should fire via strict_immediate — that's the whole point.
+        assert d2.alerts_to_fire == {"payment"}
+        assert d2.strict_immediate == {"payment"}
+
+        # CRUCIAL: must NOT appear in self_resolved. The test never
+        # self-resolved; it was just moved to a different gate mode.
+        # Counting it as suppressed would corrupt the public noise rate.
+        assert d2.self_resolved == set()
+        # And the internal bucket must be clean so the next cycle
+        # doesn't see a ghost.
+        assert "payment" not in gate.pending
+
+    def test_strict_promotion_after_confirmed_alert_does_not_linger(self):
+        """Symmetric case: a test confirmed-alerted in relaxed mode,
+        then flipped to strict, should leave the confirmed_alerted
+        bucket so it can keep re-alerting strictly every cycle."""
+        gate = ConfirmationGate()
+        gate.evaluate({"auth"})              # pending
+        gate.evaluate({"auth"})              # confirmed → alert fired
+        assert "auth" in gate.confirmed_alerted
+
+        # Now mark strict. Each strict cycle should fire.
+        d = gate.evaluate({"auth"}, strict={"auth"})
+        assert d.alerts_to_fire == {"auth"}
+        assert d.strict_immediate == {"auth"}
+        # Confirmed bucket cleaned up so the relaxed-mode "don't
+        # re-alert" rule no longer applies to this test.
+        assert "auth" not in gate.confirmed_alerted
+
 
 # ─────────────────────────── incident detection ───────────────────────────
 

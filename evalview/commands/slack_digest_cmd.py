@@ -139,24 +139,25 @@ def _build_message(
     if noise_stats is not None and (
         noise_stats.alerts_fired + noise_stats.suppressed > 0
     ):
+        # false_positive_rate can only be None when both alerts_fired
+        # and suppressed are zero — the outer guard already excluded
+        # that case, so we can safely treat fpr as a float below.
         fpr = noise_stats.false_positive_rate
-        if fpr is None:
-            noise_headline = "No alert activity."
+        assert fpr is not None, "outer guard ensures denom > 0"
+        pct = int(round(fpr * 100))
+        if pct <= 5:
+            emoji_noise = "🟢"
+        elif pct <= 20:
+            emoji_noise = "🟡"
         else:
-            pct = int(round(fpr * 100))
-            if pct <= 5:
-                emoji_noise = "🟢"
-            elif pct <= 20:
-                emoji_noise = "🟡"
-            else:
-                emoji_noise = "🔴"
-            noise_headline = (
-                f"{emoji_noise} "
-                f"{noise_stats.alerts_fired} fired · "
-                f"{noise_stats.real_alerts} real · "
-                f"{noise_stats.suppressed} suppressed "
-                f"({pct}% noise)"
-            )
+            emoji_noise = "🔴"
+        noise_headline = (
+            f"{emoji_noise} "
+            f"{noise_stats.alerts_fired} fired · "
+            f"{noise_stats.real_alerts} real · "
+            f"{noise_stats.suppressed} suppressed "
+            f"({pct}% noise)"
+        )
 
         noise_text = f"*Noise*\n{noise_headline}"
 
@@ -165,13 +166,19 @@ def _build_message(
             # patterns — a test that self-resolved 4 times this week is
             # no longer a flake, it's a signal. Keep the list bounded
             # so the digest doesn't become its own firehose.
+            #
+            # Escape backticks in test names before wrapping them in
+            # inline code spans — an unescaped backtick would break the
+            # span and leak the count annotation into prose. Same
+            # markdown-safety rule the PR comment uses.
             top = noise_stats.suppressed_by_test[:5]
             lines = [
                 "_Suppressed (self-resolved before confirming):_",
             ]
             for entry in top:
+                safe_name = entry.test_name.replace("`", "&#96;")
                 count_str = f"× {entry.count}" if entry.count > 1 else ""
-                lines.append(f"• `{entry.test_name}` {count_str}".rstrip())
+                lines.append(f"• `{safe_name}` {count_str}".rstrip())
             if len(noise_stats.suppressed_by_test) > 5:
                 extra = len(noise_stats.suppressed_by_test) - 5
                 lines.append(f"…and {extra} more")
