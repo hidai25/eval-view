@@ -19,11 +19,11 @@
 
 ---
 
-Your agent can still return `200` and be wrong. A model or provider update can change tool choice, skip a clarification, or degrade output quality without changing your code or breaking a health check. **EvalView catches those silent regressions before users do.**
+Your agent can still return `200` and be wrong. A model or provider update can change tool choice, skip a clarification, or degrade output quality without changing your code or breaking a health check. **EvalView catches those silent regressions before users do — and gives you the loop to investigate them, grade the confidence, and broadcast the verdict to your team.**
 
 **You don't need frontier-lab resources to run a serious agent regression loop.** EvalView gives solo devs, startups, and small AI teams the same core discipline: snapshot behavior, detect drift, classify changes, and review or heal them safely.
 
-**Traditional tests tell you if your agent is up. EvalView tells you if it still behaves correctly.** It tracks drift across outputs, tools, model IDs, and runtime fingerprints, so you can tell "the provider changed" from "my system regressed."
+**Traditional tests tell you if your agent is up. EvalView tells you if it still behaves correctly.** It tracks drift across outputs, tools, model IDs, and runtime fingerprints with graded confidence — not a binary alarm — so you can tell "the provider changed" from "my system regressed."
 
 [![demo.gif](assets/demo.gif)](https://github.com/user-attachments/assets/96d8b5f7-3561-44a1-86a4-270fb0d1d8a6)
 
@@ -65,6 +65,16 @@ evalview check       # Catch regressions after every change
 ```
 
 That's it. Three commands to regression-test any AI agent. `init` auto-detects your agent type (chat, tool-use, multi-step, RAG, coding) and configures the right evaluators, thresholds, and assertions.
+
+**After `check`, the investigative loop:**
+
+```bash
+evalview progress --since yesterday        # what improved/regressed since then
+evalview drift                             # per-test sparklines + incident markers
+evalview slack-digest --webhook $SLACK     # post the daily verdict to your team
+```
+
+These three commands turn a red ✗ into an answer — *is it real drift, a known flake, or a provider update?* — before anyone opens Slack. See [Daily Workflow →](#daily-workflow).
 
 ### Catch silent drift in closed models
 
@@ -116,6 +126,89 @@ evalview init --profile rag                               # Override auto-detect
 
 </details>
 
+## Daily Workflow
+
+Detection is only the first step. EvalView gives you the full investigative loop — so when a test goes red, you can answer *"is it real drift, a known flake, or a provider update?"* in three commands, before anyone opens Slack.
+
+**Morning — `evalview progress --since yesterday`**
+
+```
+✨ 3 test(s) now passing that weren't
+⚠  1 test(s) regressed
+
+Improved:
+  + refund-flow
+  + order-lookup (at a4f2e91)
+
+Regressed:
+  − billing-dispute
+
+Output similarity: 85.20% → 87.50% ↑ +2.30%
+
+Worth a commit:
+  ✓ refund-flow (high confidence)
+    → evalview golden update refund-flow
+```
+
+A **"worth a commit" gate** (3+ consecutive passes) keeps you from celebrating flakes at 2am.
+
+**Triage — `evalview drift billing-dispute`**
+
+```
+Test             │ Trend        │ Samples │ Slope  │ First → Last │ Status
+─────────────────┼──────────────┼─────────┼────────┼──────────────┼────────
+billing-dispute  │            ! │ 20      │ -1.5%  │ 90% → 80%    │ declining
+                 │ ▇▆▅▄▃▂▁▂▁▂▁ │         │        │              │
+
+Most concerning: billing-dispute — slope -1.50% per check over 20 samples
+  → evalview replay billing-dispute --trace
+```
+
+Unicode sparklines + OLS slope + **incident markers** (`!`) show *when* the test flipped. Drift is graded `insufficient_history / stable / low / medium / high` — not a binary alarm.
+
+**Verdict — `evalview check --statistical 5`**
+
+When the verdict layer returns `INVESTIGATE`, a stability-replay recommendation is auto-injected at position #0 of the action list, surviving the severity sort so you never miss it.
+
+**Quarantine — `evalview quarantine list`**
+
+```
+Test              │ Owner   │ Age  │ Flaky │ Trend │ Status    │ Reason
+──────────────────┼─────────┼──────┼───────┼───────┼───────────┼──────────────
+race-condition    │ @hidai  │ 12d  │ 4     │ ↘     │ ⏸ active │ race condition
+db-timeout        │ @jane   │ 45d  │ 8     │ ↗     │ ⏰ STALE  │ db timeout
+
+⏰ 1 entry stale — review overdue.
+   Either fix the underlying flake or remove from quarantine:
+   evalview quarantine remove db-timeout
+```
+
+Known-flaky tests **don't block CI** — but staleness tracking, owner tags, and a flaky-count trend glyph keep the list honest. Governance built in, not a dumping ground.
+
+**Broadcast — `evalview slack-digest --webhook $SLACK_WEBHOOK`**
+
+```
+📊 EvalView digest — yesterday
+🟢 95% pass rate across 47 runs
+
+Drift
+  ▇▆▅ billing-dispute
+
+⏰ Stale quarantine
+  1 overdue
+  • db-timeout — @jane — 45d
+
+🎯 Next: evalview check --fail-on REGRESSION
+
+✓ Digest posted to Slack.
+```
+
+Stdlib-only Block Kit post (zero new deps). Fails soft on bad webhooks. Ends with **one actionable command** your team can copy-paste from the channel.
+
+---
+
+**The loop closes:** detection → investigation → graded verdict → quarantine governance → broadcast. You wake up, run `progress`, triage with `drift`, confirm with `check --statistical`, and the team sees the digest before standup. That's the morning ritual — reach for it before the espresso machine warms up.
+
 ## Why EvalView?
 
 Use LangSmith for observability. Use Braintrust for scoring. **Use EvalView for regression gating.**
@@ -141,6 +234,9 @@ Use LangSmith for observability. Use Braintrust for scoring. **Use EvalView for 
 | ⚠️ **TOOLS_CHANGED** | Different tools called | Review the diff |
 | ⚠️ **OUTPUT_CHANGED** | Same tools, output shifted | Review the diff |
 | ❌ **REGRESSION** | Score dropped significantly | Fix before shipping |
+| 📉 **DRIFTING** | Trend sliding with graded confidence (low/med/high) | Run `evalview drift <test>` |
+| 🔎 **INVESTIGATE** | Verdict layer wants statistical replay | Run `evalview check --statistical 5` |
+| ⏳ **QUARANTINED** | Known-flaky, excluded from CI exit code | Fix underlying flake or remove |
 
 ### Model / Runtime Change Detection
 
@@ -148,7 +244,7 @@ EvalView does more than compare `model_id`.
 
 - **Declared model change**: adapter-reported model changed from baseline
 - **Runtime fingerprint change**: observed model labels in the trace changed, even when the top-level model name is missing
-- **Coordinated drift**: multiple tests shift together in the same check run, which often points to a silent provider rollout or runtime change
+- **Coordinated drift**: multiple tests shift together in the same check run, which often points to a silent provider rollout or runtime change — now **graded `low / medium / high`** via `DriftTracker.classify_drift`, not a binary alarm
 
 When detected, `evalview check` surfaces a run-level signal with a classification (`declared` or `suspected`), confidence level, and evidence from fingerprints, retries, and affected tests.
 
@@ -415,6 +511,9 @@ Works with **LangGraph, CrewAI, OpenAI, Claude, Mistral, HuggingFace, Ollama, MC
 3. **`evalview check`** — replays tests, diffs against baselines, opens HTML report
 4. **`evalview watch`** — re-runs checks on every file save
 5. **`evalview monitor`** — continuous checks in production with Slack alerts
+6. **`evalview progress --since`** — diff any two points in history with a "worth a commit" gate
+7. **`evalview drift`** — per-test sparklines, OLS slope, and incident markers
+8. **`evalview slack-digest`** — post the daily verdict to your team channel
 
 <details>
 <summary><strong>Snapshot management</strong></summary>
@@ -505,6 +604,12 @@ Ships with a **bundled 15-prompt public canary** covering tool selection, JSON s
 
 | Feature | Description | Docs |
 |---------|-------------|------|
+| **Progress command** | `evalview progress --since <date\|sha>` — improved/regressed with "worth a commit" gate | [Above](#daily-workflow) |
+| **Drift command** | `evalview drift` — unicode sparklines, OLS slope, incident markers | [Above](#daily-workflow) |
+| **Slack digest** | `evalview slack-digest` — stdlib Block Kit post with one actionable next-step | [Above](#daily-workflow) |
+| **Flake quarantine** | Known-flaky tests don't block CI; staleness tracking, owner tags, governance | [Above](#daily-workflow) |
+| **Release verdict layer** | Graded drift confidence + auto-injected stability recommendation | [Above](#daily-workflow) |
+| **Recommendation engine** | Suggests the next command from verdict, drift class, and history | [Above](#daily-workflow) |
 | **Model drift detection** | `model-check` — zero-judge canary suite that catches silent model updates | [Docs](#model-drift-detection) |
 | **Assertion wizard** | Analyze captured traffic, suggest smart assertions automatically | [Above](#assertion-wizard--tests-from-real-traffic) |
 | **Auto-variant discovery** | Run N times, cluster paths, save valid variants | [Above](#auto-variant-discovery--solve-non-determinism) |
