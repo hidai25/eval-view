@@ -317,6 +317,52 @@ class TestSlackNotifier:
         assert "All Clear" in payload["text"]
         assert "5" in payload["text"]
 
+    def test_regression_alert_collapses_incident_into_single_card(self):
+        """When 3+ tests fail together with a shared root cause, the
+        notifier should emit ONE incident card — not three individual
+        line items. This is the user-facing payoff of dedupe-by-root-cause."""
+        from evalview.core.noise_tracker import Incident
+
+        notifier = SlackNotifier("https://hooks.slack.com/test")
+
+        diff_a = _make_diff("REGRESSION", score_diff=-20.0)
+        diff_b = _make_diff("REGRESSION", score_diff=-15.0)
+        diff_c = _make_diff("REGRESSION", score_diff=-10.0)
+        diffs = [("test-a", diff_a), ("test-b", diff_b), ("test-c", diff_c)]
+
+        incident = Incident(
+            cause="likely provider update",
+            confidence="high",
+            affected=["test-a", "test-b", "test-c"],
+        )
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_resp = MagicMock()
+            mock_resp.raise_for_status = MagicMock()
+            mock_client.post = AsyncMock(return_value=mock_resp)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            result = asyncio.run(
+                notifier.send_regression_alert(diffs, {}, incident=incident)
+            )
+
+        assert result is True
+        call_args = mock_client.post.call_args
+        payload = call_args.kwargs.get("json") or call_args[1].get("json")
+        text = payload["text"]
+        # Must include the incident headline, not per-test REGRESSION
+        # line items.
+        assert "likely provider update" in text
+        assert "3 tests shifted together" in text
+        assert "Incident" in text
+        # All affected tests should still appear as a short list.
+        assert "test-a" in text
+        assert "test-b" in text
+        assert "test-c" in text
+
     def test_empty_diffs_returns_true(self):
         """No failing tests should return True without sending."""
         notifier = SlackNotifier("https://hooks.slack.com/test")

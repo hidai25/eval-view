@@ -21,6 +21,11 @@ from evalview.commands.shared import (
     console,
 )
 from evalview.core.diff import DiffStatus
+from evalview.core.noise_tracker import (
+    ConfirmationGate,
+    detect_coordinated_incident,
+    record_cycle_noise,
+)
 from evalview.telemetry.decorators import track_command
 
 
@@ -176,6 +181,12 @@ def _run_monitor_loop(
     console.print("[dim]  Press Ctrl+C to stop.[/dim]\n")
 
     previously_failing: Set[str] = set()
+    # Confirmation gate — suppresses n=1 alerts by requiring a failure
+    # to persist into a second cycle before paging a human. This is the
+    # single highest-leverage noise-reduction lever: it reframes the
+    # product's emotional contract so every alert a user sees is one
+    # that survived at least two independent runs.
+    gate = ConfirmationGate()
     cycle_count = 0
     total_cost = 0.0
     shutdown = False
@@ -217,6 +228,23 @@ def _run_monitor_loop(
             output_changed = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.OUTPUT_CHANGED)
             passed = len(diffs) - regressions - tools_changed - output_changed
 
+            # Run the cycle's failures through the confirmation gate. Only
+            # the `decision.alerts_to_fire` set should reach a notifier.
+            decision = gate.evaluate(currently_failing)
+            record_cycle_noise(decision)
+
+            if decision.self_resolved:
+                names = ", ".join(sorted(decision.self_resolved))
+                console.print(
+                    f"[dim]  Gate: suppressed {len(decision.self_resolved)} "
+                    f"unconfirmed failure(s) ({names}) — recovered before alerting[/dim]"
+                )
+            if decision.pending:
+                console.print(
+                    f"[dim]  Gate: {len(decision.pending)} failure(s) pending "
+                    f"confirmation — will alert if still failing next cycle[/dim]"
+                )
+
             if not currently_failing:
                 cost_part = f"  [dim]${cycle_cost:.4f}[/dim]" if cycle_cost > 0 else ""
                 console.print(f"[green]  {get_random_monitor_clean_message()} ({len(diffs)} tests){cost_part}[/green]")
@@ -240,12 +268,33 @@ def _run_monitor_loop(
                     if diff.overall_severity in fail_statuses:
                         console.print(f"    [red]x {name}[/red] ({diff.overall_severity.value})")
 
-                new_failures = currently_failing - previously_failing
-                if new_failures and notifiers:
-                    alert_diffs = [(n, d) for n, d in diffs if n in currently_failing]
+                # Fire alerts only for failures confirmed by the gate —
+                # everything that just started failing this cycle waits
+                # one cycle before it can page anyone.
+                alerts_to_fire = decision.alerts_to_fire
+                if alerts_to_fire and notifiers:
+                    alert_diffs = [(n, d) for n, d in diffs if n in alerts_to_fire]
+                    # Collapse correlated failures into a single incident card
+                    # when they share a common root cause — the notifier
+                    # will use `incident.headline` as the summary instead
+                    # of listing each test separately.
+                    incident = detect_coordinated_incident(alert_diffs)
                     for label, notifier in notifiers:
-                        asyncio.run(notifier.send_regression_alert(alert_diffs, analysis))
-                        console.print(f"[dim]  Alert: {label} notified on {len(new_failures)} new failure(s)[/dim]")
+                        asyncio.run(
+                            notifier.send_regression_alert(
+                                alert_diffs, analysis, incident=incident
+                            )
+                        )
+                        if incident is not None:
+                            console.print(
+                                f"[dim]  Alert: {label} sent 1 incident "
+                                f"({incident.cause}, {len(alert_diffs)} tests)[/dim]"
+                            )
+                        else:
+                            console.print(
+                                f"[dim]  Alert: {label} notified on "
+                                f"{len(alerts_to_fire)} confirmed failure(s)[/dim]"
+                            )
 
             spike_alerts = _detect_spikes(results, golden_traces, cost_threshold, latency_threshold)
             if spike_alerts:
@@ -341,12 +390,16 @@ def _run_monitor_dashboard(
     }
 
     previously_failing: Set[str] = set()
+    # See `_run_monitor_loop` for the confirmation-gate rationale — same
+    # pattern applies to the dashboard variant.
+    gate = ConfirmationGate()
     cycle_count = 0
     total_cost = 0.0
     start_time = time.time()
     last_check_time = ""
     next_check_time = ""
     alerts_sent = 0
+    alerts_suppressed = 0
     test_history: Dict[str, List[DiffStatus]] = {}
     current_statuses: Dict[str, DiffStatus] = {}
     checking = False
@@ -449,17 +502,27 @@ def _run_monitor_dashboard(
                 name for name, diff in diffs if diff.overall_severity in fail_statuses
             }
 
+            # Confirmation gate: suppress n=1 alerts and record noise stats.
+            decision = gate.evaluate(currently_failing)
+            record_cycle_noise(decision)
+            alerts_suppressed += len(decision.self_resolved)
+
             if not currently_failing and previously_failing and notifiers:
                 for label, notifier in notifiers:
                     asyncio.run(notifier.send_recovery_alert(len(diffs)))
                     alerts_sent += 1
 
-            new_failures = currently_failing - previously_failing
-            if new_failures and notifiers:
-                alert_diffs = [(n, d) for n, d in diffs if n in currently_failing]
+            alerts_to_fire = decision.alerts_to_fire
+            if alerts_to_fire and notifiers:
+                alert_diffs = [(n, d) for n, d in diffs if n in alerts_to_fire]
                 analysis = _analyze_check_diffs(diffs)
+                incident = detect_coordinated_incident(alert_diffs)
                 for label, notifier in notifiers:
-                    asyncio.run(notifier.send_regression_alert(alert_diffs, analysis))
+                    asyncio.run(
+                        notifier.send_regression_alert(
+                            alert_diffs, analysis, incident=incident
+                        )
+                    )
                     alerts_sent += 1
 
             spike_alerts = _detect_spikes(results, golden_traces, cost_threshold, latency_threshold)

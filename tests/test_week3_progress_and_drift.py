@@ -29,6 +29,7 @@ from evalview.commands.drift_cmd import (
 )
 from evalview.commands.slack_digest_cmd import _build_message, _next_action
 from evalview.core.drift_tracker import DriftTracker
+from evalview.core.noise_tracker import NoiseStats
 
 
 def _entry(**kw: Any) -> Dict[str, Any]:
@@ -352,6 +353,70 @@ def test_build_message_green_headline_on_full_pass() -> None:
     # Inspect the raw payload — json.dumps escapes emoji to \u sequences
     # which would make the assertion lie about what's rendered in Slack.
     assert "🟢" in payload["text"]
+
+
+def test_build_message_omits_noise_section_when_no_activity() -> None:
+    """Empty noise stats should leave the digest tight — no
+    "0% noise" line that would just add clutter on a quiet week."""
+    window = {
+        "total": 10,
+        "pass_rate": 1.0,
+        "regression": 0,
+        "tools_changed": 0,
+        "output_changed": 0,
+    }
+    payload = _build_message(
+        "yesterday", window, [], [], noise_stats=NoiseStats()
+    )
+    text = json.dumps(payload)
+    assert "Noise" not in text
+    assert "suppressed" not in text
+
+
+def test_build_message_renders_noise_section_when_alerts_present() -> None:
+    window = {
+        "total": 10,
+        "pass_rate": 0.9,
+        "regression": 1,
+        "tools_changed": 0,
+        "output_changed": 0,
+    }
+    noise = NoiseStats(alerts_fired=4, real_alerts=4, suppressed=1)
+    payload = _build_message(
+        "yesterday", window, [], [], noise_stats=noise
+    )
+    text = json.dumps(payload)
+    assert "Noise" in text
+    # Publicly reported false-positive rate: 1 / (4+1) = 20%.
+    assert "20%" in text
+    assert "4 fired" in text
+    assert "1 suppressed" in text
+
+
+def test_build_message_noise_section_green_when_clean() -> None:
+    """A low-noise week should lead with the green emoji — the whole
+    point of making this public is to reward being quiet."""
+    window = {
+        "total": 20,
+        "pass_rate": 1.0,
+        "regression": 0,
+        "tools_changed": 0,
+        "output_changed": 0,
+    }
+    noise = NoiseStats(alerts_fired=20, real_alerts=20, suppressed=0)
+    payload = _build_message(
+        "yesterday", window, [], [], noise_stats=noise
+    )
+    # Don't use json.dumps — it escapes emoji.
+    found_noise_block = False
+    for block in payload["blocks"]:
+        if block.get("type") == "section":
+            txt = block.get("text", {}).get("text", "")
+            if "Noise" in txt:
+                found_noise_block = True
+                assert "🟢" in txt
+                assert "0% noise" in txt
+    assert found_noise_block
 
 
 def test_next_action_prioritizes_regression() -> None:

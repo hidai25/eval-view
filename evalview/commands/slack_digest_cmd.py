@@ -39,6 +39,7 @@ from evalview.commands.since_cmd import (
     _parse_since,
     _summarize,
 )
+from evalview.core.noise_tracker import NoiseStats, load_noise_stats
 from evalview.telemetry.decorators import track_command
 
 
@@ -54,12 +55,21 @@ def _build_message(
     window: Dict[str, Any],
     drift_rows: List[Any],
     stale_quarantine: List[Dict[str, Any]],
+    noise_stats: Optional[NoiseStats] = None,
 ) -> Dict[str, Any]:
     """Build a Slack `blocks` message matching the Slack block-kit schema.
 
     Pure function — no I/O, easy to unit-test. Returns the JSON payload
     ready to POST. We use blocks rather than plain markdown so the
     message renders cleanly on desktop, mobile, and Slack search.
+
+    Args:
+        noise_stats: Optional aggregated noise counters over the window.
+            When present, a "Noise" section is rendered that publicly
+            reports alerts fired vs. suppressed — the point is to hold
+            ourselves accountable for false-positive rate rather than
+            hide it. If the stats are empty (no alert activity in the
+            window), the section is skipped so the digest stays tight.
     """
     pass_rate = window.get("pass_rate")
     total = window.get("total", 0)
@@ -113,6 +123,41 @@ def _build_message(
                 "text": {
                     "type": "mrkdwn",
                     "text": "*Drift*\n" + "\n".join(drift_lines),
+                },
+            }
+        )
+
+    # Noise block — public false-positive rate. We render this before
+    # stale quarantine because it's the meta-metric users should glance
+    # at first; a noisy product is a distrusted product, and the digest
+    # is the right place to hold ourselves visible to it.
+    if noise_stats is not None and (
+        noise_stats.alerts_fired + noise_stats.suppressed > 0
+    ):
+        fpr = noise_stats.false_positive_rate
+        if fpr is None:
+            noise_headline = "No alert activity."
+        else:
+            pct = int(round(fpr * 100))
+            if pct <= 5:
+                emoji_noise = "🟢"
+            elif pct <= 20:
+                emoji_noise = "🟡"
+            else:
+                emoji_noise = "🔴"
+            noise_headline = (
+                f"{emoji_noise} "
+                f"{noise_stats.alerts_fired} fired · "
+                f"{noise_stats.real_alerts} real · "
+                f"{noise_stats.suppressed} suppressed "
+                f"({pct}% noise)"
+            )
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*Noise*\n{noise_headline}",
                 },
             }
         )
@@ -272,7 +317,13 @@ def slack_digest_cmd(
     except Exception:
         pass
 
-    payload = _build_message(label, window, drift_rows, stale_quarantine)
+    # Load noise stats over the same window as `_summarize` so the
+    # "X% noise" line is consistent with the other digest numbers.
+    noise_stats = load_noise_stats(since=cutoff_dt)
+
+    payload = _build_message(
+        label, window, drift_rows, stale_quarantine, noise_stats=noise_stats
+    )
 
     if dry_run:
         console.print("[bold]Slack payload preview:[/bold]")
