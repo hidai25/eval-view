@@ -274,6 +274,7 @@ class TestSlowAgentWarning:
         assert "0.2s timeout" in printed
 
     def test_warning_printed_only_once(self, project, monkeypatch):
+        """Test that warning prints only once per test execution."""
         from evalview.commands.shared import _execute_check_tests
         from evalview.core.config import EvalViewConfig
 

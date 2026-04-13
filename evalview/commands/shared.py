@@ -614,6 +614,14 @@ def _execute_check_tests(
     golden_traces: Dict[str, GoldenTrace] = {}
 
     async def _slow_agent_warning_task(test_name: str) -> None:
+        """Background task that shows slow-agent warning after 50% of timeout.
+        
+        Args:
+            test_name: Name of the test being executed.
+            
+        Waits for 50% of timeout duration, then prints a warning
+        message indicating that agent is taking longer than expected.
+        """
         await asyncio.sleep(max(0.0, timeout * 0.5))
         console.print(
             f"[yellow]⚠ {test_name}: Agent is taking a while... "
