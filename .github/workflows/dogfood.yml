@@ -130,6 +130,69 @@ jobs:
         kill $MOCK_PID 2>/dev/null || true
         wait $MOCK_PID 2>/dev/null || true
 
+    - name: Monitor smoke test (populate .evalview/noise.jsonl)
+      id: monitor
+      continue-on-error: true
+      run: |
+        # Exercises the full `evalview monitor` loop — confirmation gate,
+        # coordinated-incident detection, and the noise tracker — so
+        # `.evalview/noise.jsonl` gets real data instead of staying empty.
+        # Wiring monitor into dogfood is the prerequisite for unlocking
+        # the deferred repeat-suppression / auto-quarantine features.
+        #
+        # Reuses the deterministic mock agent and the golden baselines
+        # produced by the regression step above.
+
+        uv run python dogfood/mock_agent.py &
+        MOCK_PID=$!
+
+        AGENT_READY=false
+        for i in $(seq 1 15); do
+          if curl -sf http://localhost:8002/health > /dev/null; then
+            echo "Mock agent ready after ${i}s"
+            AGENT_READY=true
+            break
+          fi
+          sleep 1
+        done
+
+        if [ "$AGENT_READY" = "false" ]; then
+          echo "Mock agent failed to start within 15s" >&2
+          echo "exit_code=1" >> $GITHUB_OUTPUT
+          kill $MOCK_PID 2>/dev/null || true
+          exit 0
+        fi
+
+        # Run the monitor for ~35s. Minimum --interval is 10s, so that
+        # gives us ~3 cycles — enough to exercise both the initial cycle
+        # and the confirmation gate state transitions. --preserve-status
+        # makes timeout return monitor's own exit code (0 for a clean
+        # shutdown) rather than 124.
+        timeout --preserve-status 35s \
+          uv run evalview monitor dogfood/mock-agent-tests/ \
+            --interval 10 \
+            --timeout 15 \
+            --fail-on REGRESSION \
+            --history .evalview/monitor-history.jsonl \
+            2>&1 | tee monitor-output.txt || true
+        MONITOR_EXIT=${PIPESTATUS[0]}
+        echo "monitor exit code: $MONITOR_EXIT"
+
+        # Verify the noise log was populated. An empty file means the
+        # monitor loop never completed a cycle, which is a regression in
+        # the feature we are dogfooding.
+        if [ ! -s .evalview/noise.jsonl ]; then
+          echo "FAIL: .evalview/noise.jsonl was not written — monitor smoke test did not exercise the noise tracker" >&2
+          echo "exit_code=1" >> $GITHUB_OUTPUT
+        else
+          echo "Noise log contents:"
+          cat .evalview/noise.jsonl
+          echo "exit_code=$MONITOR_EXIT" >> $GITHUB_OUTPUT
+        fi
+
+        kill $MOCK_PID 2>/dev/null || true
+        wait $MOCK_PID 2>/dev/null || true
+
     - name: Run dogfood self-tests (chat mode)
       id: dogfood
       continue-on-error: true
@@ -219,6 +282,10 @@ jobs:
 
         if [ "${{ steps.regression.outputs.exit_code }}" != "0" ]; then
           FAILED="${FAILED}regression,"
+        fi
+
+        if [ "${{ steps.monitor.outputs.exit_code }}" != "0" ]; then
+          FAILED="${FAILED}monitor,"
         fi
 
         if [ "${{ steps.dogfood.outputs.exit_code }}" != "0" ] && [ "${{ steps.dogfood.outputs.skipped }}" != "true" ]; then
@@ -340,6 +407,12 @@ jobs:
           echo "✅ regression check passed (EvalView evaluating itself)" >> $GITHUB_STEP_SUMMARY
         else
           echo "❌ regression check failed — EvalView evaluation logic may have regressed" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        if [ "${{ steps.monitor.outputs.exit_code }}" == "0" ]; then
+          echo "✅ monitor smoke test passed (.evalview/noise.jsonl populated)" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ monitor smoke test failed — noise tracker may not be recording cycles" >> $GITHUB_STEP_SUMMARY
         fi
 
         if [ "${{ steps.dogfood.outputs.skipped }}" == "true" ]; then

@@ -163,6 +163,85 @@ evalview check --budget 0.50               # Cap spend at $0.50
 
 The terminal output and HTML report surface the classification (`declared` or `suspected`), confidence, runtime fingerprint diff, and retry evidence from `evalview check --heal` when available.
 
+---
+
+## `evalview monitor`
+
+Continuously run checks against a live agent and alert on regressions. Designed for production monitoring: `evalview monitor` runs `evalview check` in a loop, fires Slack/Discord alerts only for failures confirmed across two consecutive cycles, and records the full signal-to-noise trail in `.evalview/noise.jsonl` so `evalview slack-digest` can report a verifiable false-positive rate.
+
+```bash
+evalview monitor [TEST_PATH] [OPTIONS]
+
+Options:
+  -i, --interval N         Seconds between checks (default: 300, minimum: 10)
+  --slack-webhook URL      Slack webhook URL for alerts
+  --discord-webhook URL    Discord webhook URL for alerts
+  --fail-on STATUSES       Comma-separated statuses that trigger alerts
+                           (default: REGRESSION)
+  --timeout FLOAT          Timeout per test in seconds (default: 30)
+  -t, --test TEXT          Monitor only this specific test
+  --history PATH           Append each cycle's results to a JSONL file
+  --alert-cost-spike X     Alert when cost exceeds baseline by this
+                           multiplier (e.g. 2.0)
+  --alert-latency-spike X  Alert when latency exceeds baseline by this
+                           multiplier (e.g. 3.0)
+  --dashboard              Live-updating terminal dashboard instead of
+                           scrolling logs
+```
+
+### Confirmation gate
+
+Every alert is a promise. By default the monitor suppresses `n=1` failures: a test has to fail in two consecutive cycles before it pages a human, and a single blip self-resolves silently. Tests that must alert on the first failure (auth, payments, PII, refund paths) can opt out of the gate by setting `gate: strict` in their YAML; strict tests bypass confirmation and re-alert every cycle until they pass.
+
+Self-resolved (suppressed) failures are never dropped: they are appended to `.evalview/noise.jsonl` with their test names, so `evalview slack-digest` can render a Noise section with an exact `N suppressed / M fired = Z% noise` false-positive rate.
+
+### Prerequisites
+
+`evalview monitor` requires existing baselines. Run `evalview snapshot` first to create them, otherwise the monitor exits immediately with the error `No baselines found. Run evalview snapshot first.`
+
+### Configuration (`.evalview/config.yaml`)
+
+```yaml
+monitor:
+  interval: 300
+  slack_webhook: https://hooks.slack.com/services/...
+  discord_webhook: https://discord.com/api/webhooks/...
+  fail_on: [REGRESSION]
+  cost_threshold: 2.0
+  latency_threshold: 3.0
+```
+
+Webhook URLs can also be provided via environment variables as a fallback:
+
+| Variable | Description |
+|----------|-------------|
+| `EVALVIEW_SLACK_WEBHOOK` | Slack webhook URL (fallback) |
+| `EVALVIEW_DISCORD_WEBHOOK` | Discord webhook URL (fallback) |
+
+### Examples
+
+```bash
+evalview monitor                                 # Check every 5 min
+evalview monitor --interval 60                   # Check every minute
+evalview monitor --dashboard                     # Live terminal dashboard
+evalview monitor --slack-webhook https://...     # Alert to Slack
+evalview monitor --discord-webhook https://...   # Alert to Discord
+evalview monitor --test "weather-lookup"         # Monitor one test
+evalview monitor --fail-on REGRESSION,TOOLS_CHANGED
+evalview monitor --history monitor_log.jsonl     # Persist cycle history
+evalview monitor --alert-cost-spike 2.0          # Alert if cost doubles
+evalview monitor --alert-latency-spike 3.0       # Alert if latency triples
+```
+
+### Related files
+
+| Path | Written by | Purpose |
+|------|-----------|---------|
+| `.evalview/noise.jsonl` | monitor loop | One line per cycle with `alerts_fired`, `suppressed`, and the names of self-resolved tests. Consumed by `evalview slack-digest` to report a false-positive rate. |
+| `<--history PATH>` | `--history` | Optional per-cycle diagnostic log (total tests, pass/fail counts, cost, failing test names). Separate from the noise log. |
+
+---
+
 ## `evalview model-check`
 
 Detect silent drift in a closed-weight model (Claude, GPT, ...) against
@@ -476,3 +555,4 @@ Note: non-OpenAI aliases (`DEEPSEEK_API_KEY`, `KIMI_API_KEY`, `MOONSHOT_API_KEY`
 - [Golden Traces](GOLDEN_TRACES.md)
 - [Statistical Mode](STATISTICAL_MODE.md)
 - [Chat Mode](CHAT_MODE.md)
+- [Monitor Config Options](#evalview-monitor)
