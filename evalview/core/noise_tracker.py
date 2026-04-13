@@ -50,8 +50,9 @@ class GateDecision:
     """Result of running a cycle's failures through the confirmation gate.
 
     Attributes:
-        confirmed: Tests that failed this cycle AND the previous cycle.
-                   These are the only tests the caller should alert on.
+        confirmed: Tests that failed this cycle AND the previous cycle
+                   (or failed once while marked strict). These are the
+                   tests the caller should alert on.
         pending: Tests that failed this cycle for the first time. No alert
                  should fire for these — they wait for the next cycle.
         self_resolved: Tests that were pending from the previous cycle but
@@ -60,17 +61,23 @@ class GateDecision:
         carried_forward: Tests that were confirmed in an earlier cycle and
                          are still failing. Not re-alerted (already alerted
                          on first confirmation).
+        strict_immediate: Tests in the strict bypass set that failed this
+                          cycle. They are rolled into `confirmed` so the
+                          caller alerts on them, but tracked separately so
+                          the caller can log "strict: bypassing gate" and
+                          so tests can verify the bypass actually fired.
     """
 
     confirmed: Set[str] = field(default_factory=set)
     pending: Set[str] = field(default_factory=set)
     self_resolved: Set[str] = field(default_factory=set)
     carried_forward: Set[str] = field(default_factory=set)
+    strict_immediate: Set[str] = field(default_factory=set)
 
     @property
     def alerts_to_fire(self) -> Set[str]:
         """The tests whose status should actually page a human this cycle."""
-        return set(self.confirmed)
+        return set(self.confirmed) | set(self.strict_immediate)
 
 
 @dataclass
@@ -92,49 +99,70 @@ class ConfirmationGate:
     pending: Set[str] = field(default_factory=set)
     confirmed_alerted: Set[str] = field(default_factory=set)
 
-    def evaluate(self, currently_failing: Iterable[str]) -> GateDecision:
+    def evaluate(
+        self,
+        currently_failing: Iterable[str],
+        strict: Optional[Iterable[str]] = None,
+    ) -> GateDecision:
         """Advance the gate by one cycle.
 
         Args:
             currently_failing: Set of test names that failed this cycle.
+            strict: Names of tests marked `gate: strict` in their YAML —
+                these bypass the confirmation gate entirely. A strict
+                test that fails even once alerts immediately, without
+                waiting for a second cycle to confirm. Use this for
+                safety-critical behaviors (auth, payments, PII, refund
+                paths) where a single false positive is cheaper than
+                missing a real regression for five minutes.
 
         Returns:
             GateDecision describing which tests were promoted to confirmed
-            (and therefore should alert), which are still pending, and
-            which self-resolved without alerting.
+            (and therefore should alert), which strict tests bypassed the
+            gate, which are still pending, and which self-resolved
+            without alerting.
         """
         currently = set(currently_failing)
+        strict_set = set(strict or ())
+
+        # Strict tests bypass the whole state machine: any strict test
+        # failing this cycle alerts immediately. They are NOT recorded
+        # in `pending` or `confirmed_alerted`, because those buckets are
+        # what the relaxed state machine uses to avoid re-alerting — and
+        # strict tests should re-alert every cycle they stay broken so
+        # the user can't accidentally forget about them.
+        strict_firing = currently & strict_set
+
+        # For the relaxed-mode logic below we only consider the subset
+        # of failures that are NOT strict. This keeps the buckets clean.
+        relaxed_currently = currently - strict_set
 
         # Pending tests that passed this cycle → self-resolved (false positive).
-        self_resolved = self.pending - currently
+        self_resolved = self.pending - relaxed_currently
 
         # Previously pending AND still failing → promote to confirmed.
         # These are the ones that actually fire alerts.
-        newly_confirmed = self.pending & currently
+        newly_confirmed = self.pending & relaxed_currently
 
         # Previously confirmed AND still failing → carry forward silently.
         # We already alerted on the first confirmation; don't re-page.
-        still_confirmed = self.confirmed_alerted & currently
+        still_confirmed = self.confirmed_alerted & relaxed_currently
 
         # Currently failing, but neither pending nor previously confirmed →
         # brand-new failures. These become pending for *next* cycle.
-        new_pending = currently - self.pending - self.confirmed_alerted
-
-        # Confirmed tests that recovered → drop from confirmed set.
-        # They'll trigger the existing recovery-alert path in the caller.
-        # (The caller owns the recovery alert; we just clean up state.)
-        #
-        # We intentionally do NOT track recoveries here — that's the
-        # caller's job via its own previously_failing set.
+        new_pending = relaxed_currently - self.pending - self.confirmed_alerted
 
         decision = GateDecision(
             confirmed=newly_confirmed,
             pending=new_pending,
             self_resolved=self_resolved,
             carried_forward=still_confirmed,
+            strict_immediate=strict_firing,
         )
 
-        # Update the gate's state for the next cycle.
+        # Update the gate's state for the next cycle. Strict tests are
+        # excluded from the internal buckets so they keep alerting every
+        # cycle until they pass.
         self.pending = new_pending
         self.confirmed_alerted = newly_confirmed | still_confirmed
 
@@ -280,6 +308,25 @@ def detect_coordinated_incident(
 
 
 @dataclass
+class SuppressedEntry:
+    """Per-test summary of unconfirmed failures the gate swallowed.
+
+    The digest uses this to render a visible list of "what got
+    suppressed this week" so the user can sanity-check the gate's
+    decisions — never hide the signal, just the alert.
+
+    Attributes:
+        test_name: Name of the test that self-resolved.
+        count: How many times it self-resolved in the window.
+        last_seen: ISO-8601 timestamp of the most recent suppression.
+    """
+
+    test_name: str
+    count: int = 0
+    last_seen: Optional[str] = None
+
+
+@dataclass
 class NoiseStats:
     """Rolling counters for the public "noise" metric.
 
@@ -296,11 +343,17 @@ class NoiseStats:
         suppressed: Failures that were pending but self-resolved before
                     ever becoming an alert. The gate saved the user from
                     these.
+        suppressed_by_test: Per-test breakdown so the digest can render
+                    "Suppressed this week: flaky-search ×3, auth-retry ×1"
+                    with last-seen timestamps. Keeping this as a list
+                    rather than a dict preserves ordering for rendering
+                    (most recent / highest count first).
     """
 
     alerts_fired: int = 0
     real_alerts: int = 0
     suppressed: int = 0
+    suppressed_by_test: List[SuppressedEntry] = field(default_factory=list)
 
     @property
     def false_positive_rate(self) -> Optional[float]:
@@ -338,12 +391,20 @@ def record_cycle_noise(
     """Append one cycle's noise counters to `.evalview/noise.jsonl`.
 
     Called by the monitor loop after every cycle. Each line records:
-        - alerts_fired:  number of confirmed failures that fired alerts
-        - real_alerts:   same as alerts_fired (every confirmed firing is
-                         real by definition of the gate)
-        - suppressed:    number of self-resolved pendings this cycle
-        - pending_count: number of pendings carried into next cycle
-                         (diagnostic only, not part of the public metric)
+        - alerts_fired:     number of alerts that fired this cycle
+                            (confirmed + strict_immediate)
+        - real_alerts:      same as alerts_fired — every fired alert is
+                            real by definition of the gate
+        - suppressed:       number of self-resolved pendings this cycle
+        - pending_count:    number of pendings carried into next cycle
+                            (diagnostic only, not part of the public metric)
+        - suppressed_tests: *names* of the tests that self-resolved,
+                            so the digest can show the user WHICH tests
+                            were suppressed, not just a count. This is
+                            critical: suppressing the alert is fine,
+                            suppressing the signal is not.
+        - strict_tests:     names of tests that fired via strict bypass,
+                            so the audit trail records the reason.
 
     Writes are best-effort — a failed write logs a warning and returns.
     The monitor loop must never crash because the noise log is unwritable.
@@ -352,12 +413,15 @@ def record_cycle_noise(
     path = base / _NOISE_LOG
     ts = timestamp or datetime.now(timezone.utc)
 
+    alerts_fired = len(decision.confirmed) + len(decision.strict_immediate)
     record = {
         "ts": ts.isoformat(),
-        "alerts_fired": len(decision.confirmed),
-        "real_alerts": len(decision.confirmed),
+        "alerts_fired": alerts_fired,
+        "real_alerts": alerts_fired,
         "suppressed": len(decision.self_resolved),
         "pending_count": len(decision.pending),
+        "suppressed_tests": sorted(decision.self_resolved),
+        "strict_tests": sorted(decision.strict_immediate),
     }
 
     try:
@@ -392,6 +456,10 @@ def load_noise_stats(
     if not path.exists():
         return stats
 
+    # Per-test aggregation — used to populate suppressed_by_test.
+    # {test_name: (count, last_seen_ts_iso)}
+    per_test: Dict[str, Tuple[int, str]] = {}
+
     try:
         with path.open(encoding="utf-8") as f:
             for line in f:
@@ -420,8 +488,27 @@ def load_noise_stats(
                 stats.alerts_fired += int(record.get("alerts_fired", 0) or 0)
                 stats.real_alerts += int(record.get("real_alerts", 0) or 0)
                 stats.suppressed += int(record.get("suppressed", 0) or 0)
+
+                # Aggregate per-test suppression counts so we can surface
+                # "WHICH tests got silently suppressed" in the digest.
+                ts_str = str(record.get("ts") or "")
+                for name in record.get("suppressed_tests") or []:
+                    prev_count, prev_ts = per_test.get(str(name), (0, ""))
+                    # Keep the lexicographically-later (≈ most recent) ts
+                    new_ts = ts_str if ts_str > prev_ts else prev_ts
+                    per_test[str(name)] = (prev_count + 1, new_ts)
     except OSError as exc:
         logger.warning("Failed to read noise log: %s", exc)
         return NoiseStats()
+
+    # Sort by (count desc, most recent first) so the digest leads with
+    # the tests a user would most want to look at.
+    stats.suppressed_by_test = [
+        SuppressedEntry(test_name=name, count=count, last_seen=last_seen)
+        for name, (count, last_seen) in sorted(
+            per_test.items(),
+            key=lambda kv: (-kv[1][0], kv[0]),
+        )
+    ]
 
     return stats

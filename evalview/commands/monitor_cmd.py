@@ -172,11 +172,25 @@ def _run_monitor_loop(
         if not test_cases:
             raise MonitorError(f"No test found with name: {test_filter}")
 
+    # Tests tagged `gate: strict` in their YAML bypass the confirmation
+    # gate — they alert on n=1. Use this for safety-critical behaviors
+    # (auth, payments, PII, refunds) where a one-cycle blip is worth
+    # investigating immediately rather than waiting for confirmation.
+    strict_tests: Set[str] = {
+        tc.name
+        for tc in test_cases
+        if (getattr(tc, "gate", None) or "").lower() == "strict"
+    }
+
     console.print(f"\n[cyan]{get_random_monitor_start_message()}[/cyan]")
     history_hint = f"  |  History: {history_path}" if history_path else ""
     alert_targets = ", ".join(label for label, _ in notifiers) if notifiers else "None"
+    strict_hint = (
+        f"  |  Strict: {len(strict_tests)}" if strict_tests else ""
+    )
     console.print(
-        f"[dim]  Tests: {len(test_cases)}  |  Interval: {interval}s  |  Alerts: {alert_targets}{history_hint}[/dim]"
+        f"[dim]  Tests: {len(test_cases)}  |  Interval: {interval}s  |  "
+        f"Alerts: {alert_targets}{strict_hint}{history_hint}[/dim]"
     )
     console.print("[dim]  Press Ctrl+C to stop.[/dim]\n")
 
@@ -185,7 +199,8 @@ def _run_monitor_loop(
     # to persist into a second cycle before paging a human. This is the
     # single highest-leverage noise-reduction lever: it reframes the
     # product's emotional contract so every alert a user sees is one
-    # that survived at least two independent runs.
+    # that survived at least two independent runs. Strict tests bypass
+    # the gate so safety-critical behaviors still page on n=1.
     gate = ConfirmationGate()
     cycle_count = 0
     total_cost = 0.0
@@ -230,9 +245,17 @@ def _run_monitor_loop(
 
             # Run the cycle's failures through the confirmation gate. Only
             # the `decision.alerts_to_fire` set should reach a notifier.
-            decision = gate.evaluate(currently_failing)
+            # Strict-tagged tests bypass the gate (alert on n=1).
+            decision = gate.evaluate(currently_failing, strict=strict_tests)
             record_cycle_noise(decision)
 
+            if decision.strict_immediate:
+                names = ", ".join(sorted(decision.strict_immediate))
+                console.print(
+                    f"[yellow]  Gate: {len(decision.strict_immediate)} "
+                    f"strict failure(s) ({names}) — bypassing confirmation, "
+                    f"alerting now[/yellow]"
+                )
             if decision.self_resolved:
                 names = ", ".join(sorted(decision.self_resolved))
                 console.print(
@@ -240,9 +263,10 @@ def _run_monitor_loop(
                     f"unconfirmed failure(s) ({names}) — recovered before alerting[/dim]"
                 )
             if decision.pending:
+                names = ", ".join(sorted(decision.pending))
                 console.print(
                     f"[dim]  Gate: {len(decision.pending)} failure(s) pending "
-                    f"confirmation — will alert if still failing next cycle[/dim]"
+                    f"confirmation ({names}) — will alert if still failing next cycle[/dim]"
                 )
 
             if not currently_failing:
@@ -380,6 +404,14 @@ def _run_monitor_dashboard(
         if not test_cases:
             raise MonitorError(f"No test found with name: {test_filter}")
 
+    # Strict-tagged tests bypass the confirmation gate — see CLI loop
+    # for the rationale.
+    strict_tests: Set[str] = {
+        tc.name
+        for tc in test_cases
+        if (getattr(tc, "gate", None) or "").lower() == "strict"
+    }
+
     fail_statuses = _parse_fail_statuses(fail_on)
 
     status_dot = {
@@ -391,7 +423,8 @@ def _run_monitor_dashboard(
 
     previously_failing: Set[str] = set()
     # See `_run_monitor_loop` for the confirmation-gate rationale — same
-    # pattern applies to the dashboard variant.
+    # pattern applies to the dashboard variant. Strict tests bypass the
+    # gate and alert on n=1.
     gate = ConfirmationGate()
     cycle_count = 0
     total_cost = 0.0
@@ -503,7 +536,7 @@ def _run_monitor_dashboard(
             }
 
             # Confirmation gate: suppress n=1 alerts and record noise stats.
-            decision = gate.evaluate(currently_failing)
+            decision = gate.evaluate(currently_failing, strict=strict_tests)
             record_cycle_noise(decision)
             alerts_suppressed += len(decision.self_resolved)
 

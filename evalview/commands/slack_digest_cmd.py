@@ -131,6 +131,11 @@ def _build_message(
     # stale quarantine because it's the meta-metric users should glance
     # at first; a noisy product is a distrusted product, and the digest
     # is the right place to hold ourselves visible to it.
+    #
+    # Critically, we ALSO render the list of tests that were silently
+    # suppressed, so "suppression" never becomes "hidden signal". The
+    # user can still see which tests self-resolved and decide whether
+    # the gate was right or whether something deeper is wrong.
     if noise_stats is not None and (
         noise_stats.alerts_fired + noise_stats.suppressed > 0
     ):
@@ -152,12 +157,32 @@ def _build_message(
                 f"{noise_stats.suppressed} suppressed "
                 f"({pct}% noise)"
             )
+
+        noise_text = f"*Noise*\n{noise_headline}"
+
+        if noise_stats.suppressed_by_test:
+            # Show the top-5 most-suppressed tests so the user can spot
+            # patterns — a test that self-resolved 4 times this week is
+            # no longer a flake, it's a signal. Keep the list bounded
+            # so the digest doesn't become its own firehose.
+            top = noise_stats.suppressed_by_test[:5]
+            lines = [
+                "_Suppressed (self-resolved before confirming):_",
+            ]
+            for entry in top:
+                count_str = f"× {entry.count}" if entry.count > 1 else ""
+                lines.append(f"• `{entry.test_name}` {count_str}".rstrip())
+            if len(noise_stats.suppressed_by_test) > 5:
+                extra = len(noise_stats.suppressed_by_test) - 5
+                lines.append(f"…and {extra} more")
+            noise_text += "\n" + "\n".join(lines)
+
         blocks.append(
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*Noise*\n{noise_headline}",
+                    "text": noise_text,
                 },
             }
         )

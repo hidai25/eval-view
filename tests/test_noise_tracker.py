@@ -122,6 +122,73 @@ class TestConfirmationGate:
         assert decision.pending == {"c"}
 
 
+class TestStrictBypass:
+    """A strict-marked test must alert on n=1 so safety-critical
+    behaviors can't hide behind the confirmation gate."""
+
+    def test_strict_test_alerts_on_first_failure(self):
+        gate = ConfirmationGate()
+        decision = gate.evaluate(
+            {"payment-flow"}, strict={"payment-flow"}
+        )
+        # Strict bypass: goes straight to alerts_to_fire, no pending.
+        assert decision.strict_immediate == {"payment-flow"}
+        assert decision.alerts_to_fire == {"payment-flow"}
+        assert decision.pending == set()
+        assert decision.confirmed == set()
+
+    def test_strict_test_alerts_every_cycle_until_passing(self):
+        """Unlike confirmed tests (which alert once then stay quiet),
+        strict tests re-alert every cycle they remain broken. The user
+        should never be allowed to forget about an ongoing auth/payment
+        incident."""
+        gate = ConfirmationGate()
+        strict = {"auth"}
+        d1 = gate.evaluate({"auth"}, strict=strict)
+        d2 = gate.evaluate({"auth"}, strict=strict)
+        d3 = gate.evaluate({"auth"}, strict=strict)
+        assert d1.alerts_to_fire == {"auth"}
+        assert d2.alerts_to_fire == {"auth"}
+        assert d3.alerts_to_fire == {"auth"}
+
+    def test_strict_and_relaxed_tests_coexist(self):
+        """Strict bypass must not pollute the relaxed state machine —
+        a strict failure in cycle N should not confuse the gate into
+        thinking a relaxed failure in cycle N was already pending."""
+        gate = ConfirmationGate()
+        # Cycle 1: payment (strict) fails; search (relaxed) fails.
+        d1 = gate.evaluate(
+            {"payment", "search"}, strict={"payment"}
+        )
+        assert d1.strict_immediate == {"payment"}
+        assert d1.pending == {"search"}
+        assert d1.alerts_to_fire == {"payment"}  # only the strict one
+
+        # Cycle 2: both still failing.
+        d2 = gate.evaluate(
+            {"payment", "search"}, strict={"payment"}
+        )
+        # payment: strict → fires again
+        # search: was pending, still failing → promoted to confirmed → fires
+        assert d2.alerts_to_fire == {"payment", "search"}
+        assert d2.confirmed == {"search"}
+        assert d2.strict_immediate == {"payment"}
+
+    def test_strict_flake_still_fires_even_if_self_resolves_next_cycle(self):
+        """A strict test that fails once and recovers STILL fires —
+        that's the whole point. The flake signal is more valuable than
+        the alert suppression for safety-critical paths."""
+        gate = ConfirmationGate()
+        d1 = gate.evaluate({"payment"}, strict={"payment"})
+        d2 = gate.evaluate(set(), strict={"payment"})
+        assert d1.alerts_to_fire == {"payment"}
+        # d2: strict test passed, nothing happens. No suppression
+        # counter either — strict tests never go through the pending
+        # bucket, so there's nothing to "self-resolve".
+        assert d2.alerts_to_fire == set()
+        assert d2.self_resolved == set()
+
+
 # ─────────────────────────── incident detection ───────────────────────────
 
 
@@ -294,3 +361,37 @@ class TestNoisePersistence:
         stats = load_noise_stats(base_path=tmp_path)
         assert stats.alerts_fired == 2
         assert stats.suppressed == 1
+
+    def test_suppressed_test_names_persist_and_aggregate(self, tmp_path):
+        """The per-test suppression list must survive the round-trip so
+        the digest can show WHICH tests were silently suppressed — this
+        is the fix for the 'hidden signal' concern."""
+        # Cycle 1: flaky-search self-resolves.
+        record_cycle_noise(
+            GateDecision(self_resolved={"flaky-search"}),
+            base_path=tmp_path,
+        )
+        # Cycle 2: flaky-search AND auth-retry self-resolve.
+        record_cycle_noise(
+            GateDecision(self_resolved={"flaky-search", "auth-retry"}),
+            base_path=tmp_path,
+        )
+        stats = load_noise_stats(base_path=tmp_path)
+        assert stats.suppressed == 3
+        by_test = {e.test_name: e.count for e in stats.suppressed_by_test}
+        assert by_test == {"flaky-search": 2, "auth-retry": 1}
+        # Most-suppressed first.
+        assert stats.suppressed_by_test[0].test_name == "flaky-search"
+        assert stats.suppressed_by_test[0].count == 2
+
+    def test_strict_alerts_counted_in_alerts_fired(self, tmp_path):
+        """Strict bypass alerts must count toward alerts_fired so the
+        public noise metric stays accurate — otherwise the rate would
+        look artificially low."""
+        record_cycle_noise(
+            GateDecision(strict_immediate={"payment"}),
+            base_path=tmp_path,
+        )
+        stats = load_noise_stats(base_path=tmp_path)
+        assert stats.alerts_fired == 1
+        assert stats.real_alerts == 1
