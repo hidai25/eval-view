@@ -56,6 +56,10 @@ code-review.md
 tests.yaml
 marketing/
 
+# Private cloud-side spec — kept locally, not published to OSS readers.
+# The real implementation lives in the separate evalview-cloud repo.
+docs/AUTOPR_CLOUD_INTEGRATION.md
+
 # Registry tokens
 .mcpregistry_*
 

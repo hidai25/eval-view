@@ -198,6 +198,18 @@ class MonitorConfig(BaseModel):
         default=None,
         description="Alert when test latency exceeds baseline by this multiplier (e.g. 3.0 = 3x)"
     )
+    # Incidents feed — when set, the monitor writes one record per confirmed
+    # regression to this file so `evalview autopr` can later synthesize a
+    # pinned regression test + PR. Leave both fields unset to keep the
+    # existing (pre-autopr) behavior unchanged.
+    incidents_enabled: bool = Field(
+        default=False,
+        description="Enable writing confirmed regressions to .evalview/incidents.jsonl"
+    )
+    incidents_path: Optional[str] = Field(
+        default=None,
+        description="Override the default incidents JSONL path (implies enabled=True)"
+    )
 
 
 class EvalViewConfig(BaseModel):

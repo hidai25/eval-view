@@ -52,6 +52,7 @@ from evalview.commands.snapshot_cmd import snapshot
 from evalview.commands.check_cmd import check, replay
 from evalview.commands.model_check_cmd import model_check
 from evalview.commands.monitor_cmd import monitor
+from evalview.commands.autopr_cmd import autopr
 from evalview.commands.benchmark_cmd import benchmark_cmd
 from evalview.commands.mcp_cmd import mcp
 from evalview.commands.visual_cmd import inspect_cmd, visualize_cmd, compare_cmd
@@ -118,6 +119,7 @@ def main(ctx: click.Context) -> None:
     Production:
       watch                   Re-run checks on file change (local dev)
       monitor                 Continuous regression detection (+ Slack/Discord alerts)
+      autopr                  Turn monitor incidents into regression-test PRs
 
     \b
     CI/CD:
@@ -197,6 +199,7 @@ main.add_command(trace_cmd, name="trace")
 main.add_command(traces)
 main.add_command(baseline)
 main.add_command(monitor)
+main.add_command(autopr)
 main.add_command(feedback)
 main.add_command(openclaw)
 main.add_command(watch)
