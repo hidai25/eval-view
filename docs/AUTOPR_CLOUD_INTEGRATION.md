@@ -184,57 +184,58 @@ Meter on `incidents.id` count since the start of the current Stripe billing peri
 
 ---
 
-## What to ship in this OSS repo to enable the `--cloud` flag (optional, future PR)
+## The OSS ↔ cloud boundary — *no CLI changes planned*
 
-The OSS `evalview autopr` today is purely local. Adding a `--cloud` flag later takes ~20 lines:
+**Decision:** The OSS CLI will **not** add a `--cloud` flag or any other cloud-ingestion code path. The `evalview autopr` command is fully local and will stay that way.
 
-```python
-# evalview/commands/autopr_cmd.py
-@click.option("--cloud", is_flag=True, help="Upload incidents to EvalView Cloud")
-def autopr(..., cloud: bool):
-    ...
-    if cloud:
-        from evalview.cloud.client import CloudClient
-        client = CloudClient.from_env()
-        client.upload_incidents(incidents)
-        console.print(f"[dim]  Uploaded {len(incidents)} incident(s) to cloud.[/dim]")
-        return  # cloud handles PR creation via GitHub App
-```
+When `evalview-cloud` launches, that repo owns its **entire** ingestion path. Options for the cloud repo to get incidents in:
 
-This is intentionally **not shipped in this PR**. It's a one-liner to add once the cloud endpoint above exists.
+- **Cloud-hosted monitor** — users point a cloud-side runner at their agent, and it writes directly to the cloud's Supabase via the service-role key. No CLI involvement.
+- **Standalone uploader** — a small one-file script shipped from the cloud repo (not the CLI) that reads `.evalview/incidents.jsonl` and POSTs to Supabase. Users install it separately.
+- **GitHub App pull** — the cloud's GitHub App reads `.evalview/incidents.jsonl` directly from the user's repo on a schedule.
+- **Webhook** — users curl-POST the JSONL lines from their own CI.
+
+Any of those work. None of them require code in this repo. That keeps the OSS CLI's surface area bounded and avoids maintaining a client for an API that the cloud repo may iterate on frequently.
+
+**Concretely for this repo:**
+
+- `evalview/cloud/` is kept as-is for its existing `upload_golden` usage. It will not grow new `upload_incidents` methods.
+- `docs/AUTOPR_CLOUD_INTEGRATION.md` (this file) stays here as the spec the cloud repo implements against.
+- No `--cloud` flag on `evalview autopr`, now or later.
 
 ---
 
 ## Testing the integration end-to-end
 
-Once both sides are shipped, the full loop looks like:
+Once the cloud repo is shipped, the full loop looks like:
 
 ```
-┌──────────────┐     incidents.jsonl     ┌───────────────┐
-│ prod agent   │ ──────────────────────▶ │ evalview      │
-│              │ (monitor --incidents)   │ monitor       │
-└──────────────┘                         └───────┬───────┘
-                                                 │
-                                POST /api/v1/incidents
-                                                 ▼
-                                         ┌───────────────┐
-                                         │ evalview-     │
-                                         │ cloud inbox   │
-                                         └───────┬───────┘
-                                                 │
-                                      "Ship as test" (click)
-                                                 ▼
-                                         ┌───────────────┐
-                                         │ GitHub App    │ ──▶ PR opened
-                                         │ creates PR    │
-                                         └───────────────┘
+┌──────────────┐     incidents.jsonl     ┌──────────────────┐
+│ prod agent   │ ──────────────────────▶ │ local file       │
+│              │ (monitor --incidents)   │ .evalview/       │
+└──────────────┘                         │  incidents.jsonl │
+                                          └────────┬─────────┘
+                                                   │
+                              cloud-owned ingestion (see above)
+                                                   ▼
+                                          ┌──────────────────┐
+                                          │ evalview-cloud   │
+                                          │ incident inbox   │
+                                          └────────┬─────────┘
+                                                   │
+                                         "Ship as test" (click)
+                                                   ▼
+                                          ┌──────────────────┐
+                                          │ GitHub App       │ ──▶ PR opened
+                                          │ creates PR       │
+                                          └──────────────────┘
 ```
 
 Smoke test checklist:
 
 - [ ] CLI `evalview monitor --incidents` writes valid JSON lines
-- [ ] Cloud `POST /api/v1/incidents` dedups on `slug`
-- [ ] Incidents inbox shows new records within 5s of POST
+- [ ] Cloud ingestion path (whichever the cloud repo picks) dedups on `slug`
+- [ ] Incidents inbox shows new records in the dashboard
 - [ ] "Ship as test" opens a PR whose YAML passes `evalview check`
 - [ ] Port of `regression_synth.py` to TypeScript matches the Python output byte-for-byte (use a golden-file test)
 

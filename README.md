@@ -636,7 +636,7 @@ tags: [incident, autopr]
 
 **Wire it into GitHub Actions:** copy [`examples/github-workflow-autopr.yml`](examples/github-workflow-autopr.yml) to `.github/workflows/evalview-autopr.yml` — the workflow runs `monitor` then `autopr --open-pr --require-new` on a schedule. Every production regression arrives as a reviewable PR, and your hallucination test suite grows by itself.
 
-**Strategic note.** The primitive is free and open-source; the team workflow around it (shared incident inbox, GitHub App for one-click PRs without CI credential wrangling, cross-project dedup, auto-expanded adversarial variants) belongs in **EvalView Cloud**. See [`docs/AUTOPR_CLOUD_INTEGRATION.md`](docs/AUTOPR_CLOUD_INTEGRATION.md) for the full cloud integration spec — the schema, API endpoint, Supabase table, and GitHub App design that the `evalview-cloud` repo needs to implement to light up the paid tier.
+**The CLI is fully local.** `evalview monitor` + `evalview autopr` run entirely on your machine — local files, `gh pr create`, no network calls, no cloud account required. The primitive is free and open-source forever. A shared incident inbox, one-click-PR GitHub App, cross-project dedup, and auto-expanded adversarial variants are out of scope for this repo and live in a separate commercial offering. See [`docs/AUTOPR_CLOUD_INTEGRATION.md`](docs/AUTOPR_CLOUD_INTEGRATION.md) for the architectural spec if you're curious about the hosted side.
 
 ## Model Drift Detection
 
