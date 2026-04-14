@@ -867,8 +867,10 @@ def monitor(
         resolved_incidents: Optional[Path] = None
     elif incidents_path_opt:
         resolved_incidents = Path(incidents_path_opt)
-    elif monitor_cfg is not None and getattr(monitor_cfg, "incidents_path", None):
-        resolved_incidents = Path(monitor_cfg.incidents_path)
+    elif monitor_cfg is not None and (
+        cfg_incidents_path := getattr(monitor_cfg, "incidents_path", None)
+    ):
+        resolved_incidents = Path(cfg_incidents_path)
     elif monitor_cfg is not None and getattr(monitor_cfg, "incidents_enabled", False):
         resolved_incidents = DEFAULT_INCIDENTS_PATH
     else:
