@@ -588,6 +588,7 @@ evalview monitor                                         # Check every 5 min
 evalview monitor --dashboard                             # Live terminal dashboard
 evalview monitor --slack-webhook https://hooks.slack.com/services/...
 evalview monitor --history monitor.jsonl                 # JSONL for dashboards
+evalview monitor --incidents                             # Log confirmed regressions for `evalview autopr`
 ```
 
 New regressions trigger Slack alerts. Recoveries send all-clear. No spam on persistent failures.
@@ -597,6 +598,45 @@ New regressions trigger Slack alerts. Recoveries send all-clear. No spam on pers
 Suppressed failures are never hidden: `evalview slack-digest` renders a Noise section listing every test the gate swallowed, how many times it self-resolved, and a visible false-positive rate (`3 suppressed / 12 fired = 25% noise`). See [`evalview/core/noise_tracker.py`](evalview/core/noise_tracker.py) for the full design — confirmation gate, coordinated-incident collapse, and the `.evalview/noise.jsonl` metric.
 
 [Monitor config options →](docs/CLI_REFERENCE.md)
+
+## Auto-PR Regression Tests From Production Incidents
+
+`evalview autopr` closes the loop: **production failure → pinned regression test → pull request**, with zero LLM calls and zero manual YAML writing.
+
+```bash
+evalview monitor --incidents                             # Monitor writes .evalview/incidents.jsonl
+evalview autopr --dry-run                                # Preview what would be generated
+evalview autopr                                          # Write tests/regressions/*.yaml
+evalview autopr --open-pr                                # + commit + push + gh pr create
+```
+
+The synthesizer is **pure and deterministic** — no network, no LLM — so it runs instantly in CI. For each confirmed regression in `.evalview/incidents.jsonl` it:
+
+- builds a `tests/regressions/<slug>.yaml` that pins the query, the baseline tool sequence (`expected.tools`), the newly-appeared tools (`forbidden_tools`), and short phrases from the bad output (`output.not_contains`)
+- tags the test `suite_type: regression`, `gate: strict`, and stamps the incident metadata into `meta.incident` so `autopr` can skip it on subsequent runs
+- defaults to `min_score: 90` — regression tests are a safety net, not a capability benchmark
+
+```yaml
+# tests/regressions/refund-request-b3c4d5e6.yaml  (auto-generated)
+name: regression_refund-request_2026-04-14
+description: Auto-generated from production incident (REGRESSION) at 2026-04-14T12:34:56Z ...
+input:
+  query: "I want a refund for order #123"
+expected:
+  tools: [lookup_order, check_policy, process_refund]
+  forbidden_tools: [escalate_to_human]   # appeared only in the failing trace
+  output:
+    not_contains: ["Sure, I've processed your refund for $999."]
+thresholds:
+  min_score: 90.0
+suite_type: regression
+gate: strict
+tags: [incident, autopr]
+```
+
+**Wire it into GitHub Actions:** copy [`examples/github-workflow-autopr.yml`](examples/github-workflow-autopr.yml) to `.github/workflows/evalview-autopr.yml` — the workflow runs `monitor` then `autopr --open-pr --require-new` on a schedule. Every production regression arrives as a reviewable PR, and your hallucination test suite grows by itself.
+
+**Strategic note.** The primitive is free and open-source; the team workflow around it (shared incident inbox, GitHub App for one-click PRs without CI credential wrangling, cross-project dedup, auto-expanded adversarial variants) belongs in **EvalView Cloud**. See [`docs/AUTOPR_CLOUD_INTEGRATION.md`](docs/AUTOPR_CLOUD_INTEGRATION.md) for the full cloud integration spec — the schema, API endpoint, Supabase table, and GitHub App design that the `evalview-cloud` repo needs to implement to light up the paid tier.
 
 ## Model Drift Detection
 
@@ -688,6 +728,7 @@ Ships with a **bundled 15-prompt public canary** covering tool selection, JSON s
 | **Multi-turn capture** | `capture --multi-turn` records conversations as tests | [Docs](#multi-turn-testing) |
 | **Semantic similarity** | Embedding-based output comparison | [Docs](docs/EVALUATION_METRICS.md) |
 | **Production monitoring** | `evalview monitor --dashboard` with Slack alerts and JSONL history | [Docs](#production-monitoring) |
+| **Auto-PR regression tests** | `evalview autopr` turns `.evalview/incidents.jsonl` into pinned regression tests + PRs | [Docs](#auto-pr-regression-tests-from-production-incidents) |
 | **A/B comparison** | `evalview compare --v1 <url> --v2 <url>` | [Docs](docs/CLI_REFERENCE.md) |
 | **Test generation** | `evalview generate` — discovers your agent's domain, generates relevant tests | [Docs](docs/TEST_GENERATION.md) |
 | **Per-turn judge scoring** | Multi-turn output quality scored per turn with conversation context | [Docs](#multi-turn-testing) |

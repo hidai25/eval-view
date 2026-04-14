@@ -1,0 +1,123 @@
+# =============================================================================
+# EvalView autopr — Auto-PR regression tests from production incidents
+# =============================================================================
+# Copy this file to .github/workflows/evalview-autopr.yml in your repo.
+#
+# What it does:
+#   1. Runs `evalview monitor` against your production agent
+#      (or reuses an incidents.jsonl produced elsewhere).
+#   2. For every confirmed regression, synthesizes a pinned regression test
+#      under tests/regressions/ using `evalview autopr`.
+#   3. Opens a pull request with the new tests, ready for review.
+#
+# Setup (4 steps):
+#   1. Copy this file to .github/workflows/evalview-autopr.yml
+#   2. Add OPENAI_API_KEY (or whichever provider your agent uses) to
+#      repository secrets.
+#   3. Give the workflow write access to Pull Requests in Settings ->
+#      Actions -> General -> Workflow permissions.
+#   4. Commit your .evalview/golden/ baselines to git.
+#
+# The workflow runs on a schedule. It exits cleanly when there are no new
+# incidents — `--require-new` makes that a non-zero exit on purpose when you
+# want the schedule to be noisy until someone triages the queue.
+# =============================================================================
+
+name: EvalView Auto-PR Regression Tests
+
+on:
+  schedule:
+    # Every hour — tune to match how often you want autopr to sweep the
+    # incidents feed.
+    - cron: "0 * * * *"
+  workflow_dispatch:   # Manual trigger from the Actions tab
+
+permissions:
+  contents: write      # create branches + push
+  pull-requests: write # open PRs
+
+jobs:
+  autopr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install EvalView
+        run: pip install --quiet evalview
+
+      # ------------------------------------------------------------------
+      # Step 1 — run monitor once to populate incidents.jsonl.
+      # In a real deployment you'd run `evalview monitor` as a long-lived
+      # process on a dedicated box and sync the incidents file into the
+      # repo checkout. The one-shot invocation below is the simplest
+      # possible "closed loop" you can demo in CI.
+      # ------------------------------------------------------------------
+      - name: Run monitor (single cycle) to capture incidents
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          evalview monitor \
+            --interval 10 \
+            --incidents \
+            --history .evalview/monitor.jsonl &
+          MONITOR_PID=$!
+          sleep 30
+          kill $MONITOR_PID || true
+        # `--incidents` with no path uses .evalview/incidents.jsonl, which is
+        # exactly what `evalview autopr` reads by default.
+        continue-on-error: true
+
+      # ------------------------------------------------------------------
+      # Step 2 — turn the incidents file into one regression test per
+      # new failure, commit them on a fresh branch, and open a PR.
+      # ------------------------------------------------------------------
+      - name: Configure git identity
+        run: |
+          git config user.name  "evalview-autopr"
+          git config user.email "autopr@evalview.local"
+
+      - name: Synthesize regression tests + open PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          evalview autopr \
+            --from .evalview/incidents.jsonl \
+            --tests-dir tests/regressions \
+            --open-pr \
+            --require-new
+
+      # Optional: upload the incidents file as an artifact so humans can
+      # audit what monitor saw, even when autopr decided nothing needed a
+      # PR (e.g. every incident was already covered).
+      - name: Upload incidents log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evalview-incidents
+          path: .evalview/incidents.jsonl
+          if-no-files-found: ignore
+
+# =============================================================================
+# TIPS
+# =============================================================================
+# - Prefer running `evalview monitor` as a long-lived service (Fly.io,
+#   Railway, a VM, etc.) and pushing the incidents.jsonl into this repo
+#   from there. One-shot monitor in CI is fine for demos but under-samples
+#   real traffic.
+#
+# - Add `--min-score 95` to `evalview autopr` for safety-critical flows
+#   (refunds, auth, PII) where you want the generated regression tests to
+#   be extra strict.
+#
+# - Use `--branch-prefix evalview-incidents` to make the generated branches
+#   easy to filter in the GitHub UI.
+#
+# - If you want reviewers to be CODEOWNERS of tests/regressions/, add them
+#   to .github/CODEOWNERS — autopr PRs will auto-request their review.

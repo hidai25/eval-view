@@ -72,6 +72,107 @@ def _append_history(history_path: Path, record: dict) -> None:
         f.write(json.dumps(record) + "\n")
 
 
+# Default path for the incidents feed that `evalview autopr` consumes. The
+# monitor loop appends one record per confirmed production regression so the
+# autopr command can later convert it into a pinned regression test.
+DEFAULT_INCIDENTS_PATH = Path(".evalview/incidents.jsonl")
+
+
+def _build_incident_record(
+    test_name: str,
+    diff: Any,
+    test_case: Any,
+    result: Any,
+    golden: Any,
+    cycle: int,
+) -> Dict[str, Any]:
+    """Build a single incident record from a confirmed-failing diff.
+
+    The shape of this dict is the contract between `evalview monitor` (which
+    writes it) and `evalview.core.regression_synth.synthesize_regression_test`
+    (which consumes it). Keep the two in lockstep.
+    """
+    from evalview.core.regression_synth import truncate_output
+
+    baseline_tools: List[str] = []
+    actual_tools: List[str] = []
+    baseline_output = ""
+    actual_output = ""
+
+    golden_trace = getattr(golden, "trace", None) if golden is not None else None
+    if golden_trace is not None:
+        baseline_output = getattr(golden_trace, "final_output", "") or ""
+        baseline_tools = [
+            step.tool_name
+            for step in getattr(golden_trace, "steps", []) or []
+            if getattr(step, "tool_name", None)
+        ]
+
+    result_trace = getattr(result, "trace", None) if result is not None else None
+    if result_trace is not None:
+        actual_output = getattr(result_trace, "final_output", "") or ""
+        actual_tools = [
+            step.tool_name
+            for step in getattr(result_trace, "steps", []) or []
+            if getattr(step, "tool_name", None)
+        ]
+
+    query = ""
+    if test_case is not None and getattr(test_case, "input", None) is not None:
+        query = getattr(test_case.input, "query", "") or ""
+
+    source_file = getattr(test_case, "source_file", None) if test_case is not None else None
+
+    return {
+        "version": 1,
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "test_name": test_name,
+        "query": query,
+        "cycle": cycle,
+        "status": getattr(diff.overall_severity, "value", str(diff.overall_severity)),
+        "score_delta": round(getattr(diff, "score_diff", 0.0), 2),
+        "baseline_tools": baseline_tools,
+        "actual_tools": actual_tools,
+        "baseline_output": truncate_output(baseline_output),
+        "actual_output": truncate_output(actual_output),
+        "model_changed": bool(getattr(diff, "model_changed", False)),
+        "golden_model_id": getattr(diff, "golden_model_id", None),
+        "actual_model_id": getattr(diff, "actual_model_id", None),
+        "source_file": source_file,
+    }
+
+
+def _append_incidents(
+    incidents_path: Path,
+    alert_diffs: List[Tuple[str, Any]],
+    test_cases_by_name: Dict[str, Any],
+    results_by_name: Dict[str, Any],
+    golden_traces: Dict[str, Any],
+    cycle: int,
+) -> int:
+    """Append incident records for every confirmed-failing diff.
+
+    Returns the number of records written so the caller can log it.
+    """
+    if not alert_diffs:
+        return 0
+    incidents_path.parent.mkdir(parents=True, exist_ok=True)
+    written = 0
+    with incidents_path.open("a", encoding="utf-8") as f:
+        for name, diff in alert_diffs:
+            record = _build_incident_record(
+                test_name=name,
+                diff=diff,
+                test_case=test_cases_by_name.get(name),
+                result=results_by_name.get(name),
+                golden=golden_traces.get(name),
+                cycle=cycle,
+            )
+            f.write(json.dumps(record) + "\n")
+            written += 1
+    return written
+
+
 def _detect_spikes(
     results: List[Any],
     golden_traces: Dict[str, Any],
@@ -143,6 +244,7 @@ def _run_monitor_loop(
     history_path: Optional[Path] = None,
     cost_threshold: Optional[float] = None,
     latency_threshold: Optional[float] = None,
+    incidents_path: Optional[Path] = None,
 ) -> None:
     """Main monitor loop. Runs check cycles until Ctrl+C.
 
@@ -171,6 +273,10 @@ def _run_monitor_loop(
         test_cases = [tc for tc in test_cases if tc.name == test_filter]
         if not test_cases:
             raise MonitorError(f"No test found with name: {test_filter}")
+
+    # Lookup tables used when writing incident records. Built once here so
+    # the inner loop doesn't pay an O(n) scan per confirmed failure.
+    test_cases_by_name: Dict[str, Any] = {tc.name: tc for tc in test_cases}
 
     # Tests tagged `gate: strict` in their YAML bypass the confirmation
     # gate — they alert on n=1. Use this for safety-critical behaviors
@@ -296,29 +402,49 @@ def _run_monitor_loop(
                 # everything that just started failing this cycle waits
                 # one cycle before it can page anyone.
                 alerts_to_fire = decision.alerts_to_fire
-                if alerts_to_fire and notifiers:
+                if alerts_to_fire:
                     alert_diffs = [(n, d) for n, d in diffs if n in alerts_to_fire]
-                    # Collapse correlated failures into a single incident card
-                    # when they share a common root cause — the notifier
-                    # will use `incident.headline` as the summary instead
-                    # of listing each test separately.
-                    incident = detect_coordinated_incident(alert_diffs)
-                    for label, notifier in notifiers:
-                        asyncio.run(
-                            notifier.send_regression_alert(
-                                alert_diffs, analysis, incident=incident
-                            )
+                    # Persist a machine-readable record of every confirmed
+                    # failure so `evalview autopr` can later synthesize a
+                    # pinned regression test from it. This is the feed that
+                    # closes the production-failure → regression-test loop.
+                    if incidents_path is not None:
+                        results_by_name = {r.test_case: r for r in results}
+                        n_written = _append_incidents(
+                            incidents_path,
+                            alert_diffs,
+                            test_cases_by_name,
+                            results_by_name,
+                            golden_traces,
+                            cycle_count,
                         )
-                        if incident is not None:
+                        if n_written:
                             console.print(
-                                f"[dim]  Alert: {label} sent 1 incident "
-                                f"({incident.cause}, {len(alert_diffs)} tests)[/dim]"
+                                f"[dim]  Incidents: logged {n_written} "
+                                f"to {incidents_path} — run "
+                                f"`evalview autopr` to turn into PRs.[/dim]"
                             )
-                        else:
-                            console.print(
-                                f"[dim]  Alert: {label} notified on "
-                                f"{len(alerts_to_fire)} confirmed failure(s)[/dim]"
+                    if notifiers:
+                        # Collapse correlated failures into a single incident
+                        # card when they share a common root cause — the
+                        # notifier uses `incident.headline` as the summary.
+                        incident = detect_coordinated_incident(alert_diffs)
+                        for label, notifier in notifiers:
+                            asyncio.run(
+                                notifier.send_regression_alert(
+                                    alert_diffs, analysis, incident=incident
+                                )
                             )
+                            if incident is not None:
+                                console.print(
+                                    f"[dim]  Alert: {label} sent 1 incident "
+                                    f"({incident.cause}, {len(alert_diffs)} tests)[/dim]"
+                                )
+                            else:
+                                console.print(
+                                    f"[dim]  Alert: {label} notified on "
+                                    f"{len(alerts_to_fire)} confirmed failure(s)[/dim]"
+                                )
 
             spike_alerts = _detect_spikes(results, golden_traces, cost_threshold, latency_threshold)
             if spike_alerts:
@@ -379,6 +505,7 @@ def _run_monitor_dashboard(
     history_path: Optional[Path] = None,
     cost_threshold: Optional[float] = None,
     latency_threshold: Optional[float] = None,
+    incidents_path: Optional[Path] = None,
 ) -> None:
     """Monitor loop with a live-updating Rich dashboard."""
     from rich.live import Live
@@ -403,6 +530,9 @@ def _run_monitor_dashboard(
         test_cases = [tc for tc in test_cases if tc.name == test_filter]
         if not test_cases:
             raise MonitorError(f"No test found with name: {test_filter}")
+
+    # Lookup tables for incident-record construction (see loop variant).
+    test_cases_by_name: Dict[str, Any] = {tc.name: tc for tc in test_cases}
 
     # Strict-tagged tests bypass the confirmation gate — see CLI loop
     # for the rationale.
@@ -546,17 +676,28 @@ def _run_monitor_dashboard(
                     alerts_sent += 1
 
             alerts_to_fire = decision.alerts_to_fire
-            if alerts_to_fire and notifiers:
+            if alerts_to_fire:
                 alert_diffs = [(n, d) for n, d in diffs if n in alerts_to_fire]
-                analysis = _analyze_check_diffs(diffs)
-                incident = detect_coordinated_incident(alert_diffs)
-                for label, notifier in notifiers:
-                    asyncio.run(
-                        notifier.send_regression_alert(
-                            alert_diffs, analysis, incident=incident
-                        )
+                if incidents_path is not None:
+                    results_by_name = {r.test_case: r for r in results}
+                    _append_incidents(
+                        incidents_path,
+                        alert_diffs,
+                        test_cases_by_name,
+                        results_by_name,
+                        golden_traces,
+                        cycle_count,
                     )
-                    alerts_sent += 1
+                if notifiers:
+                    analysis = _analyze_check_diffs(diffs)
+                    incident = detect_coordinated_incident(alert_diffs)
+                    for label, notifier in notifiers:
+                        asyncio.run(
+                            notifier.send_regression_alert(
+                                alert_diffs, analysis, incident=incident
+                            )
+                        )
+                        alerts_sent += 1
 
             spike_alerts = _detect_spikes(results, golden_traces, cost_threshold, latency_threshold)
             if spike_alerts and notifiers:
@@ -620,6 +761,27 @@ def _sleep_interruptible(seconds: int, should_stop: Any) -> None:
 )
 @click.option("--alert-cost-spike", "cost_spike", type=float, default=None, help="Alert when cost exceeds baseline by this multiplier (e.g. 2.0)")
 @click.option("--alert-latency-spike", "latency_spike", type=float, default=None, help="Alert when latency exceeds baseline by this multiplier (e.g. 3.0)")
+@click.option(
+    "--incidents",
+    "incidents_path_opt",
+    default=None,
+    type=click.Path(),
+    is_flag=False,
+    flag_value=str(DEFAULT_INCIDENTS_PATH),
+    help=(
+        "Append every confirmed regression to this JSONL file "
+        "(default: .evalview/incidents.jsonl when flag used without a value). "
+        "`evalview autopr` reads this to auto-generate regression test PRs. "
+        "Pass --no-incidents to disable."
+    ),
+)
+@click.option(
+    "--no-incidents",
+    "no_incidents",
+    is_flag=True,
+    default=False,
+    help="Disable incident logging even if configured.",
+)
 @click.option("--dashboard", is_flag=True, help="Live-updating terminal dashboard instead of scrolling logs")
 @track_command("monitor")
 def monitor(
@@ -633,6 +795,8 @@ def monitor(
     history_path: Optional[str],
     cost_spike: Optional[float],
     latency_spike: Optional[float],
+    incidents_path_opt: Optional[str],
+    no_incidents: bool,
     dashboard: bool = False,
 ) -> None:
     """Continuously check for regressions with optional webhook alerts.
@@ -651,6 +815,7 @@ def monitor(
         evalview monitor --history monitor_log.jsonl    # Persist cycle history
         evalview monitor --alert-cost-spike 2.0         # Alert if cost doubles
         evalview monitor --alert-latency-spike 3.0      # Alert if latency triples
+        evalview monitor --incidents                    # Log confirmed failures for `evalview autopr`
 
     \b
     Configuration (config.yaml):
@@ -691,6 +856,24 @@ def monitor(
     resolved_slack_webhook = _resolve_slack_webhook(slack_webhook, config)
     resolved_discord_webhook = _resolve_discord_webhook(discord_webhook, config)
 
+    # Incident logging resolves in this order:
+    #   --no-incidents            -> disabled
+    #   --incidents [PATH]        -> explicit CLI path (or default when bare)
+    #   monitor.incidents_path    -> config value if present
+    #   monitor.incidents_enabled -> default path when explicitly enabled
+    # When none of the above is set we leave the feature off so existing
+    # users see no behavior change until they opt in.
+    if no_incidents:
+        resolved_incidents: Optional[Path] = None
+    elif incidents_path_opt:
+        resolved_incidents = Path(incidents_path_opt)
+    elif monitor_cfg is not None and getattr(monitor_cfg, "incidents_path", None):
+        resolved_incidents = Path(monitor_cfg.incidents_path)
+    elif monitor_cfg is not None and getattr(monitor_cfg, "incidents_enabled", False):
+        resolved_incidents = DEFAULT_INCIDENTS_PATH
+    else:
+        resolved_incidents = None
+
     try:
         if dashboard:
             _run_monitor_dashboard(
@@ -705,6 +888,7 @@ def monitor(
                 history_path=resolved_history,
                 cost_threshold=resolved_cost_threshold,
                 latency_threshold=resolved_latency_threshold,
+                incidents_path=resolved_incidents,
             )
         else:
             _run_monitor_loop(
@@ -719,6 +903,7 @@ def monitor(
                 history_path=resolved_history,
                 cost_threshold=resolved_cost_threshold,
                 latency_threshold=resolved_latency_threshold,
+                incidents_path=resolved_incidents,
             )
     except MonitorError as e:
         console.print(f"[red]ERROR {e}[/red]")
