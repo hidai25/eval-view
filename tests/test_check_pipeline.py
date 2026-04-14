@@ -225,6 +225,179 @@ class TestConcurrentExecution:
         assert "test-b" in diff_names, "test-b should still complete even though test-a failed"
 
 
+class TestSlowAgentWarning:
+    @pytest.fixture
+    def project(self, tmp_path):
+        _write_config(tmp_path)
+        _write_test_yaml(tmp_path / "tests", "my-test")
+        _write_golden(tmp_path, "my-test")
+        return tmp_path
+
+    def test_warning_emitted_after_half_timeout(self, project, monkeypatch):
+        from evalview.commands.shared import _execute_check_tests
+        from evalview.core.config import EvalViewConfig
+
+        monkeypatch.chdir(project)
+
+        fake_trace = _make_fake_trace()
+        fake_result = _make_fake_result("my-test")
+        fake_result.trace = fake_trace
+
+        async def _slow_execute(query, context):
+            import asyncio
+            await asyncio.sleep(0.25)
+            return fake_trace
+
+        mock_adapter = MagicMock()
+        mock_adapter.execute = _slow_execute
+        mock_evaluator = MagicMock()
+        mock_evaluator.evaluate = AsyncMock(return_value=fake_result)
+
+        from evalview.core.loader import TestCaseLoader
+        loader = TestCaseLoader()
+        test_cases = loader.load_from_directory(str(project / "tests"))
+
+        config = EvalViewConfig(adapter="http", endpoint="http://example.com")
+
+        mock_console = MagicMock()
+
+        with (
+            patch("evalview.commands.shared._create_adapter", return_value=mock_adapter),
+            patch("evalview.evaluators.evaluator.Evaluator", return_value=mock_evaluator),
+            patch("evalview.commands.shared.console", mock_console),
+        ):
+            _execute_check_tests(test_cases, config, json_output=False, timeout=0.2)
+
+        printed = "\n".join(str(c.args[0]) for c in mock_console.print.call_args_list if c.args)
+        assert "Agent is taking a while" in printed
+        assert "0.1s elapsed" in printed
+        assert "0.2s timeout" in printed
+
+    def test_warning_printed_only_once(self, project, monkeypatch):
+        """Test that warning prints only once per test execution."""
+        from evalview.commands.shared import _execute_check_tests
+        from evalview.core.config import EvalViewConfig
+
+        monkeypatch.chdir(project)
+
+        fake_trace = _make_fake_trace()
+        fake_result = _make_fake_result("my-test")
+        fake_result.trace = fake_trace
+
+        async def _slow_execute(query, context):
+            import asyncio
+            await asyncio.sleep(0.25)
+            return fake_trace
+
+        mock_adapter = MagicMock()
+        mock_adapter.execute = _slow_execute
+        mock_evaluator = MagicMock()
+        mock_evaluator.evaluate = AsyncMock(return_value=fake_result)
+
+        from evalview.core.loader import TestCaseLoader
+        loader = TestCaseLoader()
+        test_cases = loader.load_from_directory(str(project / "tests"))
+
+        config = EvalViewConfig(adapter="http", endpoint="http://example.com")
+
+        mock_console = MagicMock()
+
+        with (
+            patch("evalview.commands.shared._create_adapter", return_value=mock_adapter),
+            patch("evalview.evaluators.evaluator.Evaluator", return_value=mock_evaluator),
+            patch("evalview.commands.shared.console", mock_console),
+        ):
+            _execute_check_tests(test_cases, config, json_output=False, timeout=0.2)
+
+        warning_calls = [
+            c for c in mock_console.print.call_args_list
+            if c.args and "Agent is taking a while" in str(c.args[0])
+        ]
+        assert len(warning_calls) == 1
+
+    def test_warning_suppressed_in_json_output_mode(self, project, monkeypatch):
+        from evalview.commands.shared import _execute_check_tests
+        from evalview.core.config import EvalViewConfig
+
+        monkeypatch.chdir(project)
+
+        fake_trace = _make_fake_trace()
+        fake_result = _make_fake_result("my-test")
+        fake_result.trace = fake_trace
+
+        async def _slow_execute(query, context):
+            import asyncio
+            await asyncio.sleep(0.25)
+            return fake_trace
+
+        mock_adapter = MagicMock()
+        mock_adapter.execute = _slow_execute
+        mock_evaluator = MagicMock()
+        mock_evaluator.evaluate = AsyncMock(return_value=fake_result)
+
+        from evalview.core.loader import TestCaseLoader
+        loader = TestCaseLoader()
+        test_cases = loader.load_from_directory(str(project / "tests"))
+
+        config = EvalViewConfig(adapter="http", endpoint="http://example.com")
+
+        mock_console = MagicMock()
+
+        with (
+            patch("evalview.commands.shared._create_adapter", return_value=mock_adapter),
+            patch("evalview.evaluators.evaluator.Evaluator", return_value=mock_evaluator),
+            patch("evalview.commands.shared.console", mock_console),
+        ):
+            _execute_check_tests(test_cases, config, json_output=True, timeout=0.2)
+
+        warning_calls = [
+            c for c in mock_console.print.call_args_list
+            if c.args and "Agent is taking a while" in str(c.args[0])
+        ]
+        assert len(warning_calls) == 0
+
+    def test_no_warning_when_execution_completes_quickly(self, project, monkeypatch):
+        from evalview.commands.shared import _execute_check_tests
+        from evalview.core.config import EvalViewConfig
+
+        monkeypatch.chdir(project)
+
+        fake_trace = _make_fake_trace()
+        fake_result = _make_fake_result("my-test")
+        fake_result.trace = fake_trace
+
+        async def _fast_execute(query, context):
+            import asyncio
+            await asyncio.sleep(0.05)
+            return fake_trace
+
+        mock_adapter = MagicMock()
+        mock_adapter.execute = _fast_execute
+        mock_evaluator = MagicMock()
+        mock_evaluator.evaluate = AsyncMock(return_value=fake_result)
+
+        from evalview.core.loader import TestCaseLoader
+        loader = TestCaseLoader()
+        test_cases = loader.load_from_directory(str(project / "tests"))
+
+        config = EvalViewConfig(adapter="http", endpoint="http://example.com")
+
+        mock_console = MagicMock()
+
+        with (
+            patch("evalview.commands.shared._create_adapter", return_value=mock_adapter),
+            patch("evalview.evaluators.evaluator.Evaluator", return_value=mock_evaluator),
+            patch("evalview.commands.shared.console", mock_console),
+        ):
+            _execute_check_tests(test_cases, config, json_output=False, timeout=0.2)
+
+        warning_calls = [
+            c for c in mock_console.print.call_args_list
+            if c.args and "Agent is taking a while" in str(c.args[0])
+        ]
+        assert len(warning_calls) == 0
+
+
 # ---------------------------------------------------------------------------
 # Test: DriftTracker is reused in _display_check_results (no dual instantiation)
 # ---------------------------------------------------------------------------

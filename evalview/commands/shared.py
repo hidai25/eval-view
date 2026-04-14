@@ -625,6 +625,21 @@ def _execute_check_tests(
     diffs: List[Tuple[str, "TraceDiff"]] = []
     golden_traces: Dict[str, GoldenTrace] = {}
 
+    async def _slow_agent_warning_task(test_name: str) -> None:
+        """Background task that shows slow-agent warning after 50% of timeout.
+        
+        Args:
+            test_name: Name of the test being executed.
+            
+        Waits for 50% of timeout duration, then prints a warning
+        message indicating that agent is taking longer than expected.
+        """
+        await asyncio.sleep(max(0.0, timeout * 0.5))
+        console.print(
+            f"[yellow]⚠ {test_name}: Agent is taking a while... "
+            f"({timeout * 0.5:.1f}s elapsed, {timeout:.1f}s timeout)[/yellow]"
+        )
+
     if budget_tracker is not None:
         # Sequential execution with budget checking after each test
         async def _run_one_sequential(tc: "TestCase") -> Optional[Tuple["EvaluationResult", "TraceDiff", "GoldenTrace"]]:
@@ -638,10 +653,21 @@ def _execute_check_tests(
             if adapter is None:
                 return None
 
-            if tc.is_multi_turn:
-                trace = await _execute_multi_turn_trace(tc, adapter)
-            else:
-                trace = await adapter.execute(tc.input.query, tc.input.context)
+            warning_task: Optional[asyncio.Task] = None
+            if not json_output:
+                warning_task = asyncio.create_task(_slow_agent_warning_task(tc.name))
+            try:
+                if tc.is_multi_turn:
+                    trace = await _execute_multi_turn_trace(tc, adapter)
+                else:
+                    trace = await adapter.execute(tc.input.query, tc.input.context)
+            finally:
+                if warning_task is not None:
+                    warning_task.cancel()
+                    try:
+                        await warning_task
+                    except asyncio.CancelledError:
+                        pass
             result = await evaluator.evaluate(tc, trace)
 
             golden_variants = store.load_all_golden_variants(tc.name)
@@ -705,10 +731,21 @@ def _execute_check_tests(
             if adapter is None:
                 return None
 
-            if tc.is_multi_turn:
-                trace = await _execute_multi_turn_trace(tc, adapter)
-            else:
-                trace = await adapter.execute(tc.input.query, tc.input.context)
+            warning_task: Optional[asyncio.Task] = None
+            if not json_output:
+                warning_task = asyncio.create_task(_slow_agent_warning_task(tc.name))
+            try:
+                if tc.is_multi_turn:
+                    trace = await _execute_multi_turn_trace(tc, adapter)
+                else:
+                    trace = await adapter.execute(tc.input.query, tc.input.context)
+            finally:
+                if warning_task is not None:
+                    warning_task.cancel()
+                    try:
+                        await warning_task
+                    except asyncio.CancelledError:
+                        pass
             result = await evaluator.evaluate(tc, trace)
 
             golden_variants = store.load_all_golden_variants(tc.name)
