@@ -171,6 +171,38 @@ class Evaluator:
             if any(not te.passed for te in turn_evaluations):
                 passed = False
 
+        # --- Behavioral anomaly detection ---
+        anomaly_dict = None
+        try:
+            from evalview.core.behavioral_anomalies import detect_anomalies
+            required_tools = list(test_case.expected.tools) if test_case.expected.tools else None
+            anomaly_report = detect_anomalies(trace, required_tools=required_tools)
+            if anomaly_report.has_anomalies:
+                anomaly_dict = anomaly_report.to_dict()
+        except Exception as exc:
+            logger.debug("Anomaly detection failed: %s", exc)
+
+        # --- Benchmark trust / anti-gaming checks ---
+        trust_dict = None
+        try:
+            from evalview.core.benchmark_hardening import check_gaming
+            trust_report = check_gaming(trace, score=score, test_case=test_case)
+            if trust_report.has_flags or trust_report.trust_score < 1.0:
+                trust_dict = trust_report.to_dict()
+        except Exception as exc:
+            logger.debug("Trust scoring failed: %s", exc)
+
+        # --- Cross-turn coherence analysis (multi-turn only) ---
+        coherence_dict = None
+        if test_case.is_multi_turn and trace.turns:
+            try:
+                from evalview.core.turn_coherence import analyze_coherence
+                coherence_report = analyze_coherence(trace)
+                if coherence_report.has_issues:
+                    coherence_dict = coherence_report.to_dict()
+            except Exception as exc:
+                logger.debug("Coherence analysis failed: %s", exc)
+
         return EvaluationResult(
             test_case=test_case.name,
             passed=passed,
@@ -185,6 +217,9 @@ class Evaluator:
             suite_type=test_case.suite_type,
             difficulty=test_case.difficulty,
             turn_evaluations=turn_evaluations,
+            anomaly_report=anomaly_dict,
+            trust_report=trust_dict,
+            coherence_report=coherence_dict,
         )
 
     def _get_weights_for_test(self, test_case: TestCase) -> Dict[str, float]:

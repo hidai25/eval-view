@@ -216,6 +216,52 @@ def _build_message(
             }
         )
 
+    # Observability signals — aggregated from history entries that carry
+    # has_anomalies / trust_score / has_coherence_issues. These fields are
+    # recorded by drift_tracker.record_check() since the observability
+    # integration; older entries simply lack them.
+    _anomaly_entries = [
+        e for e in (window.get("_entries") or [])
+        if e.get("has_anomalies")
+    ]
+    _low_trust_entries = [
+        e for e in (window.get("_entries") or [])
+        if e.get("trust_score") is not None and e.get("trust_score", 1.0) < 0.8
+    ]
+    _coherence_entries = [
+        e for e in (window.get("_entries") or [])
+        if e.get("has_coherence_issues")
+    ]
+    if _anomaly_entries or _low_trust_entries or _coherence_entries:
+        obs_lines = []
+        if _anomaly_entries:
+            tests = sorted({e.get("test", "?") for e in _anomaly_entries})
+            obs_lines.append(
+                f"⚠️ *{len(_anomaly_entries)} check(s)* with behavioral anomalies "
+                f"({', '.join(f'`{t}`' for t in tests[:3])})"
+            )
+        if _low_trust_entries:
+            tests = sorted({e.get("test", "?") for e in _low_trust_entries})
+            obs_lines.append(
+                f"⚠️ *{len(_low_trust_entries)} check(s)* with low trust score "
+                f"({', '.join(f'`{t}`' for t in tests[:3])})"
+            )
+        if _coherence_entries:
+            tests = sorted({e.get("test", "?") for e in _coherence_entries})
+            obs_lines.append(
+                f"⚠️ *{len(_coherence_entries)} check(s)* with coherence issues "
+                f"({', '.join(f'`{t}`' for t in tests[:3])})"
+            )
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "*Agent behavior*\n" + "\n".join(obs_lines),
+                },
+            }
+        )
+
     # Footer — one actionable next step
     action = _next_action(window, drift_rows, stale_quarantine)
     blocks.append(
@@ -338,6 +384,8 @@ def slack_digest_cmd(
     cutoff_dt, cutoff_sha, label = _parse_since(since, entries)
     window_entries = _entries_since(entries, cutoff_dt, cutoff_sha)
     window = _summarize(window_entries)
+    # Stash raw entries for the observability signals section
+    window["_entries"] = window_entries
     drift_rows = _detect_drifting_tests(window_entries, entries)
 
     stale_quarantine: List[Dict[str, Any]] = []

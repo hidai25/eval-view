@@ -1152,6 +1152,36 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
         quarantine=shared_quarantine,
     )
 
+    # --- Enrich verdict payload with observability signals ---
+    if results:
+        _anom_tests = [
+            r.test_case for r in results
+            if getattr(r, "anomaly_report", None) and r.anomaly_report.get("anomalies")
+        ]
+        _low_trust_tests = [
+            r.test_case for r in results
+            if getattr(r, "trust_report", None) and r.trust_report.get("trust_score", 1.0) < 0.8
+        ]
+        _coherence_tests = [
+            r.test_case for r in results
+            if getattr(r, "coherence_report", None) and r.coherence_report.get("issues")
+        ]
+        if _anom_tests:
+            verdict_output.payload["behavioral_anomalies"] = {
+                "count": len(_anom_tests),
+                "tests": _anom_tests[:10],
+            }
+        if _low_trust_tests:
+            verdict_output.payload["low_trust_tests"] = {
+                "count": len(_low_trust_tests),
+                "tests": _low_trust_tests[:10],
+            }
+        if _coherence_tests:
+            verdict_output.payload["coherence_issues"] = {
+                "count": len(_coherence_tests),
+                "tests": _coherence_tests[:10],
+            }
+
     # Display results
     _display_check_results(
         diffs, analysis, state, is_first_check, json_output,
@@ -1346,6 +1376,37 @@ def replay(test_name: Optional[str], test_path: str, no_browser: bool) -> None:
 
     # Terminal: side-by-side step comparison
     _print_trajectory_diff(golden, result)
+
+    # Observability signals from the evaluation
+    if getattr(result, "anomaly_report", None):
+        ar = result.anomaly_report
+        for anom in ar.get("anomalies", [])[:5]:
+            sev = anom.get("severity", "warning")
+            icon = "[red]\u26a0[/red]" if sev == "error" else "[yellow]\u26a0[/yellow]"
+            console.print(
+                f"  {icon} [bold]{anom.get('pattern', '')}[/bold]: "
+                f"{anom.get('description', '')}"
+            )
+        console.print()
+
+    if getattr(result, "trust_report", None):
+        tr = result.trust_report
+        trust_val = tr.get("trust_score", 1.0)
+        if trust_val < 1.0:
+            console.print(f"  Trust: {trust_val:.0%} — {tr.get('summary', '')}")
+            console.print()
+
+    if getattr(result, "coherence_report", None):
+        cr = result.coherence_report
+        for issue in cr.get("issues", [])[:3]:
+            sev = issue.get("severity", "warning")
+            icon = "[red]\u26a0[/red]" if sev == "error" else "[yellow]\u26a0[/yellow]"
+            console.print(
+                f"  {icon} [bold]{issue.get('category', '')}[/bold]: "
+                f"{issue.get('description', '')}"
+            )
+        if cr.get("issues"):
+            console.print()
 
     # Diff summary
     if diffs:

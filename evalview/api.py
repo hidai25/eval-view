@@ -74,6 +74,32 @@ class GateSummary:
 
 
 @dataclass
+class ObservabilitySignals:
+    """Aggregate observability signals across all tests in a gate run.
+
+    These are first-class fields so callers don't need to dig through raw_json.
+    """
+
+    anomaly_count: int = 0
+    """Number of tests with behavioral anomalies (tool loops, stalls, brittle recovery)."""
+
+    low_trust_count: int = 0
+    """Number of tests with trust score < 0.8 (possible benchmark gaming)."""
+
+    coherence_issue_count: int = 0
+    """Number of multi-turn tests with cross-turn coherence issues."""
+
+    anomaly_tests: List[str] = field(default_factory=list)
+    """Names of tests with anomalies."""
+
+    low_trust_tests: List[str] = field(default_factory=list)
+    """Names of tests with low trust scores."""
+
+    coherence_tests: List[str] = field(default_factory=list)
+    """Names of multi-turn tests with coherence issues."""
+
+
+@dataclass
 class GateResult:
     """Structured result from a gate() call.
 
@@ -84,6 +110,7 @@ class GateResult:
         status: The worst DiffStatus seen across all tests.
         summary: Aggregate pass/fail/change counts.
         diffs: Per-test diff objects with scores, tool diffs, and outputs.
+        observability: Aggregate observability signals (anomalies, trust, coherence).
         raw_json: Full result dict for callers that need everything.
     """
 
@@ -92,6 +119,7 @@ class GateResult:
     status: DiffStatus
     summary: GateSummary
     diffs: List[TestDiff]
+    observability: ObservabilitySignals = field(default_factory=ObservabilitySignals)
     raw_json: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -125,6 +153,7 @@ def _build_gate_result(
     diffs: List[Tuple[str, "TraceDiff"]],
     total_tests: int,
     fail_on: Set[DiffStatus],
+    results: Optional[List[Any]] = None,
 ) -> GateResult:
     """Convert raw execution output into a GateResult."""
     from evalview.commands.shared import _analyze_check_diffs
@@ -194,12 +223,33 @@ def _build_gate_result(
         ],
     }
 
+    # Build observability signals from evaluation results
+    obs = ObservabilitySignals()
+    if results:
+        for r in results:
+            try:
+                ar = getattr(r, "anomaly_report", None)
+                if isinstance(ar, dict) and ar.get("anomalies"):
+                    obs.anomaly_count += 1
+                    obs.anomaly_tests.append(getattr(r, "test_case", "?"))
+                tr = getattr(r, "trust_report", None)
+                if isinstance(tr, dict) and float(tr.get("trust_score", 1.0)) < 0.8:
+                    obs.low_trust_count += 1
+                    obs.low_trust_tests.append(getattr(r, "test_case", "?"))
+                cr = getattr(r, "coherence_report", None)
+                if isinstance(cr, dict) and cr.get("issues"):
+                    obs.coherence_issue_count += 1
+                    obs.coherence_tests.append(getattr(r, "test_case", "?"))
+            except (TypeError, ValueError, AttributeError):
+                continue
+
     return GateResult(
         passed=not has_failure,
         exit_code=1 if has_failure else 0,
         status=worst,
         summary=summary,
         diffs=test_diffs,
+        observability=obs,
         raw_json=raw,
     )
 
@@ -375,4 +425,4 @@ async def _gate_impl(
             pool, _run_sync
         )
 
-    return _build_gate_result(diffs, len(test_cases), fail_on)
+    return _build_gate_result(diffs, len(test_cases), fail_on, results=results)

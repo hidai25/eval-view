@@ -801,6 +801,15 @@ class EvaluationResult(BaseModel):
     # Per-turn evaluation results for multi-turn tests
     turn_evaluations: Optional[List[TurnEvaluation]] = None
 
+    # Behavioral anomaly detection results (tool loops, stalls, brittle recovery)
+    anomaly_report: Optional[Dict[str, Any]] = None
+
+    # Benchmark trust / anti-gaming check results
+    trust_report: Optional[Dict[str, Any]] = None
+
+    # Cross-turn coherence analysis (context amnesia, contradictions)
+    coherence_report: Optional[Dict[str, Any]] = None
+
 
 # --- Statistical/Variance Evaluation Types ---
 

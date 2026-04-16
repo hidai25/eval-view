@@ -766,6 +766,9 @@ def generate_visual_report(
             "safety": _extract_check_result(r, "safety"),
             "pii": _extract_check_result(r, "pii"),
             "forbidden_tools": _extract_check_result(r, "forbidden_tools"),
+            "anomaly_report": getattr(r, "anomaly_report", None),
+            "trust_report": getattr(r, "trust_report", None),
+            "coherence_report": getattr(r, "coherence_report", None),
             "failure_reasons": failure_reasons,
             "output_rationale": output_rationale,
         })
@@ -1409,14 +1412,20 @@ table td,table th{transition:background .1s}
               </div>{% endif %}
             {% endfor %}</div>
           </div>{% endif %}
-          {% if t.hallucination or t.safety or t.pii or t.forbidden_tools %}
+          {% if t.hallucination or t.safety or t.pii or t.forbidden_tools or t.anomaly_report or t.trust_report or t.coherence_report %}
           <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">
             {% if t.hallucination %}{% if t.hallucination.has_hallucination %}<span class="badge b-red" title="Extracts factual claims from the agent response, then verifies each claim against tool outputs. Score = supported claims / total claims.">🔮 Hallucination detected · {{ (t.hallucination.confidence * 100)|round(0)|int }}%{% if t.hallucination.details %} · {{ t.hallucination.details.split('\n')[0]|replace('Faithfulness: ', '') }}{% endif %}{% if judge_usage and judge_usage.model %} · {{ judge_usage.model }}{% endif %}</span>{% else %}<span class="badge b-green" title="Extracts factual claims from the agent response, then verifies each claim against tool outputs. Score = supported claims / total claims.">🔮 No hallucination{% if t.hallucination.details %} · {{ t.hallucination.details.split('\n')[0]|replace('Faithfulness: ', '') }}{% endif %}{% if judge_usage and judge_usage.model %} · {{ judge_usage.model }}{% endif %}</span>{% endif %}{% endif %}
             {% if t.safety %}{% if t.safety.is_safe %}<span class="badge b-green">🛡 Safe</span>{% else %}<span class="badge b-red">🛡 Unsafe: {{ t.safety.categories|join(', ') }}</span>{% endif %}{% endif %}
             {% if t.pii %}{% if t.pii.has_pii %}<span class="badge b-yellow">🔒 PII detected</span>{% else %}<span class="badge b-green">🔒 No PII</span>{% endif %}{% endif %}
             {% if t.forbidden_tools %}{% if t.forbidden_tools.violations %}<span class="badge b-red">⛔ Forbidden: {{ t.forbidden_tools.violations|join(', ') }}</span>{% else %}<span class="badge b-green">⛔ No violations</span>{% endif %}{% endif %}
+            {% if t.anomaly_report %}{% if t.anomaly_report.anomalies %}<span class="badge b-red">🔄 {{ t.anomaly_report.anomalies|length }} anomal{{ 'y' if t.anomaly_report.anomalies|length == 1 else 'ies' }}</span>{% else %}<span class="badge b-green">🔄 No anomalies</span>{% endif %}{% endif %}
+            {% if t.trust_report %}<span class="badge {% if t.trust_report.trust_score < 0.5 %}b-red{% elif t.trust_report.trust_score < 0.8 %}b-yellow{% else %}b-green{% endif %}">🔐 Trust: {{ (t.trust_report.trust_score * 100)|round|int }}%</span>{% endif %}
+            {% if t.coherence_report %}{% if t.coherence_report.issues %}<span class="badge b-yellow">🔗 {{ t.coherence_report.issues|length }} coherence issue{{ 's' if t.coherence_report.issues|length != 1 }}</span>{% else %}<span class="badge b-green">🔗 Coherent</span>{% endif %}{% endif %}
           </div>
           {% if t.hallucination and t.hallucination.has_hallucination and t.hallucination.details %}<div style="background:rgba(168,85,247,.06);border:1px solid rgba(168,85,247,.15);border-radius:var(--r-xs);padding:9px 12px;margin-top:8px;font-size:11px;color:var(--text-3)"><span style="font-weight:600;color:var(--text-2)">Unsupported claims:</span> {{ t.hallucination.details[:500] }}{% if t.hallucination.details|length > 500 %}...{% endif %}</div>{% endif %}
+          {% if t.anomaly_report and t.anomaly_report.anomalies %}<div style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.15);border-radius:var(--r-xs);padding:9px 12px;margin-top:8px;font-size:11px;color:var(--text-3)"><span style="font-weight:600;color:var(--text-2)">Behavioral anomalies:</span>{% for a in t.anomaly_report.anomalies[:5] %}<br>• <b>{{ a.pattern }}</b>: {{ a.description[:150] }}{% endfor %}</div>{% endif %}
+          {% if t.trust_report and t.trust_report.trust_score < 1.0 %}<div style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.15);border-radius:var(--r-xs);padding:9px 12px;margin-top:8px;font-size:11px;color:var(--text-3)"><span style="font-weight:600;color:var(--text-2)">Trust:</span> {{ (t.trust_report.trust_score * 100)|round|int }}% — {{ t.trust_report.summary }}{% if t.trust_report.flags %}{% for f in t.trust_report.flags[:3] %}<br>• <b>{{ f.check }}</b> ({{ f.severity }}): {{ f.description[:120] }}{% endfor %}{% endif %}</div>{% endif %}
+          {% if t.coherence_report and t.coherence_report.issues %}<div style="background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.15);border-radius:var(--r-xs);padding:9px 12px;margin-top:8px;font-size:11px;color:var(--text-3)"><span style="font-weight:600;color:var(--text-2)">Coherence ({{ (t.coherence_report.coherence_score * 100)|round|int }}%):</span>{% for i in t.coherence_report.issues[:5] %}<br>• Turn {{ i.turn_index }}: <b>{{ i.category }}</b> — {{ i.description[:120] }}{% endfor %}</div>{% endif %}
           {% endif %}
           {% if t.output and not t.turns %}
           <div style="background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.1);border-radius:var(--r-xs);padding:9px 12px;margin-top:12px;font-size:13px;color:var(--text-2)">
