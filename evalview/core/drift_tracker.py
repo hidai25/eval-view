@@ -186,13 +186,23 @@ class DriftTracker:
             }
         return self._provenance_cache
 
-    def record_check(self, test_name: str, diff: TraceDiff) -> None:
+    def record_check(
+        self,
+        test_name: str,
+        diff: TraceDiff,
+        result: Optional[Any] = None,
+    ) -> None:
         """Append a check result to the history log.
 
         Each entry is enriched with a provenance fingerprint — git SHA,
         prompt/config hash, model ID, local user — so downstream commands
         like `evalview log` and `evalview progress` can answer "which
         version of the agent produced this run?"
+
+        When a ``result`` (EvaluationResult) is provided, observability
+        signals (behavioral anomalies, trust score, coherence) are also
+        persisted so downstream consumers (slack-digest, trends) can
+        surface them without re-computation.
 
         Fingerprint fields are best-effort and may be None (non-git
         directory, missing prompts, etc.); readers must tolerate their
@@ -201,6 +211,7 @@ class DriftTracker:
         Args:
             test_name: Name of the test that was checked.
             diff: TraceDiff result from this check run.
+            result: Optional EvaluationResult with observability signals.
         """
         self.history_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -222,6 +233,23 @@ class DriftTracker:
             "model_id": getattr(diff, "actual_model_id", None),
             "user": provenance["user"],
         }
+
+        # Observability signals — recorded when the result carries them
+        # so slack-digest and trends can surface anomalies without
+        # re-running the analysis. Absent in older entries; readers
+        # must tolerate missing keys.
+        if result is not None:
+            anom = getattr(result, "anomaly_report", None)
+            if anom and anom.get("anomalies"):
+                entry["has_anomalies"] = True
+                entry["anomaly_count"] = len(anom["anomalies"])
+            trust = getattr(result, "trust_report", None)
+            if trust:
+                entry["trust_score"] = trust.get("trust_score", 1.0)
+            coherence = getattr(result, "coherence_report", None)
+            if coherence and coherence.get("issues"):
+                entry["has_coherence_issues"] = True
+                entry["coherence_score"] = coherence.get("coherence_score", 1.0)
 
         try:
             with open(self.history_path, "a") as f:

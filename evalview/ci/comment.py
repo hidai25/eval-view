@@ -789,6 +789,36 @@ def _build_verdict_signals_table(
     if model_change and model_change != "Yes":
         lines.append(f"| Model version | {model_change} |")
 
+    # Behavioral anomalies (tool loops, stalls, brittle recovery)
+    anom_data = verdict_data.get("behavioral_anomalies") or {}
+    anom_count = anom_data.get("count", 0)
+    if anom_count:
+        anom_tests = anom_data.get("tests", [])[:3]
+        preview = ", ".join(f"`{_md_escape_inline(t)}`" for t in anom_tests)
+        lines.append(
+            f"| Behavioral anomalies | \u26a0\ufe0f {anom_count} test(s): {preview} |"
+        )
+
+    # Low trust scores (benchmark gaming)
+    trust_data = verdict_data.get("low_trust_tests") or {}
+    trust_count = trust_data.get("count", 0)
+    if trust_count:
+        trust_tests = trust_data.get("tests", [])[:3]
+        preview = ", ".join(f"`{_md_escape_inline(t)}`" for t in trust_tests)
+        lines.append(
+            f"| Low trust | \u26a0\ufe0f {trust_count} test(s): {preview} |"
+        )
+
+    # Coherence issues (multi-turn)
+    coherence_data = verdict_data.get("coherence_issues") or {}
+    coherence_count = coherence_data.get("count", 0)
+    if coherence_count:
+        coherence_tests = coherence_data.get("tests", [])[:3]
+        preview = ", ".join(f"`{_md_escape_inline(t)}`" for t in coherence_tests)
+        lines.append(
+            f"| Coherence issues | \u26a0\ufe0f {coherence_count} multi-turn test(s): {preview} |"
+        )
+
     return lines
 
 

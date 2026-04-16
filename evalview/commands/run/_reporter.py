@@ -416,6 +416,68 @@ def compute_exit_code(
     return exit_code
 
 
+def display_observability_signals(
+    results: List[Any],
+    console: Any,
+) -> None:
+    """Print behavioral anomaly, trust, and coherence signals from run results."""
+    if not results:
+        return
+
+    anom_tests = [
+        r for r in results
+        if getattr(r, "anomaly_report", None) and r.anomaly_report.get("anomalies")
+    ]
+    low_trust = [
+        r for r in results
+        if getattr(r, "trust_report", None) and r.trust_report.get("trust_score", 1.0) < 0.8
+    ]
+    coherence_tests = [
+        r for r in results
+        if getattr(r, "coherence_report", None) and r.coherence_report.get("issues")
+    ]
+
+    if not anom_tests and not low_trust and not coherence_tests:
+        return
+
+    console.print("\n[bold cyan]━━━ Observability Signals ━━━[/bold cyan]\n")
+
+    if anom_tests:
+        console.print(
+            f"  [yellow]⚠ {len(anom_tests)} test(s) with behavioral anomalies[/yellow]"
+        )
+        for r in anom_tests[:5]:
+            for anom in r.anomaly_report.get("anomalies", [])[:2]:
+                console.print(
+                    f"    {r.test_case}: [dim]{anom.get('pattern', '')} — "
+                    f"{anom.get('description', '')[:100]}[/dim]"
+                )
+
+    if low_trust:
+        console.print(
+            f"  [yellow]⚠ {len(low_trust)} test(s) with low trust score[/yellow]"
+        )
+        for r in low_trust[:5]:
+            score = r.trust_report.get("trust_score", 0)
+            console.print(
+                f"    {r.test_case}: [dim]trust {score:.0%} — "
+                f"{r.trust_report.get('summary', '')}[/dim]"
+            )
+
+    if coherence_tests:
+        console.print(
+            f"  [yellow]⚠ {len(coherence_tests)} multi-turn test(s) with coherence issues[/yellow]"
+        )
+        for r in coherence_tests[:5]:
+            for issue in r.coherence_report.get("issues", [])[:1]:
+                console.print(
+                    f"    {r.test_case}: [dim]{issue.get('category', '')} — "
+                    f"{issue.get('description', '')[:100]}[/dim]"
+                )
+
+    console.print()
+
+
 def display_trust_frame(
     passed: int,
     failed: int,
@@ -425,6 +487,9 @@ def display_trust_frame(
     console: Any,
 ) -> None:
     """Print the final health summary and optional 'save golden' tip."""
+    # Show observability signals before the trust frame
+    display_observability_signals(results, console)
+
     console.print("[dim]━" * 50 + "[/dim]")
     if execution_errors > 0:
         n = execution_errors

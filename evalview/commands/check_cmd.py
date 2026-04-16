@@ -1377,6 +1377,37 @@ def replay(test_name: Optional[str], test_path: str, no_browser: bool) -> None:
     # Terminal: side-by-side step comparison
     _print_trajectory_diff(golden, result)
 
+    # Observability signals from the evaluation
+    if getattr(result, "anomaly_report", None):
+        ar = result.anomaly_report
+        for anom in ar.get("anomalies", [])[:5]:
+            sev = anom.get("severity", "warning")
+            icon = "[red]\u26a0[/red]" if sev == "error" else "[yellow]\u26a0[/yellow]"
+            console.print(
+                f"  {icon} [bold]{anom.get('pattern', '')}[/bold]: "
+                f"{anom.get('description', '')}"
+            )
+        console.print()
+
+    if getattr(result, "trust_report", None):
+        tr = result.trust_report
+        trust_val = tr.get("trust_score", 1.0)
+        if trust_val < 1.0:
+            console.print(f"  Trust: {trust_val:.0%} — {tr.get('summary', '')}")
+            console.print()
+
+    if getattr(result, "coherence_report", None):
+        cr = result.coherence_report
+        for issue in cr.get("issues", [])[:3]:
+            sev = issue.get("severity", "warning")
+            icon = "[red]\u26a0[/red]" if sev == "error" else "[yellow]\u26a0[/yellow]"
+            console.print(
+                f"  {icon} [bold]{issue.get('category', '')}[/bold]: "
+                f"{issue.get('description', '')}"
+            )
+        if cr.get("issues"):
+            console.print()
+
     # Diff summary
     if diffs:
         _, diff = diffs[0]

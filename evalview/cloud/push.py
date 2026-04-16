@@ -289,6 +289,23 @@ def push_result(gate_result: Any) -> Optional[str]:
             "result_json": gate_result.raw_json,
         }
 
+        # Include observability signals if present in the raw JSON
+        raw = gate_result.raw_json or {}
+        if raw.get("behavioral_anomalies"):
+            payload["behavioral_anomalies"] = raw["behavioral_anomalies"]
+        if raw.get("trust_scores"):
+            payload["trust_scores"] = raw["trust_scores"]
+        if raw.get("coherence_analysis"):
+            payload["coherence_analysis"] = raw["coherence_analysis"]
+        # Verdict-level aggregates
+        verdict = raw.get("verdict") or {}
+        if verdict.get("behavioral_anomalies"):
+            payload.setdefault("behavioral_anomalies", verdict["behavioral_anomalies"])
+        if verdict.get("low_trust_tests"):
+            payload["low_trust_tests"] = verdict["low_trust_tests"]
+        if verdict.get("coherence_issues"):
+            payload["coherence_issues"] = verdict["coherence_issues"]
+
         return asyncio.run(_push_async(payload, token))
     except Exception as e:
         logger.debug("Cloud push failed: %s", e)

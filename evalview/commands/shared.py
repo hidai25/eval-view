@@ -715,7 +715,7 @@ def _execute_check_tests(
                 results.append(result)
                 diffs.append((tc.name, diff))
                 golden_traces[tc.name] = golden
-                drift_tracker.record_check(tc.name, diff)
+                drift_tracker.record_check(tc.name, diff, result=result)
 
                 # Record cost and check budget
                 cost = result.trace.metrics.total_cost
