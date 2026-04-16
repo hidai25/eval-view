@@ -353,6 +353,28 @@ Diagnoses common issues:
 - Invalid skill structure
 - Missing required fields
 
+#### Manual-only skills (`disable-model-invocation: true`)
+
+Skills with `disable-model-invocation: true` in their frontmatter are
+**manual-only** — Claude Code does not auto-invoke them, so their descriptions
+are **not loaded into the model-invokable skill context** and do not consume
+the 15k character budget.
+
+`evalview skill doctor` excludes these skills from its budget math, but still
+validates them and includes them in duplicate / invalid / multi-line checks.
+
+```yaml
+---
+name: manual-cleanup
+description: Tidy up generated artifacts. Invoked manually only.
+disable-model-invocation: true
+---
+```
+
+When manual-only skills are detected, the doctor summary reports them on a
+dedicated `Manual-only` line so you can tell at a glance which skills are
+excluded from the budget estimate.
+
 ---
 
 ## Related Documentation

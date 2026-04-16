@@ -265,6 +265,7 @@ def skill_doctor(path: str, recursive: bool, security_scan: bool) -> None:
     names_seen: dict = {}
     invalid_count = 0
     multiline_count = 0
+    manual_only_count = 0
 
     for file_path in files:
         result = SkillValidator.validate_file(file_path)
@@ -272,7 +273,14 @@ def skill_doctor(path: str, recursive: bool, security_scan: bool) -> None:
             name = result.skill.metadata.name
             desc = result.skill.metadata.description
             desc_len = len(desc)
-            total_desc_chars += desc_len
+            # Manual-only skills (disable-model-invocation: true) are not loaded
+            # into Claude's skill-description context, so they don't consume the
+            # 15k char budget. Still count them for duplicates/validation.
+            manual_only = bool(result.skill.metadata.disable_model_invocation)
+            if manual_only:
+                manual_only_count += 1
+            else:
+                total_desc_chars += desc_len
 
             if name in names_seen:
                 names_seen[name].append(file_path)
@@ -287,6 +295,7 @@ def skill_doctor(path: str, recursive: bool, security_scan: bool) -> None:
                 "path": file_path,
                 "desc_chars": desc_len,
                 "valid": True,
+                "manual_only": manual_only,
             })
         else:
             invalid_count += 1
@@ -295,6 +304,7 @@ def skill_doctor(path: str, recursive: bool, security_scan: bool) -> None:
                 "path": file_path,
                 "desc_chars": 0,
                 "valid": False,
+                "manual_only": False,
                 "error": result.errors[0].message if result.errors else "Unknown error",
             })
 
@@ -306,11 +316,14 @@ def skill_doctor(path: str, recursive: bool, security_scan: bool) -> None:
 
     budget_pct = (total_desc_chars / CLAUDE_CODE_CHAR_BUDGET) * 100
     skills_over = max(0, int((total_desc_chars - CLAUDE_CODE_CHAR_BUDGET) / AVG_CHARS_PER_SKILL))
+    # Only model-invokable skills can be "ignored" by a budget overflow.
+    model_invokable_count = max(0, (len(files) - invalid_count) - manual_only_count)
 
     if budget_pct > CHAR_BUDGET_CRITICAL_PCT:
         console.print(
             f"[bold red]⚠️  Character Budget: {budget_pct:.0f}% OVER - "
-            f"Claude is ignoring ~{skills_over} of your {len(files)} skills[/bold red]"
+            f"Claude is ignoring ~{skills_over} of your {model_invokable_count} "
+            f"model-invokable skills[/bold red]"
         )
     elif budget_pct > CHAR_BUDGET_WARNING_PCT:
         console.print(f"[bold yellow]⚠️  Character Budget: {budget_pct:.0f}% - approaching limit[/bold yellow]")
@@ -322,6 +335,11 @@ def skill_doctor(path: str, recursive: bool, security_scan: bool) -> None:
     console.print(f"[bold]Total Skills:[/bold]      {len(files)}")
     console.print(f"[bold]Valid:[/bold]             [green]{len(files) - invalid_count}[/green]")
     console.print(f"[bold]Invalid:[/bold]           [red]{invalid_count}[/red]")
+    if manual_only_count:
+        console.print(
+            f"[bold]Manual-only:[/bold]      [cyan]{manual_only_count}[/cyan] "
+            "[dim](disable-model-invocation — excluded from budget)[/dim]"
+        )
     dup_color = "red" if duplicates else "green"
     console.print(f"[bold]Duplicates:[/bold]        [{dup_color}]{len(duplicates)}[/{dup_color}]")
     ml_color = "yellow" if multiline_count else "green"
