@@ -87,6 +87,8 @@ TOOLS = [
             "Returns a diff summary for each test: PASSED, OUTPUT_CHANGED, TOOLS_CHANGED, or REGRESSION. "
             "REGRESSION means the score dropped significantly — treat this as a blocking failure. "
             "TOOLS_CHANGED / OUTPUT_CHANGED are warnings: the agent's behavior shifted but may be intentional. "
+            "Also returns observability signals: behavioral anomalies (tool loops, stalls), "
+            "trust scores (benchmark gaming detection), and coherence issues (multi-turn context loss). "
             "Use this after any code change (prompt, model, tools) to confirm nothing broke. "
             "If you see a regression, show the diff to the user and offer to fix it before moving on. "
             "Use heal=true to auto-retry flaky failures and distinguish non-determinism from real drift. "
@@ -781,6 +783,24 @@ class MCPServer:
                     for d in result.diffs
                 ],
             }
+
+            # Include observability signals when present
+            obs = result.observability
+            if obs.anomaly_count or obs.low_trust_count or obs.coherence_issue_count:
+                output["observability"] = {
+                    "behavioral_anomalies": {
+                        "count": obs.anomaly_count,
+                        "tests": obs.anomaly_tests,
+                    } if obs.anomaly_count else None,
+                    "low_trust": {
+                        "count": obs.low_trust_count,
+                        "tests": obs.low_trust_tests,
+                    } if obs.low_trust_count else None,
+                    "coherence_issues": {
+                        "count": obs.coherence_issue_count,
+                        "tests": obs.coherence_tests,
+                    } if obs.coherence_issue_count else None,
+                }
 
             return json.dumps(output, indent=2)
 
