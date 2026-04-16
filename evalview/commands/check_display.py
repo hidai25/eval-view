@@ -469,6 +469,23 @@ def _display_check_results(
             output["behavior_summary"] = behavior_summary
         if verdict_payload:
             output["verdict"] = verdict_payload
+        # --- Observability signals from new analysis modules ---
+        _anomalies_json = []
+        _trust_json = []
+        _coherence_json = []
+        for r in (results or []):
+            if getattr(r, "anomaly_report", None):
+                _anomalies_json.append({"test": r.test_case, **r.anomaly_report})
+            if getattr(r, "trust_report", None):
+                _trust_json.append({"test": r.test_case, **r.trust_report})
+            if getattr(r, "coherence_report", None):
+                _coherence_json.append({"test": r.test_case, **r.coherence_report})
+        if _anomalies_json:
+            output["behavioral_anomalies"] = _anomalies_json
+        if _trust_json:
+            output["trust_scores"] = _trust_json
+        if _coherence_json:
+            output["coherence_analysis"] = _coherence_json
         print(json.dumps(output, indent=2))
     else:
         # Console output with personality
@@ -527,6 +544,29 @@ def _display_check_results(
             sparkline_output = render_sparklines(test_trends, pass_trend)
             if sparkline_output:
                 console.print(sparkline_output)
+                console.print()
+
+        # --- Aggregate anomaly/trust summary ---
+        if results:
+            _anom_count = sum(
+                1 for r in results
+                if getattr(r, "anomaly_report", None) and r.anomaly_report.get("anomalies")
+            )
+            _low_trust = [
+                r for r in results
+                if getattr(r, "trust_report", None) and r.trust_report.get("trust_score", 1.0) < 0.8
+            ]
+            if _anom_count > 0:
+                console.print(
+                    f"  [yellow]\u26a0 {_anom_count} test(s) with behavioral anomalies "
+                    f"(tool loops, stalls, brittle recovery)[/yellow]"
+                )
+            if _low_trust:
+                console.print(
+                    f"  [yellow]\u26a0 {len(_low_trust)} test(s) with low trust score "
+                    f"(possible benchmark gaming)[/yellow]"
+                )
+            if _anom_count > 0 or _low_trust:
                 console.print()
 
         if is_first_check:
@@ -708,6 +748,39 @@ def _display_check_results(
                             console.print(
                                 f"      [red]Turn {te.turn_index}: FAIL[/red] \u2014 {te.details}"
                             )
+
+                # --- Behavioral anomalies ---
+                if result_for_test and getattr(result_for_test, "anomaly_report", None):
+                    ar = result_for_test.anomaly_report
+                    for anom in ar.get("anomalies", [])[:3]:
+                        sev = anom.get("severity", "warning")
+                        icon = "[red]\u26a0[/red]" if sev == "error" else "[yellow]\u26a0[/yellow]"
+                        console.print(
+                            f"    {icon} [bold]{anom.get('pattern', '')}[/bold]: "
+                            f"{anom.get('description', '')[:120]}"
+                        )
+
+                # --- Trust score ---
+                if result_for_test and getattr(result_for_test, "trust_report", None):
+                    tr = result_for_test.trust_report
+                    trust_val = tr.get("trust_score", 1.0)
+                    if trust_val < 1.0:
+                        trust_color = "red" if trust_val < 0.5 else "yellow" if trust_val < 0.8 else "dim"
+                        console.print(
+                            f"    [{trust_color}]Trust: {trust_val:.0%}[/{trust_color}] "
+                            f"[dim]({tr.get('summary', '')})[/dim]"
+                        )
+
+                # --- Coherence issues (multi-turn) ---
+                if result_for_test and getattr(result_for_test, "coherence_report", None):
+                    cr = result_for_test.coherence_report
+                    for issue in cr.get("issues", [])[:2]:
+                        sev = issue.get("severity", "warning")
+                        icon = "[red]\u26a0[/red]" if sev == "error" else "[yellow]\u26a0[/yellow]"
+                        console.print(
+                            f"    {icon} [bold]{issue.get('category', '')}[/bold]: "
+                            f"{issue.get('description', '')[:120]}"
+                        )
 
                 _print_output_diff(diff)
 

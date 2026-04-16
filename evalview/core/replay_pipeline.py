@@ -29,7 +29,6 @@ from evalview.core.diff import DiffEngine, DiffStatus, TraceDiff
 from evalview.core.golden import GoldenMetadata, GoldenTrace
 from evalview.core.types import (
     ExecutionTrace,
-    StepTrace,
     TestCase,
     TestInput,
     ExpectedBehavior,
@@ -167,7 +166,7 @@ def trace_to_golden(
 
     metadata = GoldenMetadata(
         test_name=test_name,
-        blessed_at=trace.start_time.isoformat(),
+        blessed_at=trace.start_time,
         blessed_by="production-replay",
         score=score,
         model_id=trace.model_id,
