@@ -3,7 +3,7 @@
 from datetime import datetime
 from enum import Enum
 from typing import Any, Optional, List, Dict
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class SkillSeverity(str, Enum):
@@ -27,6 +27,9 @@ class SkillValidationError(BaseModel):
 class SkillMetadata(BaseModel):
     """Metadata from SKILL.md frontmatter."""
 
+    # Accept hyphenated aliases from YAML frontmatter (e.g. disable-model-invocation)
+    model_config = ConfigDict(populate_by_name=True)
+
     # Required fields
     name: str = Field(description="Unique identifier for the skill (lowercase, hyphens)")
     description: str = Field(description="What the skill does and when to use it")
@@ -40,6 +43,17 @@ class SkillMetadata(BaseModel):
     tools: Optional[List[str]] = Field(default=None, description="Tools this skill uses")
     model_requirements: Optional[List[str]] = Field(
         default=None, description="Required model capabilities"
+    )
+    # Manual-only skills: Claude Code does not auto-invoke these, so they should
+    # not count toward the skill-description character budget.
+    # Spec key is "disable-model-invocation" (hyphenated) in YAML frontmatter.
+    disable_model_invocation: bool = Field(
+        default=False,
+        alias="disable-model-invocation",
+        description=(
+            "If true, the skill is manual-only (not auto-invoked by the model). "
+            "Excluded from skill doctor's character budget accounting."
+        ),
     )
 
     @field_validator("name", mode="before")
