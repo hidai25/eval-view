@@ -294,35 +294,39 @@ def _detect_tool_regression(
         if tools:
             turn_tool_sets.append((turn.index, tools))
 
-    # Detect when a turn uses strictly fewer tools than an earlier turn
-    # with similar query patterns (heuristic for "same purpose")
+    # Detect when a turn uses strictly fewer tools than an earlier turn.
+    # Emit at most ONE issue per later turn — pick the earlier turn with the
+    # largest `dropped` set (most informative reference) to avoid O(n²) near-
+    # duplicate warnings on long conversations.
     for i in range(1, len(turn_tool_sets)):
         curr_idx, curr_tools = turn_tool_sets[i]
+        best: Optional[Tuple[int, Set[str], Set[str]]] = None  # (prev_idx, dropped, kept)
         for j in range(i):
             prev_idx, prev_tools = turn_tool_sets[j]
-
-            # If previous turn used more specific tools and current turn
-            # dropped some while keeping others, it might be regression
             dropped = prev_tools - curr_tools
             kept = prev_tools & curr_tools
             if dropped and kept and len(dropped) >= len(kept):
-                issues.append(CoherenceIssue(
-                    category=CoherenceCategory.TOOL_REGRESSION,
-                    severity=CoherenceSeverity.WARNING,
-                    turn_index=curr_idx,
-                    reference_turn=prev_idx,
-                    description=(
-                        f"Turn {curr_idx} dropped tool(s) {', '.join(sorted(dropped))} "
-                        f"that were used in turn {prev_idx}. Agent may be using a "
-                        f"less complete strategy."
-                    ),
-                    evidence={
-                        "dropped_tools": sorted(dropped),
-                        "kept_tools": sorted(kept),
-                        "current_tools": sorted(curr_tools),
-                        "previous_tools": sorted(prev_tools),
-                    },
-                ))
+                if best is None or len(dropped) > len(best[1]):
+                    best = (prev_idx, dropped, kept)
+        if best is not None:
+            prev_idx, dropped, kept = best
+            issues.append(CoherenceIssue(
+                category=CoherenceCategory.TOOL_REGRESSION,
+                severity=CoherenceSeverity.WARNING,
+                turn_index=curr_idx,
+                reference_turn=prev_idx,
+                description=(
+                    f"Turn {curr_idx} dropped tool(s) {', '.join(sorted(dropped))} "
+                    f"that were used in turn {prev_idx}. Agent may be using a "
+                    f"less complete strategy."
+                ),
+                evidence={
+                    "dropped_tools": sorted(dropped),
+                    "kept_tools": sorted(kept),
+                    "current_tools": sorted(curr_tools),
+                    "previous_tools": sorted(dropped | kept),
+                },
+            ))
 
     return issues
 

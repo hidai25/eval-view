@@ -786,8 +786,9 @@ class MCPServer:
 
             # Include observability signals when present
             obs = result.observability
-            if obs.has_signals:
-                output["observability"] = obs.to_verdict_payload()
+            payload = obs.to_payload()
+            if payload:
+                output["observability"] = payload
 
             return json.dumps(output, indent=2)
 

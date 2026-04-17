@@ -7,6 +7,12 @@ from typing import Any, Optional, List, Dict, Union, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator, ValidationInfo
 import re
 
+from evalview.core.observability import (
+    AnomalyReportDict,
+    CoherenceReportDict,
+    TrustReportDict,
+)
+
 
 # --- Enums and Literal Types ---
 
@@ -802,16 +808,13 @@ class EvaluationResult(BaseModel):
     turn_evaluations: Optional[List[TurnEvaluation]] = None
 
     # Behavioral anomaly detection results (tool loops, stalls, brittle recovery).
-    # Schema: evalview.core.observability.AnomalyReportDict
-    anomaly_report: Optional[Dict[str, Any]] = None
+    anomaly_report: Optional[AnomalyReportDict] = None
 
     # Benchmark trust / anti-gaming check results.
-    # Schema: evalview.core.observability.TrustReportDict
-    trust_report: Optional[Dict[str, Any]] = None
+    trust_report: Optional[TrustReportDict] = None
 
     # Cross-turn coherence analysis (context amnesia, contradictions).
-    # Schema: evalview.core.observability.CoherenceReportDict
-    coherence_report: Optional[Dict[str, Any]] = None
+    coherence_report: Optional[CoherenceReportDict] = None
 
 
 # --- Statistical/Variance Evaluation Types ---

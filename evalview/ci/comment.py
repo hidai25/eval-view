@@ -789,8 +789,12 @@ def _build_verdict_signals_table(
     if model_change and model_change != "Yes":
         lines.append(f"| Model version | {model_change} |")
 
-    # Behavioral anomalies (tool loops, stalls, brittle recovery)
-    anom_data = verdict_data.get("behavioral_anomalies") or {}
+    # Observability signals (anomalies, low trust, coherence, batch hardening).
+    # Nested under a single key alongside a schema_version — see
+    # evalview.core.observability.ObservabilitySummary.to_payload().
+    obs = verdict_data.get("observability") or {}
+
+    anom_data = obs.get("anomalies") or {}
     anom_count = anom_data.get("count", 0)
     if anom_count:
         anom_tests = anom_data.get("tests", [])[:3]
@@ -799,8 +803,7 @@ def _build_verdict_signals_table(
             f"| Behavioral anomalies | \u26a0\ufe0f {anom_count} test(s): {preview} |"
         )
 
-    # Low trust scores (benchmark gaming)
-    trust_data = verdict_data.get("low_trust_tests") or {}
+    trust_data = obs.get("low_trust") or {}
     trust_count = trust_data.get("count", 0)
     if trust_count:
         trust_tests = trust_data.get("tests", [])[:3]
@@ -809,14 +812,23 @@ def _build_verdict_signals_table(
             f"| Low trust | \u26a0\ufe0f {trust_count} test(s): {preview} |"
         )
 
-    # Coherence issues (multi-turn)
-    coherence_data = verdict_data.get("coherence_issues") or {}
+    coherence_data = obs.get("coherence") or {}
     coherence_count = coherence_data.get("count", 0)
     if coherence_count:
         coherence_tests = coherence_data.get("tests", [])[:3]
         preview = ", ".join(f"`{_md_escape_inline(t)}`" for t in coherence_tests)
         lines.append(
             f"| Coherence issues | \u26a0\ufe0f {coherence_count} multi-turn test(s): {preview} |"
+        )
+
+    batch_data = obs.get("batch_hardening") or {}
+    batch_count = batch_data.get("flag_count", 0)
+    if batch_count:
+        checks = ", ".join(
+            sorted({f.get("check", "") for f in batch_data.get("flags", [])})
+        )
+        lines.append(
+            f"| Suite gaming check | \u26a0\ufe0f {batch_count} batch flag(s): {checks} |"
         )
 
     return lines

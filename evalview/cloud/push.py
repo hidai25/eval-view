@@ -291,8 +291,9 @@ def push_result(gate_result: Any) -> Optional[str]:
 
         # Include observability signals via the canonical ObservabilitySummary
         obs = gate_result.observability
-        if obs.has_signals:
-            payload["observability"] = obs.to_verdict_payload()
+        obs_payload = obs.to_payload()
+        if obs_payload:
+            payload["observability"] = obs_payload
 
         return asyncio.run(_push_async(payload, token))
     except Exception as e:

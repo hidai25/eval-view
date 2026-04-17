@@ -139,7 +139,10 @@ MIN_EXPECTED_LATENCY_MS = 500.0
 
 # Minimum number of tool calls expected for a non-trivial task.
 # An agent producing a correct answer with 0 tool calls is suspicious.
-MIN_EXPECTED_TOOL_CALLS = 1
+#: Scoring ≥80 with fewer than this many tool calls is suspect. 2 catches
+#: both "zero tools" (CRITICAL at 95+) and "single tool" shortcut answers
+#: while leaving genuinely simple 2-step tasks alone.
+MIN_EXPECTED_TOOL_CALLS = 2
 
 # Score threshold above which we check for "too perfect" patterns
 PERFECT_SCORE_THRESHOLD = 99.0

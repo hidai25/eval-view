@@ -25,6 +25,11 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from evalview.core.types import EvaluationResult
     from evalview.core.diff import TraceDiff
+    from evalview.core.observability import (
+        AnomalyReportDict,
+        CoherenceReportDict,
+        TrustReportDict,
+    )
 
 
 # ── Mermaid helpers ────────────────────────────────────────────────────────────
@@ -217,74 +222,72 @@ def _extract_check_result(result: "EvaluationResult", check_name: str) -> Option
     return data
 
 
-def _normalize_anomaly_report(report: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """Normalize an anomaly report dict for the Jinja template.
+def _normalize_anomaly_report(
+    report: Optional["AnomalyReportDict"],
+) -> Optional[Dict[str, Any]]:
+    """Project an anomaly report down to the fields the Jinja template reads.
 
-    This adapter layer protects the template from changes in the underlying
-    AnomalyReport.to_dict() schema.  The template always reads:
-        .anomalies  — list of {pattern, severity, description}
-        .summary    — one-line string
+    EvaluationResult.anomaly_report is validated by Pydantic against
+    AnomalyReportDict, so the shape is trusted. This adapter exists solely
+    to decouple the template from schema additions — new fields on the
+    report do not require template edits.
     """
-    if not report or not isinstance(report, dict):
+    if report is None:
         return None
-    anomalies = report.get("anomalies") or []
     return {
         "anomalies": [
             {
-                "pattern": a.get("pattern", ""),
-                "severity": a.get("severity", "warning"),
-                "description": a.get("description", ""),
+                "pattern": a["pattern"],
+                "severity": a["severity"],
+                "description": a["description"],
             }
-            for a in anomalies
+            for a in report["anomalies"]
         ],
-        "summary": report.get("summary", ""),
+        "summary": report["summary"],
     }
 
 
-def _normalize_trust_report(report: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """Normalize a trust report dict for the Jinja template.
-
-    Template reads: .trust_score (float 0-1), .flags (list), .summary (str)
-    """
-    if not report or not isinstance(report, dict):
+def _normalize_trust_report(
+    report: Optional["TrustReportDict"],
+) -> Optional[Dict[str, Any]]:
+    """Project a trust report down to what the Jinja template reads, and
+    embed LOW_TRUST_THRESHOLD so the template doesn't hardcode it."""
+    if report is None:
         return None
     from evalview.core.observability import LOW_TRUST_THRESHOLD
-    flags = report.get("flags") or []
     return {
-        "trust_score": float(report.get("trust_score", 1.0)),
+        "trust_score": report["trust_score"],
         "low_trust_threshold": LOW_TRUST_THRESHOLD,
         "flags": [
             {
-                "check": f.get("check", ""),
-                "severity": f.get("severity", "info"),
-                "description": f.get("description", ""),
+                "check": f["check"],
+                "severity": f["severity"],
+                "description": f["description"],
             }
-            for f in flags
+            for f in report["flags"]
         ],
-        "summary": report.get("summary", ""),
+        "summary": report["summary"],
     }
 
 
-def _normalize_coherence_report(report: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """Normalize a coherence report dict for the Jinja template.
-
-    Template reads: .issues (list), .coherence_score (float 0-1), .summary (str)
-    """
-    if not report or not isinstance(report, dict):
+def _normalize_coherence_report(
+    report: Optional["CoherenceReportDict"],
+) -> Optional[Dict[str, Any]]:
+    """Project a coherence report down to what the Jinja template reads."""
+    if report is None:
         return None
-    issues = report.get("issues") or []
     return {
         "issues": [
             {
-                "category": i.get("category", ""),
-                "severity": i.get("severity", "warning"),
-                "turn_index": i.get("turn_index", 0),
-                "description": i.get("description", ""),
+                "category": i["category"],
+                "severity": i["severity"],
+                "turn_index": i["turn_index"],
+                "description": i["description"],
             }
-            for i in issues
+            for i in report["issues"]
         ],
-        "coherence_score": float(report.get("coherence_score", 1.0)),
-        "summary": report.get("summary", ""),
+        "coherence_score": report["coherence_score"],
+        "summary": report["summary"],
     }
 
 
