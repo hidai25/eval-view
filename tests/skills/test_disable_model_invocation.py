@@ -142,7 +142,9 @@ def test_doctor_excludes_manual_only_skills_from_budget(tmp_path: Path) -> None:
         )
 
     runner = CliRunner()
-    result = runner.invoke(main, ["skill", "doctor", str(tmp_path), "-r"])
+    # Note: recursion is already the default; don't pass "-r" — on click 8.1
+    # (pinned on Python 3.9) `is_flag=True, default=True` inverts the flag.
+    result = runner.invoke(main, ["skill", "doctor", str(tmp_path)])
 
     assert result.exit_code == 0, result.output
     # Under budget → green summary banner, no "ignoring" / "INVISIBLE" noise.
@@ -173,7 +175,7 @@ def test_doctor_counts_auto_invoke_skills_in_budget(tmp_path: Path) -> None:
         )
 
     runner = CliRunner()
-    result = runner.invoke(main, ["skill", "doctor", str(tmp_path), "-r"])
+    result = runner.invoke(main, ["skill", "doctor", str(tmp_path)])
 
     assert result.exit_code == 0, result.output
     assert "OVER" in result.output, result.output
