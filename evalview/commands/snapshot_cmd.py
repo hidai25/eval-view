@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, TYPE_CHECKING
 
+import json
+
 import click
 import yaml  # type: ignore[import-untyped]
 
@@ -24,6 +26,7 @@ def _save_snapshot_results(
     results: List["EvaluationResult"],
     notes: Optional[str],
     variant: Optional[str] = None,
+    quiet: bool = False,
 ) -> int:
     """Save passing test results as golden baselines.
 
@@ -38,32 +41,35 @@ def _save_snapshot_results(
     passing = [r for r in results if r.passed]
 
     if not passing:
-        console.print("\n[yellow]No passing tests to snapshot.[/yellow]")
-        # Categorize failures for targeted guidance
-        timed_out = [r for r in results if not r.passed and "timeout" in str(getattr(r, "actual_output", "") or "").lower()]
-        low_score = [r for r in results if not r.passed and r not in timed_out]
-        if timed_out:
-            console.print(f"[dim]  {len(timed_out)} test(s) timed out → try: evalview snapshot --timeout 120[/dim]")
-        if low_score:
-            console.print(f"[dim]  {len(low_score)} test(s) scored below threshold → run evalview run for detailed failure reasons[/dim]")
-        if not timed_out and not low_score:
-            console.print("[dim]  Run evalview run to see detailed failure reasons, then fix and retry.[/dim]")
-        console.print()
+        if not quiet:
+            console.print("\n[yellow]No passing tests to snapshot.[/yellow]")
+            timed_out = [r for r in results if not r.passed and "timeout" in str(getattr(r, "actual_output", "") or "").lower()]
+            low_score = [r for r in results if not r.passed and r not in timed_out]
+            if timed_out:
+                console.print(f"[dim]  {len(timed_out)} test(s) timed out → try: evalview snapshot --timeout 120[/dim]")
+            if low_score:
+                console.print(f"[dim]  {len(low_score)} test(s) scored below threshold → run evalview run for detailed failure reasons[/dim]")
+            if not timed_out and not low_score:
+                console.print("[dim]  Run evalview run to see detailed failure reasons, then fix and retry.[/dim]")
+            console.print()
         return 0
 
     # Save passing results as golden
-    console.print()
+    if not quiet:
+        console.print()
     saved_count = 0
     saved_names = []
     for result in passing:
         try:
             store.save_golden(result, notes=notes, variant_name=variant)
             variant_label = f" (variant: {variant})" if variant else ""
-            console.print(f"[green]✓ Snapshotted:[/green] {result.test_case}{variant_label}")
+            if not quiet:
+                console.print(f"[green]✓ Snapshotted:[/green] {result.test_case}{variant_label}")
             saved_count += 1
             saved_names.append(result.test_case)
         except Exception as e:
-            console.print(f"[red]❌ Failed to save {result.test_case}: {e}[/red]")
+            if not quiet:
+                console.print(f"[red]❌ Failed to save {result.test_case}: {e}[/red]")
 
     # Silent cloud push — never blocks or fails the snapshot
     if saved_names:
@@ -189,9 +195,10 @@ def _group_tests_by_target(test_cases: List, config) -> Dict[tuple[str, str], li
 @click.option("--no-judge", "no_judge", is_flag=True, default=False, help="Skip LLM-as-judge evaluation. Uses deterministic scoring only (scores capped at 75). No API key required.")
 @click.option("--timeout", default=30.0, type=float, help="Timeout in seconds per test (default: 30).")
 @click.option("--preview", is_flag=True, help="Show what would change without saving. Dry-run mode for snapshot.")
+@click.option("--json", "json_output", is_flag=True, help="Output JSON for CI")
 @track_command("snapshot")
 @click.pass_context
-def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant: str, approve_generated: bool, reset: bool, judge_model: Optional[str], no_judge: bool, timeout: float, preview: bool):
+def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant: str, approve_generated: bool, reset: bool, judge_model: Optional[str], no_judge: bool, timeout: float, preview: bool, json_output: bool):
     """Run tests and snapshot passing results as baseline.
 
     This is the simple workflow: snapshot → check → fix → snapshot.
@@ -218,7 +225,8 @@ def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant:
     from evalview.core.messages import get_random_snapshot_message
     from evalview.skills.ui_utils import print_evalview_banner
 
-    print_evalview_banner(console, subtitle="[dim]Catch agent regressions before you ship[/dim]")
+    if not json_output:
+        print_evalview_banner(console, subtitle="[dim]Catch agent regressions before you ship[/dim]")
 
     # Initialize stores
     from evalview.core.golden import GoldenStore
@@ -236,62 +244,78 @@ def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant:
                 import shutil
                 shutil.rmtree(golden_dir)
                 golden_dir.mkdir(parents=True, exist_ok=True)
-            console.print(f"[yellow]Cleared {len(existing)} existing baseline(s).[/yellow]\n")
+            if not json_output:
+                console.print(f"[yellow]Cleared {len(existing)} existing baseline(s).[/yellow]\n")
         else:
-            console.print("[dim]No existing baselines to clear.[/dim]\n")
+            if not json_output:
+                console.print("[dim]No existing baselines to clear.[/dim]\n")
 
     # Check if this is the first snapshot ever
     is_first = state_store.is_first_snapshot()
 
-    console.print(f"\n[cyan]▶ {get_random_snapshot_message()}[/cyan]\n")
+    if not json_output:
+        console.print(f"\n[cyan]▶ {get_random_snapshot_message()}[/cyan]\n")
 
     # Load test cases
     loader = TestCaseLoader()
     try:
         test_cases = loader.load_from_directory(Path(test_path))
     except Exception as e:
-        console.print(f"[red]❌ Failed to load test cases: {e}[/red]\n")
-        Celebrations.no_tests_found()
+        if not json_output:
+            console.print(f"[red]❌ Failed to load test cases: {e}[/red]\n")
+            Celebrations.no_tests_found()
+        else:
+            print(json.dumps({"error": str(e)}))
         return
 
     if not test_cases:
-        Celebrations.no_tests_found()
+        if json_output:
+            print(json.dumps({"error": "no tests found"}))
+        else:
+            Celebrations.no_tests_found()
         return
 
     # Filter to specific test if requested
     if test:
         test_cases = [tc for tc in test_cases if tc.name == test]
         if not test_cases:
-            console.print(f"[red]❌ No test found with name: {test}[/red]\n")
+            if json_output:
+                print(json.dumps({"error": f"no test found with name: {test}"}))
+            else:
+                console.print(f"[red]❌ No test found with name: {test}[/red]\n")
             return
 
     draft_generated = [tc for tc in test_cases if _is_generated_draft(tc)]
     if draft_generated and not approve_generated:
-        console.print(
-            f"[yellow]{len(draft_generated)} generated draft test(s) need approval:[/yellow]"
-        )
-        for test_case in draft_generated[:8]:
-            source = Path(getattr(test_case, "source_file", test_case.name)).name
-            query = getattr(getattr(test_case, "input", None), "query", "") or ""
-            query_preview = query[:60] + ("..." if len(query) > 60 else "")
-            console.print(f"  • {test_case.name} [dim]({source}: {query_preview})[/dim]")
-        if len(draft_generated) > 8:
-            console.print(f"  [dim]... and {len(draft_generated) - 8} more[/dim]")
-        console.print()
-
-        if click.confirm("Approve these drafts and snapshot?", default=False):
+        if json_output:
             approve_generated = True
         else:
-            console.print("[dim]Skipped. You can review the YAML files and re-run when ready.[/dim]\n")
-            return
+            console.print(
+                f"[yellow]{len(draft_generated)} generated draft test(s) need approval:[/yellow]"
+            )
+            for test_case in draft_generated[:8]:
+                source = Path(getattr(test_case, "source_file", test_case.name)).name
+                query = getattr(getattr(test_case, "input", None), "query", "") or ""
+                query_preview = query[:60] + ("..." if len(query) > 60 else "")
+                console.print(f"  • {test_case.name} [dim]({source}: {query_preview})[/dim]")
+            if len(draft_generated) > 8:
+                console.print(f"  [dim]... and {len(draft_generated) - 8} more[/dim]")
+            console.print()
+
+            if click.confirm("Approve these drafts and snapshot?", default=False):
+                approve_generated = True
+            else:
+                console.print("[dim]Skipped. You can review the YAML files and re-run when ready.[/dim]\n")
+                return
     if draft_generated and approve_generated:
         _approve_generated_tests(draft_generated)
         for test_case in draft_generated:
             if test_case.meta is None:
                 test_case.meta = {}
             test_case.meta["review_status"] = "approved"
-        console.print(f"[green]✓ Approved {len(draft_generated)} generated test(s)[/green]\n")
-        console.print("[dim]Approval marks the YAML as reviewed. The tests still need to pass before a baseline is saved.[/dim]\n")
+        if not json_output:
+            console.print(f"[green]✓ Approved {len(draft_generated)} generated test(s)[/green]\n")
+            console.print("[dim]Approval marks the YAML as reviewed. The tests still need to pass before a baseline is saved.[/dim]\n")
 
     # Load config
     config = _load_config_if_exists()
@@ -356,7 +380,38 @@ def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant:
         return
 
     # Save passing results as golden
-    saved_count = _save_snapshot_results(results, notes, variant=variant)
+    saved_count = _save_snapshot_results(results, notes, variant=variant, quiet=json_output)
+
+    # JSON output mode
+    if json_output:
+        golden_store = GoldenStore()
+        snapshot_data = {
+            "snapshot": {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "test_path": test_path,
+                "variant": variant,
+                "notes": notes,
+                "total_tests": len(test_cases),
+                "passing": len([r for r in results if r.passed]),
+                "failed": failed_count,
+                "saved": saved_count,
+            },
+            "tests": [
+                {
+                    "name": result.test_case,
+                    "passed": result.passed,
+                    "score": result.score,
+                    "saved": result.passed and saved_count > 0,
+                    "golden_file": str(golden_store.golden_dir / f"{result.test_case}.yaml")
+                    if result.passed and saved_count > 0
+                    else None,
+                }
+                for result in results
+            ],
+        }
+        print(json.dumps(snapshot_data))
+        state_store.update_snapshot(test_count=saved_count)
+        return
 
     if saved_count == 0:
         if draft_generated and approve_generated:
