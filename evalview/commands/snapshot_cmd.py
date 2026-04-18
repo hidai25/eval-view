@@ -1,6 +1,8 @@
 """Snapshot command — run tests and save passing results as baseline."""
 from __future__ import annotations
 
+import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, TYPE_CHECKING
@@ -189,9 +191,10 @@ def _group_tests_by_target(test_cases: List, config) -> Dict[tuple[str, str], li
 @click.option("--no-judge", "no_judge", is_flag=True, default=False, help="Skip LLM-as-judge evaluation. Uses deterministic scoring only (scores capped at 75). No API key required.")
 @click.option("--timeout", default=30.0, type=float, help="Timeout in seconds per test (default: 30).")
 @click.option("--preview", is_flag=True, help="Show what would change without saving. Dry-run mode for snapshot.")
+@click.option("--json", "json_output", is_flag=True, help="Output JSON for CI (suppresses Rich console output)")
 @track_command("snapshot")
 @click.pass_context
-def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant: str, approve_generated: bool, reset: bool, judge_model: Optional[str], no_judge: bool, timeout: float, preview: bool):
+def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant: str, approve_generated: bool, reset: bool, judge_model: Optional[str], no_judge: bool, timeout: float, preview: bool, json_output: bool):
     """Run tests and snapshot passing results as baseline.
 
     This is the simple workflow: snapshot → check → fix → snapshot.
@@ -218,7 +221,8 @@ def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant:
     from evalview.core.messages import get_random_snapshot_message
     from evalview.skills.ui_utils import print_evalview_banner
 
-    print_evalview_banner(console, subtitle="[dim]Catch agent regressions before you ship[/dim]")
+    if not json_output:
+        print_evalview_banner(console, subtitle="[dim]Catch agent regressions before you ship[/dim]")
 
     # Initialize stores
     from evalview.core.golden import GoldenStore
@@ -236,14 +240,17 @@ def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant:
                 import shutil
                 shutil.rmtree(golden_dir)
                 golden_dir.mkdir(parents=True, exist_ok=True)
-            console.print(f"[yellow]Cleared {len(existing)} existing baseline(s).[/yellow]\n")
+            if not json_output:
+                console.print(f"[yellow]Cleared {len(existing)} existing baseline(s).[/yellow]\n")
         else:
-            console.print("[dim]No existing baselines to clear.[/dim]\n")
+            if not json_output:
+                console.print("[dim]No existing baselines to clear.[/dim]\n")
 
     # Check if this is the first snapshot ever
     is_first = state_store.is_first_snapshot()
 
-    console.print(f"\n[cyan]▶ {get_random_snapshot_message()}[/cyan]\n")
+    if not json_output:
+        console.print(f"\n[cyan]▶ {get_random_snapshot_message()}[/cyan]\n")
 
     # Load test cases
     loader = TestCaseLoader()
@@ -255,6 +262,9 @@ def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant:
         return
 
     if not test_cases:
+        if json_output:
+            print(json.dumps({"error": "no_tests_found", "test_path": test_path}))
+            sys.exit(1)
         Celebrations.no_tests_found()
         return
 
@@ -262,6 +272,9 @@ def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant:
     if test:
         test_cases = [tc for tc in test_cases if tc.name == test]
         if not test_cases:
+            if json_output:
+                print(json.dumps({"error": "test_not_found", "test": test}))
+                sys.exit(1)
             console.print(f"[red]❌ No test found with name: {test}[/red]\n")
             return
 
@@ -357,6 +370,24 @@ def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant:
 
     # Save passing results as golden
     saved_count = _save_snapshot_results(results, notes, variant=variant)
+
+    if json_output:
+        saved_names = [r.test_case for r in results if r.passed]
+        golden_dir = GoldenStore().golden_dir
+        golden_paths = [
+            str(golden_dir / f"{name}.yaml") for name in saved_names
+        ]
+        print(json.dumps({
+            "snapshotted": saved_count,
+            "total": len(test_cases),
+            "failed": len(test_cases) - saved_count,
+            "test_names": saved_names,
+            "golden_paths": golden_paths,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "notes": notes,
+            "variant": variant,
+        }))
+        sys.exit(0 if saved_count > 0 else 1)
 
     if saved_count == 0:
         if draft_generated and approve_generated:
