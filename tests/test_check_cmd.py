@@ -6,6 +6,8 @@ from datetime import datetime
 
 from click.testing import CliRunner
 
+import pytest
+
 
 def test_check_dry_run_handles_golden_metadata_objects(monkeypatch, tmp_path):
     """Dry-run should count baselines by name without hashing metadata models."""
@@ -138,6 +140,228 @@ def test_check_does_not_report_clean_when_execution_failures_occur(monkeypatch, 
     assert result.exit_code == 1
     assert "Everything matches the baseline" not in result.output
     assert "execution failure" in result.output
+
+
+def test_check_json_includes_token_usage_and_cost_summary(monkeypatch, tmp_path):
+    from evalview.commands.check_cmd import check
+    from evalview.core.diff import DiffStatus, TraceDiff
+    from evalview.core.golden import GoldenMetadata
+    from evalview.core.project_state import ProjectState
+    from evalview.core.types import (
+        ContainsChecks,
+        CostEvaluation,
+        EvaluationResult,
+        Evaluations,
+        ExecutionMetrics,
+        ExecutionTrace,
+        LatencyEvaluation,
+        OutputEvaluation,
+        SequenceEvaluation,
+        TokenUsage,
+        ToolEvaluation,
+    )
+
+    project = tmp_path
+    monkeypatch.chdir(project)
+
+    tests_dir = project / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "sample.yaml").write_text(
+        "name: sample\ninput:\n  query: hi\nexpected:\n  tools: []\nthresholds:\n  min_score: 0\n",
+        encoding="utf-8",
+    )
+
+    evalview_dir = project / ".evalview"
+    evalview_dir.mkdir()
+    (evalview_dir / "config.yaml").write_text(
+        "adapter: http\nendpoint: http://example.com\n",
+        encoding="utf-8",
+    )
+
+    now = datetime.now()
+    sample_result = EvaluationResult(
+        test_case="sample",
+        passed=True,
+        score=90.0,
+        evaluations=Evaluations(
+            tool_accuracy=ToolEvaluation(accuracy=1.0),
+            sequence_correctness=SequenceEvaluation(correct=True, expected_sequence=[], actual_sequence=[]),
+            output_quality=OutputEvaluation(
+                score=90.0,
+                rationale="ok",
+                contains_checks=ContainsChecks(),
+                not_contains_checks=ContainsChecks(),
+            ),
+            cost=CostEvaluation(total_cost=0.0123, threshold=1.0, passed=True),
+            latency=LatencyEvaluation(total_latency=10.0, threshold=1000.0, passed=True),
+        ),
+        trace=ExecutionTrace(
+            session_id="s1",
+            start_time=now,
+            end_time=now,
+            steps=[],
+            final_output="ok",
+            metrics=ExecutionMetrics(
+                total_cost=0.0123,
+                total_latency=10.0,
+                total_tokens=TokenUsage(input_tokens=100, output_tokens=50, cached_tokens=25),
+            ),
+        ),
+        timestamp=now,
+    )
+
+    diff = TraceDiff(
+        test_name="sample",
+        has_differences=False,
+        tool_diffs=[],
+        output_diff=None,
+        score_diff=0.0,
+        latency_diff=0.0,
+        overall_severity=DiffStatus.PASSED,
+    )
+
+    runner = CliRunner()
+
+    monkeypatch.setattr("evalview.commands.check_cmd._cloud_pull", lambda store: None)
+    monkeypatch.setattr("evalview.commands.check_cmd._load_config_if_exists", lambda: None)
+    monkeypatch.setattr(
+        "evalview.core.golden.GoldenStore.list_golden",
+        lambda self: [GoldenMetadata(test_name="sample", blessed_at="2026-03-13T00:00:00Z", score=95.0)],
+    )
+
+    golden_tokens = TokenUsage(input_tokens=80, output_tokens=40, cached_tokens=20)
+    golden_traces = {
+        "sample": type(
+            "_G",
+            (),
+            {
+                "trace": type("_T", (), {"metrics": ExecutionMetrics(total_cost=0.01, total_latency=1.0, total_tokens=golden_tokens)})()
+            },
+        )()
+    }
+
+    monkeypatch.setattr(
+        "evalview.commands.check_cmd._execute_check_tests",
+        lambda test_cases, config, json_output, semantic_diff=False, timeout=30.0, skip_llm_judge=False, budget_tracker=None: ([
+            ("sample", diff)
+        ], [sample_result], None, golden_traces),
+    )
+    from evalview.core.project_state import ProjectStateStore
+    monkeypatch.setattr(ProjectStateStore, "load", lambda self: ProjectState())
+    monkeypatch.setattr(ProjectStateStore, "update_check", lambda self, has_regressions, status="passed": ProjectState())
+
+    result = runner.invoke(check, ["tests", "--json"])
+    assert result.exit_code == 0
+
+    import json as _json
+    payload = _json.loads(result.output)
+    assert "summary" in payload
+    assert payload["summary"]["token_usage"] == {"input_tokens": 100, "output_tokens": 50, "cached_tokens": 25}
+    assert payload["summary"]["total_cost"] == pytest.approx(0.0123)
+    assert payload["summary"]["baseline_token_usage"] == {"input_tokens": 80, "output_tokens": 40, "cached_tokens": 20}
+    assert payload["summary"]["token_delta_pct"] == pytest.approx(25.0)
+
+
+def test_check_json_omits_token_usage_when_unavailable(monkeypatch, tmp_path):
+    from evalview.commands.check_cmd import check
+    from evalview.core.diff import DiffStatus, TraceDiff
+    from evalview.core.golden import GoldenMetadata
+    from evalview.core.project_state import ProjectState
+    from evalview.core.types import (
+        ContainsChecks,
+        CostEvaluation,
+        EvaluationResult,
+        Evaluations,
+        ExecutionMetrics,
+        ExecutionTrace,
+        LatencyEvaluation,
+        OutputEvaluation,
+        SequenceEvaluation,
+        ToolEvaluation,
+    )
+
+    project = tmp_path
+    monkeypatch.chdir(project)
+
+    tests_dir = project / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "sample.yaml").write_text(
+        "name: sample\ninput:\n  query: hi\nexpected:\n  tools: []\nthresholds:\n  min_score: 0\n",
+        encoding="utf-8",
+    )
+
+    evalview_dir = project / ".evalview"
+    evalview_dir.mkdir()
+    (evalview_dir / "config.yaml").write_text(
+        "adapter: http\nendpoint: http://example.com\n",
+        encoding="utf-8",
+    )
+
+    now = datetime.now()
+    sample_result = EvaluationResult(
+        test_case="sample",
+        passed=True,
+        score=90.0,
+        evaluations=Evaluations(
+            tool_accuracy=ToolEvaluation(accuracy=1.0),
+            sequence_correctness=SequenceEvaluation(correct=True, expected_sequence=[], actual_sequence=[]),
+            output_quality=OutputEvaluation(
+                score=90.0,
+                rationale="ok",
+                contains_checks=ContainsChecks(),
+                not_contains_checks=ContainsChecks(),
+            ),
+            cost=CostEvaluation(total_cost=0.0, threshold=1.0, passed=True),
+            latency=LatencyEvaluation(total_latency=10.0, threshold=1000.0, passed=True),
+        ),
+        trace=ExecutionTrace(
+            session_id="s1",
+            start_time=now,
+            end_time=now,
+            steps=[],
+            final_output="ok",
+            metrics=ExecutionMetrics(total_cost=0.0, total_latency=10.0, total_tokens=None),
+        ),
+        timestamp=now,
+    )
+
+    diff = TraceDiff(
+        test_name="sample",
+        has_differences=False,
+        tool_diffs=[],
+        output_diff=None,
+        score_diff=0.0,
+        latency_diff=0.0,
+        overall_severity=DiffStatus.PASSED,
+    )
+
+    runner = CliRunner()
+
+    monkeypatch.setattr("evalview.commands.check_cmd._cloud_pull", lambda store: None)
+    monkeypatch.setattr("evalview.commands.check_cmd._load_config_if_exists", lambda: None)
+    monkeypatch.setattr(
+        "evalview.core.golden.GoldenStore.list_golden",
+        lambda self: [GoldenMetadata(test_name="sample", blessed_at="2026-03-13T00:00:00Z", score=95.0)],
+    )
+    monkeypatch.setattr(
+        "evalview.commands.check_cmd._execute_check_tests",
+        lambda test_cases, config, json_output, semantic_diff=False, timeout=30.0, skip_llm_judge=False, budget_tracker=None: ([
+            ("sample", diff)
+        ], [sample_result], None, {}),
+    )
+    from evalview.core.project_state import ProjectStateStore
+    monkeypatch.setattr(ProjectStateStore, "load", lambda self: ProjectState())
+    monkeypatch.setattr(ProjectStateStore, "update_check", lambda self, has_regressions, status="passed": ProjectState())
+
+    result = runner.invoke(check, ["tests", "--json"])
+    assert result.exit_code == 0
+
+    import json as _json
+    payload = _json.loads(result.output)
+    assert "summary" in payload
+    assert "token_usage" not in payload["summary"]
+    assert "baseline_token_usage" not in payload["summary"]
+    assert "token_delta_pct" not in payload["summary"]
 
 
 def test_check_uses_active_test_path_when_no_path_is_given(monkeypatch, tmp_path):

@@ -16,6 +16,96 @@ if TYPE_CHECKING:
     from evalview.core.model_runtime_detector import ModelRuntimeChangeSummary
 
 
+def _aggregate_token_summary(
+    results: Optional[List["EvaluationResult"]],
+    golden_traces: Optional[Dict[str, "GoldenTrace"]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Aggregate token usage and cost across test results.
+    
+    Computes total input/output/cached tokens and cost from all results.
+    Optionally calculates baseline comparison if golden traces are provided.
+    
+    Args:
+        results: List of evaluation results with token data
+        golden_traces: Optional baseline traces for comparison
+        
+    Returns:
+        Dict with token_usage, total_cost, baseline_token_usage, and token_delta_pct,
+        or None if no token data is available.
+    """
+    from evalview.core.types import TokenUsage
+
+    if not results:
+        return None
+
+    total_cost = 0.0
+    total_input = 0
+    total_output = 0
+    total_cached = 0
+    has_tokens = False
+
+    for r in results:
+        try:
+            total_cost += float(getattr(r.trace.metrics, "total_cost", 0) or 0)
+        except Exception:
+            pass
+
+        tu = getattr(getattr(r, "trace", None), "metrics", None)
+        tu = getattr(tu, "total_tokens", None)
+        if tu is None:
+            continue
+
+        has_tokens = True
+        total_input += int(getattr(tu, "input_tokens", 0) or 0)
+        total_output += int(getattr(tu, "output_tokens", 0) or 0)
+        total_cached += int(getattr(tu, "cached_tokens", 0) or 0)
+
+    if not has_tokens:
+        return None
+
+    current = TokenUsage(
+        input_tokens=total_input,
+        output_tokens=total_output,
+        cached_tokens=total_cached,
+    )
+
+    baseline_usage: Optional[TokenUsage] = None
+    delta_pct: Optional[float] = None
+    if golden_traces:
+        base_input = 0
+        base_output = 0
+        base_cached = 0
+        base_has_tokens = False
+        for r in results:
+            g = golden_traces.get(r.test_case)
+            if not g:
+                continue
+            gtu = getattr(getattr(g, "trace", None), "metrics", None)
+            gtu = getattr(gtu, "total_tokens", None)
+            if gtu is None:
+                continue
+            base_has_tokens = True
+            base_input += int(getattr(gtu, "input_tokens", 0) or 0)
+            base_output += int(getattr(gtu, "output_tokens", 0) or 0)
+            base_cached += int(getattr(gtu, "cached_tokens", 0) or 0)
+
+        if base_has_tokens:
+            baseline_usage = TokenUsage(
+                input_tokens=base_input,
+                output_tokens=base_output,
+                cached_tokens=base_cached,
+            )
+            if baseline_usage.total_tokens > 0:
+                delta_pct = (current.total_tokens - baseline_usage.total_tokens) / baseline_usage.total_tokens * 100.0
+
+    return {
+        "token_usage": current,
+        "total_cost": float(total_cost),
+        "baseline_token_usage": baseline_usage,
+        "token_delta_pct": delta_pct,
+    }
+
+
 def _print_parameter_diffs(tool_diffs: List["ToolDiff"]) -> None:
     """Print parameter-level differences for tool calls."""
     from rich.table import Table
@@ -400,6 +490,7 @@ def _display_check_results(
     behavior_summary = _build_behavior_summary(diffs, test_metadata, healing_summary)
 
     if json_output:
+        token_summary = _aggregate_token_summary(results, golden_traces)
         output = {
             "summary": {
                 "total_tests": len(diffs),
@@ -466,6 +557,13 @@ def _display_check_results(
                 for name, diff in diffs
             ],
         }
+        if token_summary is not None:
+            output["summary"]["token_usage"] = token_summary["token_usage"].model_dump()
+            output["summary"]["total_cost"] = token_summary["total_cost"]
+            if token_summary.get("baseline_token_usage") is not None:
+                output["summary"]["baseline_token_usage"] = token_summary["baseline_token_usage"].model_dump()  # type: ignore[union-attr]
+            if token_summary.get("token_delta_pct") is not None:
+                output["summary"]["token_delta_pct"] = token_summary["token_delta_pct"]
         if healing_summary:
             output["healing"] = {
                 "total_healed": healing_summary.total_healed,
@@ -545,6 +643,26 @@ def _display_check_results(
                 console.print(
                     f"  [dim]⏸ {quarantined_failures} quarantined test(s) failed (not blocking CI)[/dim]"
                 )
+            console.print()
+
+        token_summary = _aggregate_token_summary(results, golden_traces)
+        if token_summary is not None:
+            from rich.table import Table
+
+            tu = token_summary["token_usage"]
+            delta_pct = token_summary.get("token_delta_pct")
+            delta_str = ""
+            if delta_pct is not None:
+                sign = "+" if delta_pct > 0 else ""
+                color = "red" if delta_pct > 10 else "yellow" if delta_pct > 0 else "green"
+                delta_str = f"  [{color}]({sign}{delta_pct:.0f}% tokens vs baseline)[/{color}]"
+
+            table = Table(show_header=False, show_lines=False, padding=(0, 1))
+            table.add_column("k", style="dim", width=12)
+            table.add_column("v")
+            table.add_row("Tokens", f"in {tu.input_tokens:,}  out {tu.output_tokens:,}  cached {tu.cached_tokens:,}  total {tu.total_tokens:,}{delta_str}")
+            table.add_row("Cost", f"${float(token_summary['total_cost']):.4f}")
+            console.print(table)
             console.print()
 
         # --- Sparkline Trends ---
