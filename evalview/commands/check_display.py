@@ -98,7 +98,7 @@ def _aggregate_token_summary(
             if baseline_usage.total_tokens > 0:
                 delta_pct = (current.total_tokens - baseline_usage.total_tokens) / baseline_usage.total_tokens * 100.0
 
-    return {
+    return {  # type: ignore[return-value]
         "token_usage": current,
         "total_cost": float(total_cost),
         "baseline_token_usage": baseline_usage,
@@ -649,7 +649,7 @@ def _display_check_results(
         if token_summary is not None:
             from rich.table import Table
 
-            tu = token_summary["token_usage"]
+            tu = token_summary["token_usage"]  # type: ignore[assignment]
             delta_pct = token_summary.get("token_delta_pct")
             delta_str = ""
             if delta_pct is not None:
