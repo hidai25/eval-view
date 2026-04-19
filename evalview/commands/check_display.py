@@ -649,7 +649,7 @@ def _display_check_results(
         if token_summary is not None:
             from rich.table import Table
 
-            tu = token_summary["token_usage"]
+            tu = token_summary["token_usage"]  # type: ignore[assignment]
             delta_pct = token_summary.get("token_delta_pct")
             delta_str = ""
             if delta_pct is not None:
