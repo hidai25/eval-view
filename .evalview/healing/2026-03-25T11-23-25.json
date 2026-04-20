@@ -1,0 +1,45 @@
+{
+  "results": [
+    {
+      "test_name": "Refund for Damaged Blender",
+      "original_status": "regression",
+      "diagnosis": {
+        "action": "flag_review",
+        "trigger": "param_change",
+        "reason": "parameter changes detected — review needed",
+        "root_cause_category": null,
+        "details": {
+          "param_diffs": 3
+        }
+      },
+      "attempted": false,
+      "healed": false,
+      "proposed": false,
+      "final_status": "regression",
+      "original_score": 82.35,
+      "baseline_score": 89.55,
+      "retry_score": null,
+      "retry_status": null,
+      "baseline_model": "gpt-4o-mini",
+      "actual_model": "gpt-4o-mini",
+      "variant_saved": null,
+      "variant_path": null
+    }
+  ],
+  "total_healed": 0,
+  "total_proposed": 0,
+  "total_review": 1,
+  "total_blocked": 0,
+  "attempted_count": 0,
+  "unresolved_count": 1,
+  "failed_count": 1,
+  "policy_version": "v1",
+  "thresholds": {
+    "min_variant_score": 70.0,
+    "max_cost_multiplier": 2.0,
+    "max_latency_multiplier": 3.0,
+    "max_auto_variants": 3.0
+  },
+  "model_update": null,
+  "audit_path": null
+}

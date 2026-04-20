@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EvalView Check Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --green:#10b981;--green-bright:#34d399;
+  --red:#ef4444;--red-bright:#f87171;
+  --yellow:#f59e0b;--yellow-bright:#fbbf24;
+  --blue:#2563eb;--blue-bright:#3b82f6;
+  --teal:#0d9488;--teal-bright:#14b8a6;
+  --cyan:#06b6d4;
+  --bg:#060b18;--bg-card:rgba(12,20,36,.75);
+  --border:rgba(51,65,85,.45);--border-light:rgba(71,85,105,.5);
+  --text:#f1f5f9;--text-2:#94a3b8;--text-3:#64748b;--text-4:#475569;
+  --r:16px;--r-sm:12px;--r-xs:8px;
+  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --mono:'JetBrains Mono','Fira Code','SF Mono',monospace;
+}
+html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+body{font-family:var(--font);font-size:14px;line-height:1.6;color:var(--text);min-height:100vh;overflow-x:hidden;background:var(--bg)}
+
+/* ── Header ── */
+.header{
+  position:sticky;top:0;z-index:200;
+  background:rgba(6,11,24,.85);border-bottom:1px solid var(--border);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  padding:0 40px;height:52px;display:flex;align-items:center;justify-content:space-between;
+}
+.logo{display:flex;align-items:center;gap:10px}
+.logo-icon{width:28px;height:28px;border-radius:7px;flex-shrink:0;background:linear-gradient(135deg,var(--blue-bright),var(--teal));display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 2px 10px rgba(37,99,235,.2)}
+.logo-text{font-size:14px;font-weight:700;letter-spacing:-.02em;color:var(--text)}
+.logo-sub{font-size:10px;color:var(--text-4);font-weight:400}
+.header-right{display:flex;align-items:center;gap:6px}
+
+/* ── Badges ── */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
+.b-green{background:rgba(16,185,129,.12);color:var(--green-bright);border:1px solid rgba(16,185,129,.25)}
+.b-red{background:rgba(239,68,68,.12);color:var(--red-bright);border:1px solid rgba(239,68,68,.25)}
+.b-yellow{background:rgba(245,158,11,.12);color:var(--yellow-bright);border:1px solid rgba(245,158,11,.25)}
+.b-blue{background:rgba(37,99,235,.12);color:var(--blue-bright);border:1px solid rgba(37,99,235,.25)}
+.b-purple{background:rgba(13,148,136,.12);color:var(--teal-bright);border:1px solid rgba(13,148,136,.25)}
+
+/* ── Layout ── */
+.main{max-width:1160px;margin:0 auto;padding:28px 36px 80px;position:relative;z-index:1}
+
+/* ── Tabs ── */
+.tabbar{display:flex;gap:0;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-sm);padding:3px;margin-bottom:28px}
+.tab{flex:1;text-align:center;background:none;border:none;color:var(--text-4);cursor:pointer;font:600 12px/1 var(--font);padding:10px 12px;border-radius:9px;transition:all .15s}
+.tab:hover{color:var(--text-2);background:rgba(255,255,255,.03)}
+.tab.on{color:#fff;background:rgba(37,99,235,.18);border:1px solid rgba(37,99,235,.3)}
+.panel{display:none}.panel.on{display:block}
+
+/* ══════════════════════════════════════════════
+   HERO ROW — gauge + stats, all above the fold
+   ══════════════════════════════════════════════ */
+.hero-row{
+  display:grid;grid-template-columns:auto 1fr;gap:0;
+  background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);
+  overflow:hidden;margin-bottom:20px;
+}
+@media(max-width:800px){.hero-row{grid-template-columns:1fr}}
+/* Gauge cell */
+.gauge-cell{
+  padding:24px 32px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  position:relative;border-right:1px solid var(--border);
+}
+.gauge-cell::before{
+  content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:200px;height:200px;border-radius:50%;pointer-events:none;filter:blur(60px);opacity:.5;
+}
+.gauge-cell.glow-green::before{background:rgba(16,185,129,.12)}
+.gauge-cell.glow-red::before{background:rgba(239,68,68,.12)}
+.gauge-cell.glow-yellow::before{background:rgba(245,158,11,.1)}
+.gauge-wrap{position:relative;width:160px;height:160px}
+.gauge-wrap svg{display:block}
+.gauge-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.gauge-pct{font-size:40px;font-weight:900;letter-spacing:-.05em;line-height:1}
+.gauge-pct.green{color:var(--green-bright)}
+.gauge-pct.red{color:var(--red-bright)}
+.gauge-pct.yellow{color:var(--yellow-bright)}
+.gauge-label{font-size:9px;font-weight:700;color:var(--text-3);margin-top:3px;text-transform:uppercase;letter-spacing:.08em}
+.gauge-sub{font-size:12px;color:var(--text-3);margin-top:10px;font-weight:500;text-align:center}
+.gauge-sub b{color:var(--text);font-weight:700}
+.gauge-fill{transition:stroke-dasharray 1.2s cubic-bezier(.4,0,.2,1);stroke-dasharray:0 999}
+/* Stats grid — right side */
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
+.stats-grid .ss{padding:16px 20px;border-bottom:1px solid var(--border)}
+.stats-grid .ss:nth-child(odd){border-right:1px solid var(--border)}
+.stats-grid .ss:nth-child(n+3){border-bottom:none}
+.ss-label{font-size:10px;font-weight:700;color:var(--text-4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+.ss-num{font-size:22px;font-weight:800;letter-spacing:-.03em;line-height:1;color:var(--text)}
+.ss-num.blue{color:var(--blue-bright)}
+.ss-sub{font-size:11px;color:var(--text-4);margin-top:4px;font-weight:500;line-height:1.3}
+
+/* ── Card ── */
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:20px 22px;margin-bottom:14px;position:relative;overflow:hidden}
+.card-title{font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px;display:flex;align-items:center;gap:7px}
+.card-title::before{content:'';width:3px;height:11px;border-radius:2px;background:var(--blue-bright)}
+.chart-wrap{position:relative}
+
+/* ── Meta row ── */
+.meta-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+@media(max-width:800px){.meta-row{grid-template-columns:1fr}}
+.meta-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px 18px}
+.meta-label{font-size:10px;font-weight:700;color:var(--text-4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
+.meta-value{font-size:14px;font-weight:700;color:var(--text)}
+.meta-sub{font-size:11px;color:var(--text-4);margin-top:3px}
+
+/* ── Chart row ── */
+.chart-row{display:grid;grid-template-columns:1fr 200px;gap:12px;margin-bottom:14px}
+@media(max-width:800px){.chart-row{grid-template-columns:1fr}}
+
+/* ── Trace items ── */
+.item{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);margin-bottom:8px;overflow:hidden;transition:border-color .15s}
+.item:hover{border-color:var(--border-light)}
+.item-head{padding:12px 18px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:background .1s}
+.item-head:hover{background:rgba(255,255,255,.015)}
+.item-name{font-weight:700;font-size:14px;flex:1;letter-spacing:-.02em}
+.item-meta{display:flex;align-items:center;gap:5px;flex-shrink:0;flex-wrap:wrap}
+.mc{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.035);font-size:10px;font-weight:500;color:var(--text-3);white-space:nowrap}
+.chevron{color:var(--text-4);font-size:10px;transition:transform .2s;flex-shrink:0}
+details[open] .turn-chevron{transform:rotate(90deg)}
+.item-body{padding:18px;border-top:1px solid var(--border);background:rgba(0,0,0,.12)}
+.mermaid-box{background:rgba(0,0,0,.18);border:1px solid rgba(51,65,85,.35);border-radius:var(--r-sm);padding:24px 18px;overflow-x:auto;min-height:180px}
+.mermaid-box svg{min-width:560px;max-width:100%;height:auto;display:block;margin:0 auto}
+.mermaid-box .mermaid{min-width:560px}
+
+/* ── Chat turns ── */
+.chat-container{margin-top:16px;padding:14px;background:rgba(0,0,0,.1);border:1px solid rgba(51,65,85,.25);border-radius:var(--r-sm)}
+.chat-header{font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid rgba(51,65,85,.25)}
+.chat-messages{display:flex;flex-direction:column;gap:3px}
+.chat-bubble{max-width:78%;padding:9px 13px;font-size:13px;line-height:1.5;border-radius:12px}
+.chat-bubble.user{align-self:flex-end;background:rgba(37,99,235,.1);border:1px solid rgba(37,99,235,.18);color:var(--text);border-bottom-right-radius:3px}
+.chat-bubble.agent{align-self:flex-start;background:rgba(255,255,255,.025);border:1px solid rgba(51,65,85,.35);color:var(--text-2);border-bottom-left-radius:3px}
+.chat-meta{display:flex;align-items:center;gap:6px;padding:4px 2px;font-size:10px;color:var(--text-4);font-weight:500}
+.chat-meta.right{justify-content:flex-end}
+.chat-tool-tag{display:inline-flex;padding:1px 6px;border-radius:3px;background:rgba(37,99,235,.07);border:1px solid rgba(37,99,235,.12);font-size:10px;font-weight:600;color:var(--blue-bright);font-family:var(--mono)}
+.chat-eval{padding:5px 9px;border-radius:6px;font-size:11px;font-weight:600;max-width:78%}
+.chat-eval.pass{align-self:flex-start;background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.18);color:var(--green-bright)}
+.chat-eval.fail{align-self:flex-start;background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.18);color:var(--red-bright)}
+
+/* ── Diffs ── */
+.diff-item{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);margin-bottom:8px;overflow:hidden}
+.diff-head{padding:12px 18px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--border)}
+.diff-name{font-weight:700;font-size:14px;flex:1;letter-spacing:-.02em}
+.diff-cols{display:grid;grid-template-columns:1fr 1fr}
+.diff-col{padding:14px 18px}
+.diff-col+.diff-col{border-left:1px solid var(--border)}
+.col-title{font-size:10px;font-weight:700;color:var(--text-4);text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px}
+.tags{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:7px}
+.tag{background:rgba(255,255,255,.035);border:1px solid rgba(51,65,85,.45);border-radius:4px;padding:2px 7px;font-size:11px;font-family:var(--mono);font-weight:500}
+.tag.add{border-color:rgba(16,185,129,.25);color:var(--green-bright);background:rgba(16,185,129,.05)}
+.tag.rem{border-color:rgba(239,68,68,.25);color:var(--red-bright);background:rgba(239,68,68,.05);text-decoration:line-through}
+.outbox{background:rgba(0,0,0,.18);border:1px solid rgba(51,65,85,.35);border-radius:var(--r-xs);padding:10px;font:12px/1.6 var(--mono);color:var(--text-3);white-space:pre-wrap;word-break:break-all;max-height:180px;overflow-y:auto}
+.difflines{background:rgba(0,0,0,.18);border:1px solid rgba(51,65,85,.35);border-radius:var(--r-xs);padding:8px;font:11px/1.6 var(--mono);max-height:180px;overflow-y:auto;margin-top:7px}
+.difflines .a{color:var(--green-bright);background:rgba(16,185,129,.04);display:block;padding:1px 4px;margin:0 -4px;border-radius:2px}
+.difflines .r{color:var(--red-bright);background:rgba(239,68,68,.04);display:block;padding:1px 4px;margin:0 -4px;border-radius:2px}
+.sim{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-3)}
+.sim-track{width:40px;height:3px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;display:inline-block;vertical-align:middle}
+.sim-fill{height:100%;border-radius:2px}
+.sim-fill.hi{background:var(--green)}.sim-fill.mid{background:var(--yellow)}.sim-fill.lo{background:var(--red)}
+.pipeline{display:flex;flex-direction:column;gap:5px;padding:12px 18px;border-top:1px solid var(--border)}
+.pipeline-row{display:flex;align-items:center;gap:3px;flex-wrap:wrap}
+.pipeline-label{font-size:10px;font-weight:700;color:var(--text-4);text-transform:uppercase;letter-spacing:.06em;width:60px;flex-shrink:0}
+.pipe-step{display:inline-flex;padding:3px 9px;border-radius:4px;font-size:11px;font-family:var(--mono);font-weight:600;background:rgba(255,255,255,.035);border:1px solid rgba(51,65,85,.45);color:var(--text-2);position:relative}
+.pipe-step+.pipe-step{margin-left:5px}
+.pipe-step+.pipe-step::before{content:'→';position:absolute;left:-12px;color:var(--text-4);font-size:9px;font-family:var(--font)}
+.pipe-step.match{border-color:rgba(37,99,235,.2);background:rgba(37,99,235,.04)}
+.pipe-step.added{border-color:rgba(16,185,129,.25);color:var(--green-bright);background:rgba(16,185,129,.05)}
+.pipe-step.removed{border-color:rgba(239,68,68,.25);color:var(--red-bright);background:rgba(239,68,68,.05);text-decoration:line-through}
+.traj-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+.traj-col .col-title{padding-bottom:6px}
+
+/* ── Tables ── */
+.ev-table{width:100%;border-collapse:collapse;font-size:13px}
+.ev-table th{text-align:left;padding:7px 10px;color:var(--text-4);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)}
+.ev-table td{padding:9px 10px;border-bottom:1px solid rgba(51,65,85,.25)}
+.ev-table tr:hover td{background:rgba(255,255,255,.012)}
+.ev-table .mono{font-family:var(--mono);font-size:12px}
+.ev-table .num{font-weight:700;font-variant-numeric:tabular-nums}
+.param-table{width:100%;border-collapse:collapse;font-size:12px}
+.param-table th{text-align:left;padding:5px 9px;color:var(--text-4);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)}
+.param-table td{padding:5px 9px;border-bottom:1px solid rgba(51,65,85,.25)}
+table td,table th{transition:background .1s}
+.empty{text-align:center;padding:64px 40px;color:var(--text-4)}
+.empty-icon{font-size:32px;margin-bottom:10px;display:block;opacity:.25}
+.empty code{background:rgba(255,255,255,.05);padding:2px 7px;border-radius:4px;font-family:var(--mono);font-size:12px;border:1px solid var(--border)}
+::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.07);border-radius:3px}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="logo">
+    <div class="logo-icon">◈</div>
+    <div><div class="logo-text">EvalView Check Report</div><div class="logo-sub">2026-03-18 09:34</div></div>
+  </div>
+  <div class="header-right">
+    <span class="badge b-red">✗ 1 Failed</span><span class="badge b-blue">5 Tests</span>
+  </div>
+</header>
+
+<main class="main">
+  <div class="tabbar">
+    <button class="tab on" onclick="show('overview',this)">Overview</button>
+    <button class="tab " onclick="show('trace',this)">Execution Trace</button>
+    <button class="tab " onclick="show('diffs',this)">Diffs</button>
+    <button class="tab " onclick="show('timeline',this)">Timeline</button>
+    
+  </div>
+
+  <!-- ═══════════ OVERVIEW ═══════════ -->
+  <div id="p-overview" class="panel on">
+    
+
+    <!-- HERO: Gauge + Stats in one row -->
+    <div class="hero-row">
+      <div class="gauge-cell glow-green">
+        <div class="gauge-wrap">
+          <svg width="160" height="160" viewBox="0 0 160 160">
+            <circle cx="80" cy="80" r="68" fill="none" stroke="rgba(255,255,255,.04)" stroke-width="9"/>
+            <circle class="gauge-fill" cx="80" cy="80" r="68" fill="none"
+              stroke="var(--green)"
+              stroke-width="9" stroke-linecap="round"
+              data-target="342.0"
+              style="stroke-dasharray:0 427;filter:drop-shadow(0 0 6px rgba(16,185,129,.35))"/>
+          </svg>
+          <div class="gauge-center">
+            <div class="gauge-pct green">80.0%</div>
+            <div class="gauge-label">Pass Rate</div>
+          </div>
+        </div>
+        <div class="gauge-sub"><b>4</b> of <b>5</b> tests</div>
+      </div>
+      <div class="stats-grid">
+        <div class="ss">
+          <div class="ss-label">Avg Score</div>
+          <div class="ss-num" style="color:var(--yellow-bright)">79.7</div>
+          <div class="ss-sub">out of 100</div>
+        </div>
+        <div class="ss">
+          <div class="ss-label">Total Cost</div>
+          <div class="ss-num blue">$0.017</div>
+          <div class="ss-sub">2,835 tokens (verified)</div>
+        </div>
+        <div class="ss">
+          <div class="ss-label">Avg Latency</div>
+          <div class="ss-num">1360<span style="font-size:12px;color:var(--text-4);font-weight:500">ms</span></div>
+          <div class="ss-sub">per test</div>
+        </div>
+        <div class="ss">
+          <div class="ss-label">Model</div>
+          <div style="font-size:13px;font-weight:600;color:var(--text);margin-top:2px;line-height:1.3">openai/gpt-4o-mini, openai/claude-3.5-sonnet</div>
+          
+          <div style="margin-top:4px;font-size:10px;color:var(--text-4);font-family:var(--mono)">in 2,170 · out 665</div>
+          
+        </div>
+      </div>
+    </div>
+
+    <!-- Meta cards -->
+    <div class="meta-row">
+      <div class="meta-card">
+        <div class="meta-label">Agent Model</div>
+        <div class="meta-value">openai/gpt-4o-mini, openai/claude-3.5-sonnet</div>
+        <div class="meta-sub">5 tests in this run</div>
+      </div>
+      
+      <div class="meta-card">
+        <div class="meta-label">Token Usage</div>
+        <div class="meta-value">2,835 tokens</div>
+        <div class="meta-sub">in 2,170 / out 665</div>
+      </div>
+      
+    </div>
+    
+    
+    <div class="meta-row">
+      <div class="meta-card">
+        <div class="meta-label">EvalView Judge (gpt-4o-mini)</div>
+        <div class="meta-value">$0.006</div>
+        <div class="meta-sub">1,320 tokens across 5 judge calls</div>
+      </div>
+      <div class="meta-card">
+        <div class="meta-label">Judge Token Breakdown</div>
+        <div class="meta-value">in 1,100 / out 220</div>
+        <div class="meta-sub">Separate from agent trace cost</div>
+      </div>
+    </div>
+    
+
+    <!-- Score chart + donut -->
+    <div class="chart-row">
+      <div class="card">
+        <div class="card-title">Score per Test</div>
+        <div class="chart-wrap" style="height:224px"><canvas id="bars"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Distribution</div>
+        <div class="chart-wrap" style="height:180px"><canvas id="donut"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Cost table -->
+    <div class="card">
+      <div class="card-title">Execution Cost per Query</div>
+      <table class="ev-table">
+        
+        <thead><tr><th>Test</th><th>Model</th><th>Trace Cost</th><th>Tokens</th><th>Latency</th><th>Score</th></tr></thead>
+        <tbody>
+          <tr>
+            <td style="font-weight:600">refund-flow</td>
+            <td class="mono" style="color:var(--text-4)">openai/gpt-4o-mini</td>
+            <td class="mono num" style="color:var(--blue-bright)">$0.0034</td>
+            <td class="mono" style="color:var(--text-3)">570 tokens</td>
+            <td style="color:var(--text-3)">1200ms</td>
+            <td class="num" style="color:var(--green-bright)">92.5</td>
+          </tr><tr>
+            <td style="font-weight:600">order-lookup</td>
+            <td class="mono" style="color:var(--text-4)">openai/gpt-4o-mini</td>
+            <td class="mono num" style="color:var(--blue-bright)">$0.0021</td>
+            <td class="mono" style="color:var(--text-3)">415 tokens</td>
+            <td style="color:var(--text-3)">800ms</td>
+            <td class="num" style="color:var(--green-bright)">88.0</td>
+          </tr><tr>
+            <td style="font-weight:600">billing-dispute</td>
+            <td class="mono" style="color:var(--text-4)">openai/gpt-4o-mini</td>
+            <td class="mono num" style="color:var(--blue-bright)">$0.0058</td>
+            <td class="mono" style="color:var(--text-3)">890 tokens</td>
+            <td style="color:var(--text-3)">2400ms</td>
+            <td class="num" style="color:var(--red-bright)">45.0</td>
+          </tr><tr>
+            <td style="font-weight:600">password-reset</td>
+            <td class="mono" style="color:var(--text-4)">openai/gpt-4o-mini</td>
+            <td class="mono num" style="color:var(--blue-bright)">$0.0012</td>
+            <td class="mono" style="color:var(--text-3)">260 tokens</td>
+            <td style="color:var(--text-3)">600ms</td>
+            <td class="num" style="color:var(--green-bright)">95.0</td>
+          </tr><tr>
+            <td style="font-weight:600">vip-escalation</td>
+            <td class="mono" style="color:var(--text-4)">openai/claude-3.5-sonnet</td>
+            <td class="mono num" style="color:var(--blue-bright)">$0.0045</td>
+            <td class="mono" style="color:var(--text-3)">700 tokens</td>
+            <td style="color:var(--text-3)">1800ms</td>
+            <td class="num" style="color:var(--yellow-bright)">78.0</td>
+          </tr>
+          <tr style="background:rgba(0,0,0,.08)">
+            <td style="font-weight:800">Total</td><td style="color:var(--text-4)">—</td>
+            <td class="mono num" style="color:var(--blue-bright)">$0.017</td>
+            <td colspan="3" style="font-size:11px;color:var(--text-4)">avg $0.003400 per query</td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="margin-top:10px;font-size:11px;color:var(--text-4);line-height:1.5">
+        Trace cost comes from the agent execution trace only. Mock or non-metered tools will show <code style="background:rgba(255,255,255,.04);padding:2px 6px;border-radius:3px;font-family:var(--mono);font-size:11px;border:1px solid var(--border)">$0</code> even when EvalView used a separate judge or local model during evaluation.
+         This check also used 5 EvalView judge calls (1320 tokens).
+      </div>
+    </div>
+    
+  </div>
+
+  <!-- ═══════════ TRACE ═══════════ -->
+  <div id="p-trace" class="panel ">
+    
+      <div class="item">
+        <div class="item-head" onclick="tog('tr1',this)">
+          <span class="badge b-green">✓</span>
+          <span class="item-name">refund-flow</span>
+          <div class="item-meta">
+            <span class="mc" style="color:var(--green-bright)">92.5/100</span>
+            <span class="mc">💰 $0.0034</span>
+            <span class="mc">⚡ 1200ms</span>
+            <span class="mc">570 tokens</span>
+            <span class="mc">🧠 openai/gpt-4o-mini</span>
+          </div>
+          <span class="chevron">▾</span>
+        </div>
+        <div id="tr1" class="item-body" >
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">
+            <span class="badge b-blue">Model: openai/gpt-4o-mini</span>
+            <span class="badge b-blue">in 450 / out 120 tokens</span><span class="badge b-blue">$0.0034</span>
+            
+            
+            
+          </div>
+          
+          <div style="background:rgba(37,99,235,.05);border:1px solid rgba(37,99,235,.12);border-radius:var(--r-xs);padding:9px 12px;margin-bottom:12px;font-size:13px;color:var(--text-2)">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-right:6px">Query</span>Process refund
+          </div>
+          <div style="text-align:center;padding:18px 0;font-size:12px;color:var(--text-4)">◎ Direct response — no tools invoked</div>
+          
+          
+          <div style="background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.1);border-radius:var(--r-xs);padding:9px 12px;margin-top:12px;font-size:13px;color:var(--text-2)">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-right:6px">Response</span>Done.
+          </div>
+        </div>
+      </div>
+    
+      <div class="item">
+        <div class="item-head" onclick="tog('tr2',this)">
+          <span class="badge b-green">✓</span>
+          <span class="item-name">order-lookup</span>
+          <div class="item-meta">
+            <span class="mc" style="color:var(--green-bright)">88.0/100</span>
+            <span class="mc">💰 $0.0021</span>
+            <span class="mc">⚡ 800ms</span>
+            <span class="mc">415 tokens</span>
+            <span class="mc">🧠 openai/gpt-4o-mini</span>
+          </div>
+          <span class="chevron">▾</span>
+        </div>
+        <div id="tr2" class="item-body" style="display:none">
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">
+            <span class="badge b-blue">Model: openai/gpt-4o-mini</span>
+            <span class="badge b-blue">in 320 / out 95 tokens</span><span class="badge b-blue">$0.0021</span>
+            
+            
+            
+          </div>
+          
+          <div style="background:rgba(37,99,235,.05);border:1px solid rgba(37,99,235,.12);border-radius:var(--r-xs);padding:9px 12px;margin-bottom:12px;font-size:13px;color:var(--text-2)">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-right:6px">Query</span>Order status
+          </div>
+          <div style="text-align:center;padding:18px 0;font-size:12px;color:var(--text-4)">◎ Direct response — no tools invoked</div>
+          
+          
+          <div style="background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.1);border-radius:var(--r-xs);padding:9px 12px;margin-top:12px;font-size:13px;color:var(--text-2)">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-right:6px">Response</span>Shipped.
+          </div>
+        </div>
+      </div>
+    
+      <div class="item">
+        <div class="item-head" onclick="tog('tr3',this)">
+          <span class="badge b-red">✗</span>
+          <span class="item-name">billing-dispute</span>
+          <div class="item-meta">
+            <span class="mc" style="color:var(--red-bright)">45.0/100</span>
+            <span class="mc">💰 $0.0058</span>
+            <span class="mc">⚡ 2400ms</span>
+            <span class="mc">890 tokens</span>
+            <span class="mc">🧠 openai/gpt-4o-mini</span>
+          </div>
+          <span class="chevron">▾</span>
+        </div>
+        <div id="tr3" class="item-body" style="display:none">
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">
+            <span class="badge b-blue">Model: openai/gpt-4o-mini</span>
+            <span class="badge b-blue">in 680 / out 210 tokens</span><span class="badge b-blue">$0.0058</span>
+            
+            
+            
+          </div>
+          
+          <div style="background:rgba(37,99,235,.05);border:1px solid rgba(37,99,235,.12);border-radius:var(--r-xs);padding:9px 12px;margin-bottom:12px;font-size:13px;color:var(--text-2)">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-right:6px">Query</span>Dispute
+          </div>
+          <div style="text-align:center;padding:18px 0;font-size:12px;color:var(--text-4)">◎ Direct response — no tools invoked</div>
+          
+          
+          <div style="background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.1);border-radius:var(--r-xs);padding:9px 12px;margin-top:12px;font-size:13px;color:var(--text-2)">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-right:6px">Response</span>Not found.
+          </div>
+        </div>
+      </div>
+    
+      <div class="item">
+        <div class="item-head" onclick="tog('tr4',this)">
+          <span class="badge b-green">✓</span>
+          <span class="item-name">password-reset</span>
+          <div class="item-meta">
+            <span class="mc" style="color:var(--green-bright)">95.0/100</span>
+            <span class="mc">💰 $0.0012</span>
+            <span class="mc">⚡ 600ms</span>
+            <span class="mc">260 tokens</span>
+            <span class="mc">🧠 openai/gpt-4o-mini</span>
+          </div>
+          <span class="chevron">▾</span>
+        </div>
+        <div id="tr4" class="item-body" style="display:none">
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">
+            <span class="badge b-blue">Model: openai/gpt-4o-mini</span>
+            <span class="badge b-blue">in 200 / out 60 tokens</span><span class="badge b-blue">$0.0012</span>
+            
+            
+            
+          </div>
+          
+          <div style="background:rgba(37,99,235,.05);border:1px solid rgba(37,99,235,.12);border-radius:var(--r-xs);padding:9px 12px;margin-bottom:12px;font-size:13px;color:var(--text-2)">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-right:6px">Query</span>Reset pw
+          </div>
+          <div style="text-align:center;padding:18px 0;font-size:12px;color:var(--text-4)">◎ Direct response — no tools invoked</div>
+          
+          
+          <div style="background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.1);border-radius:var(--r-xs);padding:9px 12px;margin-top:12px;font-size:13px;color:var(--text-2)">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-right:6px">Response</span>Sent.
+          </div>
+        </div>
+      </div>
+    
+      <div class="item">
+        <div class="item-head" onclick="tog('tr5',this)">
+          <span class="badge b-green">✓</span>
+          <span class="item-name">vip-escalation</span>
+          <div class="item-meta">
+            <span class="mc" style="color:var(--yellow-bright)">78.0/100</span>
+            <span class="mc">💰 $0.0045</span>
+            <span class="mc">⚡ 1800ms</span>
+            <span class="mc">700 tokens</span>
+            <span class="mc">🧠 openai/claude-3.5-sonnet</span>
+          </div>
+          <span class="chevron">▾</span>
+        </div>
+        <div id="tr5" class="item-body" style="display:none">
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">
+            <span class="badge b-blue">Model: openai/claude-3.5-sonnet</span>
+            <span class="badge b-blue">in 520 / out 180 tokens</span><span class="badge b-blue">$0.0045</span>
+            
+            
+            
+          </div>
+          
+          <div style="background:rgba(37,99,235,.05);border:1px solid rgba(37,99,235,.12);border-radius:var(--r-xs);padding:9px 12px;margin-bottom:12px;font-size:13px;color:var(--text-2)">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-right:6px">Query</span>VIP
+          </div>
+          <div style="text-align:center;padding:18px 0;font-size:12px;color:var(--text-4)">◎ Direct response — no tools invoked</div>
+          
+          
+          <div style="background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.1);border-radius:var(--r-xs);padding:9px 12px;margin-top:12px;font-size:13px;color:var(--text-2)">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-right:6px">Response</span>Escalated.
+          </div>
+        </div>
+      </div>
+    
+  </div>
+
+  <!-- ═══════════ DIFFS ═══════════ -->
+  <div id="p-diffs" class="panel ">
+    <div class="empty"><span class="empty-icon">✨</span>No diffs yet — run <code>evalview check</code> to compare against a baseline</div>
+  </div>
+
+  <!-- ═══════════ TIMELINE ═══════════ -->
+  <div id="p-timeline" class="panel ">
+    <div class="empty"><span class="empty-icon">⏱</span>No step timing data</div>
+  </div>
+
+  <!-- ═══════════ COMPARE ═══════════ -->
+  
+</main>
+
+<script>
+mermaid.initialize({startOnLoad:true,theme:'dark',securityLevel:'loose',useMaxWidth:true,
+  themeVariables:{darkMode:true,background:'transparent',primaryColor:'rgba(37,99,235,.1)',primaryTextColor:'#e2e8f0',primaryBorderColor:'rgba(37,99,235,.25)',lineColor:'rgba(100,116,139,.3)',secondaryColor:'rgba(16,185,129,.06)',tertiaryColor:'rgba(6,182,212,.06)',noteBkgColor:'rgba(37,99,235,.05)',noteTextColor:'#94a3b8',noteBorderColor:'rgba(37,99,235,.15)',actorBkg:'rgba(37,99,235,.08)',actorBorder:'rgba(37,99,235,.2)',actorTextColor:'#e2e8f0',signalColor:'#64748b',signalTextColor:'#cbd5e1'},
+  sequence:{useMaxWidth:true,width:180,wrap:false,actorFontFamily:'Inter,sans-serif',noteFontFamily:'Inter,sans-serif',messageFontFamily:'Inter,sans-serif',actorFontSize:12,messageFontSize:11,noteFontSize:10,boxTextMargin:8,mirrorActors:false,messageAlign:'center',actorMargin:30,bottomMarginAdj:4}
+});
+function show(id,btn){document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));document.getElementById('p-'+id).classList.add('on');btn.classList.add('on')}
+function tog(id,head){const el=document.getElementById(id);const o=el.style.display!=='none';el.style.display=o?'none':'block';head.querySelector('.chevron').style.transform=o?'':'rotate(180deg)'}
+
+/* Animate the gauge on load */
+requestAnimationFrame(()=>{setTimeout(()=>{document.querySelectorAll('.gauge-fill').forEach(c=>{const t=c.dataset.target||0;c.style.strokeDasharray=t+' 427'})},100)});
+
+
+(function(){
+  const passed=4,failed=1;
+  const scores=[92.5, 88.0, 45.0, 95.0, 78.0],names=["refund-flow", "order-lookup", "billing-dispute", "password-reset", "vip-escalation"];
+  const tc='rgba(100,116,139,.6)',gc='rgba(255,255,255,.025)';
+  const tt={backgroundColor:'rgba(6,11,24,.95)',borderColor:'rgba(51,65,85,.5)',borderWidth:1,titleFont:{family:'Inter',weight:'700',size:11},bodyFont:{family:'Inter',size:11},padding:8,cornerRadius:6};
+
+  new Chart(document.getElementById('donut'),{type:'doughnut',data:{labels:['Passed','Failed'],datasets:[{data:[passed,failed],backgroundColor:['rgba(16,185,129,.6)','rgba(239,68,68,.6)'],borderColor:['rgba(16,185,129,.08)','rgba(239,68,68,.08)'],borderWidth:2,hoverOffset:4}]},options:{responsive:true,maintainAspectRatio:false,cutout:'78%',plugins:{legend:{position:'bottom',labels:{color:tc,font:{family:'Inter',size:10,weight:'500'},padding:12,boxWidth:7,boxHeight:7,usePointStyle:true,pointStyle:'circle'}},tooltip:{...tt,callbacks:{label:ctx=>` ${ctx.label}: ${ctx.raw}`}}}}});
+
+  const sorted=names.map((n,i)=>({name:n,score:scores[i]})).sort((a,b)=>b.score-a.score);
+  /* Warning stripes for low scores */
+  const barBg=sorted.map(s=>{
+    if(s.score>=80) return 'rgba(16,185,129,.35)';
+    if(s.score>=60) return 'rgba(245,158,11,.35)';
+    return 'rgba(239,68,68,.35)';
+  });
+  const barBorder=sorted.map(s=>{
+    if(s.score>=80) return 'rgba(16,185,129,.55)';
+    if(s.score>=60) return 'rgba(245,158,11,.55)';
+    return 'rgba(239,68,68,.55)';
+  });
+  new Chart(document.getElementById('bars'),{type:'bar',
+    data:{labels:sorted.map(s=>s.name),datasets:[{label:'Score',data:sorted.map(s=>s.score),backgroundColor:barBg,borderColor:barBorder,borderWidth:1,borderRadius:3,borderSkipped:false,barPercentage:.55,categoryPercentage:.8}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      scales:{x:{min:0,max:100,grid:{color:gc},ticks:{color:tc,font:{family:'Inter',size:9},stepSize:25},border:{display:false}},y:{grid:{display:false},ticks:{color:'rgba(203,213,225,.7)',font:{family:'Inter',size:11,weight:'600'},padding:4,mirror:false},border:{display:false},afterFit:function(axis){axis.width=120}}},
+      plugins:{legend:{display:false},tooltip:{...tt,callbacks:{label:ctx=>` Score: ${ctx.raw}/100`}}}}});
+})();
+
+
+
+
+
+</script>
+
+<!-- Share bar -->
+<div style="position:fixed;bottom:0;left:0;right:0;z-index:100;background:rgba(6,11,24,.9);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--border);padding:8px 24px;display:flex;align-items:center;justify-content:space-between;font-family:var(--font);font-size:11px;color:var(--text-4)">
+  <span>Built with <a href="https://github.com/hidai25/eval-view" target="_blank" rel="noopener" style="color:var(--blue-bright);text-decoration:none;font-weight:600">EvalView</a> <span style="opacity:.25;margin:0 5px">|</span> Agent testing &amp; regression detection</span>
+  <span style="display:flex;align-items:center;gap:5px">
+    <a href="https://twitter.com/intent/tweet?text=Testing%20my%20AI%20agent%20with%20EvalView%20%E2%80%94%20catches%20regressions%20before%20they%20ship.%20%F0%9F%9B%A1%EF%B8%8F&url=https%3A%2F%2Fgithub.com%2Fhidai25%2Feval-view" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:3px;padding:4px 10px;border-radius:5px;background:rgba(29,155,240,.08);color:#1d9bf0;text-decoration:none;font-weight:600;font-size:10px;border:1px solid rgba(29,155,240,.1)"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>Share</a>
+    <a href="https://github.com/hidai25/eval-view" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:3px;padding:4px 10px;border-radius:5px;background:rgba(255,255,255,.03);color:var(--text-2);text-decoration:none;font-weight:600;font-size:10px;border:1px solid var(--border)"><svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>Star</a>
+  </span>
+</div>
+<div style="height:40px"></div>
+
+</body>
+</html>

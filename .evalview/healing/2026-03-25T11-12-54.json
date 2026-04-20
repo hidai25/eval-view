@@ -1,0 +1,72 @@
+{
+  "results": [
+    {
+      "test_name": "Service Outage Login Issue",
+      "original_status": "tools_changed",
+      "diagnosis": {
+        "action": "flag_review",
+        "trigger": "structural_change",
+        "reason": "tool change detected — review needed",
+        "root_cause_category": null,
+        "details": {
+          "tool_changes": [
+            "added: ? -> escalate_to_human"
+          ]
+        }
+      },
+      "attempted": false,
+      "healed": false,
+      "proposed": false,
+      "final_status": "tools_changed",
+      "original_score": 98.0,
+      "baseline_score": 96.5,
+      "retry_score": null,
+      "retry_status": null,
+      "baseline_model": "gpt-4o-mini",
+      "actual_model": "gpt-4o-mini",
+      "variant_saved": null,
+      "variant_path": null
+    },
+    {
+      "test_name": "Refund for Damaged Blender",
+      "original_status": "tools_changed",
+      "diagnosis": {
+        "action": "flag_review",
+        "trigger": "param_change",
+        "reason": "parameter changes detected — review needed",
+        "root_cause_category": null,
+        "details": {
+          "param_diffs": 3
+        }
+      },
+      "attempted": false,
+      "healed": false,
+      "proposed": false,
+      "final_status": "tools_changed",
+      "original_score": 86.7,
+      "baseline_score": 89.55,
+      "retry_score": null,
+      "retry_status": null,
+      "baseline_model": "gpt-4o-mini",
+      "actual_model": "gpt-4o-mini",
+      "variant_saved": null,
+      "variant_path": null
+    }
+  ],
+  "total_healed": 0,
+  "total_proposed": 0,
+  "total_review": 2,
+  "total_blocked": 0,
+  "attempted_count": 0,
+  "unresolved_count": 2,
+  "failed_count": 2,
+  "policy_version": "v1",
+  "thresholds": {
+    "min_variant_score": 70.0,
+    "max_cost_multiplier": 2.0,
+    "max_latency_multiplier": 3.0,
+    "max_auto_variants": 3.0
+  },
+  "model_update": null,
+  "audit_path": null
+}
