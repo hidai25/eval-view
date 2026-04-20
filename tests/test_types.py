@@ -865,3 +865,264 @@ class TestExecutionTraceCoercion:
                 metrics=ExecutionMetrics(total_cost=0.0, total_latency=5000.0),
             )
         assert "Invalid datetime format" in str(exc_info.value)
+
+
+# ============================================================================
+# Schema v2: Rationale + Simulation Types
+# ============================================================================
+
+
+from evalview.core.types import (  # noqa: E402
+    SCHEMA_VERSION,
+    RATIONALE_MAX_EVENTS_PER_RUN,
+    RATIONALE_MAX_TEXT_BYTES,
+    RationaleEvent,
+    ToolMock,
+    ResponseMock,
+    HttpMock,
+    MockSpec,
+    AppliedMock,
+    BranchExploration,
+    VariantOutcome,
+    SimulationResult,
+)
+
+
+class TestSchemaVersion:
+    """Schema version is the contract cloud consumes via X-EvalView-Schema."""
+
+    def test_schema_version_is_two(self):
+        assert SCHEMA_VERSION == 2
+
+    def test_caps_exposed(self):
+        assert RATIONALE_MAX_EVENTS_PER_RUN == 500
+        assert RATIONALE_MAX_TEXT_BYTES == 4096
+
+
+class TestRationaleEvent:
+    """RationaleEvent round-trips cleanly across serialization boundaries."""
+
+    def _sample(self) -> RationaleEvent:
+        return RationaleEvent(
+            step_id="step-42",
+            turn=3,
+            decision_type="tool_choice",
+            chosen="edit_file",
+            alternatives=["read_file", "search"],
+            rationale_text="User asked for an edit, file already read.",
+            input_hash="a" * 64,
+            model_reported_confidence=0.82,
+        )
+
+    def test_valid_event(self):
+        ev = self._sample()
+        assert ev.decision_type == "tool_choice"
+        assert ev.chosen == "edit_file"
+        assert ev.alternatives == ["read_file", "search"]
+        assert ev.model_reported_confidence == 0.82
+        assert ev.truncated is False
+
+    def test_optional_fields_default(self):
+        ev = RationaleEvent(
+            step_id="s1",
+            decision_type="refusal",
+            chosen="decline",
+            input_hash="b" * 64,
+        )
+        assert ev.turn is None
+        assert ev.alternatives == []
+        assert ev.rationale_text is None
+        assert ev.model_reported_confidence is None
+
+    def test_invalid_decision_type_rejected(self):
+        with pytest.raises(ValidationError):
+            RationaleEvent(
+                step_id="s1",
+                decision_type="maybe",  # not in the Literal
+                chosen="x",
+                input_hash="c" * 64,
+            )
+
+    def test_confidence_bounds(self):
+        with pytest.raises(ValidationError):
+            RationaleEvent(
+                step_id="s1",
+                decision_type="branch",
+                chosen="x",
+                input_hash="d" * 64,
+                model_reported_confidence=1.2,
+            )
+
+    def test_round_trip_json(self):
+        ev = self._sample()
+        data = ev.model_dump()
+        restored = RationaleEvent.model_validate(data)
+        assert restored == ev
+
+
+class TestExecutionTraceRationaleField:
+    """ExecutionTrace gains rationale_events without breaking existing callers."""
+
+    def test_defaults_to_empty_list(self):
+        trace = ExecutionTrace(
+            session_id="t",
+            start_time=datetime(2026, 4, 20, 10, 0, 0),
+            end_time=datetime(2026, 4, 20, 10, 0, 1),
+            steps=[],
+            final_output="ok",
+            metrics=ExecutionMetrics(total_cost=0.0, total_latency=0.0),
+        )
+        assert trace.rationale_events == []
+
+    def test_accepts_events(self):
+        ev = RationaleEvent(
+            step_id="s1",
+            decision_type="branch",
+            chosen="path_a",
+            input_hash="e" * 64,
+        )
+        trace = ExecutionTrace(
+            session_id="t",
+            start_time=datetime(2026, 4, 20, 10, 0, 0),
+            end_time=datetime(2026, 4, 20, 10, 0, 1),
+            steps=[],
+            final_output="ok",
+            metrics=ExecutionMetrics(total_cost=0.0, total_latency=0.0),
+            rationale_events=[ev],
+        )
+        assert len(trace.rationale_events) == 1
+        assert trace.rationale_events[0].chosen == "path_a"
+
+
+class TestMockSpec:
+    """Mock primitives validate and round-trip."""
+
+    def test_tool_mock(self):
+        m = ToolMock(tool="search", returns=[{"id": 1}], latency_ms=25)
+        assert m.tool == "search"
+        assert m.latency_ms == 25
+
+    def test_response_mock_regex_default(self):
+        m = ResponseMock(match_prompt="summar", returns="...")
+        assert m.regex is False
+        assert m.finish_reason == "stop"
+
+    def test_http_mock_status_bounds(self):
+        with pytest.raises(ValidationError):
+            HttpMock(url_pattern="x", status=42)
+
+    def test_mock_spec_all_sections(self):
+        spec = MockSpec(
+            seed=7,
+            strict=True,
+            tool_mocks=[ToolMock(tool="search", returns=[])],
+            response_mocks=[ResponseMock(match_prompt="hello", returns="hi")],
+            http_mocks=[HttpMock(url_pattern="api.example.com", status=503)],
+        )
+        assert spec.seed == 7
+        assert spec.strict is True
+        assert len(spec.tool_mocks) == 1
+        assert len(spec.response_mocks) == 1
+        assert len(spec.http_mocks) == 1
+
+    def test_mock_spec_round_trip(self):
+        spec = MockSpec(
+            seed=1,
+            tool_mocks=[ToolMock(tool="t", returns="ok")],
+        )
+        restored = MockSpec.model_validate(spec.model_dump())
+        assert restored == spec
+
+
+class TestSimulationResult:
+    """SimulationResult wraps the full simulation payload for cloud ingest."""
+
+    def test_empty_defaults(self):
+        sim = SimulationResult()
+        assert sim.seed == 0
+        assert sim.mocks_applied == []
+        assert sim.branches_explored == []
+        assert sim.variant_outcomes == []
+
+    def test_round_trip(self):
+        sim = SimulationResult(
+            seed=42,
+            mocks_applied=[AppliedMock(kind="tool", matcher="search", count=2)],
+            branches_explored=[
+                BranchExploration(
+                    branch_id="b0",
+                    decision_path=["s1:search", "s2:summarize"],
+                    final_output="summary",
+                    passed=True,
+                )
+            ],
+            variant_outcomes=[
+                VariantOutcome(
+                    variant_index=0,
+                    branch_id="b0",
+                    passed=True,
+                    score=92.5,
+                    total_cost=0.004,
+                    total_latency_ms=1800.0,
+                )
+            ],
+        )
+        restored = SimulationResult.model_validate(sim.model_dump())
+        assert restored == sim
+        assert restored.variant_outcomes[0].score == 92.5
+
+
+class TestEvaluationResultSimulationField:
+    """EvaluationResult carries an optional SimulationResult for simulate runs."""
+
+    def test_defaults_to_none(self, sample_execution_trace):
+        evaluations = Evaluations(
+            tool_accuracy=ToolEvaluation(accuracy=1.0),
+            sequence_correctness=SequenceEvaluation(
+                correct=True, expected_sequence=[], actual_sequence=[]
+            ),
+            output_quality=OutputEvaluation(
+                score=90.0,
+                rationale="ok",
+                contains_checks=ContainsChecks(),
+                not_contains_checks=ContainsChecks(),
+            ),
+            cost=CostEvaluation(total_cost=0.0, threshold=1.0, passed=True),
+            latency=LatencyEvaluation(total_latency=0.0, threshold=1000.0, passed=True),
+        )
+        result = EvaluationResult(
+            test_case="t",
+            passed=True,
+            score=90.0,
+            evaluations=evaluations,
+            trace=sample_execution_trace,
+            timestamp=datetime(2026, 4, 20, 10, 0, 0),
+        )
+        assert result.simulation is None
+
+    def test_accepts_simulation(self, sample_execution_trace):
+        evaluations = Evaluations(
+            tool_accuracy=ToolEvaluation(accuracy=1.0),
+            sequence_correctness=SequenceEvaluation(
+                correct=True, expected_sequence=[], actual_sequence=[]
+            ),
+            output_quality=OutputEvaluation(
+                score=90.0,
+                rationale="ok",
+                contains_checks=ContainsChecks(),
+                not_contains_checks=ContainsChecks(),
+            ),
+            cost=CostEvaluation(total_cost=0.0, threshold=1.0, passed=True),
+            latency=LatencyEvaluation(total_latency=0.0, threshold=1000.0, passed=True),
+        )
+        result = EvaluationResult(
+            test_case="t",
+            passed=True,
+            score=90.0,
+            evaluations=evaluations,
+            trace=sample_execution_trace,
+            timestamp=datetime(2026, 4, 20, 10, 0, 0),
+            simulation=SimulationResult(seed=7),
+        )
+        assert result.simulation is not None
+        assert result.simulation.seed == 7
