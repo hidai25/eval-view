@@ -491,7 +491,7 @@ def _display_check_results(
 
     if json_output:
         token_summary = _aggregate_token_summary(results, golden_traces)
-        output = {
+        output: Dict[str, Any] = {
             "summary": {
                 "total_tests": len(diffs),
                 "unchanged": sum(1 for _, d in diffs if d.overall_severity == DiffStatus.PASSED),
@@ -561,7 +561,7 @@ def _display_check_results(
             output["summary"]["token_usage"] = token_summary["token_usage"].model_dump()
             output["summary"]["total_cost"] = token_summary["total_cost"]
             if token_summary.get("baseline_token_usage") is not None:
-                output["summary"]["baseline_token_usage"] = token_summary["baseline_token_usage"].model_dump()  # type: ignore[union-attr]
+                output["summary"]["baseline_token_usage"] = token_summary["baseline_token_usage"].model_dump()
             if token_summary.get("token_delta_pct") is not None:
                 output["summary"]["token_delta_pct"] = token_summary["token_delta_pct"]
         if healing_summary:
