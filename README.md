@@ -694,6 +694,22 @@ Ships with a **bundled 15-prompt public canary** covering tool selection, JSON s
 
 [Full reference → docs/MODEL_CHECK.md](docs/MODEL_CHECK.md)
 
+## Simulation + Decision Rationale
+
+Two features that close the gaps the April 2026 agent-eval reports kept calling out: pre-flight what-if testing and structured "why did the agent branch?" logging.
+
+**Pre-flight simulation** — `evalview simulate` runs your test suite hermetically against declared mocks (tool calls, LLM responses, HTTP). Deterministic seed, zero cost, works in CI. Declare mocks in the test YAML, fan out with `--variants N`:
+
+```bash
+evalview simulate tests/ --variants 5 --seed 42
+```
+
+**Decision rationale** — every tool_choice / branch gets recorded with the chosen option, alternatives considered, and any model-reported reasoning (Anthropic `thinking` blocks auto-captured). Grouped across runs by `input_hash` so cloud analytics surfaces decision drift before your users notice. Local HTML replay shows it inline.
+
+Supported adapters: Anthropic, OpenAI Assistants, LangGraph, CrewAI native.
+
+[`docs/SIMULATE.md`](docs/SIMULATE.md) · [`docs/RATIONALE.md`](docs/RATIONALE.md) · [`examples/simulation/`](examples/simulation)
+
 ## Key Features
 
 | Feature | Description | Docs |
@@ -705,6 +721,8 @@ Ships with a **bundled 15-prompt public canary** covering tool selection, JSON s
 | **Release verdict layer** | Graded drift confidence + auto-injected stability recommendation | [Above](#daily-workflow) |
 | **Recommendation engine** | Suggests the next command from verdict, drift class, and history | [Above](#daily-workflow) |
 | **Model drift detection** | `model-check` — zero-judge canary suite that catches silent model updates | [Docs](#model-drift-detection) |
+| **Simulation harness** | `evalview simulate` — hermetic what-if runs against declared mocks, with `--variants N` fan-out | [Docs](docs/SIMULATE.md) |
+| **Decision rationale** | Structured `tool_choice` / `branch` logging with cross-run grouping for decision-drift detection | [Docs](docs/RATIONALE.md) |
 | **Assertion wizard** | Analyze captured traffic, suggest smart assertions automatically | [Above](#assertion-wizard--tests-from-real-traffic) |
 | **Auto-variant discovery** | Run N times, cluster paths, save valid variants | [Above](#auto-variant-discovery--solve-non-determinism) |
 | **Auto-heal** | Retry flakes, propose variants, escalate structural changes | [Above](#auto-heal--fix-flakes-without-leaving-ci) |
@@ -937,6 +955,7 @@ Then just ask Claude: "did my refactor break anything?" and it runs `run_check` 
 |---|---|---|
 | [Getting Started](docs/GETTING_STARTED.md) | [Golden Traces](docs/GOLDEN_TRACES.md) | [CI/CD](docs/CI_CD.md) |
 | [CLI Reference](docs/CLI_REFERENCE.md) | [Evaluation Metrics](docs/EVALUATION_METRICS.md) | [MCP Contracts](docs/MCP_CONTRACTS.md) |
+| [Simulation](docs/SIMULATE.md) | [Decision Rationale](docs/RATIONALE.md) | |
 | [Agent Instructions](AGENT_INSTRUCTIONS.md) | [Agent Recipes](docs/agent-recipes/README.md) | [Ollama Recipe](docs/agent-recipes/integrate-ollama.md) |
 | [FAQ](docs/FAQ.md) | [Test Generation](docs/TEST_GENERATION.md) | [Skills Testing](docs/SKILLS_TESTING.md) |
 | [YAML Schema](docs/YAML_SCHEMA.md) | [Statistical Mode](docs/STATISTICAL_MODE.md) | [Chat Mode](docs/CHAT_MODE.md) |

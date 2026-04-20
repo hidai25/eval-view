@@ -253,6 +253,39 @@ class CrewAINativeAdapter(AgentAdapter):
         if not final_output and hasattr(result, "pydantic") and result.pydantic:
             final_output = str(result.pydantic)
 
+        # Rationale capture. For CrewAI we emit two kinds of events:
+        # - tool_choice for each tool call the event bus captured, with
+        #   the prior tools as tool_state so cloud can group
+        #   (query, prior-tools) decisions.
+        # - branch whenever the agent running a step changes — that's
+        #   the multi-agent handoff signal the April 2026 reports called
+        #   out as "unsolved".
+        from evalview.core.rationale import RationaleCollector
+
+        rationale = RationaleCollector()
+        last_agent: Optional[str] = None
+        for i, (st, tc) in enumerate(zip(steps, tool_calls or [None] * len(steps))):
+            agent_name = (tc or {}).get("agent") if tc else None
+            if agent_name and agent_name != last_agent:
+                rationale.capture_branch(
+                    step_id=st.step_id,
+                    chosen_branch=agent_name,
+                    available_branches=[],
+                    state_summary={"handoff_from": last_agent, "step_index": i},
+                )
+                last_agent = agent_name
+
+            rationale.capture_tool_choice(
+                step_id=st.step_id,
+                chosen_tool=st.tool_name,
+                available_tools=[],
+                prompt=query if i == 0 else None,
+                tool_state={
+                    "agent": agent_name,
+                    "prior_tools": [s.tool_name for s in steps[:i]],
+                },
+            )
+
         return ExecutionTrace(
             session_id=session_id,
             start_time=start_dt,
@@ -268,6 +301,7 @@ class CrewAINativeAdapter(AgentAdapter):
                 ),
             ),
             model_id=model_name,
+            rationale_events=rationale.events(),
         )
 
     async def health_check(self) -> bool:
