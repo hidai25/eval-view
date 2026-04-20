@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Set
 import logging
 
 from evalview.adapters.base import AgentAdapter
+from evalview.core.rationale import RationaleCollector
 from evalview.core.types import (
     ExecutionTrace,
     StepTrace,
@@ -148,6 +149,12 @@ class LangGraphAdapter(AgentAdapter):
             input_tokens = 0
             output_tokens = 0
 
+            # Rationale capture. LangGraph gives us one event per new
+            # tool call on the stream; we mirror that into a
+            # tool_choice rationale so cloud analytics can group
+            # identical (query, prior-tools) decisions across runs.
+            rationale = RationaleCollector()
+
             async with client.stream(
                 "POST",
                 f"{base_url}/threads/{thread_id}/runs/stream",
@@ -256,6 +263,16 @@ class LangGraphAdapter(AgentAdapter):
                                                     metrics=StepMetrics(latency=0.0, cost=0.0),
                                                 )
                                                 steps.append(step)
+
+                                                rationale.capture_tool_choice(
+                                                    step_id=tool_id,
+                                                    chosen_tool=tool_name,
+                                                    available_tools=[],
+                                                    prompt=query if len(steps) == 1 else None,
+                                                    tool_state={
+                                                        "prior_tools": [s.tool_name for s in steps[:-1]],
+                                                    },
+                                                )
 
                                                 if self.verbose:
                                                     logger.debug(
@@ -366,6 +383,7 @@ class LangGraphAdapter(AgentAdapter):
             final_output=final_output,
             metrics=metrics,
             trace_context=tracer.build_trace_context(),
+            rationale_events=rationale.events(),
         )
 
     async def _execute_standard(

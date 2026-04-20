@@ -18,6 +18,8 @@ from typing import Any, Dict, Optional
 
 import httpx
 
+from evalview.core.types import SCHEMA_VERSION
+
 logger = logging.getLogger(__name__)
 
 CLOUD_API_URL = os.environ.get(
@@ -224,8 +226,17 @@ def push_comparison(results: Any, query: str, threshold: float = 0.8) -> Optiona
 
 
 async def _push_to_url(url: str, payload: Dict[str, Any], token: str) -> Optional[str]:
-    """Generic push with 3 retries, exponential backoff."""
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    """Generic push with 3 retries, exponential backoff.
+
+    Sends ``X-EvalView-Schema`` so the cloud can branch on wire-format
+    version. Clouds that only understand v1 should ignore the header
+    and safely drop fields they don't recognize.
+    """
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "X-EvalView-Schema": str(SCHEMA_VERSION),
+    }
     for attempt in range(3):
         try:
             async with httpx.AsyncClient(timeout=15) as client:
@@ -258,10 +269,16 @@ def push_result(gate_result: Any) -> Optional[str]:
         git = _get_git_context()
         source = "ci" if os.environ.get("CI") else "cli"
 
+        # Discriminator lets cloud route simulation runs to the
+        # /runs/[id]/simulation tab without guessing from the body.
+        run_type = "simulation" if gate_result.raw_json.get("simulation") else "check"
+
         payload = {
             "run_id": gate_result.raw_json.get("run_id", hashlib.md5(
                 str(gate_result.raw_json).encode()
             ).hexdigest()[:8]),
+            "run_type": run_type,
+            "schema_version": SCHEMA_VERSION,
             "status": gate_result.status.value,
             "source": source,
             **git,
@@ -294,6 +311,16 @@ def push_result(gate_result: Any) -> Optional[str]:
         obs_payload = obs.to_payload()
         if obs_payload:
             payload["observability"] = obs_payload
+
+        # Schema v2 fields. Cloud stores these in dedicated tables
+        # (simulations, rationale_events). Both optional — agents and
+        # adapters that don't capture them simply omit the keys.
+        simulation = gate_result.raw_json.get("simulation")
+        if simulation:
+            payload["simulation"] = simulation
+        rationale_events = gate_result.raw_json.get("rationale_events")
+        if rationale_events:
+            payload["rationale_events"] = rationale_events
 
         return asyncio.run(_push_async(payload, token))
     except Exception as e:

@@ -55,6 +55,8 @@ class OpenAIAssistantsAdapter(AgentAdapter):
         except ImportError:
             raise ImportError("OpenAI package required. Install with: pip install openai")
 
+        from evalview.core.rationale import RationaleCollector
+
         context = context or {}
         # Check context, then adapter config, then environment variable
         assistant_id = context.get("assistant_id") or self.assistant_id or os.getenv("OPENAI_ASSISTANT_ID")
@@ -169,6 +171,21 @@ class OpenAIAssistantsAdapter(AgentAdapter):
         if self.verbose:
             logger.info(f"✅ Assistant completed in {metrics.total_latency:.0f}ms")
 
+        # Rationale capture: emit one tool_choice event per tool call so
+        # cloud can group identical (query, prior-tools) decisions across
+        # runs. OpenAI Assistants doesn't expose o-series reasoning
+        # summaries through the Assistants API, so rationale_text stays
+        # None — the event itself is the signal.
+        rationale = RationaleCollector()
+        for i, st in enumerate(steps):
+            rationale.capture_tool_choice(
+                step_id=st.step_id,
+                chosen_tool=st.tool_name,
+                available_tools=[],
+                prompt=query if i == 0 else None,
+                tool_state={"prior_tools": [s.tool_name for s in steps[:i]]},
+            )
+
         return ExecutionTrace(
             session_id=thread.id,
             start_time=start_time,
@@ -177,6 +194,7 @@ class OpenAIAssistantsAdapter(AgentAdapter):
             final_output=final_output,
             metrics=metrics,
             trace_context=trace_context,
+            rationale_events=rationale.events(),
         )
 
     async def _extract_steps(self, client, thread_id: str, run_id: str) -> List[StepTrace]:

@@ -1,0 +1,84 @@
+# Example: hermetic simulation of a flight-booking agent.
+# Run:   evalview simulate examples/simulation/flight-booking.yaml --variants 3
+#
+# Every external dependency is mocked so the test costs zero and
+# produces identical output on every run at a given seed.
+
+name: flight-booking-sim
+description: Book the cheapest flight to Paris using mocked airline APIs.
+
+# Point this at whichever adapter you use day-to-day. Anthropic is
+# shown here because `thinking` blocks surface in the rationale
+# output.
+adapter: anthropic
+endpoint: claude-sonnet-4-5-20250929
+
+input:
+  query: Book the cheapest direct flight to Paris for next Tuesday.
+
+expected:
+  tools: [search_flights, book_flight, send_confirmation]
+  tool_sequence: [search_flights, book_flight, send_confirmation]
+  output:
+    contains: [confirmation, Paris]
+    not_contains: [error]
+
+thresholds:
+  min_score: 70
+
+tools:
+  - name: search_flights
+    description: Find flights matching criteria.
+    input_schema:
+      type: object
+      properties:
+        to: { type: string }
+        date: { type: string }
+      required: [to, date]
+  - name: book_flight
+    description: Book a specific flight by id.
+    input_schema:
+      type: object
+      properties:
+        flight_id: { type: string }
+      required: [flight_id]
+  - name: send_confirmation
+    description: Email the user a booking confirmation.
+    input_schema:
+      type: object
+      properties:
+        email: { type: string }
+        confirmation: { type: string }
+      required: [email, confirmation]
+
+mocks:
+  seed: 42
+  strict: false
+
+  tool_mocks:
+    # First call: agent searches; we return two candidates so the
+    # "pick cheapest" logic has something to work with.
+    - tool: search_flights
+      match_params: { to: Paris }
+      returns:
+        - { id: FL123, price: 299, airline: Air France, direct: true }
+        - { id: FL456, price: 389, airline: Delta, direct: true }
+      latency_ms: 25
+
+    # The cheapest id must win; this mock confirms the booking when
+    # the agent picks FL123.
+    - tool: book_flight
+      match_params: { flight_id: FL123 }
+      returns:
+        confirmation: CONF-789
+        status: confirmed
+
+    # A deliberate failure path — if the agent picks the wrong flight,
+    # this mock raises so the test surfaces the bug.
+    - tool: book_flight
+      match_params: { flight_id: FL456 }
+      error: Booking declined — not eligible.
+
+    - tool: send_confirmation
+      returns: { sent: true }
+      latency_ms: 15

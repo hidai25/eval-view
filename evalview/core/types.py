@@ -20,6 +20,18 @@ Difficulty = Literal["trivial", "easy", "medium", "hard", "expert"]
 
 logger = logging.getLogger(__name__)
 
+# Wire-format schema version for cloud payloads. Bumped to 2 when the
+# simulation and rationale_events fields were introduced. Sent as
+# X-EvalView-Schema header; older clouds that only understand v1 ignore
+# the new fields but still accept the core payload.
+SCHEMA_VERSION = 2
+
+# Caps for decision-rationale capture. Enforced by the collector in
+# evalview/core/rationale.py (Phase 2). Kept here so cloud ingest can
+# mirror the same limits in its Zod validator.
+RATIONALE_MAX_EVENTS_PER_RUN = 500
+RATIONALE_MAX_TEXT_BYTES = 4096
+
 
 # --- Test Case Types ---
 
@@ -246,6 +258,12 @@ class TestCase(BaseModel):
     # Populated by the loader so commands can update the underlying YAML file.
     source_file: Optional[str] = Field(default=None, exclude=True)
 
+    # Simulation mocks. When present, ``evalview simulate`` runs the
+    # test hermetically by intercepting matching tool calls and serving
+    # the mock response instead of hitting the real tool_executor.
+    # Ignored by ``evalview check`` and ``evalview snapshot``.
+    mocks: Optional["MockSpec"] = None
+
     # ----- Computed properties -----
     @property
     def is_multi_turn(self) -> bool:
@@ -338,6 +356,200 @@ class TestCase(BaseModel):
             normalized.append(tag)
 
         return sorted(set(normalized))
+
+# --- Rationale Capture Types ---
+# Structured decision-rationale logging. Optional adapter hooks populate
+# these; local HTML replay renders them inline; cloud persists them for
+# cross-run analytics. See docs/rationale.md (Phase 2) for the capture
+# contract. Caps are advisory here and enforced at collection time.
+
+
+DecisionType = Literal["tool_choice", "branch", "refusal", "retry"]
+
+
+class RationaleEvent(BaseModel):
+    """A single decision the agent made during execution.
+
+    Captured by adapter hooks (Anthropic ``thinking`` blocks, OpenAI
+    reasoning summaries, LangGraph node transitions, etc.). Grouped
+    across runs by ``input_hash`` so cloud analytics can answer
+    "every time the agent saw this state, which branch did it take?".
+    """
+
+    step_id: str = Field(description="Stable id shared with the corresponding StepTrace/Span.")
+    turn: Optional[int] = Field(
+        default=None,
+        description="Turn index for multi-turn tests; None for single-turn.",
+    )
+    decision_type: DecisionType = Field(
+        description="What kind of decision this was: tool_choice, branch, refusal, retry."
+    )
+    chosen: str = Field(description="The option the agent picked (tool name, branch label, etc.)")
+    alternatives: List[str] = Field(
+        default_factory=list,
+        description="Other options the agent could have taken. Empty when unknown.",
+    )
+    rationale_text: Optional[str] = Field(
+        default=None,
+        description=(
+            f"Free-form reasoning, typically from CoT/thinking/reasoning fields. "
+            f"Truncated to {RATIONALE_MAX_TEXT_BYTES} bytes by the collector."
+        ),
+    )
+    input_hash: str = Field(
+        description=(
+            "sha256 of normalized (prompt + tool-state). Used for cross-run grouping. "
+            "Identical hashes across runs identify 'same situation, different decisions'."
+        ),
+    )
+    model_reported_confidence: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Self-reported confidence 0.0-1.0 when the model supplies it; None otherwise.",
+    )
+    truncated: bool = Field(
+        default=False,
+        description="True when the collector truncated rationale_text to fit the cap.",
+    )
+
+
+# --- Simulation Types ---
+# Pre-deployment simulation harness. OSS owns the engine entirely. The
+# simulator wraps an adapter and serves mocks for tool calls, LLM
+# responses, and outbound HTTP so tests can run hermetically and
+# what-if scenarios can be explored before shipping.
+
+
+class ToolMock(BaseModel):
+    """Intercepts a named tool invocation.
+
+    Matching is exact on ``tool`` plus optional ``match_params`` (subset-
+    match on parameters). Unmatched tool calls fall through to the real
+    adapter unless ``strict`` is set on the parent MockSpec.
+    """
+
+    tool: str = Field(description="Tool name to intercept (exact match).")
+    match_params: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional parameter subset to match. Omit to match any call to the tool.",
+    )
+    returns: Any = Field(description="Value returned to the agent in place of the real tool result.")
+    latency_ms: float = Field(default=0.0, ge=0.0, description="Simulated latency for realism.")
+    error: Optional[str] = Field(
+        default=None,
+        description="If set, the mock raises this error instead of returning a value.",
+    )
+
+
+class ResponseMock(BaseModel):
+    """Intercepts an LLM completion.
+
+    Matched on ``match_prompt`` (substring or regex when ``regex=True``).
+    ``returns`` replaces the full completion string.
+    """
+
+    match_prompt: str = Field(description="Substring or regex to match against the prompt.")
+    regex: bool = Field(default=False, description="Treat match_prompt as a regex when true.")
+    returns: str = Field(description="Completion text to return to the agent.")
+    finish_reason: str = Field(default="stop", description="Finish reason surfaced to the caller.")
+
+
+class HttpMock(BaseModel):
+    """Intercepts outbound HTTP calls from tools or the agent runtime."""
+
+    url_pattern: str = Field(description="URL substring or regex to match.")
+    regex: bool = Field(default=False, description="Treat url_pattern as a regex when true.")
+    method: Optional[str] = Field(default=None, description="HTTP method filter (GET/POST/...). None matches any.")
+    status: int = Field(default=200, ge=100, le=599)
+    body: Any = Field(default=None, description="Response body (string or JSON-serializable).")
+    headers: Dict[str, str] = Field(default_factory=dict)
+
+
+class MockSpec(BaseModel):
+    """Full mock configuration for a simulated test run.
+
+    Loaded from the ``mocks:`` section of a test YAML:
+
+        mocks:
+          seed: 42
+          strict: false
+          tool_mocks:
+            - tool: search_flights
+              returns: [{"id": "FL123", "price": 299}]
+          response_mocks:
+            - match_prompt: "summarize"
+              returns: "Summary: ..."
+          http_mocks:
+            - url_pattern: api.example.com
+              status: 503
+    """
+
+    seed: int = Field(default=0, description="Deterministic RNG seed for reproducibility.")
+    strict: bool = Field(
+        default=False,
+        description=(
+            "When true, any tool/LLM/HTTP call that doesn't match a mock raises. "
+            "When false (default), unmatched calls fall through to the real adapter."
+        ),
+    )
+    tool_mocks: List[ToolMock] = Field(default_factory=list)
+    response_mocks: List[ResponseMock] = Field(default_factory=list)
+    http_mocks: List[HttpMock] = Field(default_factory=list)
+
+
+class AppliedMock(BaseModel):
+    """Record of a mock that was actually triggered during simulation."""
+
+    kind: Literal["tool", "response", "http"]
+    matcher: str = Field(description="The tool name, prompt pattern, or URL pattern that matched.")
+    count: int = Field(default=1, ge=1, description="How many times this mock fired in the run.")
+
+
+class BranchExploration(BaseModel):
+    """A single branch the simulator explored.
+
+    For what-if runs with ``--variants N``, the simulator can fan out at
+    each decision point and record every path taken. Each branch carries
+    the chain of chosen tools and the final output.
+    """
+
+    branch_id: str
+    parent_branch_id: Optional[str] = None
+    decision_path: List[str] = Field(
+        default_factory=list,
+        description="Ordered list of (step_id:chosen) tokens describing the path.",
+    )
+    final_output: Optional[str] = None
+    passed: Optional[bool] = None
+
+
+class VariantOutcome(BaseModel):
+    """Aggregate outcome for one variant of a simulated test."""
+
+    variant_index: int = Field(ge=0)
+    branch_id: str
+    passed: bool
+    score: Optional[float] = Field(default=None, ge=0, le=100)
+    total_cost: float = 0.0
+    total_latency_ms: float = 0.0
+    notes: Optional[str] = None
+
+
+class SimulationResult(BaseModel):
+    """Payload attached to an EvaluationResult when run under ``evalview simulate``.
+
+    Cloud receives this under the ``simulation`` key alongside the
+    existing GateResult fields. Cloud stores ``mocks_applied`` and
+    ``branches_explored`` in the ``simulations`` table and renders them
+    on the simulation tab; it never runs simulations itself.
+    """
+
+    seed: int = 0
+    mocks_applied: List[AppliedMock] = Field(default_factory=list)
+    branches_explored: List[BranchExploration] = Field(default_factory=list)
+    variant_outcomes: List[VariantOutcome] = Field(default_factory=list)
+
 
 # --- Execution Trace Types ---
 
@@ -592,6 +804,12 @@ class ExecutionTrace(BaseModel):
     model_provider: Optional[str] = None  # e.g. "anthropic"
     turns: Optional[List[TurnTrace]] = None
 
+    # Structured decision rationales captured by adapter hooks. Empty by
+    # default; populated when the adapter supports it (Anthropic
+    # thinking, OpenAI reasoning summary, LangGraph node transitions).
+    # Caps enforced by evalview/core/rationale.py at collection time.
+    rationale_events: List[RationaleEvent] = Field(default_factory=list)
+
     @field_validator("start_time", "end_time", mode="before")
     @classmethod
     def coerce_datetime(cls, v, info: ValidationInfo):
@@ -815,6 +1033,10 @@ class EvaluationResult(BaseModel):
 
     # Cross-turn coherence analysis (context amnesia, contradictions).
     coherence_report: Optional[CoherenceReportDict] = None
+
+    # Simulation payload. Populated only when the test ran under
+    # ``evalview simulate``; None for normal check runs.
+    simulation: Optional[SimulationResult] = None
 
 
 # --- Statistical/Variance Evaluation Types ---
