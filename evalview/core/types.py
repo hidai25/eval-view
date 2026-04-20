@@ -258,6 +258,12 @@ class TestCase(BaseModel):
     # Populated by the loader so commands can update the underlying YAML file.
     source_file: Optional[str] = Field(default=None, exclude=True)
 
+    # Simulation mocks. When present, ``evalview simulate`` runs the
+    # test hermetically by intercepting matching tool calls and serving
+    # the mock response instead of hitting the real tool_executor.
+    # Ignored by ``evalview check`` and ``evalview snapshot``.
+    mocks: Optional["MockSpec"] = None
+
     # ----- Computed properties -----
     @property
     def is_multi_turn(self) -> bool:
