@@ -346,6 +346,34 @@ class _DeprecatedHTMLReporter:
             for step in trace.steps
         ]
 
+    def _serialize_rationale_events(self, result: EvaluationResult) -> list:
+        """Serialize rationale_events for the replay timeline.
+
+        Schema v2 capture (docs: evalview/core/rationale.py). Missing
+        field on older traces yields an empty list so templates can
+        always iterate without guarding.
+        """
+        events = getattr(result.trace, "rationale_events", None) or []
+        serialized = []
+        for ev in events:
+            text = ev.rationale_text or ""
+            if len(text) > 600:
+                text = text[:600] + " …"
+            serialized.append({
+                "step_id": ev.step_id,
+                "turn": ev.turn if ev.turn is not None else "",
+                "decision_type": ev.decision_type,
+                "chosen": ev.chosen,
+                "alternatives": list(ev.alternatives),
+                "rationale_text": text,
+                "truncated": ev.truncated,
+                "confidence": (
+                    round(ev.model_reported_confidence * 100)
+                    if ev.model_reported_confidence is not None else None
+                ),
+            })
+        return serialized
+
     def _render_template(
         self,
         results: List[EvaluationResult],
@@ -426,6 +454,9 @@ class _DeprecatedHTMLReporter:
                 "min_score": r.min_score if hasattr(r, "min_score") else 0,
                 # Trace replay: prefer rich TraceContext spans; fallback to StepTrace list
                 "spans": self._serialize_spans(r),
+                # Decision rationales captured by the adapter (schema v2).
+                # Empty when the adapter doesn't support capture.
+                "rationale_events": self._serialize_rationale_events(r),
             })
 
         compare_data = self._compute_compare(results_data)
@@ -1200,6 +1231,52 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                                     populate <code>ExecutionTrace.trace_context</code> using
                                     <code>evalview.core.tracing.Tracer</code>.
                                 </p>
+                                {% endif %}
+
+                                {% if result.rationale_events %}
+                                <h6 class="mt-4">Decision Rationale
+                                    <span class="badge bg-secondary ms-1">{{ result.rationale_events | length }}</span>
+                                </h6>
+                                <p class="text-muted" style="font-size:12px;">
+                                    Why the agent picked each option at each decision point. Grouped
+                                    by <code>input_hash</code> in cloud analytics for cross-run drift detection.
+                                </p>
+                                <ul class="trace-timeline">
+                                    {% for ev in result.rationale_events %}
+                                    {% set rid = "rationale-" ~ ri ~ "-" ~ loop.index %}
+                                    <li>
+                                        <div class="span-row" data-bs-toggle="collapse" data-bs-target="#{{ rid }}">
+                                            <span class="span-kind kind-tool">{{ ev.decision_type }}</span>
+                                            <span class="span-name">{{ ev.chosen }}</span>
+                                            <div class="span-meta">
+                                                {% if ev.alternatives %}
+                                                <span>{{ ev.alternatives | length }} alt{% if ev.alternatives | length != 1 %}s{% endif %}</span>
+                                                {% endif %}
+                                                {% if ev.confidence is not none %}
+                                                <span class="token-pill">conf {{ ev.confidence }}%</span>
+                                                {% endif %}
+                                                {% if ev.truncated %}
+                                                <span class="token-pill">truncated</span>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                        <div id="{{ rid }}" class="collapse">
+                                            <div class="span-detail">
+                                                <span class="detail-label">Chosen</span>
+                                                <div class="detail-value">{{ ev.chosen }}</div>
+                                                {% if ev.alternatives %}
+                                                <span class="detail-label">Alternatives considered</span>
+                                                <div class="detail-value">{{ ev.alternatives | join(", ") }}</div>
+                                                {% endif %}
+                                                {% if ev.rationale_text %}
+                                                <span class="detail-label">Reasoning</span>
+                                                <div class="detail-value prompt-text">{{ ev.rationale_text }}</div>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
                                 {% endif %}
                             </div><!-- /tab-trace -->
                         </div><!-- /tab-content -->

@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 import logging
 
 from evalview.adapters.base import AgentAdapter
+from evalview.core.rationale import RationaleCollector
 from evalview.core.types import (
     ExecutionTrace,
     StepTrace,
@@ -141,6 +142,13 @@ class AnthropicAdapter(AgentAdapter):
         # Initialize tracer for detailed span capture
         tracer = Tracer()
 
+        # Rationale capture. Claude's ``thinking`` blocks, when
+        # enabled, give us a free source of model-reported reasoning
+        # per tool_use round. Absence is fine — we still record a
+        # tool_choice event with an empty rationale_text.
+        rationale = RationaleCollector()
+        available_tool_names = [t.get("name", "") for t in api_tools]
+
         if self.verbose:
             logger.info(f"🚀 Executing Anthropic Claude: {query[:50]}...")
             logger.debug(f"Model: {model}, Tools: {len(api_tools)}")
@@ -222,6 +230,15 @@ class AnthropicAdapter(AgentAdapter):
                     block for block in response.content if block.type == "tool_use"
                 ]
 
+                # Extract any model-reported reasoning (extended
+                # thinking). Older models simply don't emit these
+                # blocks, in which case ``thinking_text`` stays empty.
+                thinking_text = "".join(
+                    getattr(b, "thinking", "") or ""
+                    for b in response.content
+                    if getattr(b, "type", "") == "thinking"
+                ) or None
+
                 if not tool_use_blocks:
                     # No tool calls - extract final text response
                     for block in response.content:
@@ -299,6 +316,21 @@ class AnthropicAdapter(AgentAdapter):
                     )
                     steps.append(step_trace)
 
+                    # Capture the tool_choice rationale. One event per
+                    # tool call so the cloud can group identical
+                    # (prompt, tool_state) decisions across runs.
+                    rationale.capture_tool_choice(
+                        step_id=tool_id,
+                        chosen_tool=tool_name,
+                        available_tools=available_tool_names,
+                        prompt=query if round_count == 1 else None,
+                        tool_state={
+                            "round": round_count,
+                            "prior_tools": [s.tool_name for s in steps[:-1]],
+                        },
+                        rationale_text=thinking_text,
+                    )
+
                     # Prepare tool result for next message
                     tool_results.append(
                         {
@@ -365,6 +397,7 @@ class AnthropicAdapter(AgentAdapter):
             trace_context=trace_context,
             model_id=resolved_model_id,
             model_provider="anthropic",
+            rationale_events=rationale.events(),
         )
 
     def _get_mock_response(self, tool_name: str, tools: List[Dict[str, Any]]) -> Any:
