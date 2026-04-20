@@ -1,11 +1,10 @@
 """Snapshot command — run tests and save passing results as baseline."""
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, TYPE_CHECKING
-
-import json
 
 import click
 import yaml  # type: ignore[import-untyped]
@@ -27,11 +26,14 @@ def _save_snapshot_results(
     notes: Optional[str],
     variant: Optional[str] = None,
     quiet: bool = False,
-) -> int:
+) -> Dict[str, Path]:
     """Save passing test results as golden baselines.
 
     Returns:
-        Number of tests successfully saved
+        Mapping of test_case name to the saved golden file path. Only
+        tests that were actually written appear in the result — tests
+        that raised during save are omitted so callers can report
+        accurate per-test status.
     """
     from evalview.core.golden import GoldenStore
 
@@ -52,30 +54,30 @@ def _save_snapshot_results(
             if not timed_out and not low_score:
                 console.print("[dim]  Run evalview run to see detailed failure reasons, then fix and retry.[/dim]")
             console.print()
-        return 0
+        return {}
 
     # Save passing results as golden
     if not quiet:
         console.print()
-    saved_count = 0
-    saved_names = []
+    saved: Dict[str, Path] = {}
     for result in passing:
         try:
-            store.save_golden(result, notes=notes, variant_name=variant)
+            path = store.save_golden(result, notes=notes, variant_name=variant)
             variant_label = f" (variant: {variant})" if variant else ""
             if not quiet:
                 console.print(f"[green]✓ Snapshotted:[/green] {result.test_case}{variant_label}")
-            saved_count += 1
-            saved_names.append(result.test_case)
+            # save_golden returns a Path on success; fall back to the
+            # deterministic path helper if an older implementation returns None.
+            saved[result.test_case] = path if path is not None else store._get_golden_path(result.test_case, variant)
         except Exception as e:
             if not quiet:
                 console.print(f"[red]❌ Failed to save {result.test_case}: {e}[/red]")
 
     # Silent cloud push — never blocks or fails the snapshot
-    if saved_names:
-        _cloud_push(saved_names)
+    if saved:
+        _cloud_push(list(saved.keys()))
 
-    return saved_count
+    return saved
 
 
 def _is_generated_draft(test_case) -> bool:
@@ -195,7 +197,7 @@ def _group_tests_by_target(test_cases: List, config) -> Dict[tuple[str, str], li
 @click.option("--no-judge", "no_judge", is_flag=True, default=False, help="Skip LLM-as-judge evaluation. Uses deterministic scoring only (scores capped at 75). No API key required.")
 @click.option("--timeout", default=30.0, type=float, help="Timeout in seconds per test (default: 30).")
 @click.option("--preview", is_flag=True, help="Show what would change without saving. Dry-run mode for snapshot.")
-@click.option("--json", "json_output", is_flag=True, help="Output JSON for CI")
+@click.option("--json", "json_output", is_flag=True, help="Emit a JSON payload on stdout for CI. Suppresses Rich output, auto-approves generated drafts, and skips the dashboard prompt.")
 @track_command("snapshot")
 @click.pass_context
 def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant: str, approve_generated: bool, reset: bool, judge_model: Optional[str], no_judge: bool, timeout: float, preview: bool, json_output: bool):
@@ -224,6 +226,15 @@ def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant:
     from evalview.core.celebrations import Celebrations
     from evalview.core.messages import get_random_snapshot_message
     from evalview.skills.ui_utils import print_evalview_banner
+
+    # --preview and --json collide: preview emits human-readable diff output,
+    # --json promises a parseable payload. Fail fast rather than silently
+    # drop one of them.
+    if json_output and preview:
+        print(json.dumps(
+            {"error": "--preview cannot be combined with --json"}, indent=2
+        ))
+        ctx.exit(2)
 
     if not json_output:
         print_evalview_banner(console, subtitle="[dim]Catch agent regressions before you ship[/dim]")
@@ -265,12 +276,12 @@ def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant:
             console.print(f"[red]❌ Failed to load test cases: {e}[/red]\n")
             Celebrations.no_tests_found()
         else:
-            print(json.dumps({"error": str(e)}))
+            print(json.dumps({"error": str(e)}, indent=2))
         return
 
     if not test_cases:
         if json_output:
-            print(json.dumps({"error": "no tests found"}))
+            print(json.dumps({"error": "no tests found"}, indent=2))
         else:
             Celebrations.no_tests_found()
         return
@@ -280,7 +291,7 @@ def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant:
         test_cases = [tc for tc in test_cases if tc.name == test]
         if not test_cases:
             if json_output:
-                print(json.dumps({"error": f"no test found with name: {test}"}))
+                print(json.dumps({"error": f"no test found with name: {test}"}, indent=2))
             else:
                 console.print(f"[red]❌ No test found with name: {test}[/red]\n")
             return
@@ -329,13 +340,20 @@ def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant:
     endpoints, adapters = _summarize_mixed_targets(test_cases, config)
     target_groups = _group_tests_by_target(test_cases, config)
 
-    # Execute tests with spinner
-    from evalview.commands.shared import run_with_spinner
-    results = run_with_spinner(
-        lambda: _execute_snapshot_tests(test_cases, config, timeout=timeout, skip_llm_judge=no_judge),
-        "Snapshotting",
-        len(test_cases),
-    )
+    # Execute tests. In JSON mode we skip the live spinner — it writes Rich
+    # frames to the same console stream as our JSON payload and would make
+    # stdout unparseable.
+    if json_output:
+        results = _execute_snapshot_tests(
+            test_cases, config, timeout=timeout, skip_llm_judge=no_judge, json_output=True
+        )
+    else:
+        from evalview.commands.shared import run_with_spinner
+        results = run_with_spinner(
+            lambda: _execute_snapshot_tests(test_cases, config, timeout=timeout, skip_llm_judge=no_judge),
+            "Snapshotting",
+            len(test_cases),
+        )
     failed_count = len(test_cases) - len(results)
 
     # Preview mode: show what would change without saving
@@ -380,11 +398,11 @@ def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant:
         return
 
     # Save passing results as golden
-    saved_count = _save_snapshot_results(results, notes, variant=variant, quiet=json_output)
+    saved_paths = _save_snapshot_results(results, notes, variant=variant, quiet=json_output)
+    saved_count = len(saved_paths)
 
     # JSON output mode
     if json_output:
-        golden_store = GoldenStore()
         snapshot_data = {
             "snapshot": {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -401,15 +419,15 @@ def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant:
                     "name": result.test_case,
                     "passed": result.passed,
                     "score": result.score,
-                    "saved": result.passed and saved_count > 0,
-                    "golden_file": str(golden_store.golden_dir / f"{result.test_case}.yaml")
-                    if result.passed and saved_count > 0
+                    "saved": result.test_case in saved_paths,
+                    "golden_file": str(saved_paths[result.test_case])
+                    if result.test_case in saved_paths
                     else None,
                 }
                 for result in results
             ],
         }
-        print(json.dumps(snapshot_data))
+        print(json.dumps(snapshot_data, indent=2))
         state_store.update_snapshot(test_count=saved_count)
         return
 

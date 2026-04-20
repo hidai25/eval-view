@@ -552,8 +552,13 @@ def _execute_snapshot_tests(
     config: Optional["EvalViewConfig"],
     timeout: float = 30.0,
     skip_llm_judge: bool = False,
+    json_output: bool = False,
 ) -> List["EvaluationResult"]:
-    """Execute tests and evaluate results for snapshot/benchmark commands."""
+    """Execute tests and evaluate results for snapshot/benchmark commands.
+
+    When json_output=True, per-test console output is suppressed so stdout
+    stays clean for JSON consumers.
+    """
     from evalview.evaluators.evaluator import Evaluator
 
     results = []
@@ -563,10 +568,12 @@ def _execute_snapshot_tests(
         try:
             adapter = _build_adapter_for_tc(tc, config, timeout)
         except ValueError as e:
-            console.print(f"[yellow]⚠ Skipping {tc.name}: {e}[/yellow]")
+            if not json_output:
+                console.print(f"[yellow]⚠ Skipping {tc.name}: {e}[/yellow]")
             return None
         if adapter is None:
-            console.print(f"[yellow]⚠ Skipping {tc.name}: No adapter/endpoint configured[/yellow]")
+            if not json_output:
+                console.print(f"[yellow]⚠ Skipping {tc.name}: No adapter/endpoint configured[/yellow]")
             return None
 
         trace = await _execute_agent_with_slow_warning(tc, adapter, timeout)
@@ -581,6 +588,8 @@ def _execute_snapshot_tests(
         if isinstance(outcome, BaseException):
             error_str = str(outcome)
             endpoint = tc.endpoint or (config.endpoint if config else None) or ""
+            if json_output:
+                continue
             if isinstance(outcome, (asyncio.TimeoutError, asyncio.CancelledError)):
                 console.print(f"[red]✗ {tc.name}: Async execution failed - {outcome}[/red]")
             else:
@@ -596,6 +605,9 @@ def _execute_snapshot_tests(
 
         result = outcome
         results.append(result)
+
+        if json_output:
+            continue
 
         if result.passed:
             console.print(f"[green]✓ {tc.name}:[/green] {result.score:.1f}/100")
