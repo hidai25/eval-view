@@ -47,6 +47,10 @@ env/
 .evalview/config.yaml
 .evalview/golden/
 .evalview/history.jsonl
+# Generated artifacts that should not be tracked
+.evalview/*.html
+.evalview/badge.json
+.evalview/healing/
 tests/test-cases/*.yaml
 !tests/test-cases/example.yaml
 
