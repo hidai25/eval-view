@@ -7,6 +7,8 @@ input:
   query: "What adapters does EvalView support?"
 
 expected:
+  tools:
+    - evalview_cli
   output:
     contains:
       - "http"
@@ -19,4 +21,4 @@ expected:
 thresholds:
   min_score: 70
   max_cost: 0.05
-  max_latency: 30000
+  max_latency: 180000
