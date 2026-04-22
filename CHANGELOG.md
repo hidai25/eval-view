@@ -7,6 +7,103 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-04-23
+
+### Added
+- **Aider CLI adapter** (`aider`) — drive the Aider coding assistant as an
+  EvalView adapter. Resolves the binary from `AIDER_PATH` (or `PATH`),
+  captures tool calls and diffs, and ships with a narrow deterministic
+  test set to keep Aider-specific flake off the regression path.
+- **Autopr loop** — closes the prod-incident → regression-test → PR loop
+  (#172). When the monitor catches a regression in production traffic,
+  EvalView now drafts the corresponding regression test, opens a PR, and
+  wires the incident context into the PR body.
+- **Flake quarantine** — known-flaky tests no longer block CI. Quarantined
+  tests still run and record results, but are excluded from the pass/fail
+  gate. Per-test `flaky_count` tracking surfaces candidates for
+  quarantine, and governance metadata (`blessed_by`, `expires_at`) keeps
+  the quarantine list honest.
+- **Release verdict layer + `evalview since`** — a graded release verdict
+  (ship / ship-with-caveats / hold) that aggregates regressions, drift,
+  and quarantine state. `evalview since <ref>` produces a one-screen
+  brief of everything that changed between two points, aligned to the
+  verdict.
+- **`evalview progress` / `drift` / `slack-digest`** — new investigative
+  commands. `progress` shows per-test trajectory over recent runs,
+  `drift` produces a graded drift verdict with confidence banding,
+  `slack-digest` renders the verdict + top regressions as a Slack-ready
+  markdown block.
+- **Noise confirmation gate + strict bypass** (#166) — `evalview monitor`
+  now requires two consecutive failing cycles before creating an
+  incident, collapses related failures into a single incident, and
+  exposes a public noise metric. `--strict` bypasses the gate for
+  deploy-blocking checks.
+- **Slow-agent warning** (#171, #175) — surfaces wall-clock latency
+  regressions in the check output and in the snapshot path, using real
+  elapsed time rather than reported timings.
+- **Observability modules** (#179) — per-test trust score, tool-loop
+  detector, stall detector, brittle-recovery signal, and benchmark
+  gaming checks. Surfaced in the check output as "Observability
+  Signals".
+- **Improvement recommendation engine** — scans recent failures and
+  drift data to generate prioritized recommendations (stabilize-this-
+  test / tighten-this-threshold / add-this-check) shown at the end of
+  `evalview check`.
+- **Simulation harness + decision-rationale capture (schema v2)** (#188)
+  — new harness for running scripted multi-turn agent scenarios, plus a
+  versioned decision-rationale schema so reasons behind pass/fail/skip
+  are machine-readable.
+- **`evalview snapshot --json`** (#182, #186) — machine-readable snapshot
+  output for CI pipelines, hardened against edge cases (missing
+  goldens, partial failures, non-UTF8 tool output).
+- **`evalview check --explain`** — deep trace narrative analysis that
+  explains *why* a test changed, not just *what* changed. Turns a tool
+  diff into a plain-English root-cause hypothesis.
+- **Token cost breakdown in `evalview check`** (#185) — check output now
+  aggregates input / output / cached tokens and total cost across all
+  tests, with a colored delta vs baseline. Also exposed in the
+  `--json` payload under `summary.token_usage`, `summary.total_cost`,
+  `summary.baseline_token_usage`, and `summary.token_delta_pct`.
+- **Skill-doctor: exclude disable-model-invocation skills from char
+  budget** (#177) — skills flagged as non-invokable no longer count
+  toward the skill-doctor character budget.
+
+### Changed
+- Observability stack production-hardened (#179 follow-ups): tightened
+  type boundaries, removed dead imports, consistent naming across the
+  anomaly / trust / gaming signal families.
+- **`.gitignore`** now excludes generated EvalView artifacts
+  (`.evalview/*.html`, `.evalview/badge.json`, `.evalview/healing/`)
+  (#189). Previously-tracked copies were removed with `git rm --cached`
+  so they stop appearing in diffs.
+
+### Fixed
+- Dogfood tests 01 and 02: added `expected.tools: [evalview_cli]` and
+  bumped `max_latency` from 30000ms to 180000ms to match tests 03/04
+  and CI LLM round-trip reality (#192).
+- Dogfood monitor smoke test accepts SIGTERM (exit 143) as a clean
+  shutdown, and test 04 thresholds loosened for CI variance.
+- Snapshot `--json` hardened for CI consumers (#186): stable key
+  ordering, UTF-8 enforcement, explicit schema version.
+- Monitor `incidents_path` mypy narrowing (#173).
+- Slack digest + progress: resolved 7 Type Check CI failures (#170).
+- Noise: strict-bucket leak (incidents leaking past the strict gate),
+  digest markdown escape, doc drift in the monitor reference.
+- Mypy: `Optional[dict]` narrowing via direct `is not None` checks
+  replaces unsafe `.get()` chains.
+- Skill-doctor: dropped a redundant `-r` flag that tripped a Click 8.1
+  boolean-flag quirk.
+
+### Docs
+- README: surfaced `evalview since` and the verdict panel in the hero
+  path.
+- README: documented the investigative loop (progress / drift /
+  slack-digest / quarantine) (#164).
+- README: confirmation gate and `--strict` bypass explained in the
+  Production Monitoring section (#167, #168).
+- CLI docs: added `evalview monitor` reference and wired monitor into
+  dogfood CI (#169).
+
 ## [0.6.2] - 2026-04-11
 
 ### Added
