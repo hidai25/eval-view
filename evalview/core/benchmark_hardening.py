@@ -67,20 +67,36 @@ class FlagSeverity(str, Enum):
 
 @dataclass
 class GamingFlag:
-    """A single anti-gaming flag raised during evaluation."""
+    """A single anti-gaming flag raised during evaluation.
+
+    ``hint`` is a one-sentence recommendation to a human reviewer —
+    what to do about this flag in concrete terms ("quarantine this
+    test until you verify the tool list is complete"). It's optional
+    so legacy flags without actionable guidance still emit cleanly.
+    Cloud renders it verbatim in the TrustIndicator popover so the
+    cloud UI doesn't have to invent semantics that belong here.
+    """
 
     check: GamingCheck
     severity: FlagSeverity
     description: str
     evidence: Dict[str, Any] = field(default_factory=dict)
+    hint: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        out: Dict[str, Any] = {
             "check": self.check.value,
             "severity": self.severity.value,
             "description": self.description,
             "evidence": self.evidence,
         }
+        # Only include `hint` when present so wire payloads stay compact
+        # and downstream schemas that don't know about the field still
+        # validate — cloud's Zod schema for trust_scores treats unknown
+        # keys permissively, but smaller payloads are still preferred.
+        if self.hint is not None:
+            out["hint"] = self.hint
+        return out
 
 
 @dataclass
@@ -259,6 +275,10 @@ def _check_config_leakage(trace: ExecutionTrace) -> List[GamingFlag]:
             evidence={
                 "leaked_paths": leaked_paths[:10],
             },
+            hint=(
+                "Restrict filesystem access in the agent's sandbox so test "
+                "fixtures and golden outputs can't be read at inference time."
+            ),
         ))
 
     return flags
@@ -295,6 +315,11 @@ def _check_score_without_work(
                 "tool_call_count": len(trace.steps),
                 "min_expected_tools": min_tools,
             },
+            hint=(
+                "Rephrase the test prompt so the agent can't answer from "
+                "training priors alone, or raise the judge scorer's "
+                "reasoning requirement."
+            ),
         ))
 
     return flags
