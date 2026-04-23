@@ -49,12 +49,24 @@ class AnomalyReportDict(TypedDict):
     summary: str
 
 
-class TrustFlagDict(TypedDict):
-    """Schema for a single gaming flag in the trust report."""
+class TrustFlagDict(TypedDict, total=False):
+    """Schema for a single gaming flag in the trust report.
+
+    ``hint`` is optional — when present, it carries a one-sentence
+    recommendation for a human reviewer ("quarantine this test",
+    "verify the tool list passed to the agent"). Cloud surfaces it
+    verbatim in the TrustIndicator popover so the UX doesn't have to
+    invent meaning that belongs on the OSS side.
+
+    Fields marked required via total=False convention: check / severity
+    / description / evidence are always emitted by GamingFlag.to_dict();
+    ``hint`` is emitted only when the check defines one.
+    """
     check: str
     severity: str
     description: str
     evidence: Dict[str, Any]
+    hint: str
 
 
 class TrustReportDict(TypedDict):

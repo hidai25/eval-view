@@ -45,6 +45,18 @@ from evalview.core.types import (
 logger = logging.getLogger(__name__)
 
 
+# Canonical plain-language descriptions for each decision_type value.
+# Shared by local HTML replay, CI comments, and cloud UI tooltips so every
+# surface explains the enum the same way. Keep keys in sync with the
+# ``DecisionType`` literal in :mod:`evalview.core.types`.
+DECISION_TYPE_DESCRIPTIONS: dict[str, str] = {
+    "tool_choice": "Agent picked a specific tool from the tools available to it.",
+    "branch":      "Agent chose a control-flow path — a node transition in LangGraph / CrewAI, or an if/else in a handwritten agent.",
+    "refusal":     "Agent declined to act on the input. Captured explicitly so policy-trained refusals don't look like silent failures.",
+    "retry":       "Agent re-attempted a step after a failure. Surfaces retry loops that could mask a systematic bug.",
+}
+
+
 def compute_input_hash(
     prompt: Optional[str] = None,
     tool_state: Optional[Any] = None,
