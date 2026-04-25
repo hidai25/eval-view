@@ -57,6 +57,7 @@ from evalview.commands.monitor_cmd import monitor
 from evalview.commands.autopr_cmd import autopr
 from evalview.commands.benchmark_cmd import benchmark_cmd
 from evalview.commands.mcp_cmd import mcp
+from evalview.commands.validate_cmd import validate
 from evalview.commands.visual_cmd import inspect_cmd, visualize_cmd, compare_cmd
 from evalview.commands.chat_cmd import chat, trace_cmd
 from evalview.commands.traces_cmd import traces
@@ -166,6 +167,7 @@ main.add_command(report)
 main.add_command(view)
 main.add_command(connect)
 main.add_command(validate_adapter, name="validate-adapter")
+main.add_command(validate)
 main.add_command(record)
 main.add_command(skill)
 main.add_command(capture)
