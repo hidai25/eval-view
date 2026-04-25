@@ -42,7 +42,7 @@ jobs:
         fail_ci_if_error: false
 
   lint:
-    name: Type Check
+    name: Lint & Type Check
     runs-on: ubuntu-latest
 
     steps:
@@ -58,6 +58,9 @@ jobs:
 
     - name: Install dependencies
       run: uv sync --all-extras
+
+    - name: Lint with ruff
+      run: uv run ruff check evalview/ tests/
 
     - name: Type check with mypy
       run: uv run mypy evalview/
