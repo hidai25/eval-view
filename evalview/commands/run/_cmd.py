@@ -21,7 +21,7 @@ import click
 import yaml
 
 from evalview.commands.shared import console
-from evalview.core.llm_provider import get_or_select_provider, save_provider_preference, PROVIDER_CONFIGS
+from evalview.core.llm_provider import get_or_select_provider, save_provider_preference
 from evalview.core.loader import TestCaseLoader
 from evalview.evaluators.evaluator import Evaluator
 from evalview.skills.ui_utils import print_evalview_banner

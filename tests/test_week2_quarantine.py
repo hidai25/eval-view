@@ -125,7 +125,7 @@ def test_hard_expiry_future_is_not_stale(tmp_path: Path) -> None:
 
 def test_list_stale_filters_correctly(tmp_path: Path) -> None:
     store = QuarantineStore(path=tmp_path / "q.yaml")
-    fresh = store.add("fresh", reason="r", owner="@h", review_after_days=30)
+    store.add("fresh", reason="r", owner="@h", review_after_days=30)
     overdue = store.add("overdue", reason="r", owner="@h", review_after_days=1)
     _force_age(overdue, 5)
 

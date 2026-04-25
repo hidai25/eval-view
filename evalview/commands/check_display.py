@@ -473,7 +473,6 @@ def _display_check_results(
     from evalview.core.drift_tracker import DriftTracker
     from evalview.core.messages import get_random_clean_check_message
     from evalview.core.root_cause import analyze_root_cause
-    from rich.panel import Panel
 
     # Build result lookup by test name
     result_by_name: Dict[str, Any] = {}
@@ -857,7 +856,7 @@ def _display_check_results(
                             if td.baseline_tools != td.current_tools:
                                 parts.append(f"[red]{baseline_str}[/red] \u2192 [green]{current_str}[/green]")
                             else:
-                                parts.append(f"tools OK")
+                                parts.append("tools OK")
                             if td.output_similarity is not None:
                                 sim_pct = int(td.output_similarity * 100)
                                 sim_color = "green" if sim_pct >= 80 else "yellow" if sim_pct >= 50 else "red"

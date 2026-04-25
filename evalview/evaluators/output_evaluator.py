@@ -397,7 +397,6 @@ class OutputEvaluator:
             return
 
         err_str = str(error).lower()
-        err_type = type(error).__name__
 
         # Common billing/quota error patterns across providers
         billing_patterns = [

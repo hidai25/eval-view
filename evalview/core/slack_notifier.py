@@ -130,7 +130,7 @@ class SlackNotifier:
                 )
 
         text = (
-            f":chart_with_upwards_trend: *EvalView Monitor — Performance Alert*\n\n"
+            ":chart_with_upwards_trend: *EvalView Monitor — Performance Alert*\n\n"
             + "\n".join(lines)
             + "\n\n_Run `evalview check` for full details._"
         )

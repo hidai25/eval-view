@@ -32,13 +32,13 @@ Requirements:
 import asyncio
 import logging
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Optional
 
 import pytest
 
 from evalview.core.diff import DiffEngine, TraceDiff
 from evalview.core.golden import GoldenStore
-from evalview.compare import ModelResult, compare_models, run_eval, score
+from evalview.compare import compare_models, run_eval
 
 logger = logging.getLogger(__name__)
 

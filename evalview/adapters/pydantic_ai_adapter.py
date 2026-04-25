@@ -26,7 +26,7 @@ import logging
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 from evalview.adapters.base import AgentAdapter
 from evalview.core.types import (
@@ -193,7 +193,6 @@ class PydanticAIAdapter(AgentAdapter):
         usage = result.usage()
         input_tokens = getattr(usage, "input_tokens", 0) or 0
         output_tokens = getattr(usage, "output_tokens", 0) or 0
-        total_tokens = input_tokens + output_tokens
 
         # Cost estimation (rough, based on common pricing)
         from evalview.core.pricing import calculate_cost

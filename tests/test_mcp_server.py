@@ -11,7 +11,6 @@ Covers:
 - Error handling for unknown tools/methods
 """
 
-import json
 import os
 import subprocess
 import tempfile
@@ -280,7 +279,7 @@ class TestCheckRouting:
     @patch("evalview.mcp_server.shutil.which", return_value="/usr/bin/evalview")
     def test_bare_check_uses_direct(self, mock_which, mock_sub, mock_direct):
         server = MCPServer()
-        result = server._call_tool("run_check", {})
+        server._call_tool("run_check", {})
         mock_direct.assert_called_once()
         mock_sub.assert_not_called()
 
@@ -289,7 +288,7 @@ class TestCheckRouting:
     @patch("evalview.mcp_server.shutil.which", return_value="/usr/bin/evalview")
     def test_heal_routes_to_subprocess(self, mock_which, mock_sub, mock_direct):
         server = MCPServer()
-        result = server._call_tool("run_check", {"heal": True})
+        server._call_tool("run_check", {"heal": True})
         mock_sub.assert_called_once()
         mock_direct.assert_not_called()
 
@@ -298,7 +297,7 @@ class TestCheckRouting:
     @patch("evalview.mcp_server.shutil.which", return_value="/usr/bin/evalview")
     def test_tag_routes_to_subprocess(self, mock_which, mock_sub, mock_direct):
         server = MCPServer()
-        result = server._call_tool("run_check", {"tag": ["tool_use"]})
+        server._call_tool("run_check", {"tag": ["tool_use"]})
         mock_sub.assert_called_once()
 
 

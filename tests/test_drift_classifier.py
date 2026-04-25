@@ -9,7 +9,6 @@ from evalview.core.drift_classifier import (
     DEFAULT_MEDIUM_FLIP_COUNT,
     DEFAULT_MEDIUM_FLIP_RATIO,
     DEFAULT_WEAK_DRIFT_DELTA,
-    Classification,
     PromptDelta,
     _effective_medium_flip_count,
     classify,

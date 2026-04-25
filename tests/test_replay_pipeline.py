@@ -10,7 +10,6 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 from unittest.mock import AsyncMock, patch
 
-import pytest
 
 from evalview.core.replay_pipeline import (
     ReplayPipeline,

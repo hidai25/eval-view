@@ -445,7 +445,7 @@ def _render_brief(
         rtests = window.get("tests_regressed") or []
         target = rtests[0] if rtests else None
         if target:
-            console.print(f"[bold]One thing to look at first:[/bold]")
+            console.print("[bold]One thing to look at first:[/bold]")
             console.print(f"  [cyan]→ evalview replay {target} --trace[/cyan]")
         else:
             console.print(
@@ -453,7 +453,7 @@ def _render_brief(
             )
     elif drift_rows:
         first_name = drift_rows[0][0]
-        console.print(f"[bold]One thing to look at first:[/bold]")
+        console.print("[bold]One thing to look at first:[/bold]")
         console.print(f"  [cyan]→ evalview replay {first_name}[/cyan]")
     elif stale_quarantine:
         console.print(

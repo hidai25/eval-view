@@ -255,7 +255,6 @@ async def _run_suite(
     prompt that has started is never cancelled mid-run — partial results
     would corrupt the snapshot.
     """
-    results: List[Tuple[ModelCheckPromptResult, float, Optional[str], str]] = []
     total_cost = 0.0
     completed_count = 0
     cost_lock = asyncio.Lock()

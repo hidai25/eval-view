@@ -11,12 +11,9 @@ Covers seams that `test_verdict.py` intentionally doesn't touch:
 """
 from __future__ import annotations
 
-import json
-import shutil
 import subprocess
-import tempfile
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict
 from unittest.mock import MagicMock
 
 import pytest

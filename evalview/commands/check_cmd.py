@@ -77,7 +77,9 @@ def _compute_check_exit_code(
     return 0
 
 
-from dataclasses import dataclass as _verdict_dataclass, field as _verdict_field
+# Aliased imports kept local to scope the `_verdict_*` names tightly to the
+# private dataclass below, rather than polluting the module-level namespace.
+from dataclasses import dataclass as _verdict_dataclass, field as _verdict_field  # noqa: E402
 
 
 @_verdict_dataclass
@@ -1292,7 +1294,8 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
     # experience. Silently skips when EVALVIEW_API_TOKEN is unset.
     try:
         from evalview.cloud.push import _get_api_token, _get_git_context, _push_async
-        import asyncio as _cloud_asyncio, hashlib as _cloud_hash
+        import asyncio as _cloud_asyncio
+        import hashlib as _cloud_hash
 
         _cloud_token = _get_api_token()
         if _cloud_token:
@@ -1414,7 +1417,7 @@ def replay(test_name: Optional[str], test_path: str, no_browser: bool) -> None:
         console.print("\n[bold]Available tests with baselines:[/bold]\n")
         for g in sorted(goldens, key=lambda g: g.test_name):
             console.print(f"  [cyan]{g.test_name}[/cyan]  [dim]score: {g.score:.0f}[/dim]")
-        console.print(f"\n[dim]Usage: evalview replay <test_name>[/dim]\n")
+        console.print("\n[dim]Usage: evalview replay <test_name>[/dim]\n")
         sys.exit(0)
 
     golden_variants = store.load_all_golden_variants(test_name)

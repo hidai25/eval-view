@@ -198,7 +198,6 @@ def replay_trace(
         }
         print(json.dumps(output_data, indent=2))
     else:
-        from evalview.core.diff import DiffStatus
 
         for i, r in enumerate(batch_result.results):
             query_preview = (queries[i] or "")[:60] if i < len(queries) else "?"

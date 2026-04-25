@@ -505,7 +505,7 @@ def _find_contradiction(
 
     # 3. Has/doesn't have: "X has Y" vs "X doesn't have Y"
     for match in _HAS_PHRASE_RE.finditer(prev):
-        subject, verb, obj = match.group(1), match.group(2), match.group(3)
+        subject, _verb, obj = match.group(1), match.group(2), match.group(3)
         negated_patterns = [
             f"{subject} doesn't have {obj}",
             f"{subject} does not have {obj}",

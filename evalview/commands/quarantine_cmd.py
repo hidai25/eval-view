@@ -7,7 +7,6 @@ rot before the quarantine folder becomes a dumping ground.
 
 from __future__ import annotations
 
-from typing import Optional
 
 import click
 

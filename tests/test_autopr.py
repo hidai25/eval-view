@@ -5,18 +5,15 @@ import json
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, List
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 import yaml
 from click.testing import CliRunner
 
 from evalview.commands.autopr_cmd import (
-    _commit_message,
-    _existing_slugs,
     autopr,
     load_incidents,
-    write_regression_test,
 )
 from evalview.commands.monitor_cmd import (
     DEFAULT_INCIDENTS_PATH,

@@ -26,7 +26,7 @@ import logging
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 from evalview.adapters.base import AgentAdapter
 from evalview.core.types import (
@@ -231,8 +231,6 @@ class CrewAINativeAdapter(AgentAdapter):
         if usage:
             input_tokens = getattr(usage, "prompt_tokens", 0) or 0
             output_tokens = getattr(usage, "completion_tokens", 0) or 0
-
-        total_tokens = input_tokens + output_tokens
 
         # Cost estimation
         from evalview.core.pricing import calculate_cost

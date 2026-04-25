@@ -249,8 +249,6 @@ class AiderAdapter(AgentAdapter):
                 logger.warning("Failed to restore %s: %s", path, exc)
         # Remove files that didn't exist before the run
         if snapshots:
-            roots = {next(iter(snapshots)).parent}
-            # Walk from any snapshot's parent up to find the common root
             common_root = Path(os.path.commonpath([str(p) for p in snapshots]))
             if common_root.is_dir():
                 for path in common_root.rglob("*"):

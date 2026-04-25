@@ -21,7 +21,6 @@ from evalview.core.eval_profiles import (
     generate_config_yaml,
     generate_test_yaml,
     get_profile,
-    EVAL_PROFILES,
 )
 from evalview.telemetry.decorators import track_command
 from evalview.core.adapter_factory import create_adapter
@@ -946,7 +945,7 @@ model:
                 return
         except _httpx.ConnectError:
             console.print(f"[red]✗ Cannot connect to {endpoint}[/red]")
-            console.print(f"[dim]Make sure your agent is running, then rerun evalview init.[/dim]\n")
+            console.print("[dim]Make sure your agent is running, then rerun evalview init.[/dim]\n")
             return
         except _httpx.TimeoutException:
             console.print(f"[yellow]⚠ Agent at {endpoint} is slow to respond (>5s). Proceeding anyway...[/yellow]\n")

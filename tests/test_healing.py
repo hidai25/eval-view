@@ -7,7 +7,7 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -27,9 +27,6 @@ from evalview.core.healing import (
     HealingSummary,
     HealingTrigger,
     MAX_AUTO_VARIANTS,
-    MAX_COST_MULTIPLIER,
-    MAX_LATENCY_MULTIPLIER,
-    MIN_VARIANT_SCORE,
     ModelUpdateSummary,
     save_audit_log,
 )

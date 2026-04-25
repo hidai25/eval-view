@@ -2,18 +2,16 @@
 
 from datetime import datetime
 
-import pytest
 
 from evalview.core.turn_coherence import (
     CoherenceCategory,
-    CoherenceIssue,
-    CoherenceReport,
     CoherenceSeverity,
     analyze_coherence,
     _detect_tool_regression,
     _detect_strategy_drift,
     _detect_output_contradiction,
     _extract_key_entities,
+    _detect_context_amnesia,
 )
 from evalview.core.types import (
     ExecutionTrace,
@@ -249,9 +247,6 @@ class TestAnalyzeCoherence:
 # ---------------------------------------------------------------------------
 # Context amnesia detection
 # ---------------------------------------------------------------------------
-
-
-from evalview.core.turn_coherence import _detect_context_amnesia
 
 
 class TestContextAmnesia:

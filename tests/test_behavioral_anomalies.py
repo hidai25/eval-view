@@ -2,12 +2,9 @@
 
 from datetime import datetime
 
-import pytest
 
 from evalview.core.behavioral_anomalies import (
-    Anomaly,
     AnomalyPattern,
-    AnomalyReport,
     AnomalySeverity,
     detect_anomalies,
     _detect_tool_loops,
@@ -15,6 +12,7 @@ from evalview.core.behavioral_anomalies import (
     _detect_brittle_recovery,
     _detect_excessive_retries,
     _detect_skipped_steps,
+    _step_fingerprint,
 )
 from evalview.core.types import (
     ExecutionTrace,
@@ -279,9 +277,6 @@ class TestDetectAnomalies:
 # ---------------------------------------------------------------------------
 # Step fingerprinting
 # ---------------------------------------------------------------------------
-
-
-from evalview.core.behavioral_anomalies import _step_fingerprint
 
 
 class TestStepFingerprint:

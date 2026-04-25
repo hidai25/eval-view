@@ -65,11 +65,11 @@ class ProviderError(RuntimeError):
 
 # Cached client instance — reused across concurrent calls within one
 # asyncio.run() to share the underlying httpx connection pool.
-_anthropic_client: Optional["AsyncAnthropic"] = None  # type: ignore[name-defined]
+_anthropic_client: Optional["AsyncAnthropic"] = None  # type: ignore[name-defined]  # noqa: F821 — forward ref to optional dep
 _anthropic_timeout: Optional[float] = None
 
 
-def _get_anthropic_client(timeout: float) -> "AsyncAnthropic":  # type: ignore[name-defined]
+def _get_anthropic_client(timeout: float) -> "AsyncAnthropic":  # type: ignore[name-defined]  # noqa: F821
     """Return a shared AsyncAnthropic client, creating it on first use.
 
     If the timeout changes between calls (unlikely in practice — the

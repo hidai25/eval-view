@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 import statistics
 from collections import Counter
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from rich.console import Console
 from rich.panel import Panel
@@ -37,7 +37,6 @@ class CaptureAnalysis:
     @property
     def agent_type(self) -> str:
         """Detect agent type from captured behavior."""
-        avg_tools = statistics.mean([len(s) for s in self.tool_sequences]) if self.tool_sequences else 0
         has_multi_step = any(len(s) > 2 for s in self.tool_sequences)
         unique_tools = len(set(self.all_tools))
 
@@ -131,7 +130,6 @@ class AssertionWizard:
 
     def run(self) -> Dict[str, Any]:
         """Run the interactive wizard. Returns chosen assertion config."""
-        import click
 
         console.print()
         console.print(Panel(
@@ -210,7 +208,7 @@ class AssertionWizard:
             suggestions.append({
                 "id": "latency",
                 "label": f"Max latency: {lat_threshold}ms",
-                "description": f"Based on p95 of your captured traffic with 50% headroom.",
+                "description": "Based on p95 of your captured traffic with 50% headroom.",
                 "yaml_key": "thresholds.max_latency",
                 "value": lat_threshold,
                 "recommended": True,
@@ -302,7 +300,6 @@ def apply_wizard_to_yaml(yaml_path: str, accepted: Dict[str, Any]) -> None:
     needs_latency = "latency" in accepted
     needs_min_score = "min_score" in accepted
 
-    in_expected = False
     in_thresholds = False
     added_tools = False
     added_not_contains = False
@@ -312,7 +309,6 @@ def apply_wizard_to_yaml(yaml_path: str, accepted: Dict[str, Any]) -> None:
 
         # Track sections
         if stripped.startswith("expected:"):
-            in_expected = True
             in_thresholds = False
             new_lines.append(line)
 
@@ -335,7 +331,6 @@ def apply_wizard_to_yaml(yaml_path: str, accepted: Dict[str, Any]) -> None:
             continue
 
         if stripped.startswith("thresholds:"):
-            in_expected = False
             in_thresholds = True
             new_lines.append(line)
 

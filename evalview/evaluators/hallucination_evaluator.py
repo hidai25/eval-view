@@ -12,7 +12,6 @@ because the judge evaluates one claim at a time with full context.
 
 import json
 import logging
-from datetime import datetime
 from typing import Optional, Tuple, List, Dict, Any
 
 from evalview.core.types import (

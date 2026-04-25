@@ -32,7 +32,7 @@ import random
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from evalview.adapters.base import AgentAdapter
 from evalview.core.types import (
@@ -44,7 +44,6 @@ from evalview.core.types import (
     ResponseMock,
     SimulationResult,
     TestCase,
-    ToolMock,
     VariantOutcome,
 )
 

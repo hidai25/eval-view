@@ -15,7 +15,6 @@ from evalview.core.diff import (
 from evalview.core.root_cause import (
     Confidence,
     RootCauseCategory,
-    RootCauseAnalysis,
     analyze_root_cause,
     enrich_with_ai,
     enrich_diffs_with_ai,

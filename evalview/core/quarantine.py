@@ -23,9 +23,8 @@ Storage: `.evalview/quarantine.yaml`
 from __future__ import annotations
 
 import logging
-import os
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 

@@ -2,9 +2,8 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 import click
 
@@ -105,7 +104,7 @@ def _get_badge_data(run_check: bool, quick: bool, test_dir: str) -> dict:
 
 def _badge_from_check(quick: bool, test_dir: str) -> dict:
     """Run a gate check and return badge data."""
-    from evalview.api import gate, DiffStatus
+    from evalview.api import gate
 
     try:
         result = gate(test_dir=test_dir, quick=quick)

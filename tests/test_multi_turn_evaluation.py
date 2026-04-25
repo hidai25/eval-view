@@ -8,7 +8,6 @@ import shutil
 from datetime import datetime
 from typing import List, Optional
 
-import pytest
 
 from evalview.core.types import (
     ConversationTurn,
@@ -22,7 +21,6 @@ from evalview.core.types import (
     TestCase,
     TestInput,
     Thresholds,
-    TurnEvaluation,
     TurnTrace,
 )
 from evalview.evaluators.evaluator import Evaluator

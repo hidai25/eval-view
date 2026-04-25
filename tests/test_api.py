@@ -1,12 +1,6 @@
 """Tests for evalview.api — the programmatic Python API."""
-import json
-import tempfile
-import shutil
-from datetime import datetime
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
-import pytest
 
 from evalview.api import (
     gate,
