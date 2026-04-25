@@ -7,15 +7,36 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from typing import get_args
+
 from evalview.core.rationale import (
+    DECISION_TYPE_DESCRIPTIONS,
     RationaleCollector,
     compute_input_hash,
 )
 from evalview.core.types import (
     RATIONALE_MAX_EVENTS_PER_RUN,
     RATIONALE_MAX_TEXT_BYTES,
-    RationaleEvent,
+    DecisionType,
 )
+
+
+# ============================================================================
+# DECISION_TYPE_DESCRIPTIONS — canonical plain-language mapping shared by
+# local HTML replay, CI comments, and cloud UI tooltips. The keys must stay
+# in lockstep with the DecisionType literal; otherwise some surfaces will
+# silently render an empty tooltip when a new decision type ships.
+# ============================================================================
+
+
+class TestDecisionTypeDescriptions:
+    def test_keys_match_decision_type_literal(self):
+        assert set(DECISION_TYPE_DESCRIPTIONS.keys()) == set(get_args(DecisionType))
+
+    def test_descriptions_are_nonempty_sentences(self):
+        for key, desc in DECISION_TYPE_DESCRIPTIONS.items():
+            assert desc and desc.strip(), f"{key} has empty description"
+            assert desc.endswith("."), f"{key} description should end with a period"
 
 
 # ============================================================================

@@ -33,7 +33,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from typing import Any, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from evalview.core.types import (
     RATIONALE_MAX_EVENTS_PER_RUN,
@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 # Shared by local HTML replay, CI comments, and cloud UI tooltips so every
 # surface explains the enum the same way. Keep keys in sync with the
 # ``DecisionType`` literal in :mod:`evalview.core.types`.
-DECISION_TYPE_DESCRIPTIONS: dict[str, str] = {
+DECISION_TYPE_DESCRIPTIONS: Dict[str, str] = {
     "tool_choice": "Agent picked a specific tool from the tools available to it.",
     "branch":      "Agent chose a control-flow path — a node transition in LangGraph / CrewAI, or an if/else in a handwritten agent.",
     "refusal":     "Agent declined to act on the input. Captured explicitly so policy-trained refusals don't look like silent failures.",

@@ -8,7 +8,6 @@ from evalview.core.benchmark_hardening import (
     GamingCheck,
     GamingFlag,
     FlagSeverity,
-    HardeningReport,
     check_gaming,
     check_gaming_batch,
     _check_suspiciously_fast,
@@ -16,6 +15,7 @@ from evalview.core.benchmark_hardening import (
     _check_score_without_work,
     _check_too_perfect,
     _check_abnormal_file_access,
+    _compute_trust_score,
 )
 from evalview.core.types import (
     ExecutionTrace,
@@ -238,6 +238,45 @@ class TestCheckGaming:
 
 
 # ---------------------------------------------------------------------------
+# Reviewer hint field — must be omitted when None and present when set.
+# Cloud's TrustIndicator popover renders this verbatim (see TrustFlagDict
+# in evalview.core.observability), so the on-the-wire shape matters.
+# ---------------------------------------------------------------------------
+
+
+class TestGamingFlagHint:
+    def test_to_dict_omits_hint_when_none(self):
+        flag = GamingFlag(
+            check=GamingCheck.SUSPICIOUSLY_FAST,
+            severity=FlagSeverity.INFO,
+            description="x",
+        )
+        assert "hint" not in flag.to_dict()
+
+    def test_to_dict_includes_hint_when_set(self):
+        flag = GamingFlag(
+            check=GamingCheck.CONFIG_LEAKAGE,
+            severity=FlagSeverity.CRITICAL,
+            description="x",
+            hint="quarantine this test",
+        )
+        d = flag.to_dict()
+        assert d["hint"] == "quarantine this test"
+
+    def test_config_leakage_check_emits_hint(self):
+        steps = [_step("read", {"path": ".evalview/golden/test.json"})]
+        flags = _check_config_leakage(_trace(steps=steps))
+        assert len(flags) == 1 and flags[0].hint
+        # The hint must be actionable, not a restatement of the description.
+        assert flags[0].hint != flags[0].description
+
+    def test_score_without_work_check_emits_hint(self):
+        flags = _check_score_without_work(_trace(steps=[]), score=95)
+        assert len(flags) == 1 and flags[0].hint
+        assert flags[0].hint != flags[0].description
+
+
+# ---------------------------------------------------------------------------
 # Batch checks
 # ---------------------------------------------------------------------------
 
@@ -326,9 +365,6 @@ class TestAbnormalFileAccessBoundary:
 # ---------------------------------------------------------------------------
 # Trust score clamping
 # ---------------------------------------------------------------------------
-
-
-from evalview.core.benchmark_hardening import _compute_trust_score
 
 
 class TestTrustScoreClamping:
