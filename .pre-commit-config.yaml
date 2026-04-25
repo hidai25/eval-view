@@ -1,0 +1,24 @@
+# Pre-commit hooks for EvalView.
+#
+# Activate locally:   pip install pre-commit && pre-commit install
+# Run on all files:   pre-commit run --all-files
+#
+# Hooks run only on staged files by default, so the existing lint
+# backlog (see `ruff check evalview/ tests/`) does not block commits
+# of unrelated changes — only newly-touched lines must pass.
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2
+    hooks:
+      - id: mypy
+        files: ^evalview/
+        additional_dependencies:
+          - pydantic>=2.0
+          - typing_extensions

@@ -74,6 +74,7 @@ Fixes #(issue number)
 - [ ] I have added tests that prove my fix is effective or that my feature works
 - [ ] New and existing unit tests pass locally with my changes
 - [ ] I have tested this with multiple agent frameworks (if applicable)
+- [ ] If this PR adds a public constant, schema field, or enum, I have linked the test that pins its invariant (e.g. keys match a `Literal`, required fields are emitted, wire shape stays compact)
 
 ### Dependencies
 

@@ -606,6 +606,16 @@ pytest -v tests/test_my_evaluator.py
 - **Linting**: Use `ruff` for code quality
 - **Type hints**: All functions should have type annotations
 - **Docstrings**: Use Google-style docstrings for public APIs
+- **Pre-commit hooks**: Install once with `pip install pre-commit && pre-commit install`. Hooks run only on staged files, so the existing lint backlog won't block commits of unrelated changes.
+
+### TypedDict conventions
+
+- Prefer the default `total=True` plus `NotRequired[T]` for optional fields, over `total=False` plus `Required[T]`. Forgetting an annotation under `total=True` degrades to "field is required" (loud — Pydantic rejects); under `total=False` it degrades to "field is optional" (silent — type safety quietly weakens).
+- Optional fields should also be omitted from `to_dict()` output when unset, so wire payloads stay compact and downstream consumers (e.g. cloud Zod schemas) don't need to special-case nulls.
+
+### Public constants that mirror a Literal or Enum
+
+Any module-level constant whose keys mirror a `Literal` or `Enum` (e.g. `DECISION_TYPE_DESCRIPTIONS` in `evalview/core/rationale.py`) must ship with a drift test asserting `set(KEYS) == set(get_args(Literal))`. Documented invariants without test enforcement rot silently — adding a new value to the literal won't trip CI, and downstream surfaces will quietly render an empty entry.
 
 Example:
 
