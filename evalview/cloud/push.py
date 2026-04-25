@@ -271,7 +271,11 @@ def push_result(gate_result: Any) -> Optional[str]:
 
         # Discriminator lets cloud route simulation runs to the
         # /runs/[id]/simulation tab without guessing from the body.
-        run_type = "simulation" if gate_result.raw_json.get("simulation") else "check"
+        # Cloud's Zod accepts "standard" | "simulation"; we send
+        # "standard" (the older "check" alias still validates via a
+        # cloud-side compatibility shim, but new pushes use the
+        # canonical name).
+        run_type = "simulation" if gate_result.raw_json.get("simulation") else "standard"
 
         payload = {
             "run_id": gate_result.raw_json.get("run_id", hashlib.md5(
@@ -306,8 +310,40 @@ def push_result(gate_result: Any) -> Optional[str]:
             "result_json": gate_result.raw_json,
         }
 
-        # Include observability signals via the canonical ObservabilitySummary
+        # Observability — sent in three complementary shapes so cloud
+        # populates both the per-test detail panels and the aggregate
+        # columns on the runs row:
+        #
+        #   1. Per-test arrays at the top level. These keys
+        #      (`behavioral_anomalies`, `trust_scores`,
+        #      `coherence_analysis`) are what cloud's /api/v1/results
+        #      route reads to fill test_diffs.anomaly_report,
+        #      trust_score, coherence_score, coherence_report. Names
+        #      come from check_display.py's --json output; we forward
+        #      them verbatim out of raw_json.
+        #   2. Aggregate count blocks at the top level
+        #      (`low_trust_tests`, `coherence_issues`) so cloud's
+        #      runs.low_trust_count / coherence_issue_count columns
+        #      populate without re-walking the per-test arrays.
+        #   3. The legacy `observability` envelope is still attached
+        #      for older cloud routes / digest renderers that read it.
+        for key in ("behavioral_anomalies", "trust_scores", "coherence_analysis"):
+            value = gate_result.raw_json.get(key)
+            if value:
+                payload[key] = value
+
         obs = gate_result.observability
+        if obs.low_trust_count:
+            payload["low_trust_tests"] = {
+                "count": obs.low_trust_count,
+                "tests": obs.low_trust_tests[:10],
+            }
+        if obs.coherence_issue_count:
+            payload["coherence_issues"] = {
+                "count": obs.coherence_issue_count,
+                "tests": obs.coherence_tests[:10],
+            }
+
         obs_payload = obs.to_payload()
         if obs_payload:
             payload["observability"] = obs_payload
