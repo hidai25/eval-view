@@ -1,0 +1,32 @@
+name: "glm-research"
+description: "Research agent: GLM-4.7-Flash via Ollama + LangGraph local-deep-researcher"
+
+adapter: langgraph
+endpoint: http://localhost:2024
+adapter_config:
+  endpoint: http://localhost:2024
+  assistant_id: ollama_deep_researcher
+  input_key: research_topic
+  graph_config:
+    configurable:
+      local_llm: glm-4.7-flash:latest
+      llm_provider: ollama
+      max_web_research_loops: 1
+      search_api: duckduckgo
+  allow_private_urls: true
+  timeout: 120
+
+input:
+  query: "What is the capital of France?"
+
+expected:
+  output:
+    contains:
+      - "Paris"
+    not_contains:
+      - "I cannot"
+      - "I don't know"
+
+thresholds:
+  min_score: 50
+  max_latency: 120000

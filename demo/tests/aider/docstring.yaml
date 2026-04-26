@@ -1,0 +1,32 @@
+name: "aider-docstring"
+description: "Add a proper docstring to fib() in undoc.py — Aider + Claude Sonnet"
+
+adapter: aider
+adapter_config:
+  model: claude-sonnet-4-6
+  timeout: 180
+
+input:
+  query: >
+    Add a proper Google-style docstring to the fib() function in undoc.py.
+    The docstring should describe what the function does, document its
+    single parameter n (the index), and document the return value (the
+    nth Fibonacci number, with fib(0) = 0 and fib(1) = 1). Do not change
+    any behaviour.
+  context:
+    cwd: demo/fixtures/aider
+    files: [undoc.py]
+    reset_files: true
+
+expected:
+  tools:
+    - read_file
+    - edit_file
+  output:
+    not_contains:
+      - "cannot"
+      - "unable"
+
+thresholds:
+  min_score: 70
+  max_latency: 180000

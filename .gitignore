@@ -57,6 +57,10 @@ tests/test-cases/*.yaml
 # Temp / scratch
 tmp/
 code-review.md
+
+# Local tool histories — per-developer state, not shared
+.aider.chat.history.md
+.aider.input.history
 tests.yaml
 marketing/
 

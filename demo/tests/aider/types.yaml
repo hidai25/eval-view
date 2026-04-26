@@ -1,0 +1,31 @@
+name: "aider-types"
+description: "Add type hints to merge_dicts() in untyped.py — Aider + Claude Sonnet"
+
+adapter: aider
+adapter_config:
+  model: claude-sonnet-4-6
+  timeout: 180
+
+input:
+  query: >
+    Add PEP 484 type hints to the merge_dicts() function in untyped.py.
+    Both inputs and the return value are dicts with str keys and int
+    values. Use typing.Dict or the built-in dict[str, int] syntax. Do
+    not change behaviour.
+  context:
+    cwd: demo/fixtures/aider
+    files: [untyped.py]
+    reset_files: true
+
+expected:
+  tools:
+    - read_file
+    - edit_file
+  output:
+    not_contains:
+      - "cannot"
+      - "unable"
+
+thresholds:
+  min_score: 70
+  max_latency: 180000

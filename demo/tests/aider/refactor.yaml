@@ -3,7 +3,7 @@ description: "Refactor p() in messy.py for readability — Aider + Claude Sonnet
 
 adapter: aider
 adapter_config:
-  model: claude-sonnet-4-6
+  model: gpt-4o-mini
   timeout: 180
 
 input:
