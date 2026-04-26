@@ -6,12 +6,14 @@ import json
 import sys
 import time
 from pathlib import Path
+from typing import Any, Dict, List, Tuple
 
 import click
 import yaml
 from pydantic import ValidationError
 
 from evalview.commands.shared import console
+from evalview.core.loader import CONFIG_FILE_PATTERNS
 from evalview.core.types import TestCase
 from evalview.telemetry.decorators import track_command
 
@@ -31,9 +33,7 @@ except ImportError:  # pragma: no cover - py<3.11
 # File extensions recognized as test cases. TOML is only collected when a
 # loader is available so we don't surface false "missing dependency" errors
 # for unrelated TOML in the directory (e.g. pyproject.toml).
-_TEST_EXTENSIONS: tuple[str, ...] = (".yaml", ".yml") + ((".toml",) if _toml_loader is not None else ())
-# Config files (mirrored from evalview/core/loader.py CONFIG_FILE_PATTERNS)
-_CONFIG_FILES = {"config.yaml", "config.yml", ".evalview.yaml", ".evalview.yml"}
+_TEST_EXTENSIONS: Tuple[str, ...] = (".yaml", ".yml") + ((".toml",) if _toml_loader is not None else ())
 
 
 @click.command("validate")
@@ -72,7 +72,7 @@ def validate(path: str, output_json: bool) -> None:
         sys.exit(0)
 
     start = time.time()
-    results: list[dict] = []
+    results: List[Dict[str, Any]] = []
     has_errors = False
 
     for fp in files:
@@ -108,18 +108,18 @@ def validate(path: str, output_json: bool) -> None:
     sys.exit(1 if has_errors else 0)
 
 
-def _collect_test_files(path_obj: Path) -> list[Path]:
+def _collect_test_files(path_obj: Path) -> List[Path]:
     if path_obj.is_file():
         return [path_obj] if path_obj.suffix.lower() in _TEST_EXTENSIONS else []
     if not path_obj.is_dir():
         return []
-    files: list[Path] = []
+    files: List[Path] = []
     for ext in _TEST_EXTENSIONS:
         files.extend(path_obj.rglob(f"*{ext}"))
-    return sorted(f for f in files if f.is_file() and f.name.lower() not in _CONFIG_FILES)
+    return sorted(f for f in files if f.is_file() and f.name.lower() not in CONFIG_FILE_PATTERNS)
 
 
-def _validate_file(file_path: Path) -> list[dict]:
+def _validate_file(file_path: Path) -> List[Dict[str, Any]]:
     """Return list of error dicts (empty list = valid)."""
     try:
         if file_path.suffix.lower() == ".toml":
@@ -137,11 +137,14 @@ def _validate_file(file_path: Path) -> list[dict]:
             with open(file_path, "rb") as f:
                 data = _toml_loader.load(f)
         else:
-            with open(file_path, "r") as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f)
     except yaml.YAMLError as exc:
         return [{"field": None, "message": f"YAML parse error: {exc}", "type": "parse"}]
-    except Exception as exc:  # tomllib.TOMLDecodeError, IOError, etc.
+    # TOMLDecodeError (both stdlib tomllib and the tomli backport) subclasses
+    # ValueError; UnicodeDecodeError likewise — so this pair covers parse and
+    # encoding failures without swallowing programming bugs.
+    except (OSError, ValueError) as exc:
         return [{"field": None, "message": f"Parse error: {exc}", "type": "parse"}]
 
     if not isinstance(data, dict):
@@ -179,7 +182,7 @@ def _validate_file(file_path: Path) -> list[dict]:
         ]
 
 
-def _render_human_output(results: list[dict], elapsed_ms: float) -> None:
+def _render_human_output(results: List[Dict[str, Any]], elapsed_ms: float) -> None:
     valid_count = sum(1 for r in results if r["valid"])
     error_count = len(results) - valid_count
 
