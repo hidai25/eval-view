@@ -19,11 +19,10 @@ Each check returns a DeterministicCheckResult with:
 """
 
 import os
-import re
 import signal
 import subprocess
 import logging
-from typing import List, Optional, Set, Tuple
+from typing import List, Optional, Set
 
 from evalview.skills.agent_types import (
     DeterministicExpected,

@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from typing import List
+from typing import List, Optional, Tuple
 
 from evalview.skills.agent_types import DeterministicCheckResult
 from evalview.skills.evaluators._security_patterns import (

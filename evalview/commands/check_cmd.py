@@ -6,7 +6,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 import click
 
@@ -17,7 +17,6 @@ from evalview.commands.shared import (
     _create_adapter,
     _execute_check_tests,
     _analyze_check_diffs,
-    _parse_fail_statuses,
 )
 from evalview.commands.check_display import (
     _display_check_results,
@@ -39,7 +38,7 @@ from evalview.commands._check_helpers import (
     _all_failures_retry_healed,
     _filter_test_cases_by_tags,
     _format_baseline_timestamp,  # noqa: F401  (re-exported for backward compat)
-    _format_snapshot_timestamp,
+    _format_snapshot_timestamp,  # noqa: F401  (re-exported for backward compat)
     _judge_usage_summary,
     _normalize_requested_tags,  # noqa: F401  (re-exported for backward compat)
     _print_baseline_context,
@@ -51,7 +50,6 @@ from evalview.commands._check_helpers import (
 
 if TYPE_CHECKING:
     from evalview.core.types import EvaluationResult
-    from evalview.core.diff import TraceDiff
 
 
 

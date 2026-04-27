@@ -31,12 +31,13 @@ if TYPE_CHECKING:
     )
 
 
-# Mermaid helpers live in _mermaid.py.
+# Submodule extractions: Mermaid helpers and the HTML/Jinja2 template.
 from evalview.visualization._mermaid import (
     _mermaid_from_steps,
     _mermaid_trace,
     _strip_markdown,
 )
+from evalview.visualization._template import _TEMPLATE
 
 # ── KPI helpers ────────────────────────────────────────────────────────────────
 
@@ -890,7 +891,3 @@ def _render_template(**ctx: Any) -> str:
             d["actual_diagram"] = Markup(d["actual_diagram"])
 
     return env.from_string(_TEMPLATE).render(**ctx)
-
-
-# The HTML/Jinja2 template lives in _template.py.
-from evalview.visualization._template import _TEMPLATE
