@@ -72,6 +72,7 @@ from evalview.commands.since_cmd import since_cmd
 from evalview.commands.progress_cmd import progress_cmd
 from evalview.commands.drift_cmd import drift_cmd
 from evalview.commands.slack_digest_cmd import slack_digest_cmd
+from evalview.commands.diff_cmd import diff_cmd
 
 
 @click.group(context_settings={"allow_interspersed_args": False})
@@ -216,6 +217,7 @@ main.add_command(since_cmd, name="since")
 main.add_command(progress_cmd, name="progress")
 main.add_command(drift_cmd, name="drift")
 main.add_command(slack_digest_cmd, name="slack-digest")
+main.add_command(diff_cmd, name="diff")
 
 
 if __name__ == "__main__":
