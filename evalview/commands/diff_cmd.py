@@ -3,46 +3,48 @@ from __future__ import annotations
 
 import difflib
 import json
-import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import click
+from rich.table import Table
 
 from evalview.commands.shared import console
 from evalview.telemetry.decorators import track_command
 
 
 def _load_result_file(path: Path) -> List[Dict[str, Any]]:
+    """Load a result file, raising ``click.ClickException`` on any failure.
+
+    ``ClickException`` keeps the helper composable — callers outside the CLI
+    (a future Python API, an MCP tool wrapping diff) get a regular exception
+    instead of the process exiting from inside a library call.
+    """
     if not path.exists():
-        console.print(f"[red]File not found: {path}[/red]")
-        sys.exit(1)
+        raise click.ClickException(f"File not found: {path}")
 
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
     except json.JSONDecodeError as exc:
-        console.print(f"[red]Invalid JSON in {path}: {exc}[/red]")
-        sys.exit(1)
+        raise click.ClickException(f"Invalid JSON in {path}: {exc}")
     except OSError as exc:
-        console.print(f"[red]Could not read {path}: {exc}[/red]")
-        sys.exit(1)
+        raise click.ClickException(f"Could not read {path}: {exc}")
 
     if not isinstance(data, list):
-        console.print(
-            f"[red]Invalid result file {path}: expected a list of test-case results[/red]"
+        raise click.ClickException(
+            f"Invalid result file {path}: expected a list of test-case results"
         )
-        sys.exit(1)
 
     for index, item in enumerate(data):
         if not isinstance(item, dict):
-            console.print(f"[red]Invalid result file {path}: item {index} is not an object[/red]")
-            sys.exit(1)
-        if not isinstance(item.get("test_case"), str) or not item.get("test_case"):
-            console.print(
-                f"[red]Invalid result file {path}: item {index} is missing test_case[/red]"
+            raise click.ClickException(
+                f"Invalid result file {path}: item {index} is not an object"
             )
-            sys.exit(1)
+        if not isinstance(item.get("test_case"), str) or not item.get("test_case"):
+            raise click.ClickException(
+                f"Invalid result file {path}: item {index} is missing test_case"
+            )
 
     return data
 
@@ -87,10 +89,16 @@ def _cost(case: Dict[str, Any]) -> Optional[float]:
 
 
 def _latency_ms(case: Dict[str, Any]) -> Optional[float]:
-    total_ms = _nested_number(case, "latency", ("total_ms", "total_latency_ms", "total_latency"))
+    # Canonical field across EvalView results files is `total_latency`, in
+    # milliseconds — set in the adapters via `(end - start).total_seconds() * 1000`
+    # (see e.g. evalview/adapters/openclaw_adapter.py:211). The other ms-named
+    # variants are accepted for forward/backward compatibility with adapters
+    # that may emit a more explicit name in the future.
+    total_ms = _nested_number(case, "latency", ("total_latency", "total_latency_ms", "total_ms"))
     if total_ms is not None:
         return total_ms
 
+    # Some external result formats expose seconds; convert.
     seconds = _nested_number(case, "latency", ("total_seconds", "seconds"))
     if seconds is not None:
         return seconds * 1000
@@ -229,8 +237,6 @@ def _format_latency(row: Dict[str, Any]) -> str:
 
 
 def _render_diff(payload: Dict[str, Any]) -> None:
-    from rich.table import Table
-
     table = Table(header_style="bold cyan")
     table.add_column("Test Case")
     table.add_column("Tool Sequence")
@@ -263,14 +269,14 @@ def _render_diff(payload: Dict[str, Any]) -> None:
 @click.command(name="diff", help="Pretty-print what changed between two result files")
 @click.argument("file1", type=click.Path(exists=False, dir_okay=False, path_type=Path))
 @click.argument("file2", type=click.Path(exists=False, dir_okay=False, path_type=Path))
-@click.option("--json", "as_json", is_flag=True, help="Output machine-readable JSON")
+@click.option("--json", "output_json", is_flag=True, help="Output machine-readable JSON")
 @track_command("diff")
-def diff_cmd(file1: Path, file2: Path, as_json: bool) -> None:
+def diff_cmd(file1: Path, file2: Path, output_json: bool) -> None:
     before = _by_test_case(_load_result_file(file1))
     after = _by_test_case(_load_result_file(file2))
     payload = _compare_cases(before, after)
 
-    if as_json:
+    if output_json:
         click.echo(json.dumps(payload, indent=2))
         return
 
