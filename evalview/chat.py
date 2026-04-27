@@ -10,7 +10,7 @@ import subprocess
 import time
 from collections import Counter
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -663,7 +663,7 @@ async def run_chat(
                         test_filter = parts[1].strip() if len(parts) > 1 else None
 
                         test_dirs = ["tests/test-cases", "tests", "test-cases", ".evalview/tests", "."]
-                        test_files = []
+                        test_files: List[Path] = []
                         for test_dir in test_dirs:
                             if Path(test_dir).exists():
                                 test_files.extend(Path(test_dir).glob("*.yaml"))
