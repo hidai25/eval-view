@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- **`evalview quickstart`** — the deprecated compatibility shim has been
+  removed. Use `evalview demo` to see a regression caught in 30 seconds, or
+  `evalview init` to set up a real project. Trims ~400 lines of legacy code
+  from `init_cmd.py`.
+
+### Changed
+- **Daily dogfood workflow** now updates a single rolling issue instead of
+  filing a new "🐕 Dogfood failed" issue every day a check fails. The issue
+  auto-closes when dogfood goes green again. Existing per-day failure issues
+  were closed as superseded.
+
 ## [0.7.0] - 2026-04-23
 
 ### Added

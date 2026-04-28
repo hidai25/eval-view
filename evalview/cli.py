@@ -34,7 +34,7 @@ from evalview.commands.run import run
 from evalview.commands.listing_cmd import list_cmd, adapters, report, view, connect, validate_adapter, record
 from evalview.commands.skill_cmd import skill
 from evalview.commands.capture_cmd import capture
-from evalview.commands.init_cmd import init, quickstart
+from evalview.commands.init_cmd import init
 from evalview.commands.add_cmd import add
 from evalview.commands.demo_cmd import demo
 from evalview.commands.judge_cmd import judge
@@ -181,7 +181,6 @@ main.add_command(record)
 main.add_command(skill)
 main.add_command(capture)
 main.add_command(init)
-main.add_command(quickstart)
 main.add_command(add)
 main.add_command(demo)
 main.add_command(judge)
