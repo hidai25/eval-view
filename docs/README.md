@@ -48,6 +48,7 @@ If you're new:
 | [Cost Tracking](COST_TRACKING.md) | Understand token and dollar usage |
 | [Test Generation](TEST_GENERATION.md) | Generate a draft suite from an agent or logs |
 | [Trace Specification](TRACE_SPEC.md) | Execution trace format used across adapters |
+| [Decision Rationale](RATIONALE.md) | Structured "why" logging for agent decisions |
 
 ## Frameworks
 
@@ -62,6 +63,13 @@ If you're new:
 | [LangGraph Example Setup](SETUP_LANGGRAPH_EXAMPLE.md) | End-to-end example walkthrough |
 | [Database Setup](DATABASE_SETUP.md) | Test-user and stateful backend setup |
 
+## Specialized Commands
+
+| Document | Description |
+|----------|-------------|
+| [`evalview simulate`](SIMULATE.md) | Hermetic, mock-driven testing for CI |
+| [`evalview model-check`](MODEL_CHECK.md) | Detect closed-model drift on a canary suite |
+
 ## CI, Integrations, and Operations
 
 | Document | Description |
@@ -71,6 +79,14 @@ If you're new:
 | [MCP Contract Testing](MCP_CONTRACTS.md) | Detect external MCP server interface drift |
 | [Skills Testing](SKILLS_TESTING.md) | Test `SKILL.md` behavior with real agents |
 | [Chat Mode](CHAT_MODE.md) | Interactive CLI guidance and exploration |
+| [EvalView Cloud](CLOUD.md) | Optional team dashboard — what it stores, what it never runs |
+
+## Contributing
+
+| Document | Description |
+|----------|-------------|
+| [Repository Guidelines](AGENTS.md) | Project structure, conventions, and contributor guide |
+| [Agent Recipes](agent-recipes/README.md) | Step-by-step recipes for common extension tasks |
 
 ## Website Guides
 

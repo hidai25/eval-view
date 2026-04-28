@@ -143,7 +143,44 @@ class CommandPermissions:
         return sorted(self.always_allow)
 
 
-def validate_command(cmd: str, valid_evalview_commands: set[str], valid_run_flags: set[str], valid_demo_flags: set[str], valid_adapters_flags: set[str], valid_list_flags: set[str]) -> tuple[bool, str]:
+def derive_chat_allowlists() -> Tuple[set[str], dict[str, set[str]]]:
+    """Build the chat-validator allowlist directly from the Click registry.
+
+    Returns ``(commands, flags_by_command)`` where ``commands`` is the set of
+    valid top-level command names, and ``flags_by_command`` maps each command
+    name to its set of valid flag spellings (e.g. ``"--verbose"``, ``"-v"``).
+
+    Sourcing these from ``evalview.cli.main`` instead of hand-maintained sets
+    means a new command or flag added to the Click registry is picked up
+    automatically — the chat validator can never silently drift out of sync
+    with the real CLI.
+    """
+    import click
+
+    from evalview.cli import main
+
+    commands: set[str] = set()
+    flags_by_command: dict[str, set[str]] = {}
+
+    for name, cmd in main.commands.items():
+        if cmd.hidden:
+            continue
+        commands.add(name)
+        flags: set[str] = {"--help"}
+        for param in cmd.params:
+            if isinstance(param, click.Option):
+                flags.update(param.opts)
+                flags.update(param.secondary_opts)
+        flags_by_command[name] = flags
+
+    return commands, flags_by_command
+
+
+def validate_command(
+    cmd: str,
+    valid_commands: set[str],
+    flags_by_command: dict[str, set[str]],
+) -> Tuple[bool, str]:
     """Validate that a command is a valid evalview command."""
     if not cmd.startswith("evalview"):
         return False, "Not an evalview command"
@@ -156,19 +193,10 @@ def validate_command(cmd: str, valid_evalview_commands: set[str], valid_run_flag
     if subcommand.startswith("-"):
         return True, ""
 
-    if subcommand not in valid_evalview_commands:
-        return False, f"Unknown command: {subcommand}. Valid: {', '.join(sorted(valid_evalview_commands))}"
+    if subcommand not in valid_commands:
+        return False, f"Unknown command: {subcommand}. Valid: {', '.join(sorted(valid_commands))}"
 
-    valid_flags = None
-    if subcommand == "run":
-        valid_flags = valid_run_flags
-    elif subcommand == "demo":
-        valid_flags = valid_demo_flags
-    elif subcommand == "adapters":
-        valid_flags = valid_adapters_flags
-    elif subcommand == "list":
-        valid_flags = valid_list_flags
-
+    valid_flags = flags_by_command.get(subcommand)
     if valid_flags:
         for part in parts[2:]:
             if not part.startswith("-"):
