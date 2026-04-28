@@ -12,12 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   removed. Use `evalview demo` to see a regression caught in 30 seconds, or
   `evalview init` to set up a real project. Trims ~400 lines of legacy code
   from `init_cmd.py`.
+- **`requirements.txt`** — removed in favor of `pyproject.toml` + `uv.lock`
+  as the single source of truth. The file had drifted (missing
+  `prompt_toolkit`, `jsonschema`) and was not consumed by CI, Docker, or the
+  installer. To regenerate a flat list locally: `uv export --no-hashes`.
 
 ### Changed
+- **`evalview view`** is no longer hidden — surfaced under the "Inspect &
+  Visualize" section of `evalview --help`. It's a terminal-based trace
+  inspector with prompt/completion/LLM-only/tools-only filters.
 - **Daily dogfood workflow** now updates a single rolling issue instead of
   filing a new "🐕 Dogfood failed" issue every day a check fails. The issue
   auto-closes when dogfood goes green again. Existing per-day failure issues
   were closed as superseded.
+
+### Fixed
+- **Lint-clean main** — drop unused `asyncio` and `sys` imports left over
+  in `init_cmd.py` after the quickstart removal, which broke the
+  `Lint & Type Check` job on `main`.
 
 ## [0.7.0] - 2026-04-23
 
