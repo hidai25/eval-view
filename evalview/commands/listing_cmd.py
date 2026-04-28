@@ -1,4 +1,4 @@
-"""Listing commands — list, adapters, report, view, connect, validate-adapter, record."""
+"""Listing commands — list, adapters, report, view, connect, record."""
 from __future__ import annotations
 
 import asyncio
@@ -72,9 +72,21 @@ async def _list_async(pattern: str, detailed: bool):
 # adapters
 # ---------------------------------------------------------------------------
 
-@click.command("adapters", hidden=True)
+@click.group("adapters", invoke_without_command=True)
+@click.pass_context
+def adapters(ctx: click.Context):
+    """List or validate agent adapters.
+
+    Run `evalview adapters` with no subcommand to list available adapters.
+    Use `evalview adapters validate` to probe a live endpoint.
+    """
+    if ctx.invoked_subcommand is None:
+        ctx.invoke(_adapters_list)
+
+
+@adapters.command("list")
 @track_command("adapters")
-def adapters():
+def _adapters_list():
     """List all available adapters."""
     from rich.table import Table
     from evalview.adapters.registry import AdapterRegistry
@@ -553,8 +565,24 @@ async def _connect_async(endpoint: Optional[str]):
 
 
 # ---------------------------------------------------------------------------
-# validate-adapter
+# adapters validate (canonical) + validate-adapter (deprecated alias)
 # ---------------------------------------------------------------------------
+
+@adapters.command("validate")
+@click.option("--endpoint", required=True, help="Endpoint URL to validate")
+@click.option(
+    "--adapter",
+    default="http",
+    type=click.Choice(["http", "langgraph", "crewai", "streaming", "tapescope"]),
+    help="Adapter type to use (default: http)",
+)
+@click.option("--query", default="What is 2+2?", help="Test query to send (default: 'What is 2+2?')")
+@click.option("--timeout", default=30.0, type=float, help="Request timeout in seconds (default: 30)")
+@track_command("validate_adapter", lambda **kw: {"adapter": kw.get("adapter")})
+def adapters_validate(endpoint: str, adapter: str, query: str, timeout: float):
+    """Validate an adapter endpoint and show detailed response analysis."""
+    asyncio.run(_validate_adapter_async(endpoint, adapter, query, timeout))
+
 
 @click.command("validate-adapter", hidden=True)
 @click.option("--endpoint", required=True, help="Endpoint URL to validate")
@@ -566,10 +594,20 @@ async def _connect_async(endpoint: Optional[str]):
 )
 @click.option("--query", default="What is 2+2?", help="Test query to send (default: 'What is 2+2?')")
 @click.option("--timeout", default=30.0, type=float, help="Request timeout in seconds (default: 30)")
-@track_command("validate_adapter", lambda **kw: {"adapter": kw.get("adapter")})
-def validate_adapter(endpoint: str, adapter: str, query: str, timeout: float):
-    """Validate an adapter endpoint and show detailed response analysis."""
-    asyncio.run(_validate_adapter_async(endpoint, adapter, query, timeout))
+@click.pass_context
+def validate_adapter(ctx: click.Context, endpoint: str, adapter: str, query: str, timeout: float):
+    """Deprecated: use `evalview adapters validate` instead."""
+    console.print(
+        "[yellow]warning:[/yellow] `validate-adapter` is deprecated; "
+        "use `evalview adapters validate` instead.",
+    )
+    ctx.invoke(
+        adapters_validate,
+        endpoint=endpoint,
+        adapter=adapter,
+        query=query,
+        timeout=timeout,
+    )
 
 
 async def _validate_adapter_async(endpoint: str, adapter_type: str, query: str, timeout: float):

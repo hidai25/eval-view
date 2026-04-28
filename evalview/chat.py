@@ -68,7 +68,7 @@ from evalview.chat_commands import (
 VALID_EVALVIEW_COMMANDS = {
     "demo", "run", "adapters", "list", "init",
     "report", "chat", "connect", "expand", "golden", "judge",
-    "record", "trends", "validate-adapter", "skill", "add", "baseline"
+    "record", "trends", "skill", "add", "baseline"
 }
 
 VALID_RUN_FLAGS = {
@@ -82,7 +82,7 @@ VALID_RUN_FLAGS = {
 
 
 VALID_DEMO_FLAGS = {"--help"}
-VALID_ADAPTERS_FLAGS = {"--help"}
+VALID_ADAPTERS_FLAGS = {"--help", "--endpoint", "--adapter", "--query", "--timeout"}
 VALID_LIST_FLAGS = {"--help", "--verbose", "-v"}
 
 

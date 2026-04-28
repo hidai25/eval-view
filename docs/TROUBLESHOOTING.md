@@ -21,7 +21,7 @@ DEBUG=1 evalview run
 evalview connect
 
 # Validate specific endpoint
-evalview validate-adapter --endpoint http://localhost:8000 --adapter http
+evalview adapters validate --endpoint http://localhost:8000 --adapter http
 ```
 
 ---
