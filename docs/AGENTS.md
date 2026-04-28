@@ -4,7 +4,7 @@
 - `evalview/`: Python package and CLI (`cli.py`). Modules: `adapters/` (framework integrations), `core/` (types, loader, pricing), `evaluators/` (cost, latency, output, sequence), `reporters/` (console, JSON).
 - `tests/`: Pytest assets and YAML scenarios under `tests/test-cases/*.yaml`.
 - `docs/`: Reference docs (adapters, database, backend setup). `examples/`: Example YAML and backend notes.
-- Root tooling: `Makefile`, `pyproject.toml`, `requirements.txt`, optional Node workspace (`package.json`).
+- Root tooling: `Makefile`, `pyproject.toml`, `uv.lock`, optional Node workspace (`package.json`).
 
 ## Build, Test, and Development Commands
 - Install: `make install` (editable) or `make dev-install` (adds dev deps).
