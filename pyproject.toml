@@ -43,6 +43,9 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "jinja2>=3.0",
     "jsonschema>=4.0.0",
+    # tomllib is stdlib on 3.11+; pull tomli for 3.9/3.10 to back the
+    # TOML test-case loader (#143).
+    "tomli>=2.0; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
