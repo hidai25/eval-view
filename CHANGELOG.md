@@ -56,9 +56,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       erroring when `fastapi`/`uvicorn` aren't installed.
     - `make test` now runs `uv sync --all-extras` first so dev deps
       are guaranteed present before pytest.
-    - `ci.yml` forwards the `OPENAI_API_KEY` secret so the API-bound
-      tests run in CI when the secret is configured (and skip cleanly
-      on forked-PR builds where it isn't).
 
 ## [0.7.0] - 2026-04-23
 
