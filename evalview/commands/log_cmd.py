@@ -128,7 +128,7 @@ def _verdict_for_run(run: Dict[str, Any]) -> Tuple[str, str]:
     return ("CLEAN", "green")
 
 
-@click.command("log")
+@click.command("log", hidden=True)
 @click.option("-n", "--limit", default=20, show_default=True,
               help="Maximum number of runs to show.")
 @click.option("--json", "json_output", is_flag=True,

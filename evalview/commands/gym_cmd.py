@@ -27,7 +27,7 @@ async def _run_gym_scenario(scenario_path: Path, endpoint: str) -> bool:
     return eval_result.passed
 
 
-@click.command("gym", hidden=True)
+@click.command("gym")
 @click.option(
     "--suite",
     type=click.Choice(["all", "failure-modes", "security"]),

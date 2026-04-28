@@ -75,72 +75,80 @@ from evalview.commands.slack_digest_cmd import slack_digest_cmd
 from evalview.commands.diff_cmd import diff_cmd
 
 
-@click.group(context_settings={"allow_interspersed_args": False})
+class OrderedGroup(click.Group):
+    """Group that renders subcommands in workflow-ordered sections.
+
+    Click's default Group lists commands alphabetically, which buries the
+    happy-path commands among 50+ specialized ones. This subclass renders
+    a curated set of named sections and skips hidden commands.
+    """
+
+    SECTIONS: list[tuple[str, list[str]]] = [
+        ("Start", ["demo", "init"]),
+        ("Regression Gating", ["snapshot", "check", "model-check", "replay"]),
+        ("Triage", ["since", "progress", "drift"]),
+        ("Production", ["watch", "monitor", "autopr"]),
+        ("Evaluation", ["run", "report", "generate", "judge", "expand",
+                        "golden", "compare", "benchmark", "simulate"]),
+        ("Capture & Import", ["capture", "import", "record", "connect", "adapters"]),
+        ("Inspect & Visualize", ["inspect", "visualize", "trace", "traces",
+                                 "baseline", "trends"]),
+        ("CI/CD", ["ci", "validate", "badge", "install-hooks", "uninstall-hooks"]),
+        ("Integrations", ["mcp", "skill", "gym", "chat"]),
+        ("Account", ["login", "logout", "whoami", "telemetry", "feedback"]),
+    ]
+
+    def list_commands(self, ctx: click.Context) -> list[str]:
+        ordered: list[str] = []
+        seen: set[str] = set()
+        for _, names in self.SECTIONS:
+            for name in names:
+                if name in self.commands and name not in seen:
+                    ordered.append(name)
+                    seen.add(name)
+        for name in sorted(self.commands):
+            if name in seen:
+                continue
+            if self.commands[name].hidden:
+                continue
+            ordered.append(name)
+        return ordered
+
+    def format_commands(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
+        rendered: set[str] = set()
+        for section_title, names in self.SECTIONS:
+            rows: list[tuple[str, str]] = []
+            for name in names:
+                cmd = self.commands.get(name)
+                if cmd is None or cmd.hidden:
+                    continue
+                rows.append((name, cmd.get_short_help_str(limit=60)))
+                rendered.add(name)
+            if rows:
+                with formatter.section(section_title):
+                    formatter.write_dl(rows)
+
+        leftover: list[tuple[str, str]] = []
+        for name in sorted(self.commands):
+            if name in rendered:
+                continue
+            cmd = self.commands[name]
+            if cmd.hidden:
+                continue
+            leftover.append((name, cmd.get_short_help_str(limit=60)))
+        if leftover:
+            with formatter.section("Other"):
+                formatter.write_dl(leftover)
+
+
+@click.group(cls=OrderedGroup, context_settings={"allow_interspersed_args": False})
 @click.version_option(version=_EVALVIEW_VERSION)
 @click.pass_context
 def main(ctx: click.Context) -> None:
     """EvalView — Regression testing and evaluation for AI agents.
 
-    \b
-    New here? Start with:
-      demo                    See it work in 30 seconds
-      init                    Detect your agent and create first tests
-
-    \b
-    Regression Gating — did my agent change?
-      snapshot                Capture current behavior as baseline
-      snapshot list            List saved baselines
-      snapshot show <name>    Inspect a baseline
-      snapshot delete <name>  Remove a baseline
-      check                   Compare against baseline — catch regressions
-      model-check             Detect drift in a closed model (Claude/GPT/...) over time
-
-    \b
-    Evaluation — how good is my agent?
-      generate                Auto-generate tests from live probing
-      run                     Execute tests, score with LLM judge
-
-    \b
-    Build Your Test Suite:
-      capture --agent <url>   Record real traffic as tests
-      capture --multi-turn    Record a conversation as a multi-turn test
-      import <log_file>       Convert production logs into EvalView tests
-      expand                  Generate test variations with LLM
-      compare                 Compare two agent endpoints on the same suite
-
-    \b
-    Explore & Learn:
-      chat                    Interactive AI assistant for eval guidance
-      gym                     Practice agent eval patterns
-
-    \b
-    Reports:
-      replay                  Open a trajectory diff for one test
-      visualize               Generate a visual HTML report from results
-      trends                  Performance trends over time
-
-    \b
-    Production:
-      watch                   Re-run checks on file change (local dev)
-      monitor                 Continuous regression detection (+ Slack/Discord alerts)
-      autopr                  Turn monitor incidents into regression-test PRs
-
-    \b
-    CI/CD:
-      ci comment              Post results to a GitHub PR
-      badge                   Generate shields.io status badge
-      init --ci               Generate GitHub Actions workflow
-
-    \b
-    Advanced:
-      login                   Connect to EvalView Cloud
-      logout                  Disconnect from EvalView Cloud
-      whoami                  Show current cloud login status
-      feedback                Open a pre-filled GitHub issue
-      skill                   Test Claude Code skills
-      trace                   Trace LLM calls in scripts
-      traces                  Query stored trace data
-      expand                  Generate test variations with LLM
+    New here? Start with `evalview demo` or `evalview init`.
+    Run `evalview <command> --help` for details on any command.
     """
     # Show first-run telemetry notice (once only)
     if should_show_first_run_notice():

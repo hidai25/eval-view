@@ -20,7 +20,7 @@ from evalview.commands.shared import console
 from evalview.telemetry.decorators import track_command
 
 
-@click.command("replay-trace")
+@click.command("replay-trace", hidden=True)
 @click.argument("trace_file", type=click.Path(exists=True))
 @click.option(
     "--adapter", "-a",

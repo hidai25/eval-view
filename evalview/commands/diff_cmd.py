@@ -266,7 +266,7 @@ def _render_diff(payload: Dict[str, Any]) -> None:
             console.print(f"  - {name}")
 
 
-@click.command(name="diff", help="Pretty-print what changed between two result files")
+@click.command(name="diff", hidden=True, help="Pretty-print what changed between two result files")
 @click.argument("file1", type=click.Path(exists=False, dir_okay=False, path_type=Path))
 @click.argument("file2", type=click.Path(exists=False, dir_okay=False, path_type=Path))
 @click.option("--json", "output_json", is_flag=True, help="Output machine-readable JSON")

@@ -20,7 +20,7 @@ from evalview.commands.shared import (
 from evalview.telemetry.decorators import track_command
 
 
-@click.command("inspect", hidden=True)
+@click.command("inspect")
 @click.argument("target", default="latest", required=False)
 @click.option("--title", default="EvalView Report", help="Report title")
 @click.option("--notes", default="", help="Optional note shown in the report header")

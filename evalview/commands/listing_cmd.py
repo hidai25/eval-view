@@ -128,7 +128,7 @@ def _adapters_list():
 # report
 # ---------------------------------------------------------------------------
 
-@click.command("report", hidden=True)
+@click.command("report")
 @click.argument("results_file", type=click.Path(exists=True))
 @click.option("--detailed", is_flag=True, help="Show detailed results for each test case")
 @click.option("--html", type=click.Path(), help="Generate HTML report to specified path")
@@ -317,7 +317,7 @@ def view(
 # connect
 # ---------------------------------------------------------------------------
 
-@click.command("connect", hidden=True)
+@click.command("connect")
 @click.option("--endpoint", help="Agent endpoint URL to test (optional - will auto-detect common ones)")
 @track_command("connect")
 def connect(endpoint: str):
@@ -709,7 +709,7 @@ async def _validate_adapter_async(endpoint: str, adapter_type: str, query: str, 
 # record
 # ---------------------------------------------------------------------------
 
-@click.command("record", hidden=True)
+@click.command("record")
 @click.option("--query", help="Query to record (non-interactive mode)")
 @click.option("--output", help="Output file path (default: auto-generate in tests/test-cases/)")
 @click.option(
