@@ -40,7 +40,10 @@ def test_current_git_sha_in_a_fresh_git_repo(tmp_path: Path) -> None:
     """A real git repo should yield a non-empty short SHA."""
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     subprocess.run(
-        ["git", "-c", "user.email=t@e.com", "-c", "user.name=t",
+        ["git",
+         "-c", "user.email=t@e.com",
+         "-c", "user.name=t",
+         "-c", "commit.gpgsign=false",
          "commit", "-q", "--allow-empty", "-m", "init"],
         cwd=tmp_path,
         check=True,

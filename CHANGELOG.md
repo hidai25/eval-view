@@ -43,6 +43,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Lint-clean main** — drop unused `asyncio` and `sys` imports left over
   in `init_cmd.py` after the quickstart removal, which broke the
   `Lint & Type Check` job on `main`.
+- **Hermetic test suite** — `git clone && make test` now goes green on
+  first run with no environment setup beyond `uv`. Specifically:
+    - New `requires_api_key` pytest marker that auto-skips
+      LLM-provider-bound tests when no `OPENAI_API_KEY` /
+      `ANTHROPIC_API_KEY` is set, with a clear skip reason.
+    - `test_current_git_sha_in_a_fresh_git_repo` now passes
+      `commit.gpgsign=false` inline so it works in environments that
+      enforce signing globally.
+    - `test_dogfood_e2e.py` mock-agent fixture skips with a helpful
+      message ("install dev extras: `uv sync --all-extras`") instead of
+      erroring when `fastapi`/`uvicorn` aren't installed.
+    - `make test` now runs `uv sync --all-extras` first so dev deps
+      are guaranteed present before pytest.
 
 ## [0.7.0] - 2026-04-23
 

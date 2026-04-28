@@ -5,7 +5,6 @@ for known-good and known-bad agent outputs. This is real dogfooding -
 testing the core evaluation logic, not just the chat interface.
 """
 
-import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -391,7 +390,7 @@ class TestOutputContainsAccuracy:
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(not os.environ.get("OPENAI_API_KEY"), reason="OPENAI_API_KEY not set")
+@pytest.mark.requires_api_key
 class TestOutputEvaluatorLLMAccuracy:
     """Test LLM-as-judge scoring with obvious good/bad responses.
 
@@ -459,7 +458,7 @@ class TestOutputEvaluatorLLMAccuracy:
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(not os.environ.get("OPENAI_API_KEY"), reason="OPENAI_API_KEY not set")
+@pytest.mark.requires_api_key
 class TestHallucinationEvaluatorAccuracy:
     """Test hallucination detection with obvious true/false cases."""
 
