@@ -311,24 +311,66 @@ jobs:
           echo "has_failures=false" >> $GITHUB_OUTPUT
         fi
 
-    - name: Create issue on failure
-      if: steps.check.outputs.has_failures == 'true'
+    - name: Update rolling dogfood issue
+      if: always()
       uses: actions/github-script@v7
       with:
         script: |
           const fs = require('fs');
 
-          const failed = '${{ steps.check.outputs.failed }}'.split(',');
+          const hasFailures = '${{ steps.check.outputs.has_failures }}' === 'true';
+          const failed = hasFailures
+            ? '${{ steps.check.outputs.failed }}'.split(',')
+            : [];
           const date = new Date().toISOString().split('T')[0];
+          const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+          const ROLLING_TITLE = '🐕 Daily dogfood is failing';
 
-          let body = `## Daily Dogfood Failed - ${date}\n\n`;
-          body += `The following checks failed:\n\n`;
+          // Ensure the dogfood label exists.
+          try {
+            await github.rest.issues.createLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'dogfood',
+              color: 'FFA500',
+              description: 'Daily self-testing failures',
+            });
+          } catch (e) { /* label likely exists */ }
 
+          // Find any open rolling issue.
+          const { data: openIssues } = await github.rest.issues.listForRepo({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            state: 'open',
+            labels: 'dogfood',
+            per_page: 100,
+          });
+          const rolling = openIssues.find(i => i.title === ROLLING_TITLE);
+
+          if (!hasFailures) {
+            if (rolling) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: rolling.number,
+                body: `✅ Dogfood is green again as of ${date}.\n\n[Run](${runUrl})`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: rolling.number,
+                state: 'closed',
+              });
+            }
+            return;
+          }
+
+          // Build failure body.
+          let body = `## ${date}\n\nFailing checks: ${failed.map(c => `\`${c}\``).join(', ')}\n\n`;
           for (const check of failed) {
             body += `### ❌ ${check}\n\n`;
             try {
               const output = fs.readFileSync(`${check}-output.txt`, 'utf8');
-              // Truncate if too long
               const truncated = output.length > 3000
                 ? output.slice(-3000) + '\n...(truncated)'
                 : output;
@@ -336,7 +378,6 @@ jobs:
             } catch (e) {
               body += `Could not read output file.\n\n`;
             }
-            // For regression failures, also include the snapshot log
             if (check === 'regression') {
               try {
                 const snapshotLog = fs.readFileSync('snapshot-output.txt', 'utf8');
@@ -347,30 +388,28 @@ jobs:
               } catch (e) {}
             }
           }
+          body += `---\n🔗 [View workflow run](${runUrl})`;
 
-          body += `---\n`;
-          body += `🔗 [View workflow run](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID})`;
-
-          // Try to create dogfood label if it doesn't exist
-          try {
-            await github.rest.issues.createLabel({
+          if (rolling) {
+            await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              name: 'dogfood',
-              color: 'FFA500',
-              description: 'Daily self-testing failures'
+              issue_number: rolling.number,
+              body,
             });
-          } catch (e) {
-            // Label likely already exists
+          } else {
+            const initialBody =
+              `Dogfood is failing on the daily schedule. This issue auto-closes when ` +
+              `dogfood goes green again. Each subsequent failing run posts a comment ` +
+              `here instead of opening a new issue.\n\n${body}`;
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: ROLLING_TITLE,
+              body: initialBody,
+              labels: ['dogfood'],
+            });
           }
-
-          await github.rest.issues.create({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            title: `🐕 Dogfood failed: ${failed.join(', ')} (${date})`,
-            body: body,
-            labels: ['dogfood']
-          });
 
     - name: Summary
       run: |
