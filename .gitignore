@@ -51,6 +51,12 @@ env/
 .evalview/*.html
 .evalview/badge.json
 .evalview/healing/
+# Top-level generated reports (from `evalview report`, `visualize`, `compare`)
+/report.html
+/diff-report.html
+/benchmark_compare.html
+# Leftover from examples/goosebench/tasks/06-create-file.yaml
+/goosebench-test.txt
 tests/test-cases/*.yaml
 !tests/test-cases/example.yaml
 
