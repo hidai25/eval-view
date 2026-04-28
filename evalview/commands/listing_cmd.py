@@ -194,7 +194,7 @@ def _find_results_file(run_id: str) -> Optional[Path]:
     return None
 
 
-@click.command("view", hidden=True)
+@click.command("view")
 @click.argument("run_id", required=False)
 @click.option("-t", "--test", help="Filter by test name (substring match)")
 @click.option("--llm-only", is_flag=True, help="Only show LLM call spans")
