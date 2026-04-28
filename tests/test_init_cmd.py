@@ -2,10 +2,28 @@
 
 from __future__ import annotations
 
+import pytest
 from click.testing import CliRunner
 import yaml
 
 from evalview.core.types import ExpectedBehavior, TestCase, TestInput, Thresholds
+
+
+@pytest.fixture(autouse=True)
+def _suppress_interactive_prompts(monkeypatch):
+    """Skip init's model-synthesis picker and the snapshot judge picker.
+
+    init's `_init_standard` prompts for a synthesis model when any LLM
+    provider is detected. These tests cover the init/generate flow, not
+    model picking — returning an empty provider list short-circuits the
+    prompt at its `if _model_choices:` guard. CI=1 also disables any
+    other prompts that respect the standard env-var convention.
+    """
+    monkeypatch.setenv("CI", "1")
+    monkeypatch.setattr(
+        "evalview.core.llm_configs.detect_available_providers",
+        lambda: [],
+    )
 
 
 def _make_fake_tests(n=2):

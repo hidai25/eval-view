@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import pytest
 from click.testing import CliRunner
 from evalview.core.project_state import ProjectStateStore
-
 from evalview.core.types import (
     ContainsChecks,
     CostEvaluation,
@@ -20,6 +20,19 @@ from evalview.core.types import (
     ToolEvaluation,
 )
 from evalview.core.types import ExpectedBehavior, TestCase, TestInput, Thresholds
+
+
+@pytest.fixture(autouse=True)
+def _suppress_interactive_prompts(monkeypatch):
+    """Set CI=1 so snapshot's interactive prompts (judge picker, dashboard
+    confirm) self-suppress.
+
+    Both `apply_judge_model` and the dashboard-open prompt in snapshot_cmd
+    short-circuit when `os.environ.get("CI")` is truthy. That's the
+    codebase's intended convention for non-interactive runs and matches
+    how CI exercises these commands.
+    """
+    monkeypatch.setenv("CI", "1")
 
 
 def _passing_result(test_case_name: str) -> EvaluationResult:
