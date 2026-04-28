@@ -27,6 +27,7 @@ from evalview.chat_slash import SLASH_COMMANDS, SlashCommandCompleter, show_slas
 from evalview.chat_runtime import (
     CommandPermissions,
     SMALL_OLLAMA_MODELS,
+    derive_chat_allowlists,
     extract_commands,
     extract_slash_commands,
     get_command_key,
@@ -65,25 +66,9 @@ from evalview.chat_commands import (
 )
 
 
-VALID_EVALVIEW_COMMANDS = {
-    "demo", "run", "adapters", "list", "init",
-    "report", "chat", "connect", "expand", "golden", "judge",
-    "record", "trends", "skill", "add", "baseline"
-}
-
-VALID_RUN_FLAGS = {
-    "--pattern", "--verbose", "--no-verbose", "--debug", "--sequential",
-    "--track", "--compare-baseline", "--watch", "--summary", "--coverage",
-    "--diff", "--strict", "-t", "--test", "-f", "--filter", "--output",
-    "--max-workers", "--max-retries", "--retry-delay", "--html-report",
-    "--judge-model", "--judge-provider", "--adapter", "--diff-report",
-    "--fail-on", "--warn-on", "--help"
-}
-
-
-VALID_DEMO_FLAGS = {"--help"}
-VALID_ADAPTERS_FLAGS = {"--help", "--endpoint", "--adapter", "--query", "--timeout"}
-VALID_LIST_FLAGS = {"--help", "--verbose", "-v"}
+# Allowlists are derived once from the Click registry so they cannot drift
+# out of sync with the actual CLI when commands or flags change.
+_VALID_COMMANDS, _VALID_FLAGS_BY_COMMAND = derive_chat_allowlists()
 
 
 
@@ -447,11 +432,8 @@ async def run_chat(
                 # Validate command before offering to run
                 is_valid, error_msg = validate_command(
                     cmd,
-                    VALID_EVALVIEW_COMMANDS,
-                    VALID_RUN_FLAGS,
-                    VALID_DEMO_FLAGS,
-                    VALID_ADAPTERS_FLAGS,
-                    VALID_LIST_FLAGS,
+                    _VALID_COMMANDS,
+                    _VALID_FLAGS_BY_COMMAND,
                 )
                 if not is_valid:
                     console.print()

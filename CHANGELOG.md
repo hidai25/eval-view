@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installer. To regenerate a flat list locally: `uv export --no-hashes`.
 
 ### Changed
+- **Chat-mode command validator now derives its allowlist from the Click
+  registry** instead of a hand-maintained set in `evalview/chat.py`. New
+  CLI commands and flags are picked up automatically — the validator can
+  no longer drift out of sync after a rename.
 - **`evalview view`** is no longer hidden — surfaced under the "Inspect &
   Visualize" section of `evalview --help`. It's a terminal-based trace
   inspector with prompt/completion/LLM-only/tools-only filters.
@@ -25,6 +29,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   filing a new "🐕 Dogfood failed" issue every day a check fails. The issue
   auto-closes when dogfood goes green again. Existing per-day failure issues
   were closed as superseded.
+
+### Docs
+- **`docs/README.md` index expanded** — added entries for `RATIONALE.md`,
+  `SIMULATE.md`, `MODEL_CHECK.md`, `CLOUD.md`, `AGENTS.md`, and the
+  `agent-recipes/` directory under new "Specialized Commands" and
+  "Contributing" sections.
+- **`demo/`, `demo-agent/`, and `demo-tests/` each got a README** that
+  explains the directory's role and cross-links the other two so the
+  three "demo" prefixes don't read as fragmented.
 
 ### Fixed
 - **Lint-clean main** — drop unused `asyncio` and `sys` imports left over
