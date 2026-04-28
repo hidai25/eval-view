@@ -297,7 +297,8 @@ But it catches the obvious stuff—and in my experience, the obvious stuff cause
 
 ```bash
 pip install evalview
-evalview quickstart  # creates a demo agent + test case
+evalview demo   # see a regression caught in 30 seconds
+evalview init   # connect your agent and create a starter test suite
 ```
 
 Then adapt the generated test case for your agent.
