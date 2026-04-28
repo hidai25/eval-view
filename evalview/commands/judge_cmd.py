@@ -11,7 +11,7 @@ from evalview.commands.shared import console
 from evalview.telemetry.decorators import track_command
 
 
-@click.command("judge", hidden=True)
+@click.command("judge")
 @click.argument("provider", required=False, type=click.Choice(["openai", "anthropic", "gemini", "grok", "ollama"]))
 @click.argument("model", required=False)
 @track_command("judge", lambda **kw: {"provider": kw.get("provider")})

@@ -27,7 +27,7 @@ _TREND_GLYPH = {
 }
 
 
-@click.group()
+@click.group(hidden=True)
 def quarantine() -> None:
     """Manage quarantined (known-flaky) tests.
 

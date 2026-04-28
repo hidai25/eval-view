@@ -340,7 +340,7 @@ def _post_to_slack(webhook: str, payload: Dict[str, Any]) -> bool:
 # ───────────────────────── command ─────────────────────────
 
 
-@click.command("slack-digest")
+@click.command("slack-digest", hidden=True)
 @click.option(
     "--webhook",
     "webhook",

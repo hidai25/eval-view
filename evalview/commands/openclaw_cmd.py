@@ -7,7 +7,7 @@ import click
 from evalview.commands.shared import console
 
 
-@click.group()
+@click.group(hidden=True)
 def openclaw():
     """OpenClaw integration — install skills and manage the regression gate."""
     pass

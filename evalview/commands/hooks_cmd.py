@@ -69,7 +69,7 @@ def _find_git_hooks_dir(git_dir: Optional[str]) -> Optional[Path]:
     return None
 
 
-@click.command("install-hooks", hidden=True)
+@click.command("install-hooks")
 @click.option(
     "--hook",
     "hook_name",
@@ -155,7 +155,7 @@ def install_hooks(hook_name: str, git_dir: Optional[str]) -> None:
     )
 
 
-@click.command("uninstall-hooks", hidden=True)
+@click.command("uninstall-hooks")
 @click.option(
     "--hook",
     "hook_name",

@@ -8,7 +8,7 @@ from evalview.commands.shared import console
 from evalview.telemetry.decorators import track_command
 
 
-@click.group(hidden=True)
+@click.group()
 def baseline():
     """Manage test baselines for regression detection."""
     pass
