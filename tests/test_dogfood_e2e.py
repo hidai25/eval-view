@@ -84,6 +84,11 @@ def mock_agent() -> Generator[Tuple[subprocess.Popen, int], None, None]:
         stderr_text = stderr.decode()
         if "operation not permitted" in stderr_text.lower():
             pytest.skip("Socket binding is not permitted in this environment")
+        if "modulenotfounderror" in stderr_text.lower() or "no module named" in stderr_text.lower():
+            pytest.skip(
+                "Mock agent dependency missing — install dev extras: "
+                "`uv sync --all-extras` (or `make dev-install`)"
+            )
         raise RuntimeError(f"Mock agent failed to start. stderr: {stderr_text}")
 
     yield proc, port
