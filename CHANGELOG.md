@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   registry** instead of a hand-maintained set in `evalview/chat.py`. New
   CLI commands and flags are picked up automatically — the validator can
   no longer drift out of sync after a rename.
+- **`evalview inspect` is now an alias for `evalview visualize`.** The two
+  commands had largely overlapping functionality — `visualize` is a
+  superset of `inspect` (same single-run HTML report flow, plus
+  `--compare` for side-by-side multi-run comparison). `inspect` is kept
+  as a hidden deprecation alias that emits a warning and forwards to
+  `visualize`.
 - **`evalview view`** is no longer hidden — surfaced under the "Inspect &
   Visualize" section of `evalview --help`. It's a terminal-based trace
   inspector with prompt/completion/LLM-only/tools-only filters.
