@@ -456,3 +456,82 @@ endpoint: http://localhost:8001/execute
         test_cases = TestCaseLoader.load_from_directory(test_dir)
         assert len(test_cases) == 1
         assert test_cases[0].name == "actual_test"
+
+
+# Minimal test case body shared by every TOML test below.
+_TOML_BODY = """
+name = "toml_test"
+description = "TOML test case"
+
+[input]
+query = "What is 2+2?"
+
+[expected.output]
+contains = ["4"]
+
+[thresholds]
+min_score = 50.0
+"""
+
+
+class TestTestCaseLoaderToml:
+    """Tests for the TOML test-case loader (issue #143)."""
+
+    def test_load_toml_file(self, tmp_path):
+        """A `.toml` file parses into a TestCase the same as YAML."""
+        toml_file = tmp_path / "case.toml"
+        toml_file.write_text(_TOML_BODY)
+
+        test_case = TestCaseLoader.load_from_file(toml_file)
+
+        assert test_case.name == "toml_test"
+        assert test_case.description == "TOML test case"
+        assert test_case.input.query == "What is 2+2?"
+        assert test_case.expected.output.contains == ["4"]
+        assert test_case.thresholds.min_score == 50.0
+        assert test_case.source_file == str(toml_file)
+
+    def test_load_directory_picks_up_yaml_and_toml(self, tmp_path):
+        """`load_from_directory` with the default pattern walks both formats."""
+        (tmp_path / "yaml_case.yaml").write_text(
+            """
+name: yaml_test
+input:
+  query: yaml q
+expected:
+  output:
+    contains: ["yaml"]
+thresholds:
+  min_score: 50.0
+"""
+        )
+        (tmp_path / "toml_case.toml").write_text(_TOML_BODY)
+
+        cases = TestCaseLoader.load_from_directory(tmp_path)
+        names = sorted(c.name for c in cases)
+        assert names == ["toml_test", "yaml_test"]
+
+    def test_load_directory_skips_toml_config_files(self, tmp_path):
+        """`config.toml` and `.evalview.toml` are skipped, like the YAML pair."""
+        (tmp_path / "config.toml").write_text('adapter = "http"\n')
+        (tmp_path / ".evalview.toml").write_text('adapter = "http"\n')
+        (tmp_path / "case.toml").write_text(_TOML_BODY)
+
+        cases = TestCaseLoader.load_from_directory(tmp_path)
+        assert len(cases) == 1
+        assert cases[0].name == "toml_test"
+
+    def test_load_directory_no_double_load_for_toml(self, tmp_path):
+        """A `.toml` file in the tree must not be loaded twice."""
+        (tmp_path / "case.toml").write_text(_TOML_BODY)
+        cases = TestCaseLoader.load_from_directory(tmp_path)
+        assert len(cases) == 1
+
+    def test_load_invalid_toml_raises(self, tmp_path):
+        """Malformed TOML surfaces a parse error rather than silently
+        producing an empty test case."""
+        bad = tmp_path / "broken.toml"
+        bad.write_text("this is not = valid toml [[[\n")
+
+        with pytest.raises(Exception):
+            TestCaseLoader.load_from_file(bad)

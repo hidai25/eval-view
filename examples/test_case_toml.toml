@@ -1,0 +1,22 @@
+# EvalView test case in TOML format (closes #143).
+#
+# Identical schema to the YAML loader; just a different on-disk
+# encoding. Use this when your team already authors config in TOML
+# (Python's pyproject.toml, the Rust ecosystem, etc.).
+#
+# Run with:
+#   evalview run examples/test_case_toml.toml
+
+name = "TOML format demo"
+description = "Demonstrates that EvalView loads .toml test cases alongside .yaml"
+
+adapter = "anthropic"
+
+[input]
+query = "Please say: Hello from a TOML test case!"
+
+[expected.output]
+contains = ["Hello"]
+
+[thresholds]
+min_score = 50
