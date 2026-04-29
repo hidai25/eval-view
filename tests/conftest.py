@@ -1,24 +1,49 @@
 """Pytest configuration and shared fixtures for EvalView tests."""
 
 import json
+import os
 from datetime import datetime
-from typing import Dict, Any
 from pathlib import Path
-import pytest
+from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from evalview.core.types import (
-    TestCase as TestCaseModel,
-    TestInput as TestInputModel,
+    ExecutionMetrics,
+    ExecutionTrace,
     ExpectedBehavior,
     ExpectedOutput,
-    Thresholds,
-    ExecutionTrace,
-    StepTrace,
     StepMetrics,
-    ExecutionMetrics,
+    StepTrace,
+    TestCase as TestCaseModel,
+    TestInput as TestInputModel,
+    Thresholds,
     TokenUsage,
 )
+
+
+# ----------------------------------------------------------------------------
+# requires_api_key marker — auto-skip tests that need a real LLM provider key
+# unless one is set.
+# ----------------------------------------------------------------------------
+
+_API_KEY_ENV_VARS = ("OPENAI_API_KEY", "ANTHROPIC_API_KEY")
+
+
+def _has_api_key() -> bool:
+    return any(os.environ.get(v) for v in _API_KEY_ENV_VARS)
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    if _has_api_key():
+        return
+    skip_marker = pytest.mark.skip(
+        reason="requires_api_key: set OPENAI_API_KEY or ANTHROPIC_API_KEY to run"
+    )
+    for item in items:
+        if "requires_api_key" in item.keywords:
+            item.add_marker(skip_marker)
 
 
 # ============================================================================

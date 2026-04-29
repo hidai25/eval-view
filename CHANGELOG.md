@@ -12,12 +12,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   removed. Use `evalview demo` to see a regression caught in 30 seconds, or
   `evalview init` to set up a real project. Trims ~400 lines of legacy code
   from `init_cmd.py`.
+- **`requirements.txt`** — removed in favor of `pyproject.toml` + `uv.lock`
+  as the single source of truth. The file had drifted (missing
+  `prompt_toolkit`, `jsonschema`) and was not consumed by CI, Docker, or the
+  installer. To regenerate a flat list locally: `uv export --no-hashes`.
 
 ### Changed
+- **Chat-mode command validator now derives its allowlist from the Click
+  registry** instead of a hand-maintained set in `evalview/chat.py`. New
+  CLI commands and flags are picked up automatically — the validator can
+  no longer drift out of sync after a rename.
+- **`evalview view`** is no longer hidden — surfaced under the "Inspect &
+  Visualize" section of `evalview --help`. It's a terminal-based trace
+  inspector with prompt/completion/LLM-only/tools-only filters.
 - **Daily dogfood workflow** now updates a single rolling issue instead of
   filing a new "🐕 Dogfood failed" issue every day a check fails. The issue
   auto-closes when dogfood goes green again. Existing per-day failure issues
   were closed as superseded.
+
+### Docs
+- **`docs/README.md` index expanded** — added entries for `RATIONALE.md`,
+  `SIMULATE.md`, `MODEL_CHECK.md`, `CLOUD.md`, `AGENTS.md`, and the
+  `agent-recipes/` directory under new "Specialized Commands" and
+  "Contributing" sections.
+- **`demo/`, `demo-agent/`, and `demo-tests/` each got a README** that
+  explains the directory's role and cross-links the other two so the
+  three "demo" prefixes don't read as fragmented.
+
+### Fixed
+- **Lint-clean main** — drop unused `asyncio` and `sys` imports left over
+  in `init_cmd.py` after the quickstart removal, which broke the
+  `Lint & Type Check` job on `main`.
+- **Hermetic test suite** — `git clone && make test` now goes green on
+  first run with no environment setup beyond `uv`. Specifically:
+    - New `requires_api_key` pytest marker that auto-skips
+      LLM-provider-bound tests when no `OPENAI_API_KEY` /
+      `ANTHROPIC_API_KEY` is set, with a clear skip reason.
+    - `test_current_git_sha_in_a_fresh_git_repo` now passes
+      `commit.gpgsign=false` inline so it works in environments that
+      enforce signing globally.
+    - `test_dogfood_e2e.py` mock-agent fixture skips with a helpful
+      message ("install dev extras: `uv sync --all-extras`") instead of
+      erroring when `fastapi`/`uvicorn` aren't installed.
+    - `make test` now runs `uv sync --all-extras` first so dev deps
+      are guaranteed present before pytest.
 
 ## [0.7.0] - 2026-04-23
 

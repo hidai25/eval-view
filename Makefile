@@ -75,6 +75,7 @@ check: format lint typecheck
 
 test:
 	@echo "Running tests with pytest..."
+	@uv sync --all-extras --quiet
 	uv run pytest tests/ -v
 
 test-cov:
