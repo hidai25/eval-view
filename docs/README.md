@@ -116,5 +116,5 @@ Use the website when you want the cleaner comparison and search-intent pages. Us
 
 | Guide | Description |
 |-------|-------------|
-| [Testing LangGraph Agents in CI](../guides/pytest-for-ai-agents-langgraph-ci.md) | Practical CI setup for LangGraph agents |
-| [Detecting LLM Hallucinations in CI](../guides/detecting-llm-hallucinations-in-ci.md) | Catch hallucination regressions before production |
+| [Testing LangGraph Agents in CI](guides/pytest-for-ai-agents-langgraph-ci.md) | Practical CI setup for LangGraph agents |
+| [Detecting LLM Hallucinations in CI](guides/detecting-llm-hallucinations-in-ci.md) | Catch hallucination regressions before production |

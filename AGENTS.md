@@ -373,7 +373,7 @@ Keep these patterns in mind.
 If your task is: "set up regression tracking for our new Ollama models"
 
 1. Read:
-   - `AGENT_INSTRUCTIONS.md`
+   - `AGENTS.md`
    - `docs/agent-recipes/integrate-ollama.md`
 2. Inspect:
    - `evalview/adapters/ollama_adapter.py`
