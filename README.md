@@ -118,7 +118,7 @@ evalview model-check --model claude-opus-4-5-20251101   # next week, detects any
 <summary><strong>Other install methods</strong></summary>
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/hidai25/eval-view/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/hidai25/eval-view/main/scripts/install.sh | bash
 ```
 
 </details>
