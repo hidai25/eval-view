@@ -14,7 +14,7 @@ Use them when the task is procedural and bounded.
 
 ## How To Use
 
-1. Read `AGENT_INSTRUCTIONS.md` first for architecture and invariants.
+1. Read `AGENTS.md` first for architecture and invariants.
 2. Pick the closest recipe for the task.
 3. Follow the file references and done criteria.
 4. Run the narrowest verification commands that cover the change.

@@ -97,7 +97,7 @@ make dogfood-reporting
 Use when changing:
 
 - `README.md`
-- `AGENT_INSTRUCTIONS.md`
+- `AGENTS.md`
 - `docs/agent-recipes/`
 - agent-native guidance
 
@@ -112,7 +112,7 @@ make dogfood-agent-docs
 Then manually review:
 
 - `README.md`
-- `AGENT_INSTRUCTIONS.md`
+- `AGENTS.md`
 - `docs/agent-recipes/README.md`
 
 ## Feature-to-Eval Matrix

@@ -231,7 +231,7 @@ dogfood-agent-docs:
 	@echo ""
 	@echo "Manual review:"
 	@echo "  README.md"
-	@echo "  AGENT_INSTRUCTIONS.md"
+	@echo "  AGENTS.md"
 	@echo "  docs/agent-recipes/README.md"
 
 ## Common internal ship gate for broad core changes
