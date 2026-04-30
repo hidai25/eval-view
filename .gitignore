@@ -65,10 +65,14 @@ tmp/
 code-review.md
 
 # Local tool histories — per-developer state, not shared
-.aider.chat.history.md
-.aider.input.history
+.aider*
 tests.yaml
 marketing/
+
+# Heavy media — host via release artifacts or a separate assets repo,
+# not in the main library clone. Light .gif previews stay tracked.
+assets/*.mp4
+assets/*.mov
 
 # Private cloud-side spec — kept locally, not published to OSS readers.
 # The real implementation lives in the separate evalview-cloud repo.
@@ -83,7 +87,7 @@ docs/AUTOPR_CLOUD_INTEGRATION.md
 htmlcov/
 
 # OS
-.DS_Store
+**/.DS_Store
 Thumbs.db
 
 # Claude Code
