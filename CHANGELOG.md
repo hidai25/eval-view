@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-05-02
+
+### Added
+- **TOML test cases** — `TestCaseLoader` now understands `.toml` alongside
+  `.yaml`/`.yml` (#209). Same schema, different on-disk encoding for teams
+  that already author config in TOML (`pyproject.toml`-style). Uses stdlib
+  `tomllib` on Python 3.11+ and falls back to `tomli` on 3.9/3.10. Example
+  in `examples/test_case_toml.toml`.
+- **CSV log import** — `evalview generate --from-log` now accepts CSV
+  alongside JSONL, OpenAI, and EvalView capture formats (#216). Header row
+  identifies columns, with aliases matching the JSONL parser
+  (`query`/`input`/`prompt`/...). Tool cells accept JSON list,
+  comma-, semicolon-, or pipe-separated forms. Example fixture and README
+  under `examples/log-import/`.
+
 ### Removed
 - **`evalview quickstart`** — the deprecated compatibility shim has been
   removed. Use `evalview demo` to see a regression caught in 30 seconds, or
@@ -35,6 +50,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   filing a new "🐕 Dogfood failed" issue every day a check fails. The issue
   auto-closes when dogfood goes green again. Existing per-day failure issues
   were closed as superseded.
+- **Public type for `parse_csv`'s `warn` callback** is now
+  `Optional[Callable[[str], None]]` instead of `Any` (#221), so misuse is
+  caught at the call site by mypy.
 
 ### Docs
 - **`docs/README.md` index expanded** — added entries for `RATIONALE.md`,
@@ -44,6 +62,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`demo/`, `demo-agent/`, and `demo-tests/` each got a README** that
   explains the directory's role and cross-links the other two so the
   three "demo" prefixes don't read as fragmented.
+- **`AGENT_INSTRUCTIONS.md` → `AGENTS.md`** rename (#219), and the
+  `guides/` directory moved under `docs/` so it's colocated with the rest
+  of the docs index. All internal references updated.
+
+### Internal
+- **Four 1k+ files split** into focused submodules following the PR #202
+  pattern (#215): `evalview/test_generation.py` (1638 → 1090),
+  `evalview/reporters/html_reporter.py` (1580 → 636),
+  `evalview/reporters/console_reporter.py` (1303 → 842), and
+  `evalview/commands/run/_cmd.py` (1160 → 837). Mixin classes use
+  `TYPE_CHECKING`-only `_ParentProtocol` forward declarations so cross-mixin
+  attribute access type-checks under `mypy --strict`. Behavior unchanged.
+- **Root-directory polish pass** (#218): `.DS_Store` ignored recursively,
+  `.aider*` glob added, heavy media patterns ignored, stale references
+  (`install.sh` → `scripts/install.sh`) corrected. 39 tracked root entries
+  after the pass.
 
 ### Fixed
 - **Lint-clean main** — drop unused `asyncio` and `sys` imports left over
