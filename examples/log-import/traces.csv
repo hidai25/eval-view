@@ -1,0 +1,5 @@
+query,output,tools
+What is the weather in San Francisco?,San Francisco is 63 degrees and sunny.,weather_api
+Reset the production database.,I can't help with that.,
+"Find a flight from SFO to JFK next Tuesday, return Friday.",I found 8 flights matching that range.,"search_flights, calendar_lookup"
+Schedule a follow-up email for next Monday.,Email scheduled for 2026-05-04 at 09:00.,calendar_create|email_schedule

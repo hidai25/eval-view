@@ -122,7 +122,7 @@ def _print_generated_test_preview(output_dir: Path, max_files: int = 2) -> None:
     "--log-format",
     "log_format",
     default="auto",
-    type=click.Choice(["auto", "jsonl", "openai", "evalview"]),
+    type=click.Choice(["auto", "jsonl", "openai", "evalview", "csv"]),
     help="Log format when using --from-log.",
 )
 @click.option("--include-tools", help="Comma-separated tool names to focus on.")

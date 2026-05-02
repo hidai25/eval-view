@@ -1,9 +1,12 @@
 """Production log importer — converts existing logs to EvalView test cases.
 
-Supports three formats (auto-detected):
+Supports four formats (auto-detected):
   - JSONL       each line: {"input": "...", "output": "...", "tools": [...]}
   - OpenAI      each line: {"messages": [...], "choices": [...]}
   - EvalView    capture proxy format: {"request": {...}, "response": {...}}
+  - CSV         header row with `query`, optional `output`, optional `tools`
+                (tools as comma-separated within the cell, semicolon-separated,
+                or pipe-separated)
 
 Usage::
     from evalview.importers.log_importer import parse_log_file, entries_to_yaml
@@ -12,8 +15,10 @@ Usage::
 """
 from __future__ import annotations
 
+import csv
 import json
 import re
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List
@@ -35,16 +40,26 @@ class LogEntry:
 def detect_format(path: Path) -> str:
     """Sniff the first non-empty line to identify the log format.
 
-    Returns one of: "openai" | "evalview" | "jsonl" | "unknown"
+    Returns one of: "openai" | "evalview" | "jsonl" | "csv" | "unknown"
     """
+    if path.suffix.lower() == ".csv":
+        return "csv"
+
     with open(path, encoding="utf-8", errors="replace") as f:
         for line in f:
-            line = line.strip()
-            if not line:
+            stripped = line.strip()
+            if not stripped:
                 continue
             try:
-                obj = json.loads(line)
+                obj = json.loads(stripped)
             except json.JSONDecodeError:
+                # Fall back to CSV detection for non-JSON files: a header that
+                # starts with a recognised column name is enough to dispatch.
+                lower = stripped.lower()
+                if "," in stripped and lower.split(",")[0].strip() in {
+                    "query", "input", "prompt", "question", "user_message",
+                }:
+                    return "csv"
                 return "unknown"
 
             if "messages" in obj and isinstance(obj.get("messages"), list):
@@ -204,6 +219,104 @@ def parse_evalview_capture(path: Path, max_entries: int = 200) -> List[LogEntry]
     return entries
 
 
+_CSV_QUERY_KEYS = ("query", "input", "prompt", "question", "user_message", "user_input")
+_CSV_OUTPUT_KEYS = ("output", "response", "answer", "assistant_message", "result")
+_CSV_TOOL_KEYS = ("tools", "tool_calls", "tool_use", "actions")
+
+
+def _split_csv_tools(value: str) -> List[str]:
+    """Split a CSV tool cell into tool names. Accepts comma, semicolon, pipe."""
+    if not value:
+        return []
+    raw = value.strip()
+    if not raw:
+        return []
+    # JSON list embedded in the cell, e.g. ["weather_api", "geocode"]
+    if raw.startswith("[") and raw.endswith("]"):
+        try:
+            decoded = json.loads(raw)
+        except json.JSONDecodeError:
+            decoded = None
+        if isinstance(decoded, list):
+            return [str(item).strip() for item in decoded if str(item).strip()]
+    # Otherwise treat as a separator-delimited list
+    parts = re.split(r"[;,|]", raw)
+    return [p.strip() for p in parts if p.strip()]
+
+
+def parse_csv(
+    path: Path,
+    max_entries: int = 200,
+    *,
+    warn: Any = None,
+) -> List[LogEntry]:
+    """Parse a CSV log file.
+
+    The header row identifies columns. The first column matched against
+    ``_CSV_QUERY_KEYS`` becomes the query (required). ``_CSV_OUTPUT_KEYS``
+    and ``_CSV_TOOL_KEYS`` are optional. Tool cells may be JSON-list,
+    comma-, semicolon-, or pipe-separated.
+
+    Malformed rows (missing query, unparseable tools cell) are skipped and
+    surfaced via ``warn(message)``; if ``warn`` is None, messages go to
+    stderr so they appear during ``evalview generate``.
+    """
+    if warn is None:
+        def warn(message: str) -> None:
+            print(f"warn: {message}", file=sys.stderr)
+
+    entries: List[LogEntry] = []
+    with open(path, encoding="utf-8", errors="replace", newline="") as f:
+        try:
+            reader = csv.DictReader(f)
+        except csv.Error as exc:
+            warn(f"{path}: failed to open as CSV ({exc}); skipping")
+            return entries
+
+        if reader.fieldnames is None:
+            warn(f"{path}: CSV has no header row; skipping")
+            return entries
+
+        # Map CSV columns to our canonical fields. The first matching column
+        # wins so users can keep secondary columns for their own metadata.
+        normalized = {name: name.strip().lower() for name in reader.fieldnames if name}
+        query_col = next(
+            (name for name, low in normalized.items() if low in _CSV_QUERY_KEYS),
+            None,
+        )
+        if query_col is None:
+            warn(
+                f"{path}: CSV header is missing a query column "
+                f"(expected one of: {', '.join(_CSV_QUERY_KEYS)}); skipping"
+            )
+            return entries
+        output_col = next(
+            (name for name, low in normalized.items() if low in _CSV_OUTPUT_KEYS),
+            None,
+        )
+        tool_col = next(
+            (name for name, low in normalized.items() if low in _CSV_TOOL_KEYS),
+            None,
+        )
+
+        for lineno, row in enumerate(reader, start=2):  # header is line 1
+            if len(entries) >= max_entries:
+                break
+            query = (row.get(query_col) or "").strip() if query_col else ""
+            if not query:
+                warn(f"{path}:{lineno}: row has empty query; skipped")
+                continue
+            output = (row.get(output_col) or "").strip() if output_col else ""
+            tools = _split_csv_tools(row.get(tool_col) or "") if tool_col else []
+            entries.append(LogEntry(
+                query=query,
+                output=output,
+                tool_calls=tools,
+                metadata={"source_line": lineno},
+            ))
+    return entries
+
+
 def parse_log_file(
     path: Path,
     fmt: str = "auto",
@@ -217,6 +330,8 @@ def parse_log_file(
         return parse_openai(path, max_entries)
     if fmt == "evalview":
         return parse_evalview_capture(path, max_entries)
+    if fmt == "csv":
+        return parse_csv(path, max_entries)
     return parse_jsonl(path, max_entries)
 
 
