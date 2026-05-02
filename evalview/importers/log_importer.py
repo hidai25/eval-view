@@ -21,7 +21,7 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 
 # ── Data model ─────────────────────────────────────────────────────────────────
@@ -248,7 +248,7 @@ def parse_csv(
     path: Path,
     max_entries: int = 200,
     *,
-    warn: Any = None,
+    warn: Optional[Callable[[str], None]] = None,
 ) -> List[LogEntry]:
     """Parse a CSV log file.
 
