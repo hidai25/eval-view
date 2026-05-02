@@ -118,7 +118,7 @@ evalview model-check --model claude-opus-4-5-20251101   # next week, detects any
 <summary><strong>Other install methods</strong></summary>
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/hidai25/eval-view/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/hidai25/eval-view/main/scripts/install.sh | bash
 ```
 
 </details>
@@ -941,7 +941,7 @@ Then just ask Claude: "did my refactor break anything?" and it runs `run_check` 
 
 **Works with your coding agent out of the box.** Ask Cursor, Claude Code, or Copilot to add regression tests, build a new adapter, or debug a failing check — EvalView ships the architecture maps and task recipes they need to get it right on the first try.
 
-- [AGENT_INSTRUCTIONS.md](AGENT_INSTRUCTIONS.md) — architecture map, contracts, invariants, verification commands
+- [AGENTS.md](AGENTS.md) — architecture map, contracts, invariants, verification commands
 - [Agent Recipes](docs/agent-recipes/README.md) — task-specific playbooks for common extensions
 - [Add an Adapter](docs/agent-recipes/add-adapter.md)
 - [Add an Evaluator](docs/agent-recipes/add-evaluator.md)
@@ -956,7 +956,7 @@ Then just ask Claude: "did my refactor break anything?" and it runs `run_check` 
 | [Getting Started](docs/GETTING_STARTED.md) | [Golden Traces](docs/GOLDEN_TRACES.md) | [CI/CD](docs/CI_CD.md) |
 | [CLI Reference](docs/CLI_REFERENCE.md) | [Evaluation Metrics](docs/EVALUATION_METRICS.md) | [MCP Contracts](docs/MCP_CONTRACTS.md) |
 | [Simulation](docs/SIMULATE.md) | [Decision Rationale](docs/RATIONALE.md) | |
-| [Agent Instructions](AGENT_INSTRUCTIONS.md) | [Agent Recipes](docs/agent-recipes/README.md) | [Ollama Recipe](docs/agent-recipes/integrate-ollama.md) |
+| [Agent Instructions](AGENTS.md) | [Agent Recipes](docs/agent-recipes/README.md) | [Ollama Recipe](docs/agent-recipes/integrate-ollama.md) |
 | [FAQ](docs/FAQ.md) | [Test Generation](docs/TEST_GENERATION.md) | [Skills Testing](docs/SKILLS_TESTING.md) |
 | [YAML Schema](docs/YAML_SCHEMA.md) | [Statistical Mode](docs/STATISTICAL_MODE.md) | [Chat Mode](docs/CHAT_MODE.md) |
 | [Framework Support](docs/FRAMEWORK_SUPPORT.md) | [Behavior Coverage](docs/BEHAVIOR_COVERAGE.md) | [Debugging](docs/DEBUGGING.md) |
