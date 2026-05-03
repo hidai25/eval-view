@@ -919,7 +919,7 @@ def monitor(
 
     if effective_schedule:
         try:
-            from croniter import croniter as _croniter
+            from croniter import croniter as _croniter  # type: ignore[import-untyped]
         except ImportError:
             click.echo(
                 "Error: --schedule requires the 'croniter' package. "
