@@ -2,11 +2,15 @@
 
 import asyncio
 import json
+import sys
+import types
 from datetime import datetime
+from datetime import timedelta
 from pathlib import Path
 from typing import Set
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from click.testing import CliRunner
 import pytest
 import yaml
 
@@ -17,6 +21,7 @@ from evalview.commands.monitor_cmd import (
     _resolve_slack_webhook,
     _run_monitor_loop,
     _sleep_interruptible,
+    monitor,
 )
 from evalview.core.discord_notifier import DiscordNotifier
 from evalview.core.diff import DiffStatus
@@ -480,6 +485,119 @@ class TestDiscordNotifier:
 # MonitorConfig
 # ---------------------------------------------------------------------------
 
+class FakeCroniter:
+    """Minimal croniter stand-in for CLI tests when the optional dep is absent."""
+
+    def __init__(self, expression, start_time):
+        if expression == "not a cron":
+            raise ValueError("bad cron")
+        self.expression = expression
+        self.start_time = start_time
+
+    def get_next(self, return_type):
+        return self.start_time + timedelta(minutes=5)
+
+
+def _install_fake_croniter(monkeypatch):
+    module = types.ModuleType("croniter")
+    module.croniter = FakeCroniter
+    monkeypatch.setitem(sys.modules, "croniter", module)
+
+
+class TestMonitorScheduleCLI:
+    """Test cron schedule command-line behavior."""
+
+    def test_schedule_and_interval_mutually_exclusive(self):
+        result = CliRunner().invoke(
+            monitor,
+            ["tests", "--interval", "60", "--schedule", "*/5 * * * *"],
+        )
+
+        assert result.exit_code == 2
+        assert "--schedule and --interval are mutually exclusive" in result.output
+
+    def test_invalid_cron_expression_errors(self, monkeypatch):
+        _install_fake_croniter(monkeypatch)
+
+        result = CliRunner().invoke(
+            monitor,
+            ["tests", "--schedule", "not a cron"],
+        )
+
+        assert result.exit_code == 2
+        assert "invalid cron expression" in result.output
+        assert "not a cron" in result.output
+
+    def test_valid_cron_expression_parses(self, monkeypatch):
+        _install_fake_croniter(monkeypatch)
+        captured = {}
+
+        def fake_run_monitor_loop(**kwargs):
+            captured.update(kwargs)
+
+        monkeypatch.setattr(
+            "evalview.commands.monitor_cmd._load_config_if_exists",
+            lambda: None,
+        )
+        monkeypatch.setattr(
+            "evalview.commands.monitor_cmd._run_monitor_loop",
+            fake_run_monitor_loop,
+        )
+
+        result = CliRunner().invoke(
+            monitor,
+            ["tests", "--schedule", "*/5 * * * *"],
+        )
+
+        assert result.exit_code == 0
+        assert captured["cron_iter"].expression == "*/5 * * * *"
+        assert captured["cadence_label"].startswith("Next run: ")
+
+    def test_status_output_shows_next_scheduled_run(self, capsys):
+        with (
+            patch("evalview.core.golden.GoldenStore") as store_cls,
+            patch("evalview.core.loader.TestCaseLoader") as loader_cls,
+            patch(
+                "evalview.commands.monitor_cmd._execute_check_tests",
+                side_effect=KeyboardInterrupt,
+            ),
+            patch("evalview.commands.monitor_cmd.signal"),
+        ):
+            store_cls.return_value.list_golden.return_value = [object()]
+            loader_cls.return_value.load_from_directory.return_value = [
+                types.SimpleNamespace(name="example", gate=None)
+            ]
+
+            with pytest.raises(KeyboardInterrupt):
+                _run_monitor_loop(
+                    test_path="tests",
+                    interval=300,
+                    slack_webhook=None,
+                    discord_webhook=None,
+                    fail_on="REGRESSION",
+                    timeout=30.0,
+                    test_filter=None,
+                    cadence_label="Next run: 2026-05-03T00:05:00+00:00",
+                )
+
+        assert "Next run: 2026-05-03T00:05:00+00:00" in capsys.readouterr().out
+
+    def test_config_schedule_field(self):
+        from evalview.core.config import EvalViewConfig
+
+        raw = yaml.safe_load(
+            """
+            adapter: http
+            endpoint: http://example.com
+            monitor:
+              schedule: "0 * * * *"
+            """
+        )
+        config = EvalViewConfig(**raw)
+
+        assert config.get_monitor_config().schedule == "0 * * * *"
+
+
 class TestMonitorConfig:
     """Test MonitorConfig defaults and validation."""
 
@@ -491,11 +609,18 @@ class TestMonitorConfig:
         assert cfg.discord_webhook is None
         assert cfg.fail_on == ["REGRESSION"]
         assert cfg.timeout == 30.0
+        assert cfg.schedule is None
 
     def test_custom_values(self):
         from evalview.core.config import MonitorConfig
-        cfg = MonitorConfig(interval=60, timeout=120.0, fail_on=["REGRESSION", "TOOLS_CHANGED"])
+        cfg = MonitorConfig(
+            interval=60,
+            schedule="*/10 * * * *",
+            timeout=120.0,
+            fail_on=["REGRESSION", "TOOLS_CHANGED"],
+        )
         assert cfg.interval == 60
+        assert cfg.schedule == "*/10 * * * *"
         assert cfg.timeout == 120.0
         assert len(cfg.fail_on) == 2
 

@@ -57,6 +57,10 @@ reports = [
 watch = [
     "watchdog>=3.0",
 ]
+# Cron schedule support for monitor mode
+schedule = [
+    "croniter>=2.0",
+]
 # Telemetry (opt-out anonymous usage analytics)
 telemetry = [
     "posthog>=3.0.0",
@@ -73,6 +77,7 @@ mistral = [
 all = [
     "plotly>=5.0",
     "watchdog>=3.0",
+    "croniter>=2.0",
     "posthog>=3.0.0",
     "cohere>=5.0.0",
     "mistralai>=1.0.0",
