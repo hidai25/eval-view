@@ -72,6 +72,33 @@ def _append_history(history_path: Path, record: dict) -> None:
         f.write(json.dumps(record) + "\n")
 
 
+def _normalize_scheduled_run(next_run: datetime) -> datetime:
+    """Ensure croniter datetimes can be compared with UTC-aware now."""
+    if next_run.tzinfo is None:
+        return next_run.replace(tzinfo=timezone.utc)
+    return next_run
+
+
+def _format_scheduled_run(next_run: datetime) -> str:
+    return _normalize_scheduled_run(next_run).isoformat()
+
+
+def _seconds_until_scheduled_run(next_run: datetime) -> int:
+    delta = _normalize_scheduled_run(next_run) - datetime.now(timezone.utc)
+    return max(1, int(delta.total_seconds()))
+
+
+def _resolve_wait_seconds(
+    interval: int,
+    cron_iter: Optional[Any],
+) -> Tuple[int, Optional[datetime]]:
+    if cron_iter is None:
+        return interval, None
+
+    next_run = _normalize_scheduled_run(cron_iter.get_next(datetime))
+    return _seconds_until_scheduled_run(next_run), next_run
+
+
 # Default path for the incidents feed that `evalview autopr` consumes. The
 # monitor loop appends one record per confirmed production regression so the
 # autopr command can later convert it into a pinned regression test.
@@ -245,6 +272,8 @@ def _run_monitor_loop(
     cost_threshold: Optional[float] = None,
     latency_threshold: Optional[float] = None,
     incidents_path: Optional[Path] = None,
+    cron_iter: Optional[Any] = None,
+    cadence_label: Optional[str] = None,
 ) -> None:
     """Main monitor loop. Runs check cycles until Ctrl+C.
 
@@ -294,8 +323,9 @@ def _run_monitor_loop(
     strict_hint = (
         f"  |  Strict: {len(strict_tests)}" if strict_tests else ""
     )
+    cadence_label = cadence_label or f"Interval: {interval}s"
     console.print(
-        f"[dim]  Tests: {len(test_cases)}  |  Interval: {interval}s  |  "
+        f"[dim]  Tests: {len(test_cases)}  |  {cadence_label}  |  "
         f"Alerts: {alert_targets}{strict_hint}{history_hint}[/dim]"
     )
     console.print("[dim]  Press Ctrl+C to stop.[/dim]\n")
@@ -333,7 +363,8 @@ def _run_monitor_loop(
                 )
             except Exception as e:
                 console.print(f"[red]  x Cycle {cycle_count} failed: {e}[/red]")
-                _sleep_interruptible(interval, lambda: shutdown)
+                wait_seconds, _ = _resolve_wait_seconds(interval, cron_iter)
+                _sleep_interruptible(wait_seconds, lambda: shutdown)
                 continue
 
             cycle_cost = sum(r.trace.metrics.total_cost for r in results)
@@ -481,7 +512,8 @@ def _run_monitor_loop(
                 _append_history(history_path, record)
 
             previously_failing = currently_failing
-            _sleep_interruptible(interval, lambda: shutdown)
+            wait_seconds, _ = _resolve_wait_seconds(interval, cron_iter)
+            _sleep_interruptible(wait_seconds, lambda: shutdown)
     finally:
         signal.signal(signal.SIGINT, original_sigint)
 
@@ -506,6 +538,7 @@ def _run_monitor_dashboard(
     cost_threshold: Optional[float] = None,
     latency_threshold: Optional[float] = None,
     incidents_path: Optional[Path] = None,
+    cron_iter: Optional[Any] = None,
 ) -> None:
     """Monitor loop with a live-updating Rich dashboard."""
     from rich.live import Live
@@ -648,7 +681,15 @@ def _run_monitor_dashboard(
                 error_msg = str(e)[:60]
                 checking = False
                 live.update(_build_dashboard())
-                _sleep_interruptible(interval, lambda: shutdown)
+                wait_seconds, next_run = _resolve_wait_seconds(interval, cron_iter)
+                if next_run is not None:
+                    next_check_time = _format_scheduled_run(next_run)
+                else:
+                    next_time = datetime.now(timezone.utc).timestamp() + wait_seconds
+                    next_check_time = datetime.fromtimestamp(
+                        next_time, tz=timezone.utc
+                    ).strftime("%H:%M:%S UTC")
+                _sleep_interruptible(wait_seconds, lambda: shutdown)
                 continue
 
             checking = False
@@ -724,10 +765,16 @@ def _run_monitor_dashboard(
                 _append_history(history_path, record)
 
             previously_failing = currently_failing
-            next_time = datetime.now(timezone.utc).timestamp() + interval
-            next_check_time = datetime.fromtimestamp(next_time, tz=timezone.utc).strftime("%H:%M:%S UTC")
+            wait_seconds, next_run = _resolve_wait_seconds(interval, cron_iter)
+            if next_run is not None:
+                next_check_time = _format_scheduled_run(next_run)
+            else:
+                next_time = datetime.now(timezone.utc).timestamp() + wait_seconds
+                next_check_time = datetime.fromtimestamp(
+                    next_time, tz=timezone.utc
+                ).strftime("%H:%M:%S UTC")
             live.update(_build_dashboard())
-            _sleep_interruptible(interval, lambda: shutdown)
+            _sleep_interruptible(wait_seconds, lambda: shutdown)
 
     signal.signal(signal.SIGINT, original_sigint)
     console.print(f"\n[cyan]Monitor stopped after {cycle_count} cycle(s).[/cyan]")
@@ -747,6 +794,14 @@ def _sleep_interruptible(seconds: int, should_stop: Any) -> None:
 @click.command("monitor")
 @click.argument("test_path", default="tests", type=click.Path(exists=True))
 @click.option("--interval", "-i", type=int, default=None, help="Seconds between checks (default: 300)")
+@click.option(
+    "--schedule",
+    default=None,
+    help=(
+        "Cron expression for check cadence (mutually exclusive with --interval). "
+        "Example: '*/5 * * * *' for every 5 minutes."
+    ),
+)
 @click.option("--slack-webhook", default=None, help="Slack webhook URL for alerts")
 @click.option("--discord-webhook", default=None, help="Discord webhook URL for alerts")
 @click.option("--fail-on", default=None, help="Comma-separated statuses that trigger alerts (default: REGRESSION)")
@@ -787,6 +842,7 @@ def _sleep_interruptible(seconds: int, should_stop: Any) -> None:
 def monitor(
     test_path: str,
     interval: Optional[int],
+    schedule: Optional[str],
     slack_webhook: Optional[str],
     discord_webhook: Optional[str],
     fail_on: Optional[str],
@@ -808,6 +864,7 @@ def monitor(
     Examples:
         evalview monitor                                # Check every 5 min
         evalview monitor --interval 60                  # Check every minute
+        evalview monitor --schedule "*/5 * * * *"       # Check on a cron schedule
         evalview monitor --slack-webhook https://...    # Alert to Slack
         evalview monitor --discord-webhook https://...  # Alert to Discord
         evalview monitor --test "weather-lookup"        # Monitor one test
@@ -821,6 +878,7 @@ def monitor(
     Configuration (config.yaml):
         monitor:
           interval: 300
+          schedule: "*/5 * * * *"
           slack_webhook: https://hooks.slack.com/services/...
           discord_webhook: https://discord.com/api/webhooks/...
           fail_on: [REGRESSION]
@@ -839,12 +897,44 @@ def monitor(
     monitor_cfg = config.get_monitor_config() if config else None
 
     resolved_interval = interval or (monitor_cfg.interval if monitor_cfg else 300)
+    # CLI --interval beats a config-only schedule; CLI --schedule + CLI --interval is an error.
+    if schedule is not None and interval is not None:
+        click.echo("Error: --schedule and --interval are mutually exclusive.", err=True)
+        sys.exit(2)
+    if schedule is not None:
+        effective_schedule = schedule
+    elif interval is not None:
+        effective_schedule = None
+    else:
+        effective_schedule = monitor_cfg.schedule if monitor_cfg else None
     resolved_fail_on = fail_on or (",".join(monitor_cfg.fail_on) if monitor_cfg else "REGRESSION")
     resolved_timeout = timeout or (monitor_cfg.timeout if monitor_cfg else 30.0)
 
     if resolved_interval < 10:
         click.echo("Error: --interval must be at least 10 seconds.", err=True)
         sys.exit(1)
+
+    cron_iter = None
+    cadence_label = f"Interval: {resolved_interval}s"
+
+    if effective_schedule:
+        try:
+            from croniter import croniter as _croniter
+        except ImportError:
+            click.echo(
+                "Error: --schedule requires the 'croniter' package. "
+                "Install with: pip install croniter",
+                err=True,
+            )
+            sys.exit(2)
+        try:
+            now = datetime.now(timezone.utc)
+            cron_iter = _croniter(effective_schedule, now)
+            next_run = _croniter(effective_schedule, now).get_next(datetime)
+            cadence_label = f"Next run: {_format_scheduled_run(next_run)}"
+        except Exception as e:
+            click.echo(f"Error: invalid cron expression {effective_schedule!r}: {e}", err=True)
+            sys.exit(2)
 
     if resolved_timeout <= 0:
         click.echo("Error: --timeout must be a positive number.", err=True)
@@ -891,6 +981,7 @@ def monitor(
                 cost_threshold=resolved_cost_threshold,
                 latency_threshold=resolved_latency_threshold,
                 incidents_path=resolved_incidents,
+                cron_iter=cron_iter,
             )
         else:
             _run_monitor_loop(
@@ -906,6 +997,8 @@ def monitor(
                 cost_threshold=resolved_cost_threshold,
                 latency_threshold=resolved_latency_threshold,
                 incidents_path=resolved_incidents,
+                cron_iter=cron_iter,
+                cadence_label=cadence_label,
             )
     except MonitorError as e:
         console.print(f"[red]ERROR {e}[/red]")

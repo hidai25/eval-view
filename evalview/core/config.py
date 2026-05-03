@@ -173,6 +173,13 @@ class MonitorConfig(BaseModel):
         ge=10,
         description="Seconds between check cycles"
     )
+    schedule: Optional[str] = Field(
+        default=None,
+        description=(
+            "Cron expression for monitor cycles (alternative to interval). "
+            "Mutually exclusive with interval. Requires the optional croniter dependency."
+        ),
+    )
     slack_webhook: Optional[str] = Field(
         default=None,
         description="Slack incoming webhook URL for regression alerts"
