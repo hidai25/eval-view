@@ -539,6 +539,7 @@ def _run_monitor_dashboard(
     latency_threshold: Optional[float] = None,
     incidents_path: Optional[Path] = None,
     cron_iter: Optional[Any] = None,
+    cadence_label: Optional[str] = None,
 ) -> None:
     """Monitor loop with a live-updating Rich dashboard."""
     from rich.live import Live
@@ -594,6 +595,7 @@ def _run_monitor_dashboard(
     start_time = time.time()
     last_check_time = ""
     next_check_time = ""
+    cadence_label = cadence_label or f"Interval: {interval}s"
     alerts_sent = 0
     alerts_suppressed = 0
     test_history: Dict[str, List[DiffStatus]] = {}
@@ -620,6 +622,7 @@ def _run_monitor_dashboard(
         header.append(f"  |  Uptime: {uptime_m}m{uptime_s:02d}s")
         header.append(f"  |  Cost: ${total_cost:.4f}")
         header.append(f"  |  Alerts: {alerts_sent} sent")
+        header.append(f"  |  {cadence_label}")
 
         table = Table(show_header=True, header_style="bold", expand=True, padding=(0, 1))
         table.add_column("Test", style="bold", ratio=3)
@@ -680,7 +683,6 @@ def _run_monitor_dashboard(
             except Exception as e:
                 error_msg = str(e)[:60]
                 checking = False
-                live.update(_build_dashboard())
                 wait_seconds, next_run = _resolve_wait_seconds(interval, cron_iter)
                 if next_run is not None:
                     next_check_time = _format_scheduled_run(next_run)
@@ -689,6 +691,7 @@ def _run_monitor_dashboard(
                     next_check_time = datetime.fromtimestamp(
                         next_time, tz=timezone.utc
                     ).strftime("%H:%M:%S UTC")
+                live.update(_build_dashboard())
                 _sleep_interruptible(wait_seconds, lambda: shutdown)
                 continue
 
@@ -982,6 +985,7 @@ def monitor(
                 latency_threshold=resolved_latency_threshold,
                 incidents_path=resolved_incidents,
                 cron_iter=cron_iter,
+                cadence_label=cadence_label,
             )
         else:
             _run_monitor_loop(
