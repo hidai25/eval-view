@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "test_name": "order-lookup-replay",
+  "recorded_at": "2026-05-04T12:00:00+00:00",
+  "adapter": "anthropic",
+  "interactions": [
+    {
+      "kind": "tool",
+      "tool": "lookup_order",
+      "params": { "order_id": 4812 },
+      "returns": {
+        "id": 4812,
+        "customer": "alice@example.com",
+        "total": 99.0,
+        "placed_at": "2026-05-01T09:14:00Z"
+      },
+      "error": null
+    },
+    {
+      "kind": "tool",
+      "tool": "check_shipment",
+      "params": { "order_id": 4812 },
+      "returns": {
+        "status": "shipped",
+        "carrier": "UPS",
+        "tracking": "1Z999AA10123456784",
+        "eta": "2026-05-06"
+      },
+      "error": null
+    }
+  ]
+}

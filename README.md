@@ -35,6 +35,7 @@ Most eval tools stop at detect and compare. EvalView helps you classify changes,
 - Catch silent regressions that normal tests miss
 - Separate provider/model drift from real system regressions
 - Auto-heal flaky failures with retries, review gates, and audit logs
+- Replay deterministically — cassettes capture real tool calls once so CI never re-hits live services
 
 Built for **frontier-lab rigor, startup-team practicality**:
 - targeted behavior runs instead of giant always-on eval suites
@@ -269,6 +270,7 @@ Use LangSmith for observability. Use Braintrust for scoring. **Use EvalView for 
 | Golden baseline regression | — | Manual | — | **Automatic** |
 | Silent model change detection | — | — | — | **Yes** |
 | Auto-heal (retry + variant proposal) | — | — | — | **Yes** |
+| Hermetic record/replay | — | — | — | **Yes** |
 | PR comments with alerts | — | — | — | **Cost, latency, model change** |
 | Works without API keys | No | No | Partial | **Yes** |
 | Production monitoring | Tracing | — | — | **Check loop + Slack** |
@@ -704,6 +706,15 @@ Two features that close the gaps the April 2026 agent-eval reports kept calling 
 evalview simulate tests/ --variants 5 --seed 42
 ```
 
+**Record/replay cassettes** — declarative mocks are tedious for agents with dozens of tools. Record once against the real backend, replay forever — no network, no LLM cost beyond the agent's own model calls, no flaky third-party APIs in CI. *"The agent saw X, called Y, got Z"* becomes deterministic without re-hitting live services.
+
+```bash
+evalview simulate tests/refund.yaml --record    # capture real tool results once
+evalview simulate tests/refund.yaml --replay    # hermetic from now on
+```
+
+Cassettes live at `.evalview/cassettes/<test>.json`, use per-tool sequential matching (robust to inter-tool ordering drift), and are versioned for forward compatibility. Declarative `mocks:` still take precedence so you can override a single recording without re-recording the whole run.
+
 **Decision rationale** — every tool_choice / branch gets recorded with the chosen option, alternatives considered, and any model-reported reasoning (Anthropic `thinking` blocks auto-captured). Grouped across runs by `input_hash` so cloud analytics surfaces decision drift before your users notice. Local HTML replay shows it inline.
 
 Supported adapters: Anthropic, OpenAI Assistants, LangGraph, CrewAI native.
@@ -722,6 +733,7 @@ Supported adapters: Anthropic, OpenAI Assistants, LangGraph, CrewAI native.
 | **Recommendation engine** | Suggests the next command from verdict, drift class, and history | [Above](#daily-workflow) |
 | **Model drift detection** | `model-check` — zero-judge canary suite that catches silent model updates | [Docs](#model-drift-detection) |
 | **Simulation harness** | `evalview simulate` — hermetic what-if runs against declared mocks, with `--variants N` fan-out | [Docs](docs/SIMULATE.md) |
+| **Record/replay cassettes** | Capture real tool calls once, replay deterministically forever — no live services in CI | [Docs](docs/SIMULATE.md#record--replay-cassettes) |
 | **Decision rationale** | Structured `tool_choice` / `branch` logging with cross-run grouping for decision-drift detection | [Docs](docs/RATIONALE.md) |
 | **Assertion wizard** | Analyze captured traffic, suggest smart assertions automatically | [Above](#assertion-wizard--tests-from-real-traffic) |
 | **Auto-variant discovery** | Run N times, cluster paths, save valid variants | [Above](#auto-variant-discovery--solve-non-determinism) |

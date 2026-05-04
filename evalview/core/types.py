@@ -536,6 +536,31 @@ class VariantOutcome(BaseModel):
     notes: Optional[str] = None
 
 
+class Interaction(BaseModel):
+    """One recorded tool/LLM/HTTP call inside a :class:`Cassette`.
+
+    Only ``kind="tool"`` is consumed by the v1 replay path; the
+    ``response``/``http`` kinds are reserved so cassettes round-trip
+    forward when adapter-side hooks land for those layers.
+    """
+
+    kind: str = Field(default="tool", description="One of tool|response|http.")
+    tool: Optional[str] = None
+    params: Dict[str, Any] = Field(default_factory=dict)
+    returns: Any = None
+    error: Optional[str] = None
+
+
+class Cassette(BaseModel):
+    """A recorded set of interactions for hermetic replay of one test."""
+
+    version: int = Field(default=1)
+    test_name: str
+    recorded_at: str
+    adapter: Optional[str] = None
+    interactions: List[Interaction] = Field(default_factory=list)
+
+
 class SimulationResult(BaseModel):
     """Payload attached to an EvaluationResult when run under ``evalview simulate``.
 
@@ -543,12 +568,25 @@ class SimulationResult(BaseModel):
     existing GateResult fields. Cloud stores ``mocks_applied`` and
     ``branches_explored`` in the ``simulations`` table and renders them
     on the simulation tab; it never runs simulations itself.
+
+    ``recorded_cassette`` is populated only when the run was started
+    with ``record=True``; it is not persisted to cloud (the CLI
+    writes it to ``.evalview/cassettes/<test>.json`` instead).
     """
 
     seed: int = 0
     mocks_applied: List[AppliedMock] = Field(default_factory=list)
     branches_explored: List[BranchExploration] = Field(default_factory=list)
     variant_outcomes: List[VariantOutcome] = Field(default_factory=list)
+    recorded_cassette: Optional[Cassette] = Field(default=None, exclude=True)
+    adapter_capability: Dict[str, bool] = Field(
+        default_factory=dict,
+        description=(
+            "Per-layer interception ability detected at run start: "
+            "tools / responses / http. All-false means the run hit "
+            "live services regardless of declared mocks."
+        ),
+    )
 
 
 # --- Execution Trace Types ---

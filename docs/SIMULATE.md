@@ -192,15 +192,98 @@ Aggregate output:
 ```
 evalview simulate [TEST_PATH] [OPTIONS]
 
-TEST_PATH      Directory (default: tests/) or single YAML file.
+TEST_PATH        Directory (default: tests/) or single YAML file.
 
--t, --test     Run only this test by name.
-    --seed     Override the seed declared in YAML.
-    --variants Run N deterministic replays (default: 1).
-    --json     Emit JSON summary for CI.
+-t, --test       Run only this test by name.
+    --seed       Override the seed declared in YAML.
+    --variants   Run N deterministic replays (default: 1).
+    --json       Emit JSON summary for CI.
+    --record     Capture every real tool call into a cassette under
+                 .evalview/cassettes/<test>.json.
+    --replay     Serve tool calls from the cassette at the same path
+                 (hermetic — never touches the network).
+    --cassette-dir DIR
+                 Override the cassette directory (default: .evalview/cassettes).
+    --allow-live Suppress the warning when the adapter has no
+                 interception seam. Hermetic modes still raise.
 ```
 
 Exit code 1 on any test error; 0 on success.
+
+## Adapter capability check
+
+Before every run, the simulator probes the adapter for three
+interception layers:
+
+| Layer | Detection | Purpose |
+|---|---|---|
+| `tools` | `hasattr(adapter, "tool_executor")` | Tool-call swap (the path mocks/cassettes use). |
+| `responses` | `callable(adapter.install_mock_interceptor)` | LLM-response pull hooks. |
+| `http` | `getattr(adapter, "supports_http_mocks", False)` | Outbound HTTP intercept opt-in. |
+
+The result lands on `SimulationResult.adapter_capability` and renders
+under "Adapter capability:" in the human output.
+
+**When the adapter has none of the three** (e.g. an HTTP/streaming
+adapter where the agent runs server-side), the simulator escalates:
+
+| Run mode | Behavior |
+|---|---|
+| Lenient (no `--record` / `--replay` / `mocks.strict`) | Logs a `WARNING`. Drops to `INFO` with `--allow-live`. |
+| Hermetic (`--record`, `--replay`, or `mocks.strict=true`) | Raises `UninterceptableAdapterError` before any live call. |
+
+This means a `--replay` against an unsupported adapter fails fast
+instead of silently going live with an empty mock layer.
+
+## Record / replay cassettes
+
+Declarative `mocks:` are great when you know exactly what each tool
+should return, but they're tedious for agents with dozens of tools or
+variable params. Cassettes solve that — record once against the real
+backend, replay forever:
+
+```bash
+# 1. Once, against a live backend (or a staging fixture):
+evalview simulate tests/refund.yaml --record
+
+# 2. Forever after, hermetically — no network, no LLM cost beyond the
+#    agent's own model calls (which can be mocked separately):
+evalview simulate tests/refund.yaml --replay
+```
+
+Cassettes live at `.evalview/cassettes/<test-name>.json` and look like:
+
+```json
+{
+  "version": 1,
+  "test_name": "refund",
+  "recorded_at": "2026-05-04T12:34:56+00:00",
+  "adapter": "anthropic",
+  "interactions": [
+    {"kind": "tool", "tool": "lookup_order", "params": {"id": 4812}, "returns": {"id": 4812, "total": 99.0}, "error": null},
+    {"kind": "tool", "tool": "process_refund", "params": {"id": 4812}, "returns": {"status": "ok"}, "error": null}
+  ]
+}
+```
+
+**Matching rules.** Per-tool sequential: each tool name has its own
+queue of recordings, consumed in declaration order. The agent can
+legitimately reorder `lookup_order` vs `check_policy` between runs and
+replay still works — only intra-tool sequence matters.
+
+**Precedence.** If both a declarative `mocks:` block and a cassette
+exist, declarative mocks win first (so you can override a single
+recording without re-recording the whole run); cassette serves the
+rest; live executor serves anything still unmatched (unless
+`mocks.strict=true`, in which case unmatched calls raise).
+
+**Recording is transparent.** The recorder runs the real executor
+first, then captures the result. Errors are recorded too and re-raised
+from replay, so the agent sees identical behavior either way.
+
+**Synthetic mocks are not recorded.** Calls that hit a declarative
+`tool_mocks` entry never reach the recorder — the cassette only
+captures what the real layer actually returned.
 
 ## Adapter support matrix
 
