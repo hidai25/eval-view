@@ -35,6 +35,12 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from evalview.adapters.base import AgentAdapter
+from evalview.core.cassette import (
+    Cassette,
+    RecordingToolExecutor,
+    ReplayToolExecutor,
+    new_cassette,
+)
 from evalview.core.types import (
     AppliedMock,
     BranchExploration,
@@ -184,6 +190,56 @@ class Simulator:
         return hit
 
     # ------------------------------------------------------------------
+    # Internal: build the per-run executor stack
+    # ------------------------------------------------------------------
+
+    def _build_stack(
+        self,
+        rng: random.Random,
+        counter: _MockHitCounter,
+        replay_cassette: Optional[Cassette],
+        record_into: Optional[List["RecordingToolExecutor"]],
+    ) -> ToolExecutor:
+        """Layer the executor stack: mocks → recorder → (replay | real).
+
+        Order rationale:
+        - Declarative mocks always win first so users can override a
+          single cassette entry without re-recording the whole run.
+        - The recorder sits *below* mocks so synthetic mock results
+          never leak into a fresh cassette — only what the real layer
+          (or replay layer) actually returned.
+        - Replay, when present, replaces the real executor entirely;
+          it falls through to the real executor on a miss only when
+          ``MockSpec.strict`` is false.
+        """
+        real_executor = getattr(self._adapter, "tool_executor", None)
+
+        underlying: Optional[ToolExecutor]
+        if replay_cassette is not None:
+            underlying = ReplayToolExecutor(
+                replay_cassette,
+                real=real_executor,
+                strict=self._spec.strict,
+            )
+        else:
+            underlying = real_executor
+
+        if record_into is not None and underlying is not None:
+            recorder = RecordingToolExecutor(real=underlying)
+            record_into.append(recorder)
+            underlying = recorder
+
+        # When a replay cassette is installed, hermetic-strict semantics
+        # belong to the cassette layer, not the mock layer — otherwise
+        # the mock layer rejects any call that isn't explicitly mocked,
+        # never giving the cassette a chance to serve it.
+        mock_spec = self._spec
+        if replay_cassette is not None and self._spec.strict:
+            mock_spec = self._spec.model_copy(update={"strict": False})
+
+        return MockedToolExecutor(mock_spec, underlying, counter, rng)
+
+    # ------------------------------------------------------------------
     # Run entry points
     # ------------------------------------------------------------------
 
@@ -191,6 +247,9 @@ class Simulator:
         self,
         test_case: TestCase,
         seed_override: Optional[int] = None,
+        *,
+        replay_cassette: Optional[Cassette] = None,
+        record: bool = False,
     ) -> Tuple[ExecutionTrace, SimulationResult]:
         """Execute one simulated run and return (trace, SimulationResult).
 
@@ -199,13 +258,20 @@ class Simulator:
         convention). The original executor is restored after
         execution. Unmatched calls fall through unless ``spec.strict``
         is true.
+
+        When ``replay_cassette`` is provided, recorded tool results
+        serve calls in their place (per-tool sequential matching).
+        When ``record`` is true, the run captures every real tool call
+        into ``SimulationResult.recorded_cassette`` so the caller can
+        persist it with :func:`evalview.core.cassette.save_cassette`.
         """
         counter = _MockHitCounter()
         seed = self._spec.seed if seed_override is None else seed_override
         rng = random.Random(seed)
 
         real_executor = getattr(self._adapter, "tool_executor", None)
-        mocked = MockedToolExecutor(self._spec, real_executor, counter, rng)
+        recorders: Optional[List[RecordingToolExecutor]] = [] if record else None
+        mocked = self._build_stack(rng, counter, replay_cassette, recorders)
 
         # Install the mock layer via the adapter attribute rather than
         # the context dict — HTTP/streaming adapters JSON-serialize
@@ -235,6 +301,11 @@ class Simulator:
         # branch so the cloud UI always has something to render, even
         # when the agent only took the happy path.
         path = [f"{s.step_id}:{s.tool_name}" for s in trace.steps]
+        recorded_cassette: Optional[Cassette] = None
+        if recorders:
+            recorded_cassette = new_cassette(test_case.name, adapter=self._adapter.name)
+            for r in recorders:
+                recorded_cassette.interactions.extend(r.interactions)
         result = SimulationResult(
             seed=seed,
             mocks_applied=counter.to_applied(),
@@ -248,6 +319,7 @@ class Simulator:
                 )
             ],
             variant_outcomes=[],
+            recorded_cassette=recorded_cassette,
         )
         return trace, result
 
@@ -255,6 +327,9 @@ class Simulator:
         self,
         test_case: TestCase,
         variants: int,
+        *,
+        replay_cassette: Optional[Cassette] = None,
+        record: bool = False,
     ) -> Tuple[List[ExecutionTrace], SimulationResult]:
         """Fan out ``variants`` deterministic replays and aggregate.
 
@@ -263,6 +338,12 @@ class Simulator:
         the final output and cost/latency so cloud can render a pass/
         fail matrix. Scoring is left to the evaluator downstream —
         the simulator only reports raw outcomes.
+
+        ``replay_cassette`` and ``record`` behave the same as in
+        :meth:`run`. When recording, the cassette captures the
+        interactions from the *first* variant only — additional
+        variants would overwrite each other and reproducibility is
+        defined per-(test, seed) pair.
         """
         if variants < 1:
             raise ValueError("variants must be >= 1")
@@ -271,13 +352,17 @@ class Simulator:
         branches: List[BranchExploration] = []
         outcomes: List[VariantOutcome] = []
         combined_counter = _MockHitCounter()
+        recorded_cassette: Optional[Cassette] = None
 
         for i in range(variants):
             counter = _MockHitCounter()
             seed = (self._spec.seed or 0) + i
             rng = random.Random(seed)
             real_executor = getattr(self._adapter, "tool_executor", None)
-            mocked = MockedToolExecutor(self._spec, real_executor, counter, rng)
+            recorders: Optional[List[RecordingToolExecutor]] = (
+                [] if (record and i == 0) else None
+            )
+            mocked = self._build_stack(rng, counter, replay_cassette, recorders)
 
             context: Dict[str, Any] = dict(test_case.input.context or {})
             installer = getattr(self._adapter, "install_mock_interceptor", None)
@@ -301,6 +386,11 @@ class Simulator:
                 combined_counter.hits[(kind, matcher)] = (
                     combined_counter.hits.get((kind, matcher), 0) + count
                 )
+
+            if recorders:
+                recorded_cassette = new_cassette(test_case.name, adapter=self._adapter.name)
+                for r in recorders:
+                    recorded_cassette.interactions.extend(r.interactions)
 
             branch_id = f"b{i}"
             path = [f"{s.step_id}:{s.tool_name}" for s in trace.steps]
@@ -329,6 +419,7 @@ class Simulator:
             mocks_applied=combined_counter.to_applied(),
             branches_explored=branches,
             variant_outcomes=outcomes,
+            recorded_cassette=recorded_cassette,
         )
         return traces, result
 
