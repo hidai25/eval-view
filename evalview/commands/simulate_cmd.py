@@ -87,9 +87,9 @@ def _format_human(
 
     if adapter_capability:
         cap_str = (
-            f"tools={_capability_flag(adapter_capability.get('tools'))} "
-            f"responses={_capability_flag(adapter_capability.get('responses'))} "
-            f"http={_capability_flag(adapter_capability.get('http'))}"
+            f"tools={_capability_flag(bool(adapter_capability.get('tools')))} "
+            f"responses={_capability_flag(bool(adapter_capability.get('responses')))} "
+            f"http={_capability_flag(bool(adapter_capability.get('http')))}"
         )
         if not any(adapter_capability.values()):
             cap_str += "  ⚠ adapter has no interception seam — run is hitting live services"
