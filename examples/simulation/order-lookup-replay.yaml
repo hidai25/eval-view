@@ -1,0 +1,47 @@
+# Example: replay an order-lookup agent from a pre-recorded cassette.
+#
+# This test deliberately has no `mocks:` block — the hermetic replay
+# is provided by a cassette in cassettes/order-lookup-replay.json,
+# captured against a real backend on a previous run.
+#
+# Run hermetically:
+#   evalview simulate examples/simulation/order-lookup-replay.yaml \
+#     --replay --cassette-dir examples/simulation/cassettes
+#
+# Re-record (e.g. after the real backend changes):
+#   evalview simulate examples/simulation/order-lookup-replay.yaml \
+#     --record --cassette-dir examples/simulation/cassettes
+
+name: order-lookup-replay
+description: Look up an order and summarize its status using a recorded cassette.
+
+adapter: anthropic
+endpoint: claude-sonnet-4-5-20250929
+
+input:
+  query: What's the status of order 4812?
+
+expected:
+  tools: [lookup_order, check_shipment]
+  output:
+    contains: ["4812", "shipped"]
+    not_contains: [error]
+
+thresholds:
+  min_score: 70
+
+tools:
+  - name: lookup_order
+    description: Retrieve order details by id.
+    input_schema:
+      type: object
+      properties:
+        order_id: { type: integer }
+      required: [order_id]
+  - name: check_shipment
+    description: Get the latest shipment status for an order.
+    input_schema:
+      type: object
+      properties:
+        order_id: { type: integer }
+      required: [order_id]

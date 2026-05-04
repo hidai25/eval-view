@@ -204,9 +204,36 @@ TEST_PATH        Directory (default: tests/) or single YAML file.
                  (hermetic — never touches the network).
     --cassette-dir DIR
                  Override the cassette directory (default: .evalview/cassettes).
+    --allow-live Suppress the warning when the adapter has no
+                 interception seam. Hermetic modes still raise.
 ```
 
 Exit code 1 on any test error; 0 on success.
+
+## Adapter capability check
+
+Before every run, the simulator probes the adapter for three
+interception layers:
+
+| Layer | Detection | Purpose |
+|---|---|---|
+| `tools` | `hasattr(adapter, "tool_executor")` | Tool-call swap (the path mocks/cassettes use). |
+| `responses` | `callable(adapter.install_mock_interceptor)` | LLM-response pull hooks. |
+| `http` | `getattr(adapter, "supports_http_mocks", False)` | Outbound HTTP intercept opt-in. |
+
+The result lands on `SimulationResult.adapter_capability` and renders
+under "Adapter capability:" in the human output.
+
+**When the adapter has none of the three** (e.g. an HTTP/streaming
+adapter where the agent runs server-side), the simulator escalates:
+
+| Run mode | Behavior |
+|---|---|
+| Lenient (no `--record` / `--replay` / `mocks.strict`) | Logs a `WARNING`. Drops to `INFO` with `--allow-live`. |
+| Hermetic (`--record`, `--replay`, or `mocks.strict=true`) | Raises `UninterceptableAdapterError` before any live call. |
+
+This means a `--replay` against an unsupported adapter fails fast
+instead of silently going live with an empty mock layer.
 
 ## Record / replay cassettes
 

@@ -249,6 +249,102 @@ class TestSimulatorVariants:
 
 
 # ============================================================================
+# Adapter capability check — uninterceptable adapters fail loudly
+# ============================================================================
+
+
+class _UninterceptableAdapter(AgentAdapter):
+    """Adapter with no `tool_executor` and no `install_mock_interceptor`.
+
+    Models the LangGraph-Cloud / generic-HTTP case where the agent
+    runs server-side and there's no in-process seam for the simulator
+    to swap. Returns a trivial trace if it ever gets called.
+    """
+
+    @property
+    def name(self) -> str:
+        return "uninterceptable"
+
+    async def execute(self, query, context=None):
+        return ExecutionTrace(
+            session_id="u",
+            start_time=datetime(2026, 4, 20, 10, 0, 0),
+            end_time=datetime(2026, 4, 20, 10, 0, 1),
+            steps=[],
+            final_output="",
+            metrics=ExecutionMetrics(total_cost=0.0, total_latency=0.0),
+        )
+
+
+class TestAdapterCapability:
+    def test_capability_reports_truthfully(self):
+        from evalview.core.simulation import adapter_simulation_capability
+
+        cap_full = adapter_simulation_capability(_FakeAdapter(plan=[]))
+        # _FakeAdapter exposes both seams.
+        assert cap_full == {"tools": True, "responses": True, "http": False}
+
+        cap_none = adapter_simulation_capability(_UninterceptableAdapter())
+        assert cap_none == {"tools": False, "responses": False, "http": False}
+
+    @pytest.mark.asyncio
+    async def test_strict_raises_on_uninterceptable(self):
+        from evalview.core.simulation import UninterceptableAdapterError
+
+        sim = Simulator(_UninterceptableAdapter(), MockSpec(strict=True))
+        with pytest.raises(UninterceptableAdapterError, match="no tool interception seam"):
+            await sim.run(_case())
+
+    @pytest.mark.asyncio
+    async def test_record_raises_on_uninterceptable(self):
+        from evalview.core.simulation import UninterceptableAdapterError
+
+        sim = Simulator(_UninterceptableAdapter(), MockSpec())
+        with pytest.raises(UninterceptableAdapterError):
+            await sim.run(_case(), record=True)
+
+    @pytest.mark.asyncio
+    async def test_replay_raises_on_uninterceptable(self):
+        from evalview.core.simulation import UninterceptableAdapterError
+        from evalview.core.types import Cassette as _Cassette
+
+        cassette = _Cassette(test_name="t", recorded_at="x", interactions=[])
+        sim = Simulator(_UninterceptableAdapter(), MockSpec())
+        with pytest.raises(UninterceptableAdapterError):
+            await sim.run(_case(), replay_cassette=cassette)
+
+    @pytest.mark.asyncio
+    async def test_lenient_warns_but_proceeds(self, caplog):
+        # No record / replay / strict — uninterceptable run is allowed
+        # but must surface a WARNING so the user knows the run is live.
+        import logging
+        sim = Simulator(_UninterceptableAdapter(), MockSpec())
+        with caplog.at_level(logging.WARNING, logger="evalview.core.simulation"):
+            _, result = await sim.run(_case())
+        assert any("no tool interception seam" in r.message for r in caplog.records)
+        assert result.adapter_capability == {"tools": False, "responses": False, "http": False}
+
+    @pytest.mark.asyncio
+    async def test_allow_live_downgrades_warning_to_info(self, caplog):
+        import logging
+        sim = Simulator(_UninterceptableAdapter(), MockSpec())
+        with caplog.at_level(logging.DEBUG, logger="evalview.core.simulation"):
+            await sim.run(_case(), allow_live=True)
+        # Same message, but at INFO level (no WARNING).
+        warns = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        infos = [r for r in caplog.records if r.levelno == logging.INFO]
+        assert not warns
+        assert any("no tool interception seam" in r.message for r in infos)
+
+    @pytest.mark.asyncio
+    async def test_capability_recorded_on_interceptable_adapter(self):
+        sim = Simulator(_FakeAdapter(plan=[]), MockSpec())
+        _, result = await sim.run(_case())
+        assert result.adapter_capability["tools"] is True
+        assert result.adapter_capability["responses"] is True
+
+
+# ============================================================================
 # Response / HTTP mock matching (public helpers)
 # ============================================================================
 

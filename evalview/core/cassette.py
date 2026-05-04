@@ -33,10 +33,11 @@ from __future__ import annotations
 
 import json
 import logging
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Deque, Dict, List, Optional
 
 from evalview.core.types import Cassette, Interaction
 
@@ -144,17 +145,19 @@ class ReplayToolExecutor:
         self._cassette = cassette
         self._real = real
         self._strict = strict
-        self._queues: Dict[str, List[Interaction]] = {}
+        # Deques give O(1) popleft; lists are O(n) on pop(0), which
+        # would degrade replay of long recordings.
+        self._queues: Dict[str, Deque[Interaction]] = {}
         for entry in cassette.interactions:
             if entry.kind != "tool" or entry.tool is None:
                 continue
-            self._queues.setdefault(entry.tool, []).append(entry)
+            self._queues.setdefault(entry.tool, deque()).append(entry)
         self.replays: List[Interaction] = []
 
     def __call__(self, tool_name: str, params: Dict[str, Any]) -> Any:
         queue = self._queues.get(tool_name)
         if queue:
-            entry = queue.pop(0)
+            entry = queue.popleft()
             self.replays.append(entry)
             if entry.error:
                 raise RuntimeError(entry.error)

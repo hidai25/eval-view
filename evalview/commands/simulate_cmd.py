@@ -62,6 +62,10 @@ def _resolve_test_cases(
     return cases
 
 
+def _capability_flag(value: bool) -> str:
+    return "✓" if value else "✗"
+
+
 def _format_human(
     test_name: str,
     seed: int,
@@ -69,6 +73,7 @@ def _format_human(
     mocks_applied: List[dict],
     variant_outcomes: List[dict],
     branches: List[dict],
+    adapter_capability: Optional[dict] = None,
 ) -> str:
     """Readable terminal summary. JSON path skips this entirely."""
     lines: List[str] = []
@@ -79,6 +84,16 @@ def _format_human(
             lines.append(f"    · {m['kind']}:{m['matcher']} ×{m['count']}")
     else:
         lines.append("  Mocks applied: none matched")
+
+    if adapter_capability:
+        cap_str = (
+            f"tools={_capability_flag(adapter_capability.get('tools'))} "
+            f"responses={_capability_flag(adapter_capability.get('responses'))} "
+            f"http={_capability_flag(adapter_capability.get('http'))}"
+        )
+        if not any(adapter_capability.values()):
+            cap_str += "  ⚠ adapter has no interception seam — run is hitting live services"
+        lines.append(f"  Adapter capability: {cap_str}")
 
     lines.append("  Variants:")
     if variant_outcomes:
@@ -109,6 +124,7 @@ async def _run_one(
     *,
     record: bool = False,
     replay: bool = False,
+    allow_live: bool = False,
     cassette_dir: Path = DEFAULT_CASSETTE_DIR,
 ) -> dict:
     """Run a single test case and return a serializable summary dict."""
@@ -146,11 +162,18 @@ async def _run_one(
     sim = Simulator(adapter, spec)
     if variants > 1:
         traces, result = await sim.run_variants(
-            tc, variants=variants, replay_cassette=replay_cassette, record=record
+            tc,
+            variants=variants,
+            replay_cassette=replay_cassette,
+            record=record,
+            allow_live=allow_live,
         )
     else:
         _, result = await sim.run(
-            tc, replay_cassette=replay_cassette, record=record
+            tc,
+            replay_cassette=replay_cassette,
+            record=record,
+            allow_live=allow_live,
         )
         traces = []
 
@@ -202,6 +225,17 @@ async def _run_one(
     show_default=True,
     help="Override the directory used to find/store cassettes.",
 )
+@click.option(
+    "--allow-live",
+    is_flag=True,
+    default=False,
+    help=(
+        "Suppress the warning when the adapter has no interception seam. "
+        "By default an uninterceptable adapter logs a warning; with this "
+        "flag it logs INFO instead. Hermetic modes (--record, --replay, "
+        "or mocks.strict=true) still raise."
+    ),
+)
 @track_command("simulate")
 def simulate(
     test_path: str,
@@ -212,6 +246,7 @@ def simulate(
     record: bool,
     replay: bool,
     cassette_dir: str,
+    allow_live: bool,
 ) -> None:
     """Run tests hermetically against declared mocks.
 
@@ -245,7 +280,9 @@ def simulate(
         try:
             summary = asyncio.run(_run_one(
                 tc, config, variants, seed,
-                record=record, replay=replay, cassette_dir=cassette_dir_path,
+                record=record, replay=replay,
+                allow_live=allow_live,
+                cassette_dir=cassette_dir_path,
             ))
         except Exception as exc:
             summaries.append({
@@ -267,6 +304,7 @@ def simulate(
                     sim["mocks_applied"],
                     sim["variant_outcomes"],
                     sim["branches_explored"],
+                    adapter_capability=sim.get("adapter_capability"),
                 )
             )
             if summary.get("cassette"):

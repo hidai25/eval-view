@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Record/replay cassettes for `evalview simulate`** — capture real
+  tool calls once, replay deterministically forever. Closes the
+  reproducibility gap where reproducing "agent saw X, called Y, got Z"
+  required hitting live services again. Cassettes live at
+  `.evalview/cassettes/<test>.json`, are versioned for forward compat,
+  and use per-tool sequential matching so inter-tool ordering drift
+  doesn't break replay. New flags: `--record`, `--replay`,
+  `--cassette-dir`. Declarative `mocks:` still take precedence so a
+  single recording can be overridden without re-recording the whole
+  run. See `docs/SIMULATE.md#record--replay-cassettes`.
+- **Adapter capability check for simulation** — `Simulator` now
+  detects when an adapter has no tool interception seam (no
+  `tool_executor` attribute, no `install_mock_interceptor`) and
+  fails fast under `--record` / `--replay` / `mocks.strict=true`
+  instead of silently letting the run hit live services. Lenient
+  mode logs a warning unless `--allow-live` is set.
+  `SimulationResult.adapter_capability` records the truth so JSON/CI
+  consumers can see whether interception was actually possible. See
+  `docs/design/loud-skip-warning.md`.
+
 ## [0.7.1] - 2026-05-02
 
 ### Added

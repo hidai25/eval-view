@@ -579,6 +579,14 @@ class SimulationResult(BaseModel):
     branches_explored: List[BranchExploration] = Field(default_factory=list)
     variant_outcomes: List[VariantOutcome] = Field(default_factory=list)
     recorded_cassette: Optional[Cassette] = Field(default=None, exclude=True)
+    adapter_capability: Dict[str, bool] = Field(
+        default_factory=dict,
+        description=(
+            "Per-layer interception ability detected at run start: "
+            "tools / responses / http. All-false means the run hit "
+            "live services regardless of declared mocks."
+        ),
+    )
 
 
 # --- Execution Trace Types ---

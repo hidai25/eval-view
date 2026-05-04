@@ -63,6 +63,40 @@ class UnmatchedMockError(RuntimeError):
     """Raised when ``MockSpec.strict`` is true and a call has no mock."""
 
 
+class UninterceptableAdapterError(RuntimeError):
+    """Raised when a hermetic-required run targets an adapter that has no
+    interception seam (no ``tool_executor``, no ``install_mock_interceptor``).
+
+    Without one of those hooks, mocks/cassettes/replay can't actually
+    install — the run would silently hit live services. Failing fast
+    is the only honest answer when the user has explicitly opted into
+    hermetic semantics via ``--record``, ``--replay``, or
+    ``MockSpec.strict=True``.
+    """
+
+
+def adapter_simulation_capability(adapter: AgentAdapter) -> Dict[str, bool]:
+    """Report which simulation layers an adapter can actually intercept.
+
+    Returns a dict with three booleans:
+        tools     — has a ``tool_executor`` attribute the simulator can swap.
+        responses — has ``install_mock_interceptor``, so it can pull
+                    LLM-response mocks from the simulator.
+        http      — declares ``supports_http_mocks=True`` (opt-in flag
+                    adapters set when they wire ``http_mock_for`` into
+                    their transport).
+
+    The check is intentionally cheap and side-effect-free so callers
+    can run it before every ``Simulator.run`` to decide whether to
+    warn / raise / proceed.
+    """
+    return {
+        "tools": hasattr(adapter, "tool_executor"),
+        "responses": callable(getattr(adapter, "install_mock_interceptor", None)),
+        "http": bool(getattr(adapter, "supports_http_mocks", False)),
+    }
+
+
 def _params_match(call_params: Dict[str, Any], match_params: Optional[Dict[str, Any]]) -> bool:
     """Subset-match: every key/value in ``match_params`` must equal the call."""
     if not match_params:
@@ -176,6 +210,52 @@ class Simulator:
         self._spec = spec
 
     # ------------------------------------------------------------------
+    # Internal: capability gate
+    # ------------------------------------------------------------------
+
+    def _check_capability(
+        self,
+        *,
+        replay: bool,
+        record: bool,
+        allow_live: bool,
+    ) -> Dict[str, bool]:
+        """Detect uninterceptable adapters before the run starts.
+
+        Three escalation tiers:
+          - Adapter has any interception seam → silent (capability is
+            still recorded on the result for transparency).
+          - No seam, but the user did not opt into hermetic semantics
+            (no record/replay, ``strict=False``) → log a warning and
+            proceed unless ``allow_live`` is set, in which case the
+            warning drops to INFO.
+          - No seam AND the user opted in (``record``, ``replay``, or
+            ``MockSpec.strict``) → raise
+            :class:`UninterceptableAdapterError` so the run fails fast
+            instead of silently going live.
+        """
+        cap = adapter_simulation_capability(self._adapter)
+        if any(cap.values()):
+            return cap
+
+        hermetic_required = record or replay or self._spec.strict
+        adapter_name = getattr(self._adapter, "name", type(self._adapter).__name__)
+        msg = (
+            f"Adapter '{adapter_name}' has no tool interception seam "
+            "(no `tool_executor`, no `install_mock_interceptor`, no "
+            "`supports_http_mocks`). Mocks/cassette/replay cannot be "
+            "installed — the run would hit live services. "
+            "See docs/SIMULATE.md#adapter-support-matrix."
+        )
+        if hermetic_required:
+            raise UninterceptableAdapterError(msg)
+        if allow_live:
+            logger.info(msg)
+        else:
+            logger.warning(msg)
+        return cap
+
+    # ------------------------------------------------------------------
     # Public helpers the CLI / adapters can import
     # ------------------------------------------------------------------
 
@@ -250,6 +330,7 @@ class Simulator:
         *,
         replay_cassette: Optional[Cassette] = None,
         record: bool = False,
+        allow_live: bool = False,
     ) -> Tuple[ExecutionTrace, SimulationResult]:
         """Execute one simulated run and return (trace, SimulationResult).
 
@@ -264,7 +345,19 @@ class Simulator:
         When ``record`` is true, the run captures every real tool call
         into ``SimulationResult.recorded_cassette`` so the caller can
         persist it with :func:`evalview.core.cassette.save_cassette`.
+
+        Raises :class:`UninterceptableAdapterError` when the run requires
+        hermetic semantics (``record``, ``replay_cassette``, or
+        ``MockSpec.strict``) but the adapter exposes no interception
+        seam. Otherwise an uninterceptable adapter logs a warning
+        (downgraded to INFO when ``allow_live=True``) and proceeds.
         """
+        capability = self._check_capability(
+            replay=replay_cassette is not None,
+            record=record,
+            allow_live=allow_live,
+        )
+
         counter = _MockHitCounter()
         seed = self._spec.seed if seed_override is None else seed_override
         rng = random.Random(seed)
@@ -320,6 +413,7 @@ class Simulator:
             ],
             variant_outcomes=[],
             recorded_cassette=recorded_cassette,
+            adapter_capability=capability,
         )
         return trace, result
 
@@ -330,6 +424,7 @@ class Simulator:
         *,
         replay_cassette: Optional[Cassette] = None,
         record: bool = False,
+        allow_live: bool = False,
     ) -> Tuple[List[ExecutionTrace], SimulationResult]:
         """Fan out ``variants`` deterministic replays and aggregate.
 
@@ -348,31 +443,40 @@ class Simulator:
         if variants < 1:
             raise ValueError("variants must be >= 1")
 
+        capability = self._check_capability(
+            replay=replay_cassette is not None,
+            record=record,
+            allow_live=allow_live,
+        )
+
         traces: List[ExecutionTrace] = []
         branches: List[BranchExploration] = []
         outcomes: List[VariantOutcome] = []
         combined_counter = _MockHitCounter()
         recorded_cassette: Optional[Cassette] = None
 
+        # Adapter is the same object across variants — resolve its
+        # interception attributes once.
+        real_executor = getattr(self._adapter, "tool_executor", None)
+        installer = getattr(self._adapter, "install_mock_interceptor", None)
+        had_attr = hasattr(self._adapter, "tool_executor")
+
         for i in range(variants):
             counter = _MockHitCounter()
             seed = (self._spec.seed or 0) + i
             rng = random.Random(seed)
-            real_executor = getattr(self._adapter, "tool_executor", None)
             recorders: Optional[List[RecordingToolExecutor]] = (
                 [] if (record and i == 0) else None
             )
             mocked = self._build_stack(rng, counter, replay_cassette, recorders)
 
             context: Dict[str, Any] = dict(test_case.input.context or {})
-            installer = getattr(self._adapter, "install_mock_interceptor", None)
             if callable(installer):
                 try:
                     installer(self)
                 except Exception as exc:  # pragma: no cover
                     logger.warning("install_mock_interceptor raised: %s", exc)
 
-            had_attr = hasattr(self._adapter, "tool_executor")
             if had_attr:
                 setattr(self._adapter, "tool_executor", mocked)
             try:
@@ -420,8 +524,15 @@ class Simulator:
             branches_explored=branches,
             variant_outcomes=outcomes,
             recorded_cassette=recorded_cassette,
+            adapter_capability=capability,
         )
         return traces, result
 
 
-__all__ = ["Simulator", "MockedToolExecutor", "UnmatchedMockError"]
+__all__ = [
+    "MockedToolExecutor",
+    "Simulator",
+    "UninterceptableAdapterError",
+    "UnmatchedMockError",
+    "adapter_simulation_capability",
+]
