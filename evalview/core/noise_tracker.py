@@ -30,7 +30,10 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set, Tuple
+
+if TYPE_CHECKING:
+    from evalview.core.root_cause_hint import RootCauseHint
 
 logger = logging.getLogger(__name__)
 
@@ -199,12 +202,19 @@ class Incident:
         affected: Sorted list of test names involved.
         evidence: Free-form dict of the signals that led to this grouping,
                   surfaced in the Slack card's details section.
+        hint: Optional richer root-cause hint produced by
+              :mod:`evalview.core.root_cause_hint`. Carries a narrative and
+              concrete suggested actions when one of the registered hinters
+              matched. ``None`` means we couldn't go beyond the basic
+              ``cause`` classification — callers should fall back to
+              rendering just ``headline``.
     """
 
     cause: str
     confidence: str
     affected: List[str]
     evidence: Dict[str, Any] = field(default_factory=dict)
+    hint: Optional["RootCauseHint"] = None
 
     @property
     def headline(self) -> str:
@@ -257,6 +267,15 @@ def detect_coordinated_incident(
     if len(failing) < min_affected:
         return None
 
+    # Synthesize a narrated root-cause hint from the same diff bundle.
+    # The hinter is conservative — it returns ``None`` when nothing rises
+    # above its own confidence floor — so the incident still gets a basic
+    # classification below even when no hint matches. This is a strict
+    # superset of the prior behavior: existing tests pass with hint=None.
+    from evalview.core.root_cause_hint import analyze_root_cause_hint
+
+    hint = analyze_root_cause_hint(diffs, min_affected=min_affected)
+
     # Rule 1: declared model change across multiple tests.
     model_changed_tests = [
         name for name, diff in failing if getattr(diff, "model_changed", False)
@@ -271,6 +290,7 @@ def detect_coordinated_incident(
                 "count": len(model_changed_tests),
                 "total_failing": len(failing),
             },
+            hint=hint,
         )
 
     # Rule 2: shared runtime fingerprint different from baseline.
@@ -294,6 +314,7 @@ def detect_coordinated_incident(
                     "count": len(tests),
                     "total_failing": len(failing),
                 },
+                hint=hint,
             )
 
     # Rule 3: correlated batch with no shared signal. Only fire if the
@@ -311,6 +332,7 @@ def detect_coordinated_incident(
                 "failing": len(failing),
                 "total": len(diffs),
             },
+            hint=hint,
         )
 
     return None

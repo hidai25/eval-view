@@ -39,13 +39,29 @@ class DiscordNotifier:
             more = ""
             if len(incident.affected) > 10:
                 more = f"\n…and {len(incident.affected) - 10} more"
+
+            # Mirror the Slack notifier: when a root-cause hinter matched,
+            # surface its narrative + top action between headline and
+            # affected list. Falls back silently to the headline-only card.
+            hint = getattr(incident, "hint", None)
+            hint_block = ""
+            footer = (
+                "Run `evalview check` for full details - "
+                "investigate provider/runtime change before tweaking the agent."
+            )
+            if hint is not None:
+                top_action = hint.suggested_actions[0] if hint.suggested_actions else ""
+                action_line = f"\n-> `{top_action}`" if top_action else ""
+                hint_block = f"\n_{hint.narrative}_{action_line}\n"
+                footer = "Run `evalview check` for full details."
+
             text = (
                 ":rotating_light: **EvalView Monitor - Incident**\n\n"
                 f"**{incident.headline}**\n"
-                f"{passed}/{total} tests passing\n\n"
+                f"{passed}/{total} tests passing\n"
+                f"{hint_block}\n"
                 f"{affected_lines}{more}\n\n"
-                "Run `evalview check` for full details - "
-                "investigate provider/runtime change before tweaking the agent."
+                f"{footer}"
             )
             try:
                 async with httpx.AsyncClient(timeout=10.0) as client:

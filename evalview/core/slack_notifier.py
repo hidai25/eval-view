@@ -53,13 +53,31 @@ class SlackNotifier:
             more = ""
             if len(incident.affected) > 10:
                 more = f"\n…and {len(incident.affected) - 10} more"
+
+            # If a root-cause hinter matched, surface the narrative and the
+            # top suggested action between the headline and the affected
+            # list. Falls back silently to the headline-only card when no
+            # hint is attached — preserves the existing UX as a strict
+            # lower bound.
+            hint = getattr(incident, "hint", None)
+            hint_block = ""
+            footer = (
+                "_Run `evalview check` for full details — "
+                "investigate provider/runtime change before tweaking the agent._"
+            )
+            if hint is not None:
+                top_action = hint.suggested_actions[0] if hint.suggested_actions else ""
+                action_line = f"\n→ `{top_action}`" if top_action else ""
+                hint_block = f"\n_{hint.narrative}_{action_line}\n"
+                footer = "_Run `evalview check` for full details._"
+
             text = (
                 f":rotating_light: *EvalView Monitor — Incident*\n\n"
                 f"*{incident.headline}*\n"
-                f"{passed}/{total} tests passing\n\n"
+                f"{passed}/{total} tests passing\n"
+                f"{hint_block}\n"
                 f"{affected_lines}{more}\n\n"
-                f"_Run `evalview check` for full details — "
-                f"investigate provider/runtime change before tweaking the agent._"
+                f"{footer}"
             )
             payload = {"text": text}
             return await self._post(payload)
