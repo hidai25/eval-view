@@ -10,6 +10,8 @@ Use them when the task is procedural and bounded.
 - [Add an Evaluator](add-evaluator.md)
 - [Add a Root-Cause Hint](add-root-cause-hint.md) — narrate a new
   cross-test failure pattern (good first issue)
+- [Emit OpenTelemetry Spans for an Adapter](add-otel-emission.md) —
+  wire EvalView's portable agent semconv into your adapter
 - [Debug Check vs Snapshot Mismatch](debug-check-vs-snapshot-mismatch.md)
 - [Extend the HTML Report](extend-html-report.md)
 - [Integrate Ollama](integrate-ollama.md)
