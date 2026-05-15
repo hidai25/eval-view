@@ -14,6 +14,8 @@ Use them when the task is procedural and bounded.
   wire EvalView's portable agent semconv into your adapter
 - [Add a Goal-Drift Judge](add-goal-drift-judge.md) — plug a smarter
   similarity metric into the goal-drift detector (good first issue)
+- [Add a Retrieval / Memory Attribution Judge](add-retrieval-attribution.md) —
+  plug a smarter chunk-influence scorer (good first issue)
 - [Debug Check vs Snapshot Mismatch](debug-check-vs-snapshot-mismatch.md)
 - [Extend the HTML Report](extend-html-report.md)
 - [Integrate Ollama](integrate-ollama.md)
