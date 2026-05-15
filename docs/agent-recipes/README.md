@@ -16,6 +16,8 @@ Use them when the task is procedural and bounded.
   similarity metric into the goal-drift detector (good first issue)
 - [Add a Retrieval / Memory Attribution Judge](add-retrieval-attribution.md) —
   plug a smarter chunk-influence scorer (good first issue)
+- [Add a Chaos Mode](add-chaos-mode.md) — model a new real-world
+  disruption for `evalview simulate --chaos` (good first issue)
 - [Debug Check vs Snapshot Mismatch](debug-check-vs-snapshot-mismatch.md)
 - [Extend the HTML Report](extend-html-report.md)
 - [Integrate Ollama](integrate-ollama.md)
