@@ -129,6 +129,74 @@ The `--verbose` flag may expose sensitive information in logs:
 - Query content and agent outputs
 - **Recommendation**: Avoid using verbose mode in production or when processing sensitive data
 
+## Threat Model: Untrusted Inputs
+
+The May 2026 Langfuse RCE (a single OpenTelemetry trace request leading
+to remote code execution via prototype pollution) sharpened a question
+many AI-eval users are now asking: *"what does this tool parse, and how
+safely?"* This section enumerates every external input EvalView accepts
+and the parsing posture for each.
+
+### Inputs EvalView consumes
+
+| Input | Source | Parser | Sandbox | Notes |
+|---|---|---|---|---|
+| `tests/*.yaml`, `tests/*.toml` | Local file or `git clone` | `yaml.safe_load` (no Python objects); `tomllib` | None — runs in your shell | Test YAMLs can specify HTTP endpoints (see SSRF protection above) but cannot execute Python |
+| `.evalview/incidents.jsonl` | Written by `evalview monitor` (local) | `json.loads` line-by-line; malformed lines skipped | None | Synthesized into deterministic regression-test YAML by `evalview/core/regression_synth.py` — pure function, no `eval`, no template injection |
+| `.evalview/history/*.jsonl` (consumed by `evalview fleet`) | Written by `monitor`; may be merged from multiple machines | `json.loads`; unknown record shapes silently dropped | None | The fleet rollup never executes embedded code; it only counts/aggregates known fields |
+| Cassette files `.evalview/cassettes/*.json` | `evalview simulate --record` | `json.loads`; per-tool sequential matching | None | Replayed values are returned to your agent verbatim — treat them like any test fixture |
+| Production traces (cloud sync, when opted in) | Your machine → cloud via authenticated POST | Wire-format schema versioned (`SCHEMA_VERSION` in `evalview/core/types.py`); JSON-only | N/A (server side) | Local CLI never *receives* traces from the cloud; sync is one-way push |
+| HTTP responses from agents under test | Your agent | JSON or text; never `pickle`, never `eval` | SSRF guard (see above) | Long bodies truncated before LLM judge to prevent prompt-injection token exhaustion |
+
+### What EvalView does *not* do
+
+- **No `pickle.load` on external data.** Anywhere. If you find one in a
+  PR, that's a security review blocker.
+- **No `eval` / `exec` on YAML or JSON content.** Test YAMLs are
+  declarative; they cannot embed Python.
+- **No prototype-style mutation of shared objects from parsed input.**
+  Python's strong typing makes this less likely than in JS, but the
+  parsers we use (`yaml.safe_load`, `json.loads`, `tomllib`) all return
+  plain dicts/lists and never resolve user-controlled type tags.
+- **No deserialization of arbitrary classes.** `pyyaml` is invoked
+  exclusively via `safe_load` — a `pip-audit` finding on `yaml.load`
+  with the unsafe loader is the canonical regression to watch for.
+- **No code execution from cassettes.** Recorded tool responses are
+  returned as data; if your agent then `exec`s them, that's your
+  agent's threat model, not EvalView's.
+
+### Cloud sync isolation
+
+Cloud sync (`evalview login`) is fully opt-in. When disabled
+(the default), no data leaves your machine. When enabled:
+
+- Authentication uses short-lived OAuth tokens; refresh tokens are
+  stored under `~/.config/evalview/` with `0600` permissions on
+  POSIX systems.
+- Wire-format schema is versioned and validated server-side; unknown
+  fields are dropped, not echoed back.
+- Per-project isolation is enforced server-side, not by the CLI.
+  Trust the cloud's published threat model for that boundary; the CLI
+  can only ensure it never sends data tagged for project A as project B.
+
+### MCP server (`evalview mcp serve`)
+
+The MCP server exposes 8 tools to a connected client (Claude Code,
+Cursor, etc.). It runs over **stdio** by default, which means the
+attack surface is whatever process spawned EvalView — usually your IDE.
+
+If you operate the MCP over a network transport (not the default), you
+are outside the supported configuration; review `evalview/commands/mcp_cmd.py`
+yourself before doing so.
+
+### Reporting parser bugs
+
+If you find a way to make any of EvalView's parsers do something
+beyond their documented behavior (e.g. a YAML construct that triggers
+import, a JSONL line that escapes containment, a cassette that breaks
+out of replay) — **please report via the GitHub Security Advisory
+flow at the top of this file**, not as a public issue.
+
 ## Security Updates
 
 We will disclose security vulnerabilities through:
@@ -139,4 +207,4 @@ We will disclose security vulnerabilities through:
 
 ---
 
-Last updated: 2026-03-12
+Last updated: 2026-05-15
