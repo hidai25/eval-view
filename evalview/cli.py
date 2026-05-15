@@ -56,6 +56,7 @@ from evalview.commands.model_check_cmd import model_check
 from evalview.commands.monitor_cmd import monitor
 from evalview.commands.autopr_cmd import autopr
 from evalview.commands.freshness_cmd import freshness
+from evalview.commands.fleet_cmd import fleet_cmd
 from evalview.commands.benchmark_cmd import benchmark_cmd
 from evalview.commands.mcp_cmd import mcp
 from evalview.commands.validate_cmd import validate
@@ -88,7 +89,7 @@ class OrderedGroup(click.Group):
         ("Start", ["demo", "init"]),
         ("Regression Gating", ["snapshot", "check", "model-check", "replay"]),
         ("Triage", ["since", "progress", "drift"]),
-        ("Production", ["watch", "monitor", "autopr", "freshness"]),
+        ("Production", ["watch", "monitor", "autopr", "freshness", "fleet"]),
         ("Evaluation", ["run", "report", "generate", "judge", "expand",
                         "golden", "compare", "benchmark", "simulate"]),
         ("Capture & Import", ["capture", "import", "record", "connect", "adapters"]),
@@ -216,6 +217,7 @@ main.add_command(baseline)
 main.add_command(monitor)
 main.add_command(autopr)
 main.add_command(freshness)
+main.add_command(fleet_cmd, name="fleet")
 main.add_command(feedback)
 main.add_command(openclaw)
 main.add_command(watch)
