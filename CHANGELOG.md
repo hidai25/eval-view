@@ -7,9 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-05-15
+
 ### Added
-- **Record/replay cassettes for `evalview simulate`** — capture real
-  tool calls once, replay deterministically forever. Closes the
+- **Record/replay cassettes for `evalview simulate`** (#228) — capture
+  real tool calls once, replay deterministically forever. Closes the
   reproducibility gap where reproducing "agent saw X, called Y, got Z"
   required hitting live services again. Cassettes live at
   `.evalview/cassettes/<test>.json`, are versioned for forward compat,
@@ -18,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--cassette-dir`. Declarative `mocks:` still take precedence so a
   single recording can be overridden without re-recording the whole
   run. See `docs/SIMULATE.md#record--replay-cassettes`.
-- **Adapter capability check for simulation** — `Simulator` now
+- **Adapter capability check for simulation** (#228) — `Simulator` now
   detects when an adapter has no tool interception seam (no
   `tool_executor` attribute, no `install_mock_interceptor`) and
   fails fast under `--record` / `--replay` / `mocks.strict=true`
@@ -27,6 +29,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SimulationResult.adapter_capability` records the truth so JSON/CI
   consumers can see whether interception was actually possible. See
   `docs/design/loud-skip-warning.md`.
+- **Cron syntax for `evalview monitor --schedule`** (#224) — accept
+  five-field cron expressions alongside `--interval` for non-uniform
+  cadences (e.g. weekdays-only, business-hours-only). Backed by
+  `croniter` via the new `schedule` optional extra:
+  `pip install evalview[schedule]`. The monitor dashboard now reports
+  the active cadence — interval or cron — for parity with how the run
+  is actually scheduled (#227).
+
+### Changed
+- **`uv.lock` synced with `pyproject.toml`** (#230) — lockfile drift
+  from the 0.5.3 → 0.7.1 bump and the new `schedule` extra is now
+  resolved. Runtime deps `jinja2`, `jsonschema`, and `tomli` are
+  pinned in the locked core set.
 
 ## [0.7.1] - 2026-05-02
 
