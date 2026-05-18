@@ -34,7 +34,6 @@ console = Console()
 
 def _set_judge_env(resolved_model: str) -> None:
     """Set EVAL_MODEL and EVAL_PROVIDER env vars, validate API key exists."""
-    import os
     import sys
     from evalview.core.llm_configs import PROVIDER_CONFIGS, LLMProvider
 
@@ -93,7 +92,6 @@ def apply_judge_model(judge_model: Optional[str], interactive: bool = True) -> N
         judge_model: Explicit --judge flag value (takes priority).
         interactive: If True, prompt user when no judge is configured.
     """
-    import os
     from evalview.core.llm_configs import resolve_model_alias
 
     # 1. Explicit --judge flag
