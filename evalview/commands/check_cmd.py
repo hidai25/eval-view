@@ -782,11 +782,11 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
     # Runs after all display/report work so it never blocks the user
     # experience. Silently skips when EVALVIEW_API_TOKEN is unset.
     try:
-        from evalview.cloud.push import _get_api_token, _get_git_context, _push_async
+        from evalview.cloud.push import _resolve_cloud, _get_git_context, _push_async
         import asyncio as _cloud_asyncio
         import hashlib as _cloud_hash
 
-        _cloud_token = _get_api_token()
+        _cloud_token, _cloud_base = _resolve_cloud()
         if _cloud_token:
             _total_cost = sum(
                 r.trace.metrics.total_cost for r in results
@@ -838,7 +838,9 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
                 ],
                 "result_json": verdict_output.payload or {},
             }
-            _dashboard_url = _cloud_asyncio.run(_push_async(_cloud_payload, _cloud_token))
+            _dashboard_url = _cloud_asyncio.run(
+                _push_async(_cloud_payload, _cloud_token, _cloud_base)
+            )
             if _dashboard_url and not json_output:
                 console.print(f"[green]☁  Pushed to cloud:[/green] {_dashboard_url}\n")
     except Exception:

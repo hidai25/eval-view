@@ -22,22 +22,72 @@ from evalview.core.types import SCHEMA_VERSION
 
 logger = logging.getLogger(__name__)
 
-CLOUD_API_URL = os.environ.get(
-    "EVALVIEW_CLOUD_URL", "http://localhost:3000/api/v1"
-)
+PRODUCTION_API_URL = "https://evalview.com/api/v1"
 
 
-def _get_api_token() -> Optional[str]:
-    """Resolve API token from env or config."""
-    token = os.environ.get("EVALVIEW_API_TOKEN")
-    if token:
-        return token
+def _resolve_cloud(token_hint: Optional[str] = None) -> tuple[Optional[str], str]:
+    """Resolve ``(api_token, api_base_url)`` for an outgoing cloud push.
+
+    Precedence — most specific wins so CI / explicit env overrides the
+    on-disk login:
+
+    1. ``EVALVIEW_API_TOKEN`` env var (CI / pinned tokens).
+    2. ``cloud.api_token`` from project config (committed override).
+    3. ``~/.evalview/auth.json`` written by ``evalview login`` (v2).
+
+    The base URL follows the token: when we use the login-file token
+    we also use the login-file's ``cloud_url`` so a user pointed at a
+    staging cloud doesn't accidentally push to production.
+    ``EVALVIEW_CLOUD_URL`` always wins if set — that's the
+    self-hosted / staging escape hatch.
+    """
+    env_url = os.environ.get("EVALVIEW_CLOUD_URL")
+
+    env_token = os.environ.get("EVALVIEW_API_TOKEN")
+    if env_token:
+        return env_token, env_url or PRODUCTION_API_URL
+
+    cfg_token: Optional[str] = None
     try:
         from evalview.commands.shared import _load_config_if_exists
+
         config = _load_config_if_exists()
-        return getattr(getattr(config, "cloud", None), "api_token", None) if config else None
+        cfg_token = (
+            getattr(getattr(config, "cloud", None), "api_token", None)
+            if config
+            else None
+        )
     except Exception:
-        return None
+        cfg_token = None
+    if cfg_token:
+        return cfg_token, env_url or PRODUCTION_API_URL
+
+    try:
+        from evalview.cloud.auth import CloudAuth
+
+        auth = CloudAuth()
+        api_token = auth.get_api_token()
+        if api_token:
+            return api_token, env_url or (auth.get_cloud_url() or PRODUCTION_API_URL)
+    except Exception:
+        pass
+
+    return None, env_url or PRODUCTION_API_URL
+
+
+# Back-compat for callers / tests that import these symbols directly.
+def _get_api_token() -> Optional[str]:
+    return _resolve_cloud()[0]
+
+
+def _get_cloud_api_url() -> str:
+    return _resolve_cloud()[1]
+
+
+# Eager-resolved value preserved for any code that imported the module
+# constant. New code should call ``_resolve_cloud()`` per push so a
+# fresh ``evalview login`` is picked up without a process restart.
+CLOUD_API_URL = _get_cloud_api_url()
 
 
 def _get_git_context() -> Dict[str, Any]:
@@ -169,9 +219,9 @@ def _build_diff_json(d: Any) -> Optional[Dict[str, Any]]:
         return None
 
 
-async def _push_async(payload: Dict[str, Any], token: str) -> Optional[str]:
+async def _push_async(payload: Dict[str, Any], token: str, base_url: str) -> Optional[str]:
     """Push with 3 retries, exponential backoff. Returns dashboard URL or None."""
-    return await _push_to_url(f"{CLOUD_API_URL}/results", payload, token)
+    return await _push_to_url(f"{base_url}/results", payload, token)
 
 
 def push_comparison(results: Any, query: str, threshold: float = 0.8) -> Optional[str]:
@@ -185,7 +235,7 @@ def push_comparison(results: Any, query: str, threshold: float = 0.8) -> Optiona
     Returns:
         Dashboard URL if successful, None otherwise.
     """
-    token = _get_api_token()
+    token, base_url = _resolve_cloud()
     if not token:
         return None
 
@@ -218,7 +268,7 @@ def push_comparison(results: Any, query: str, threshold: float = 0.8) -> Optiona
             **git,
         }
 
-        url = f"{CLOUD_API_URL}/comparisons"
+        url = f"{base_url}/comparisons"
         return asyncio.run(_push_to_url(url, payload, token))
     except Exception as e:
         logger.debug("Cloud comparison push failed: %s", e)
@@ -261,7 +311,7 @@ def push_result(gate_result: Any) -> Optional[str]:
     Returns dashboard URL if successful, None otherwise.
     Never raises. Blocks for at most ~15s (3 retries with backoff).
     """
-    token = _get_api_token()
+    token, base_url = _resolve_cloud()
     if not token:
         return None
 
@@ -358,7 +408,7 @@ def push_result(gate_result: Any) -> Optional[str]:
         if rationale_events:
             payload["rationale_events"] = rationale_events
 
-        return asyncio.run(_push_async(payload, token))
+        return asyncio.run(_push_async(payload, token, base_url))
     except Exception as e:
         logger.debug("Cloud push failed: %s", e)
         return None
