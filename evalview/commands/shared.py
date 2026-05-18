@@ -34,7 +34,6 @@ console = Console()
 
 def _set_judge_env(resolved_model: str) -> None:
     """Set EVAL_MODEL and EVAL_PROVIDER env vars, validate API key exists."""
-    import os
     import sys
     from evalview.core.llm_configs import PROVIDER_CONFIGS, LLMProvider
 
@@ -93,7 +92,6 @@ def apply_judge_model(judge_model: Optional[str], interactive: bool = True) -> N
         judge_model: Explicit --judge flag value (takes priority).
         interactive: If True, prompt user when no judge is configured.
     """
-    import os
     from evalview.core.llm_configs import resolve_model_alias
 
     # 1. Explicit --judge flag
@@ -818,53 +816,17 @@ def _analyze_check_diffs(diffs: List[Tuple[str, "TraceDiff"]]) -> Dict[str, Any]
 
 
 def _cloud_push(saved_test_names: List[str]) -> None:
-    """Upload golden baselines for the given tests. Silently skips on error."""
-    from evalview.cloud.auth import CloudAuth
-    from evalview.cloud.client import CloudClient
-    from evalview.core.golden import GoldenStore
+    """Goldens-to-cloud sync is currently a no-op.
 
-    auth = CloudAuth()
-    if not auth.is_logged_in():
-        return
-
-    store = GoldenStore()
-
-    async def _push() -> None:
-        client = CloudClient(auth.get_access_token() or "")
-        user_id = auth.get_user_id() or ""
-        for test_name in saved_test_names:
-            golden = store.load_golden(test_name)
-            if golden:
-                await client.upload_golden(user_id, test_name, golden.model_dump())
-
-    try:
-        asyncio.run(_push())
-        console.print("[dim]☁  Synced to cloud[/dim]")
-    except Exception:
-        if not os.environ.get("EVALVIEW_DEMO"):
-            console.print("[dim]⚠  Cloud sync skipped (offline?)[/dim]")
+    The historic implementation uploaded JSON blobs to a standalone
+    Supabase Storage bucket that the SaaS dashboard never reads from.
+    Run-level data (checks, regressions, drift) still flows to the
+    cloud via ``evalview/cloud/push.py``; only the baseline sync was
+    misleading. Helper kept so callers and tests don't need to change.
+    """
+    return
 
 
 def _cloud_pull(store: "GoldenStore") -> None:
-    """Pull missing golden baselines from cloud. Silently skips on error."""
-    from evalview.cloud.auth import CloudAuth
-    from evalview.cloud.client import CloudClient
-
-    auth = CloudAuth()
-    if not auth.is_logged_in():
-        return
-
-    async def _pull() -> None:
-        client = CloudClient(auth.get_access_token() or "")
-        user_id = auth.get_user_id() or ""
-        remote_names = await client.list_goldens(user_id)
-        for test_name in remote_names:
-            if not store.has_golden(test_name):
-                data = await client.download_golden(user_id, test_name)
-                if data:
-                    store.save_golden_from_dict(test_name, data)
-
-    try:
-        asyncio.run(_pull())
-    except Exception:
-        pass  # Silently skip — local goldens still work
+    """Goldens-from-cloud pull is currently a no-op. See ``_cloud_push``."""
+    return
