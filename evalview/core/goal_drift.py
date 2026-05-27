@@ -31,7 +31,9 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Callable, Iterable, List, Optional, Sequence, Tuple
+from typing import Callable, FrozenSet, Iterable, List, Optional, Sequence, Tuple
+
+from evalview.core.text import STOPWORDS as _STOPWORDS
 
 
 # ── Tunables ────────────────────────────────────────────────────────────────
@@ -45,21 +47,6 @@ DEFAULT_DRIFT_THRESHOLD = 0.2
 # tokenization. Long goals are usually pasted-in tickets; long
 # trajectories drown the signal in repeated boilerplate.
 _MAX_TEXT_CHARS = 4096
-
-
-# Mirror the small stoplist in evalview.core.freshness so the two modules
-# behave consistently when a future refactor unifies them.
-_STOPWORDS = frozenset({
-    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
-    "do", "does", "did", "doing", "have", "has", "had", "having",
-    "i", "you", "he", "she", "it", "we", "they", "me", "him", "her", "us", "them",
-    "my", "your", "his", "its", "our", "their", "mine", "yours", "ours",
-    "this", "that", "these", "those",
-    "and", "or", "but", "if", "then", "else", "of", "in", "on", "at", "to",
-    "for", "with", "by", "from", "as", "about", "into", "than",
-    "can", "could", "would", "should", "will", "shall", "may", "might", "must",
-    "not", "no", "so", "just", "also", "very", "really", "please",
-})
 
 
 # ── Data shapes ─────────────────────────────────────────────────────────────
@@ -106,7 +93,7 @@ class GoalDriftAnalysis:
 # ── Tokenization (kept local to avoid coupling to freshness module) ─────────
 
 
-def _tokens(text: str) -> frozenset[str]:
+def _tokens(text: str) -> FrozenSet[str]:
     """Lower / strip / collapse digits / drop stopwords → token set.
 
     Same digit normalization as the freshness module: order numbers and
@@ -124,7 +111,7 @@ def _tokens(text: str) -> frozenset[str]:
     )
 
 
-def _jaccard(a: frozenset[str], b: frozenset[str]) -> float:
+def _jaccard(a: FrozenSet[str], b: FrozenSet[str]) -> float:
     if not a or not b:
         return 0.0
     union = len(a | b)

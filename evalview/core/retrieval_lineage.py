@@ -27,23 +27,12 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, FrozenSet, List, Optional, Sequence, Tuple
+
+from evalview.core.text import STOPWORDS as _STOPWORDS
 
 
 # ── Tunables ────────────────────────────────────────────────────────────────
-
-# Stoplist mirrors the freshness/goal_drift modules — keep them in sync.
-_STOPWORDS = frozenset({
-    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
-    "do", "does", "did", "doing", "have", "has", "had", "having",
-    "i", "you", "he", "she", "it", "we", "they", "me", "him", "her", "us", "them",
-    "my", "your", "his", "its", "our", "their", "mine", "yours", "ours",
-    "this", "that", "these", "those",
-    "and", "or", "but", "if", "then", "else", "of", "in", "on", "at", "to",
-    "for", "with", "by", "from", "as", "about", "into", "than",
-    "can", "could", "would", "should", "will", "shall", "may", "might", "must",
-    "not", "no", "so", "just", "also", "very", "really", "please",
-})
 
 _MAX_TEXT_CHARS = 8192
 
@@ -139,7 +128,7 @@ class StaleMemoryFlag:
 # ── Tokenization ────────────────────────────────────────────────────────────
 
 
-def _tokens(text: str) -> frozenset[str]:
+def _tokens(text: str) -> FrozenSet[str]:
     if not text:
         return frozenset()
     truncated = text[:_MAX_TEXT_CHARS].lower()
@@ -151,7 +140,7 @@ def _tokens(text: str) -> frozenset[str]:
     )
 
 
-def _overlap(chunk_tokens: frozenset[str], output_tokens: frozenset[str]) -> float:
+def _overlap(chunk_tokens: FrozenSet[str], output_tokens: FrozenSet[str]) -> float:
     """Fraction of chunk tokens that appear in the output.
 
     This is *recall on the chunk*, not Jaccard. We want "did the output

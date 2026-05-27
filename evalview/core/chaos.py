@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 
 # ── Mode constants ──────────────────────────────────────────────────────────
@@ -193,7 +193,7 @@ def build_scenario(
     The "one disruption per step" rule keeps the simulator
     deterministic and the scenario easy for humans to read.
     """
-    seen: set[int] = set()
+    seen: Set[int] = set()
     unique: List[ChaosDisruption] = []
     for d in disruptions:
         if d.step_index in seen:
@@ -233,7 +233,7 @@ def random_scenario(
         raise ValueError("max_steps must be positive")
 
     disruptions: List[ChaosDisruption] = []
-    used_steps: set[int] = set()
+    used_steps: Set[int] = set()
     for i in range(n_disruptions):
         mode = modes[_seeded_choice(seed, "mode", i) % len(modes)]
         # Pick a step that isn't taken yet. After many collisions we
