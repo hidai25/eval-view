@@ -26,7 +26,7 @@ import math
 import statistics
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 
 # ── Defaults ────────────────────────────────────────────────────────────────
@@ -216,7 +216,7 @@ def summarize_instance(name: str, entries: Sequence[Dict[str, Any]]) -> Instance
     cost = 0.0
     first_seen: Optional[str] = None
     last_seen: Optional[str] = None
-    failing: set[str] = set()
+    failing: Set[str] = set()
 
     for e in entries:
         if "total_tests" not in e:
@@ -416,7 +416,7 @@ def discover_history_files(
             found.extend(sorted(dp.glob("*.jsonl")))
 
     # Dedup while preserving order.
-    seen: set[Path] = set()
+    seen: Set[Path] = set()
     out: List[Path] = []
     for p in found:
         resolved = p.resolve()

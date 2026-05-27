@@ -25,7 +25,9 @@ import hashlib
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, FrozenSet, Iterable, List, Optional, Sequence, Tuple
+
+from evalview.core.text import STOPWORDS as _STOPWORDS
 
 
 # ── Tunables ────────────────────────────────────────────────────────────────
@@ -49,26 +51,10 @@ DEFAULT_MIN_CLUSTER_SIZE = 2
 _MAX_EXAMPLES_PER_CLUSTER = 5
 
 
-# A short English stoplist. Keeping this tiny on purpose: Jaccard is already
-# coarse and overly aggressive stopword filtering throws away signal. These
-# are the words whose presence is least informative for query similarity.
-_STOPWORDS = frozenset({
-    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
-    "do", "does", "did", "doing", "have", "has", "had", "having",
-    "i", "you", "he", "she", "it", "we", "they", "me", "him", "her", "us", "them",
-    "my", "your", "his", "its", "our", "their", "mine", "yours", "ours",
-    "this", "that", "these", "those",
-    "and", "or", "but", "if", "then", "else", "of", "in", "on", "at", "to",
-    "for", "with", "by", "from", "as", "about", "into", "than",
-    "can", "could", "would", "should", "will", "shall", "may", "might", "must",
-    "not", "no", "so", "just", "also", "very", "really", "please",
-})
-
-
 # ── Tokenization & similarity ───────────────────────────────────────────────
 
 
-def normalize_query(query: str) -> frozenset[str]:
+def normalize_query(query: str) -> FrozenSet[str]:
     """Lower-case, strip punctuation, collapse numbers, drop stopwords, tokenize.
 
     The returned set is used directly for Jaccard similarity. We deliberately
@@ -93,7 +79,7 @@ def normalize_query(query: str) -> frozenset[str]:
     return frozenset(tokens)
 
 
-def jaccard(a: frozenset[str], b: frozenset[str]) -> float:
+def jaccard(a: FrozenSet[str], b: FrozenSet[str]) -> float:
     """Standard Jaccard set similarity in ``[0.0, 1.0]``.
 
     Defined as ``|A ∩ B| / |A ∪ B|``. Returns 0.0 when both sets are empty
@@ -169,7 +155,7 @@ def compute_coverage(
     Jaccard similarity. If the suite is empty, every production query is
     classified as uncovered with ``similarity == 0.0``.
     """
-    suite_tokens: List[Tuple[str, frozenset[str]]] = [
+    suite_tokens: List[Tuple[str, FrozenSet[str]]] = [
         (q, normalize_query(q)) for q in suite_queries if q
     ]
 
@@ -230,7 +216,7 @@ class QueryCluster:
 
 def _pick_representative(
     members: Sequence[str],
-    token_cache: Dict[str, frozenset[str]],
+    token_cache: Dict[str, FrozenSet[str]],
 ) -> Tuple[str, float]:
     """Return ``(representative, avg_intra_similarity)`` for a cluster.
 
@@ -279,11 +265,11 @@ def cluster_queries(
     volumes typical of an early-production agent (hundreds to low thousands),
     this is plenty fast.
     """
-    token_cache: Dict[str, frozenset[str]] = {}
+    token_cache: Dict[str, FrozenSet[str]] = {}
     # Use ``id(seed)`` would be unstable across runs; instead key by the
     # seed string itself, with a counter as tiebreaker for duplicates.
     cluster_members: List[List[str]] = []
-    cluster_seeds: List[frozenset[str]] = []
+    cluster_seeds: List[FrozenSet[str]] = []
 
     for q in queries:
         if not q:
