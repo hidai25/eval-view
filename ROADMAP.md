@@ -8,14 +8,15 @@ This doc is intentionally short. We'd rather ship a small batch every month than
 
 ---
 
-## Where we are (May 2026)
+## Where we are (June 2026)
 
 - 14+ adapters (HTTP, Anthropic, OpenAI, LangGraph, CrewAI, Pydantic AI, Aider, Goose, MCP, …)
 - Snapshot → diff → check loop with multi-variant goldens for non-determinism
 - Tool-call, sequence, output (LLM-as-judge), cost, latency, safety, hallucination, and PII evaluators
-- `evalview monitor` with Slack alerts and JSONL history for production
+- `evalview monitor` with Slack **and Discord** alerts and JSONL history for production
+- `evalview watch` / `run --watch` — re-run on file change for a tight inner loop
 - Record/replay cassettes for hermetic CI
-- GitHub Action (`action.yml`) for drop-in CI
+- GitHub Action (`action.yml`) for drop-in CI, **with PR-comment diffs** (`evalview ci comment`)
 
 ## The pains driving the next batch
 
@@ -32,22 +33,20 @@ These are the things real teams are writing about in May 2026 that EvalView is b
 ### Coverage
 - Vercel AI SDK adapter — currently the most-requested missing framework
 - Pydantic AI tool-call schema validator — catches wrong-argument regressions earlier
-- Discord notifier (parallel to existing Slack) — Slack-only is a recurring complaint
 
 ### Developer loop
-- `evalview check --watch` — re-run on file change so the inner dev loop stays tight
-- PR comment GitHub Action — post the diff as a PR comment so regressions are visible in review, not buried in CI logs
+- Reusable assertion library for common agent invariants (tool ordering, max-retry, no-PII-in-output, …)
+- Web UI for trace browsing — today it's CLI + JSON/HTML reports
 
 ### Story / docs
-- "Prompt-as-migration" cookbook entry — riff on the AscentCore "one update away" narrative; ship a recipe people can copy
+- More framework quick-starts (Vercel AI SDK, Pydantic AI) once the adapters land
 
 Each of these is open as a GitHub issue with `help wanted` and clear acceptance criteria. Pick one and go: [help wanted issues →](https://github.com/hidai25/eval-view/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)
 
 ## Slightly further out
 
-- Web UI for trace browsing (today it's CLI + JSON/HTML reports)
-- Reusable assertion library for common agent invariants (tool ordering, max-retry, no-PII-in-output, …)
 - More language SDKs for emitting traces (the CLI is Python; trace ingestion shouldn't be)
+- Auto-generated test suites from production failure clusters (pull failing prod traces → draft regression cases)
 
 These are *direction*, not commitments — if you want one of them to happen sooner, open an issue describing the use case.
 
