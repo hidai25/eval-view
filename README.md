@@ -261,19 +261,19 @@ Stdlib-only Block Kit post (zero new deps). Fails soft on bad webhooks. Ends wit
 
 ## Why EvalView?
 
-Use LangSmith for observability. Use Braintrust for scoring. **Use EvalView for regression gating.**
+Use Langfuse or LangSmith for observability. Use Braintrust for scoring. **Use EvalView for regression gating.**
 
-|  | LangSmith | Braintrust | Promptfoo | **EvalView** |
-|---|:---:|:---:|:---:|:---:|
-| **Primary focus** | Observability | Scoring | Prompt comparison | **Regression detection** |
-| Tool call + parameter diffing | — | — | — | **Yes** |
-| Golden baseline regression | — | Manual | — | **Automatic** |
-| Silent model change detection | — | — | — | **Yes** |
-| Auto-heal (retry + variant proposal) | — | — | — | **Yes** |
-| Hermetic record/replay | — | — | — | **Yes** |
-| PR comments with alerts | — | — | — | **Cost, latency, model change** |
-| Works without API keys | No | No | Partial | **Yes** |
-| Production monitoring | Tracing | — | — | **Check loop + Slack** |
+|  | Langfuse | LangSmith | Braintrust | Promptfoo | DeepEval | **EvalView** |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Primary focus** | Observability | Observability | Scoring | Prompt comparison | Eval unit tests | **Regression detection** |
+| Tool call + parameter diffing | — | — | — | — | — | **Yes** |
+| Golden baseline regression | — | — | Manual | — | Manual | **Automatic** |
+| Silent model change detection | — | — | — | — | — | **Yes** |
+| Auto-heal (retry + variant proposal) | — | — | — | — | — | **Yes** |
+| Hermetic record/replay | — | — | — | — | — | **Yes** |
+| PR comments with alerts | — | — | — | — | — | **Cost, latency, model change** |
+| Works without API keys | Partial | No | No | Partial | No | **Yes** |
+| Production monitoring | Tracing | Tracing | — | — | — | **Check loop + Slack/Discord** |
 
 [Detailed comparisons →](docs/COMPARISONS.md)
 
