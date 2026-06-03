@@ -39,7 +39,7 @@ These are the things real teams are writing about in May 2026 that EvalView is b
 - Web UI for trace browsing — today it's CLI + JSON/HTML reports
 
 ### Story / docs
-- "Prompt-as-migration" cookbook entry — riff on the AscentCore "one update away" narrative; ship a recipe people can copy
+- More framework quick-starts (Vercel AI SDK, Pydantic AI) once the adapters land
 
 Each of these is open as a GitHub issue with `help wanted` and clear acceptance criteria. Pick one and go: [help wanted issues →](https://github.com/hidai25/eval-view/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)
 

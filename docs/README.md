@@ -31,7 +31,7 @@ If you're new:
 | [CLI Reference](CLI_REFERENCE.md) | Full command reference for `evalview` |
 | [FAQ](FAQ.md) | Positioning, pricing, framework support, common questions |
 | [YAML Test Case Schema](YAML_SCHEMA.md) | Complete schema for authoring test cases |
-| [Comparisons](COMPARISONS.md) | EvalView vs LangSmith, Langfuse, Braintrust, and DeepEval |
+| [Comparisons](COMPARISONS.md) | EvalView vs LangSmith, Langfuse, Braintrust, DeepEval, and Promptfoo |
 | [Operating Model](OPERATING_MODEL.md) | How to run EvalView with frontier-lab rigor and startup-team practicality |
 | [Internal Dogfooding](INTERNAL_DOGFOODING.md) | The lightweight internal ship gate for EvalView itself |
 
@@ -118,3 +118,4 @@ Use the website when you want the cleaner comparison and search-intent pages. Us
 |-------|-------------|
 | [Testing LangGraph Agents in CI](guides/pytest-for-ai-agents-langgraph-ci.md) | Practical CI setup for LangGraph agents |
 | [Detecting LLM Hallucinations in CI](guides/detecting-llm-hallucinations-in-ci.md) | Catch hallucination regressions before production |
+| [Treat Prompt Changes Like Migrations](guides/prompt-changes-as-migrations.md) | Version, diff, and gate every prompt/model change in CI |

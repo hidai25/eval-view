@@ -8,6 +8,7 @@ Use these guides when you are deciding where EvalView fits in your stack.
 - [EvalView vs Langfuse](VS_LANGFUSE.md)
 - [EvalView vs Braintrust](VS_BRAINTRUST.md)
 - [EvalView vs DeepEval](VS_DEEPEVAL.md)
+- [EvalView vs Promptfoo](VS_PROMPTFOO.md)
 
 ## Short Version
 
