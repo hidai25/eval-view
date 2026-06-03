@@ -154,25 +154,27 @@ Score Breakdown
 
 ## Competitive Positioning
 
-| Feature | LangSmith | Braintrust | Promptfoo | EvalView |
-|---------|:---------:|:----------:|:---------:|:--------:|
-| Primary focus | Observability | Scoring | Prompt comparison | Regression detection |
-| Core question | "What did my agent do?" | "How good is my agent?" | "Which prompt is better?" | "Did my agent break?" |
-| Golden baseline diffing | No | No | No | Yes (automatic) |
-| Automatic regression detection | No | Manual | No | Yes |
-| Tool call + parameter diffing | No | No | No | Yes |
-| Works without API keys | No | No | Partial | Yes |
-| Free and open source | No (paid SaaS) | No (paid SaaS) | Yes | Yes |
-| Works fully offline | No | No | Partial | Yes (Ollama) |
-| Agent framework adapters | LangChain only | Generic | Generic | LangGraph, CrewAI, OpenAI, Claude, HuggingFace, Ollama, MCP |
-| GitHub Action | No | No | Yes | Yes |
-| PR comments with alerts | No | No | No | Cost, latency, model change alerts |
-| Production monitoring | Tracing | No | No | Check loop + Slack |
-| Skills testing (SKILL.md) | No | No | No | Yes |
-| Statistical mode (pass@k) | No | No | No | Yes |
-| MCP contract testing | No | No | No | Yes |
+Different tools answer different questions, and EvalView pairs well with most of them:
 
-**EvalView complements observability tools.** Use LangSmith to see what happened, use EvalView to prove it didn't break.
+- LangSmith / Langfuse: "What did my agent do?" — observability and tracing
+- Braintrust / DeepEval: "How good is my agent?" — eval scoring and experiments
+- Promptfoo: "Which prompt or model is better?" — comparison
+- EvalView: "Did my agent's behavior change in a way I should block before shipping?" — regression gating
+
+EvalView's focus:
+- Full-trajectory diffing: tool calls, parameters, and order, not just the final output
+- Golden baselines with multi-variant support for non-deterministic agents
+- Silent model / runtime change detection via fingerprinting
+- Auto-heal: retries flakes and proposes new variants instead of just failing
+- Hermetic record/replay cassettes so CI never re-hits live services
+- Deterministic tool/sequence diff that runs without an API key (LLM judge optional)
+- Native adapters for LangGraph, CrewAI, OpenAI, Claude, HuggingFace, Ollama, and MCP
+- Statistical mode (pass@k), skills (SKILL.md) testing, and MCP contract testing
+- Free and open source (Apache 2.0)
+
+EvalView complements observability and eval platforms rather than replacing them: use them for visibility and scoring, use EvalView for the merge-time regression gate.
+
+Positioning reflects each tool's primary focus as of June 2026, based on public documentation; capabilities change over time. Product names are trademarks of their respective owners; EvalView is independent and not affiliated with or endorsed by them.
 
 ## Multi-Turn Testing
 

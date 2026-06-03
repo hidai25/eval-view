@@ -51,15 +51,18 @@ evalview demo        # See it live, no API key needed
 
 ## How EvalView Compares
 
-| Feature | LangSmith | Braintrust | Promptfoo | EvalView |
-|---------|:---------:|:----------:|:---------:|:--------:|
-| Primary focus | Observability | Scoring | Prompt comparison | Regression detection |
-| Golden baseline diffing | No | No | No | Yes (automatic) |
-| Works without API keys | No | No | Partial | Yes |
-| Free and open source | No | No | Yes | Yes |
-| Tool call + parameter diffing | No | No | No | Yes |
-| CI/CD with PR comments | No | No | Yes | Yes (with cost/model alerts) |
-| Production monitoring | Tracing | No | No | Check loop + Slack |
+EvalView is built for a different job than most adjacent tools, and pairs well with them:
+
+- Langfuse, LangSmith: observability and tracing
+- Braintrust, DeepEval: eval scoring and experiments
+- Promptfoo: prompt and model comparison
+- EvalView: behavior-regression gating for tool-calling agents in CI
+
+Where EvalView focuses: full-trajectory diffing (tool calls, parameters, and order — not just final output), golden baselines with multi-variant support for non-determinism, silent model/runtime change detection, auto-heal with variant proposals, hermetic record/replay, and a deterministic tool/sequence diff that runs without an API key.
+
+EvalView complements observability and eval platforms: use them for visibility and scoring, use EvalView for the merge-time regression gate.
+
+Positioning reflects each tool's primary focus as of June 2026, based on public documentation; capabilities change over time. Product names are trademarks of their respective owners; EvalView is independent and not affiliated with them.
 
 ## Supported Frameworks
 

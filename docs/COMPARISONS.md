@@ -21,3 +21,7 @@ EvalView is strongest when you need:
 - tool-call and trajectory diffs
 - agent regression gates in CI/CD
 - fast draft suite generation from a live agent or logs
+
+---
+
+These guides describe each tool's primary positioning as of June 2026, based on public documentation. Capabilities change over time — if something here is inaccurate, please [open an issue or PR](https://github.com/hidai25/eval-view/issues). Product names (LangSmith, Langfuse, Braintrust, Promptfoo, DeepEval) are trademarks of their respective owners; EvalView is independent and not affiliated with or endorsed by them.

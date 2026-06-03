@@ -47,7 +47,7 @@ with a clean `model-check` points back at your own changes. See
 LangSmith is for **observability and tracing** — it shows you what your agent did. EvalView is for **testing and regression detection** — it tells you whether your agent broke. They're complementary tools. Use LangSmith to see what happened, use EvalView to prove it didn't break.
 
 ### How is EvalView different from Braintrust?
-Braintrust is an evaluation platform that scores agent quality. EvalView focuses specifically on **regression detection** — detecting when behavior changes. EvalView does this automatically through golden baseline diffing, while Braintrust requires manual comparison. EvalView is also fully free and open source.
+Braintrust is a broad evaluation platform for scoring agent quality, experiments, and production data loops. EvalView focuses specifically on **behavior-regression detection** — snapshotting an agent's full trajectory (tools, parameters, order) as a golden baseline and diffing against it to catch drift. The sharper distinction is focus and footprint: EvalView is a lightweight, fully open-source (Apache 2.0) CLI/CI gate rather than a hosted eval platform. Many teams use a scoring platform for breadth and EvalView for the merge-time regression gate.
 
 ### How is EvalView different from Promptfoo?
 Promptfoo is primarily a prompt testing and comparison tool. EvalView is an **agent testing framework** with native adapters for agent frameworks (LangGraph, CrewAI, OpenAI Assistants), tool call verification, golden baseline diffing, and statistical mode. EvalView tests agent behavior (tools called, sequence, cost, latency) not just prompt outputs.

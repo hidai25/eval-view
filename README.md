@@ -261,21 +261,31 @@ Stdlib-only Block Kit post (zero new deps). Fails soft on bad webhooks. Ends wit
 
 ## Why EvalView?
 
-Use Langfuse or LangSmith for observability. Use Braintrust for scoring. **Use EvalView for regression gating.**
+Most of these tools are built for a different job than EvalView, and several pair well with it. The short version of where each one focuses:
 
-|  | Langfuse | LangSmith | Braintrust | Promptfoo | DeepEval | **EvalView** |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Primary focus** | Observability | Observability | Scoring | Prompt comparison | Eval unit tests | **Regression detection** |
-| Tool call + parameter diffing | — | — | — | — | — | **Yes** |
-| Golden baseline regression | — | — | Manual | — | Manual | **Automatic** |
-| Silent model change detection | — | — | — | — | — | **Yes** |
-| Auto-heal (retry + variant proposal) | — | — | — | — | — | **Yes** |
-| Hermetic record/replay | — | — | — | — | — | **Yes** |
-| PR comments with alerts | — | — | — | — | — | **Cost, latency, model change** |
-| Works without API keys | Partial | No | No | Partial | No | **Yes** |
-| Production monitoring | Tracing | Tracing | — | — | — | **Check loop + Slack/Discord** |
+| Tool | Built primarily for |
+|---|---|
+| [Langfuse](docs/VS_LANGFUSE.md) | Open-source observability and tracing |
+| [LangSmith](docs/VS_LANGSMITH.md) | Observability and evals, native to LangChain / LangGraph |
+| [Braintrust](docs/VS_BRAINTRUST.md) | Eval scoring, experiments, and production data loops |
+| [Promptfoo](docs/VS_PROMPTFOO.md) | Prompt and model comparison |
+| [DeepEval](docs/VS_DEEPEVAL.md) | Metric-based eval unit tests (pytest-style) |
+| **EvalView** | **Behavior-regression gating for tool-calling agents** |
+
+**Where EvalView puts its focus:**
+
+- Diffs the whole trajectory — tool calls, parameters, and order — not just the final output
+- Golden baselines with multi-variant support, so non-determinism doesn't make the gate flaky
+- Silent model / runtime change detection via fingerprinting
+- Auto-heal — retries flakes and proposes new variants instead of just failing
+- Hermetic record/replay cassettes so CI never re-hits live services
+- The deterministic tool + sequence diff runs without any API key
+
+Many teams run an observability tool (Langfuse, LangSmith) or an eval platform (Braintrust, DeepEval, Promptfoo) **and** EvalView — the first for visibility, EvalView for the merge-time regression gate.
 
 [Detailed comparisons →](docs/COMPARISONS.md)
+
+<sub>Comparison reflects each tool's primary positioning as of June 2026, based on public documentation; capabilities change over time. Spotted something inaccurate? [Open an issue or PR](https://github.com/hidai25/eval-view/issues). Product names are trademarks of their respective owners; EvalView is independent and not affiliated with or endorsed by them.</sub>
 
 ## What It Catches
 
