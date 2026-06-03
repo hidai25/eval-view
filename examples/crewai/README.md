@@ -173,7 +173,7 @@ jobs:
           sleep 10  # Wait for server startup
 
       - name: Check for regressions
-        uses: hidai25/eval-view@main
+        uses: hidai25/eval-view@v0.8.0
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
 ```

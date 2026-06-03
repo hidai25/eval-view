@@ -153,7 +153,7 @@ evalview run tests/ --contracts --strict
 
 ```yaml
 - name: Run EvalView
-  uses: hidai25/eval-view@v0.6.1
+  uses: hidai25/eval-view@v0.8.0
   with:
     diff: true
     contracts: true
