@@ -727,7 +727,7 @@ Cassettes live at `.evalview/cassettes/<test>.json`, use per-tool sequential mat
 
 **Decision rationale** — every tool_choice / branch gets recorded with the chosen option, alternatives considered, and any model-reported reasoning (Anthropic `thinking` blocks auto-captured). Grouped across runs by `input_hash` so cloud analytics surfaces decision drift before your users notice. Local HTML replay shows it inline.
 
-Supported adapters: Anthropic, OpenAI Assistants, LangGraph, CrewAI native.
+Supported adapters: Anthropic, OpenAI Assistants, LangGraph, CrewAI native, Vercel AI.
 
 [`docs/SIMULATE.md`](docs/SIMULATE.md) · [`docs/RATIONALE.md`](docs/RATIONALE.md) · [`examples/simulation/`](examples/simulation)
 

@@ -143,6 +143,85 @@ If no recognized events are found, the adapter:
 2. Accumulates all text as final output
 3. Still captures timing and basic metrics
 
+---
+
+### Vercel AI Adapter
+
+For Vercel AI SDK agents running on HTTP endpoints.
+
+**Use when:**
+- Your agent uses the Vercel AI SDK
+- You have an HTTP endpoint serving a Vercel AI agent
+- You need to capture streamed responses with tool calls
+
+**Configuration:**
+```yaml
+# .evalview/config.yaml
+adapter: vercel-ai
+endpoint: http://localhost:3000/api/chat
+timeout: 30.0
+headers:
+  Authorization: Bearer your-api-key
+```
+
+**Protocol:**
+
+The Vercel AI adapter parses the Vercel AI SDK streaming protocol where each line is prefixed with a type indicator:
+
+```
+0:"Hello "           # Text chunk
+2:[{"toolName":"search","args":{"query":"Paris"}}]  # Tool calls array
+0:"world"            # More text
+```
+
+| Prefix | Type | Content | Action |
+|--------|------|---------|--------|
+| `0:` | Text | JSON-encoded string | Appends to output |
+| `2:` | Tools | JSON array of tool objects | Creates step traces |
+| Other | Metadata | Ignored | No action |
+
+**Tool Call Format:**
+
+Tool calls are provided as a JSON array with `toolName` and `args` fields:
+
+```json
+[
+  {
+    "toolName": "search",
+    "args": {"query": "Paris"}
+  },
+  {
+    "toolName": "format",
+    "args": {"text": "Paris is the capital"}
+  }
+]
+```
+
+These are automatically mapped to the standard `name` and `arguments` fields.
+
+**Example Request/Response:**
+
+The adapter sends:
+```json
+{
+  "query": "What is the capital of France?",
+  "context": {}
+}
+```
+
+The agent streams back:
+```
+0:"Searching "
+2:[{"toolName":"web_search","args":{"query":"capital of France"}}]
+0:" for the capital..."
+```
+
+**Features:**
+- Streams tool calls as they arrive
+- Accumulates text fragments into final output
+- Handles malformed JSON gracefully (logs warning, continues)
+- Extracts and records all tool calls in trace steps
+
 ## Custom Adapters
 
 Build a custom adapter for your specific agent implementation.

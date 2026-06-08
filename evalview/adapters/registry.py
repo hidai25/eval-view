@@ -284,6 +284,13 @@ class AdapterRegistry:
         except ImportError:
             logger.warning("AiderAdapter not available")
 
+        try:
+            from evalview.adapters.vercel_ai_adapter import VercelAIAdapter
+
+            cls.register("vercel-ai", VercelAIAdapter)
+        except ImportError:
+            logger.warning("VercelAIAdapter not available")
+
         cls._initialized = True
 
     @classmethod
