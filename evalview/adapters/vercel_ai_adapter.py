@@ -16,7 +16,6 @@ from evalview.core.types import (
     StepTrace,
     StepMetrics,
     ExecutionMetrics,
-    TokenUsage,
     SpanKind,
 )
 from evalview.core.tracing import Tracer

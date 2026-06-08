@@ -1,8 +1,7 @@
 """Tests for Vercel AI adapter."""
 
 import pytest
-from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 import httpx
 
 from evalview.adapters.vercel_ai_adapter import VercelAIAdapter
@@ -275,7 +274,7 @@ class TestVercelAIAdapter:
             mock_client.__aexit__.return_value = None
             mock_client_class.return_value = mock_client
 
-            trace = await adapter.execute("test")
+            await adapter.execute("test")
 
             call_kwargs = mock_client.post.call_args.kwargs
             assert "Authorization" in call_kwargs["headers"]
@@ -297,7 +296,7 @@ class TestVercelAIAdapter:
             mock_client_class.return_value = mock_client
 
             context = {"user_id": "123", "session": "abc"}
-            trace = await adapter.execute("test query", context=context)
+            await adapter.execute("test query", context=context)
 
             call_args = mock_client.post.call_args
             assert call_args.kwargs["json"]["context"] == context
