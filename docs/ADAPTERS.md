@@ -166,61 +166,55 @@ headers:
 
 **Protocol:**
 
-The Vercel AI adapter parses the Vercel AI SDK streaming protocol where each line is prefixed with a type indicator:
+The adapter speaks both protocols the Vercel AI SDK ships and auto-detects which one a server uses, line by line.
+
+*Data Stream Protocol (AI SDK v3/v4)* — each line is `<prefix>:<json>`:
 
 ```
-0:"Hello "           # Text chunk
-2:[{"toolName":"search","args":{"query":"Paris"}}]  # Tool calls array
-0:"world"            # More text
+0:"Hello "                                                  # text delta
+9:{"toolCallId":"c1","toolName":"search","args":{"q":"Paris"}}   # tool call
+a:{"toolCallId":"c1","result":{"answer":"Paris"}}          # tool result
+d:{"finishReason":"stop","usage":{"promptTokens":12,"completionTokens":5}}
 ```
 
 | Prefix | Type | Content | Action |
 |--------|------|---------|--------|
 | `0:` | Text | JSON-encoded string | Appends to output |
-| `2:` | Tools | JSON array of tool objects | Creates step traces |
-| Other | Metadata | Ignored | No action |
+| `9:` | Tool call | `{toolCallId, toolName, args}` | Creates a step trace |
+| `a:` | Tool result | `{toolCallId, result}` | Attaches output to the matching step |
+| `3:` | Error | JSON-encoded message | Recorded (logged in verbose mode) |
+| `d:` / `e:` | Finish | `{finishReason, usage}` | Captures token usage |
+| Other (`1:`, `2:`, `8:`, ...) | Metadata / data | — | Ignored |
 
-**Tool Call Format:**
+*SSE Protocol (AI SDK v5)* — Server-Sent Events whose `data:` payload is a JSON object with a `type` field:
 
-Tool calls are provided as a JSON array with `toolName` and `args` fields:
-
-```json
-[
-  {
-    "toolName": "search",
-    "args": {"query": "Paris"}
-  },
-  {
-    "toolName": "format",
-    "args": {"text": "Paris is the capital"}
-  }
-]
+```
+data: {"type":"text-delta","delta":"Hello "}
+data: {"type":"tool-call","toolCallId":"c1","toolName":"search","input":{"q":"Paris"}}
+data: {"type":"tool-result","toolCallId":"c1","output":{"answer":"Paris"}}
+data: {"type":"finish","totalUsage":{"inputTokens":12,"outputTokens":5}}
+data: [DONE]
 ```
 
-These are automatically mapped to the standard `name` and `arguments` fields.
+Tool calls and results are matched by `toolCallId`, so a tool's output is recorded on the same step as the call that produced it.
 
-**Example Request/Response:**
+**Request format:**
 
-The adapter sends:
+The adapter sends the `messages` array the SDK's route handlers (`useChat` / `streamText`) expect. Any keys passed via `context` are merged in at the top level (matching the SDK's `body` option):
+
 ```json
 {
-  "query": "What is the capital of France?",
-  "context": {}
+  "messages": [{"role": "user", "content": "What is the capital of France?"}]
 }
 ```
 
-The agent streams back:
-```
-0:"Searching "
-2:[{"toolName":"web_search","args":{"query":"capital of France"}}]
-0:" for the capital..."
-```
-
 **Features:**
-- Streams tool calls as they arrive
+- Real streaming (`client.stream(...)`) — events are parsed as they arrive
+- Supports both the v3/v4 Data Stream and v5 SSE protocols transparently
+- Captures tool calls **and** their results, matched by `toolCallId`
+- Records token usage from the stream's finish event
 - Accumulates text fragments into final output
 - Handles malformed JSON gracefully (logs warning, continues)
-- Extracts and records all tool calls in trace steps
 
 ## Custom Adapters
 
