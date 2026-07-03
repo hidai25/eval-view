@@ -1,10 +1,11 @@
 import os
 import logging
 from datetime import datetime
-from typing import Any, Optional, Dict
+from typing import Any, List, Optional, Dict
 
 try:
-    from mistralai import Mistral
+    from mistralai import Mistral, UserMessage
+    from mistralai.models import Messages
 except ImportError:
     raise ImportError(
         "The mistralai package is required for the Mistral adapter. "
@@ -51,18 +52,28 @@ class MistralAdapter(AgentAdapter):
             api_start = datetime.now()
             
             # Send request to Mistral
+            messages: List[Messages] = [UserMessage(content=query)]
             response = await self.client.chat.complete_async(
                 model=self.model,
-                messages=[{"role": "user", "content": query}]
+                messages=messages
             )
-            
+
             api_end = datetime.now()
             api_latency = (api_end - api_start).total_seconds() * 1000
 
-            # Extract AI's response text and token usage
-            final_answer = response.choices[0].message.content
-            input_tokens = response.usage.prompt_tokens
-            output_tokens = response.usage.completion_tokens
+            # Extract the AI's response text. content may be a plain string or a
+            # list of chunks (text, think, image, ...); join the text-bearing ones.
+            content = response.choices[0].message.content
+            if isinstance(content, str):
+                final_answer = content
+            elif isinstance(content, list):
+                final_answer = "".join(getattr(chunk, "text", "") or "" for chunk in content)
+            else:
+                final_answer = ""
+
+            # Token counts are Optional in the SDK response
+            input_tokens = response.usage.prompt_tokens or 0
+            output_tokens = response.usage.completion_tokens or 0
 
             # Calculate Cost
             total_cost = calculate_cost(
