@@ -691,7 +691,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated `ADAPTERS.md` with HuggingFace adapter documentation
 - New example projects under `examples/huggingface/` and `examples/anthropic/`
 
-## [0.1.0] - 2025-01-24
+## [0.1.0] - 2025-12-03
 
 ### Added
 
