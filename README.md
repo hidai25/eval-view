@@ -11,6 +11,7 @@
 <p align="center">
   <a href="https://pypi.org/project/evalview/"><img src="https://img.shields.io/pypi/v/evalview.svg?label=release" alt="PyPI version"></a>
   <a href="https://pypi.org/project/evalview/"><img src="https://img.shields.io/pypi/dm/evalview.svg?label=downloads" alt="PyPI downloads"></a>
+  <a href="https://github.com/hidai25/eval-view/actions/workflows/dogfood.yml"><img src="https://github.com/hidai25/eval-view/actions/workflows/dogfood.yml/badge.svg" alt="Daily dogfood"></a>
   <a href="https://github.com/hidai25/eval-view/stargazers"><img src="https://img.shields.io/github/stars/hidai25/eval-view?style=social" alt="GitHub stars"></a>
   <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
 </p>
@@ -66,6 +67,14 @@ EvalView inverts it: **it records what your agent actually does now, and flags a
 | Unit of comparison | Full tool-call trajectory | Usually final output |
 
 This makes EvalView a **merge-time regression gate**, which is a different job from observability (Langfuse, LangSmith) or metric scoring (promptfoo, DeepEval, Braintrust). Many teams run one of those for visibility **and** EvalView as the gate. [Honest comparisons →](docs/COMPARISONS.md)
+
+## EvalView tests itself in public, every day
+
+The badge at the top is live. Every day at 09:00 UTC, a [GitHub Action](.github/workflows/dogfood.yml) runs EvalView against EvalView — including a regression check where **the tool snapshots a live agent and diffs it with the same `snapshot` / `check` loop** this README asks you to trust. It also runs the full test suite, type checks, `evalview demo`, the end-to-end flows, an `evalview monitor` smoke test, and chat-mode self-tests.
+
+When something breaks, the run opens a single rolling [`🐕 dogfood` issue](https://github.com/hidai25/eval-view/issues?q=label%3Adogfood) and keeps updating it until the tool is green again — so failures are public, not quietly patched.
+
+[Live dogfood runs →](https://github.com/hidai25/eval-view/actions/workflows/dogfood.yml) · [How it works →](docs/INTERNAL_DOGFOODING.md)
 
 ## CI: block regressions in every PR
 
