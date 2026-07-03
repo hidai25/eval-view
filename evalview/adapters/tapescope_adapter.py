@@ -193,8 +193,8 @@ class TapeScopeAdapter(AgentAdapter):
             **context,
         }
 
-        events = []
-        steps = []
+        events: List[Dict[str, Any]] = []
+        steps: List[StepTrace] = []
         final_output = ""
         raw_text = ""  # Fallback for plain text
         total_usage = TokenUsage(input_tokens=0, output_tokens=0, cached_tokens=0)

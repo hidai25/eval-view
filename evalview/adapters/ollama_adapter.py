@@ -101,10 +101,10 @@ class OllamaAdapter(AgentAdapter):
             finish_reason = data.get("choices", [{}])[0].get("finish_reason", "stop")
 
             # Build token usage
+            # total_tokens is a computed property on TokenUsage, not a field
             token_usage = TokenUsage(
                 input_tokens=usage.get("prompt_tokens", 0),
                 output_tokens=usage.get("completion_tokens", 0),
-                total_tokens=usage.get("total_tokens", 0),
             )
 
             # Record LLM call span

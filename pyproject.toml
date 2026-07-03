@@ -172,10 +172,6 @@ module = "evalview.core.loader"
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-module = "evalview.adapters.*"
-ignore_errors = true
-
-[[tool.mypy.overrides]]
 module = "evalview.telemetry.*"
 ignore_errors = true
 
