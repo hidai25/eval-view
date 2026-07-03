@@ -1,6 +1,6 @@
 """EvalView - Testing framework for multi-step AI agents."""
 
-__version__ = "0.7.0"
+__version__ = "0.8.1"
 
 # Public API — importable as ``from evalview import gate``
 from evalview.api import gate, gate_async, GateResult, DiffStatus  # noqa: F401
