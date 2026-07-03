@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-07-03
+
+### Added
+- **PEP 561 `py.typed` marker**: the package now ships its inline type annotations, so `mypy`/`pyright` type-check code that imports `evalview` (e.g. `from evalview import gate`) instead of treating it as untyped.
+
+### Fixed
+- Synced stale version strings: `evalview.__version__` (was 0.7.0) and the MCP registry `server.json` (was 0.6.1) now match the released version.
+
 ## [0.8.0] - 2026-05-15
 
 ### Added

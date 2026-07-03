@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "evalview"
-version = "0.8.0"
+version = "0.8.1"
 description = "Open-source testing and regression detection framework for AI agents. Golden baseline diffing, CI/CD integration, works with LangGraph, CrewAI, OpenAI, Anthropic Claude, HuggingFace, Ollama, and MCP."
 readme = "README.md"
 license = "Apache-2.0"
@@ -121,6 +121,8 @@ include = ["evalview*"]
 # The canary YAMLs are loaded at runtime by `evalview model-check` and
 # break the command if they are missing from a wheel build.
 [tool.setuptools.package-data]
+# PEP 561 marker — without it, mypy/pyright treat installed evalview as untyped.
+"evalview" = ["py.typed"]
 "evalview.benchmarks.canary" = ["*.yaml", "*.md"]
 "evalview.templates.patterns" = ["*.yaml"]
 
