@@ -1,6 +1,6 @@
 """Tool sequence correctness evaluator."""
 
-from typing import List, Literal
+from typing import Dict, List, Literal, Optional
 from evalview.core.types import TestCase, ExecutionTrace, SequenceEvaluation, ReasonCode
 
 
@@ -33,7 +33,7 @@ class SequenceEvaluator:
         self,
         test_case: TestCase,
         trace: ExecutionTrace,
-        mode: SequenceMode = None,
+        mode: Optional[SequenceMode] = None,
     ) -> SequenceEvaluation:
         """
         Evaluate tool call sequence correctness.
@@ -73,7 +73,7 @@ class SequenceEvaluator:
             # Fallback to subsequence (safest default)
             return self._evaluate_subsequence(expected_sequence, actual_sequence)
 
-    def _get_mode_from_test_case(self, test_case: TestCase) -> SequenceMode:
+    def _get_mode_from_test_case(self, test_case: TestCase) -> Optional[SequenceMode]:
         """Extract sequence mode from test case config if specified."""
         # Check if test case has adapter_config with sequence_mode
         if test_case.adapter_config and "sequence_mode" in test_case.adapter_config:
@@ -198,11 +198,11 @@ class SequenceEvaluator:
         violations: List[str] = []
 
         # Convert to multisets to handle duplicates properly
-        expected_counts = {}
+        expected_counts: Dict[str, int] = {}
         for tool in expected:
             expected_counts[tool] = expected_counts.get(tool, 0) + 1
 
-        actual_counts = {}
+        actual_counts: Dict[str, int] = {}
         for tool in actual:
             actual_counts[tool] = actual_counts.get(tool, 0) + 1
 

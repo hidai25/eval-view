@@ -104,6 +104,16 @@ class ExpectedBehavior(BaseModel):
         ),
     )
 
+    def output_model(self) -> Optional[ExpectedOutput]:
+        """``output`` normalized to :class:`ExpectedOutput`.
+
+        Loading paths can leave ``output`` as a raw dict; use this accessor
+        instead of touching the union directly.
+        """
+        if self.output is None or isinstance(self.output, ExpectedOutput):
+            return self.output
+        return ExpectedOutput(**self.output)
+
 
 class ScoringWeightsOverride(BaseModel):
     """Optional per-test scoring weight overrides."""
