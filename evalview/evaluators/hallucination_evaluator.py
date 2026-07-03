@@ -348,7 +348,7 @@ Return a JSON array with one object per claim:
 
     def _check_uncertainty_handling(self, test_case: TestCase, trace: ExecutionTrace) -> List[str]:
         """Check if agent properly acknowledges uncertainty when required."""
-        issues = []
+        issues: List[str] = []
 
         output_config = test_case.expected.output
         if not output_config:

@@ -4,9 +4,14 @@ import json as _json
 import logging
 import re as _re
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, cast
 
 from evalview.core.config import ScoringWeights, DEFAULT_WEIGHTS
+from evalview.core.observability import (
+    AnomalyReportDict,
+    CoherenceReportDict,
+    TrustReportDict,
+)
 from evalview.core.types import (
     TestCase,
     ExecutionTrace,
@@ -92,6 +97,9 @@ class Evaluator:
         # Only initialize LLM-dependent evaluators when needed.
         # If no API key is configured, fall back to deterministic mode automatically
         # so commands like `evalview check` work without requiring a key.
+        self.output_evaluator: Optional[OutputEvaluator] = None
+        self.hallucination_evaluator: Optional[HallucinationEvaluator] = None
+        self.safety_evaluator: Optional[SafetyEvaluator] = None
         if not skip_llm_judge:
             try:
                 self.output_evaluator = OutputEvaluator(cache=judge_cache)
@@ -104,10 +112,6 @@ class Evaluator:
                 self.output_evaluator = None
                 self.hallucination_evaluator = None
                 self.safety_evaluator = None
-        else:
-            self.output_evaluator = None
-            self.hallucination_evaluator = None
-            self.safety_evaluator = None
 
     async def evaluate(
         self, test_case: TestCase, trace: ExecutionTrace, adapter_name: Optional[str] = None
@@ -137,6 +141,7 @@ class Evaluator:
             run_safety = False
             output_quality = self._deterministic_output_eval(test_case, trace)
         else:
+            assert self.output_evaluator is not None  # set whenever skip_llm_judge is False
             output_quality = await self.output_evaluator.evaluate(test_case, trace)
 
         # Run all evaluations
@@ -146,8 +151,16 @@ class Evaluator:
             output_quality=output_quality,
             cost=self.cost_evaluator.evaluate(test_case, trace),
             latency=self.latency_evaluator.evaluate(test_case, trace),
-            hallucination=await self.hallucination_evaluator.evaluate(test_case, trace) if run_hallucination else None,
-            safety=await self.safety_evaluator.evaluate(test_case, trace) if run_safety else None,
+            hallucination=(
+                await self.hallucination_evaluator.evaluate(test_case, trace)
+                if run_hallucination and self.hallucination_evaluator is not None
+                else None
+            ),
+            safety=(
+                await self.safety_evaluator.evaluate(test_case, trace)
+                if run_safety and self.safety_evaluator is not None
+                else None
+            ),
             forbidden_tools=self.tool_evaluator.evaluate_forbidden(test_case, trace),
             pii=await self.pii_evaluator.evaluate(test_case, trace) if run_pii else None,
         )
@@ -217,9 +230,11 @@ class Evaluator:
             suite_type=test_case.suite_type,
             difficulty=test_case.difficulty,
             turn_evaluations=turn_evaluations,
-            anomaly_report=anomaly_dict,
-            trust_report=trust_dict,
-            coherence_report=coherence_dict,
+            # The to_dict() serializers return plain Dict[str, Any]; their shape
+            # matches the report TypedDicts.
+            anomaly_report=cast(Optional[AnomalyReportDict], anomaly_dict),
+            trust_report=cast(Optional[TrustReportDict], trust_dict),
+            coherence_report=cast(Optional[CoherenceReportDict], coherence_dict),
         )
 
     def _get_weights_for_test(self, test_case: TestCase) -> Dict[str, float]:
@@ -655,14 +670,15 @@ class Evaluator:
             OutputEvaluation with deterministic score
         """
         output = trace.final_output
+        expected_output = test_case.expected.output_model()
         score = 0.0
         rationale_parts = []
 
         # Check string contains
         contains_passed = []
         contains_failed = []
-        if test_case.expected.output and test_case.expected.output.contains:
-            must_contain = test_case.expected.output.contains
+        if expected_output and expected_output.contains:
+            must_contain = expected_output.contains
             output_lower = output.lower()
             for string in must_contain:
                 if string.lower() in output_lower:
@@ -685,8 +701,8 @@ class Evaluator:
         # Check string not_contains
         not_contains_passed = []
         not_contains_failed = []
-        if test_case.expected.output and test_case.expected.output.not_contains:
-            must_not_contain = test_case.expected.output.not_contains
+        if expected_output and expected_output.not_contains:
+            must_not_contain = expected_output.not_contains
             output_lower = output.lower()
             for string in must_not_contain:
                 if string.lower() not in output_lower:
@@ -725,8 +741,8 @@ class Evaluator:
                 rationale_parts.append("Output appears relevant to query")
 
         # Regex pattern checks (zero-cost)
-        if test_case.expected.output and test_case.expected.output.regex_patterns:
-            patterns = test_case.expected.output.regex_patterns
+        if expected_output and expected_output.regex_patterns:
+            patterns = expected_output.regex_patterns
             regex_passed, regex_failed = self._check_regex_patterns(output, patterns)
             if patterns:
                 regex_ratio = len(regex_passed) / len(patterns)
@@ -739,9 +755,9 @@ class Evaluator:
             score += _DETO_REGEX_WEIGHT
 
         # JSON schema validation (zero-cost)
-        if test_case.expected.output and test_case.expected.output.json_schema:
+        if expected_output and expected_output.json_schema:
             schema_passed, schema_error = self._check_json_schema(
-                output, test_case.expected.output.json_schema
+                output, expected_output.json_schema
             )
             if schema_passed:
                 score += _DETO_JSON_SCHEMA_WEIGHT

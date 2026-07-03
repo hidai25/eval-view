@@ -180,8 +180,8 @@ class ToolCallEvaluator:
         unexpected: List[str],
         expected: Set[str],
         actual: Set[str],
-        expected_categories: List[str] = None,
-        category_results: List[CategoryResult] = None,
+        expected_categories: Optional[List[str]] = None,
+        category_results: Optional[List[CategoryResult]] = None,
     ) -> List[str]:
         """Generate helpful hints for debugging tool mismatches."""
         hints: List[str] = []
@@ -260,8 +260,8 @@ class ToolCallEvaluator:
         unexpected: List[str],
         expected: Set[str],
         actual: Set[str],
-        expected_categories: List[str] = None,
-        category_results: List[CategoryResult] = None,
+        expected_categories: Optional[List[str]] = None,
+        category_results: Optional[List[CategoryResult]] = None,
     ) -> List[ReasonCode]:
         """Generate structured reason codes for tool mismatches."""
         reason_codes: List[ReasonCode] = []

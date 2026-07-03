@@ -164,10 +164,6 @@ module = "evalview.recorder"
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-module = "evalview.evaluators.*"
-ignore_errors = true
-
-[[tool.mypy.overrides]]
 module = "evalview.core.loader"
 ignore_errors = true
 
