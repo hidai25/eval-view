@@ -49,17 +49,26 @@ class CohereAdapter(AgentAdapter):
         async with tracer.start_span_async("Cohere Agent", SpanKind.AGENT):
             api_start = datetime.now()
             
-            # Send request to Cohere
+            # Send request to Cohere. The import is safe here: __init__ already
+            # verified the optional cohere package is installed.
+            from cohere import UserChatMessageV2
+
             response = await self.client.chat(
                 model=self.model,
-                messages=[{"role": "user", "content": query}]
+                messages=[UserChatMessageV2(content=query)]
             )
-            
+
             api_end = datetime.now()
             api_latency = (api_end - api_start).total_seconds() * 1000
 
-            # Extract AI's response text
-            final_answer = response.message.content[0].text 
+            # Extract the AI's response text. content is Optional, and items may
+            # be thinking blocks that carry no text payload.
+            final_answer = ""
+            for item in response.message.content or []:
+                text = getattr(item, "text", None)
+                if text:
+                    final_answer = text
+                    break
 
             # 2. Extract Token Usage (Changes for compatibility with V1 and V2 SDKs)
             input_tokens = 0
