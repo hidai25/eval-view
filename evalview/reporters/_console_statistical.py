@@ -7,6 +7,7 @@ single-run summary/detail/timeline output. All methods here read `self.console`
 
 from typing import List
 
+from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
@@ -20,6 +21,9 @@ from evalview.core.types import (
 
 class StatisticalReporterMixin:
     """Console-rendering helpers for statistical evaluation results."""
+
+    # Provided by the composing ConsoleReporter's __init__.
+    console: Console
 
     def print_statistical_summary(
         self,

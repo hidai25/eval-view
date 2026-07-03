@@ -7,11 +7,16 @@ parent `__init__`) but is otherwise self-contained.
 
 from typing import List, Optional
 
+from rich.console import Console
+
 from evalview.core.types import EvaluationResult, TestCase
 
 
 class CoverageReporterMixin:
     """Console-rendering helpers for behavior-coverage reports."""
+
+    # Provided by the composing ConsoleReporter's __init__.
+    console: Console
 
     def print_coverage_report(
         self,

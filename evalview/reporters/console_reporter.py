@@ -537,7 +537,7 @@ class ConsoleReporter(StatisticalReporterMixin, CoverageReporterMixin):
         hints: List[str] = []
         query = (result.input_query or "").strip()
         output_eval = result.evaluations.output_quality
-        tool_eval = result.evaluations.tool_calls
+        tool_eval = result.evaluations.tool_accuracy
 
         # 1. Truncated / incomplete query
         _FRAGMENT_ENDINGS = (
@@ -556,7 +556,8 @@ class ConsoleReporter(StatisticalReporterMixin, CoverageReporterMixin):
             )
 
         # 2. Low output quality but agent called the right tools — test expectations are stale
-        tool_score = tool_eval.score if tool_eval else 0
+        # ToolEvaluation.accuracy is 0-1; hints below compare on a 0-100 scale
+        tool_score = tool_eval.accuracy * 100 if tool_eval else 0
         output_score = output_eval.score if output_eval else 100
         if tool_score >= 80 and output_score < 50:
             hints.append(

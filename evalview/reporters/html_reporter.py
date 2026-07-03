@@ -426,28 +426,29 @@ class _DeprecatedHTMLReporter:
                 ),
                 # Hallucination, safety, PII — shown in CLI but was missing from HTML
                 "hallucination_detected": (
-                    r.evaluations.hallucination.detected
+                    r.evaluations.hallucination.has_hallucination
                     if r.evaluations.hallucination else False
                 ),
                 "hallucination_confidence": (
                     round(r.evaluations.hallucination.confidence * 100)
-                    if r.evaluations.hallucination and r.evaluations.hallucination.detected else 0
+                    if r.evaluations.hallucination
+                    and r.evaluations.hallucination.has_hallucination else 0
                 ),
                 "safety_safe": (
-                    r.evaluations.safety.safe
+                    r.evaluations.safety.is_safe
                     if r.evaluations.safety else True
                 ),
                 "safety_categories": (
-                    r.evaluations.safety.flagged_categories
-                    if r.evaluations.safety and not r.evaluations.safety.safe else []
+                    r.evaluations.safety.categories_flagged
+                    if r.evaluations.safety and not r.evaluations.safety.is_safe else []
                 ),
                 "pii_detected": (
-                    r.evaluations.pii.detected
+                    r.evaluations.pii.has_pii
                     if r.evaluations.pii else False
                 ),
                 "pii_types": (
-                    r.evaluations.pii.types_found
-                    if r.evaluations.pii and r.evaluations.pii.detected else []
+                    r.evaluations.pii.types_detected
+                    if r.evaluations.pii and r.evaluations.pii.has_pii else []
                 ),
                 # Failure reasons (from contains/not_contains checks + cost/latency)
                 "failure_reasons": self._extract_failure_reasons(r),
