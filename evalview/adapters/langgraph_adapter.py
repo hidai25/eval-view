@@ -128,6 +128,7 @@ class LangGraphAdapter(AgentAdapter):
 
             # Step 2: Create run with streaming
             input_key = context.get("input_key", self.input_key)
+            run_input: Dict[str, Any]
             if input_key:
                 run_input = {input_key: query}
             else:
@@ -559,7 +560,7 @@ class LangGraphAdapter(AgentAdapter):
         return StepTrace(
             step_id=step_data.get("id", f"step-{index}"),
             step_name=step_data.get("name", f"Step {index + 1}"),
-            tool_name=step_data.get("tool"),
+            tool_name=step_data.get("tool") or "unknown",
             parameters=step_data.get("parameters", {}),
             output=step_data.get("output"),
             success=step_data.get("success", True),
@@ -579,7 +580,7 @@ class LangGraphAdapter(AgentAdapter):
             return StepTrace(
                 step_id=event.get("id", f"step-{datetime.now().timestamp()}"),
                 step_name=content[:50] if content else "Step",
-                tool_name=event.get("tool"),
+                tool_name=event.get("tool") or "unknown",
                 parameters=event.get("parameters", {}),
                 output=content,
                 success=True,

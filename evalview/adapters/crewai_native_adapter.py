@@ -262,8 +262,11 @@ class CrewAINativeAdapter(AgentAdapter):
 
         rationale = RationaleCollector()
         last_agent: Optional[str] = None
-        for i, (st, tc) in enumerate(zip(steps, tool_calls or [None] * len(steps))):
-            agent_name = (tc or {}).get("agent") if tc else None
+        calls_by_step: List[Optional[Dict[str, Any]]] = (
+            list(tool_calls) if tool_calls else [None] * len(steps)
+        )
+        for i, (st, call) in enumerate(zip(steps, calls_by_step)):
+            agent_name = call.get("agent") if call else None
             if agent_name and agent_name != last_agent:
                 rationale.capture_branch(
                     step_id=st.step_id,

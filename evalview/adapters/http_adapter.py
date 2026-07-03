@@ -153,8 +153,12 @@ class HTTPAdapter(AgentAdapter):
             input_tokens = 0
             output_tokens = 0
             if isinstance(tokens_data, dict):
-                input_tokens = tokens_data.get("input", tokens_data.get("input_tokens", 0))
-                output_tokens = tokens_data.get("output", tokens_data.get("output_tokens", 0))
+                input_tokens = int(
+                    tokens_data.get("input", tokens_data.get("input_tokens", 0)) or 0
+                )
+                output_tokens = int(
+                    tokens_data.get("output", tokens_data.get("output_tokens", 0)) or 0
+                )
 
             tracer.record_llm_call(
                 model=model_name,
@@ -250,9 +254,15 @@ class HTTPAdapter(AgentAdapter):
             if isinstance(tokens_data, dict):
                 # Nested format: {"input": 100, "output": 500, "cached": 50}
                 total_tokens = TokenUsage(
-                    input_tokens=tokens_data.get("input", tokens_data.get("input_tokens", 0)),
-                    output_tokens=tokens_data.get("output", tokens_data.get("output_tokens", 0)),
-                    cached_tokens=tokens_data.get("cached", tokens_data.get("cached_tokens", 0)),
+                    input_tokens=int(
+                        tokens_data.get("input", tokens_data.get("input_tokens", 0)) or 0
+                    ),
+                    output_tokens=int(
+                        tokens_data.get("output", tokens_data.get("output_tokens", 0)) or 0
+                    ),
+                    cached_tokens=int(
+                        tokens_data.get("cached", tokens_data.get("cached_tokens", 0)) or 0
+                    ),
                 )
             elif isinstance(tokens_data, int):
                 # Simple total: {"tokens": 1500}

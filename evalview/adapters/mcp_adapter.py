@@ -344,6 +344,8 @@ class MCPAdapter(AgentAdapter):
         self, process: asyncio.subprocess.Process, method: str, params: Dict
     ) -> Dict:
         """Send JSON-RPC request via stdio."""
+        # Process is always spawned with stdin/stdout=PIPE
+        assert process.stdin is not None and process.stdout is not None
         self._request_id += 1
         request = {
             "jsonrpc": "2.0",
@@ -377,6 +379,8 @@ class MCPAdapter(AgentAdapter):
         self, process: asyncio.subprocess.Process, method: str, params: Dict
     ) -> None:
         """Send JSON-RPC notification (no response expected)."""
+        # Process is always spawned with stdin=PIPE
+        assert process.stdin is not None
         notification = {
             "jsonrpc": "2.0",
             "method": method,

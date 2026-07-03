@@ -102,7 +102,7 @@ class OpenAIAssistantsAdapter(AgentAdapter):
 
             # Poll for completion
             max_wait = self.timeout
-            waited = 0
+            waited = 0.0
             poll_interval = 0.5
 
             while run.status in ["queued", "in_progress", "requires_action"]:

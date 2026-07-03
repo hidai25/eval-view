@@ -288,9 +288,13 @@ class OpenClawAdapter(AgentAdapter):
         if tokens_data:
             if isinstance(tokens_data, dict):
                 total_tokens = TokenUsage(
-                    input_tokens=tokens_data.get("input", tokens_data.get("input_tokens", 0)),
-                    output_tokens=tokens_data.get("output", tokens_data.get("output_tokens", 0)),
-                    cached_tokens=tokens_data.get("cached", 0),
+                    input_tokens=int(
+                        tokens_data.get("input", tokens_data.get("input_tokens", 0)) or 0
+                    ),
+                    output_tokens=int(
+                        tokens_data.get("output", tokens_data.get("output_tokens", 0)) or 0
+                    ),
+                    cached_tokens=int(tokens_data.get("cached", 0) or 0),
                 )
             elif isinstance(tokens_data, int):
                 total_tokens = TokenUsage(output_tokens=tokens_data)
