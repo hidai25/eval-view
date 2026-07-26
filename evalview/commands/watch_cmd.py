@@ -6,7 +6,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, List, Optional
 
 import click
 
@@ -85,6 +85,33 @@ def watch(
         evalview watch --test "my-test"     # Only check one test
         evalview watch --interval 1         # 1-second debounce
     """
+    run_watch(
+        watch_paths=list(path) if path else ["."],
+        test_dir=test_dir,
+        test_name=test_name,
+        quick=quick,
+        fail_on=fail_on,
+        sound=sound,
+        interval=interval,
+    )
+
+
+def run_watch(
+    *,
+    watch_paths: List[str],
+    test_dir: str,
+    test_name: Optional[str],
+    quick: bool,
+    fail_on: str,
+    sound: bool,
+    interval: float,
+) -> None:
+    """Run the watch loop until interrupted.
+
+    Shared by `evalview watch` and `evalview check --watch` so the two
+    entry points can't drift apart. Never returns normally — it either
+    loops until KeyboardInterrupt or exits the process on a setup error.
+    """
     try:
         from evalview.core.watcher import WATCHDOG_AVAILABLE
     except ImportError:
@@ -101,9 +128,6 @@ def watch(
     if not Path(test_dir).exists():
         console.print(f"[red]Test directory not found:[/red] {test_dir}")
         sys.exit(1)
-
-    # Resolve watch paths
-    watch_paths = list(path) if path else ["."]
 
     # Parse fail_on statuses
     from evalview.commands.shared import _parse_fail_statuses
@@ -171,19 +195,14 @@ def _run_check(
     sound: bool,
     trigger_path: Optional[str],
 ) -> None:
-    """Run a single check cycle and display results."""
-    from evalview.api import gate, DiffStatus
-    from evalview.core.dashboard import render_scorecard
-    from evalview.core.project_state import ProjectStateStore
+    """Run a single check cycle synchronously. Used for the initial run only.
 
-    timestamp = datetime.now().strftime("%H:%M:%S")
+    Inside the watch loop use :func:`_run_check_async` — the synchronous
+    ``gate()`` calls ``asyncio.run()``, which raises once a loop is running.
+    """
+    from evalview.api import gate
 
-    if trigger_path:
-        console.print(f"[dim]{timestamp}[/dim]  Change detected: [cyan]{trigger_path}[/cyan]")
-    else:
-        console.print(f"[dim]{timestamp}[/dim]  Running initial check...")
-
-    console.print()
+    _announce_check(trigger_path)
 
     try:
         result = gate(
@@ -195,6 +214,60 @@ def _run_check(
     except Exception as e:
         console.print(f"[red]Check failed:[/red] {e}\n")
         return
+
+    _render_check_result(result, sound)
+
+
+async def _run_check_async(
+    test_dir: str,
+    test_name: Optional[str],
+    quick: bool,
+    fail_statuses: set,
+    sound: bool,
+    trigger_path: Optional[str],
+) -> None:
+    """Run a single check cycle from inside the watch loop's event loop.
+
+    Must use ``gate_async``: the loop is already running, so the synchronous
+    ``gate()`` would fail with "asyncio.run() cannot be called from a running
+    event loop" and every file-change trigger would be swallowed as a failed
+    check.
+    """
+    from evalview.api import gate_async
+
+    _announce_check(trigger_path)
+
+    try:
+        result = await gate_async(
+            test_dir=test_dir,
+            test_name=test_name,
+            quick=quick,
+            fail_on=fail_statuses,
+        )
+    except Exception as e:
+        console.print(f"[red]Check failed:[/red] {e}\n")
+        return
+
+    _render_check_result(result, sound)
+
+
+def _announce_check(trigger_path: Optional[str]) -> None:
+    """Print the header line for a check cycle."""
+    timestamp = datetime.now().strftime("%H:%M:%S")
+
+    if trigger_path:
+        console.print(f"[dim]{timestamp}[/dim]  Change detected: [cyan]{trigger_path}[/cyan]")
+    else:
+        console.print(f"[dim]{timestamp}[/dim]  Running initial check...")
+
+    console.print()
+
+
+def _render_check_result(result: Any, sound: bool) -> None:
+    """Display the scorecard and per-test details for one check cycle."""
+    from evalview.api import DiffStatus
+    from evalview.core.dashboard import render_scorecard
+    from evalview.core.project_state import ProjectStateStore
 
     if not result.diffs:
         console.print("[yellow]No tests matched any baselines.[/yellow]")
@@ -336,7 +409,7 @@ async def _watch_loop(
                 _running_check = True
 
             try:
-                _run_check(
+                await _run_check_async(
                     test_dir=test_dir,
                     test_name=test_name,
                     quick=quick,

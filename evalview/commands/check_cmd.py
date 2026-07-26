@@ -52,6 +52,84 @@ if TYPE_CHECKING:
     from evalview.core.types import EvaluationResult
 
 
+# Options that make no sense inside a re-running loop: they either emit a
+# one-shot artifact, spend money on every keystroke, or run a long multi-pass
+# analysis. Erroring is deliberate — silently dropping a flag the user typed
+# would be worse than refusing it.
+_WATCH_UNSUPPORTED_HELP = (
+    "Watch mode supports TEST_PATH, --test, --fail-on, --strict, and --no-judge."
+)
+
+
+def _run_watch_mode(
+    *,
+    test_path: str,
+    test: Optional[str],
+    tags: tuple,
+    fail_on: Optional[str],
+    strict: bool,
+    no_judge: bool,
+    json_output: bool,
+    report_path: Optional[str],
+    csv_path: Optional[str],
+    budget: Optional[float],
+    dry_run: bool,
+    ai_root_cause: bool,
+    explain: bool,
+    statistical_runs: Optional[int],
+    auto_variant: bool,
+    judge_model: Optional[str],
+    heal_mode: bool,
+) -> None:
+    """Delegate `check --watch` to the shared watcher in `watch_cmd`."""
+    unsupported = [
+        name
+        for name, used in (
+            ("--json", json_output),
+            ("--report", report_path is not None),
+            ("--csv", csv_path is not None),
+            ("--budget", budget is not None),
+            ("--dry-run", dry_run),
+            ("--ai-root-cause", ai_root_cause),
+            ("--explain", explain),
+            ("--statistical", statistical_runs is not None),
+            ("--auto-variant", auto_variant),
+            ("--judge", judge_model is not None),
+            ("--heal", heal_mode),
+            ("--tag", bool(tags)),
+        )
+        if used
+    ]
+    if unsupported:
+        click.echo(
+            "Error: --watch cannot be combined with: "
+            + ", ".join(unsupported)
+            + f".\n{_WATCH_UNSUPPORTED_HELP}\n"
+            "Drop --watch for a one-shot run with those options.",
+            err=True,
+        )
+        sys.exit(1)
+
+    from evalview.commands.watch_cmd import run_watch
+
+    # Mirror _compute_check_exit_code's precedence so the loop fails on
+    # exactly the statuses a one-shot `check` would fail on.
+    if strict:
+        resolved_fail_on = "REGRESSION,TOOLS_CHANGED,OUTPUT_CHANGED"
+    else:
+        resolved_fail_on = fail_on or "REGRESSION"
+
+    run_watch(
+        watch_paths=["."],
+        test_dir=_resolve_default_test_path(test_path),
+        test_name=test,
+        quick=no_judge,
+        fail_on=resolved_fail_on,
+        sound=False,
+        interval=2.0,
+    )
+
+
 
 @click.command("check")
 @click.argument("test_path", default="tests", type=click.Path(exists=True))
@@ -82,8 +160,9 @@ if TYPE_CHECKING:
 @click.option("--judge", "judge_model", default=None, help="Judge model for scoring (e.g. gpt-5.4-mini, sonnet, deepseek-chat).")
 @click.option("--no-judge", "no_judge", is_flag=True, default=False, help="Skip LLM-as-judge evaluation. Uses deterministic scoring only (scores capped at 75). No API key required.")
 @click.option("--heal", "heal_mode", is_flag=True, default=False, help="Auto-retry flaky failures, propose candidate variants. Never touches forbidden tools.")
+@click.option("--watch", "watch_mode", is_flag=True, default=False, help="Re-run this check on every file change (Ctrl+C to stop). Supports TEST_PATH, --test, --fail-on, --strict, --no-judge.")
 @track_command("check")
-def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, fail_on: str, strict: bool, report_path: Optional[str], csv_path: Optional[str], semantic_diff: Optional[bool], budget: Optional[float], timeout: float, dry_run: bool, ai_root_cause: bool, explain: bool, statistical_runs: Optional[int], auto_variant: bool, judge_model: Optional[str], no_judge: bool, heal_mode: bool):
+def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, fail_on: str, strict: bool, report_path: Optional[str], csv_path: Optional[str], semantic_diff: Optional[bool], budget: Optional[float], timeout: float, dry_run: bool, ai_root_cause: bool, explain: bool, statistical_runs: Optional[int], auto_variant: bool, judge_model: Optional[str], no_judge: bool, heal_mode: bool, watch_mode: bool):
     """Decide whether it's safe to ship this agent change.
 
     Replays your test suite against the saved golden baselines and emits
@@ -116,6 +195,7 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
         evalview check --statistical 10                  # Run each test 10 times, show variance
         evalview check --statistical 10 --auto-variant   # Auto-save distinct paths as variants
         evalview check --heal                            # Auto-retry flaky failures, propose variants
+        evalview check --watch                           # Re-run on every file change
     """
     if budget is not None and budget <= 0:
         click.echo("Error: --budget must be a positive number.", err=True)
@@ -124,6 +204,28 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
     if timeout <= 0:
         click.echo("Error: --timeout must be a positive number.", err=True)
         sys.exit(1)
+
+    if watch_mode:
+        _run_watch_mode(
+            test_path=test_path,
+            test=test,
+            tags=tags,
+            fail_on=fail_on,
+            strict=strict,
+            no_judge=no_judge,
+            json_output=json_output,
+            report_path=report_path,
+            csv_path=csv_path,
+            budget=budget,
+            dry_run=dry_run,
+            ai_root_cause=ai_root_cause,
+            explain=explain,
+            statistical_runs=statistical_runs,
+            auto_variant=auto_variant,
+            judge_model=judge_model,
+            heal_mode=heal_mode,
+        )
+        return
 
     from evalview.core.loader import TestCaseLoader
     from evalview.core.golden import GoldenStore

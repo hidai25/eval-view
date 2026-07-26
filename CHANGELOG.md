@@ -7,12 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.8.1] - 2026-07-03
+## [0.8.1] - 2026-07-26
 
 ### Added
 - **PEP 561 `py.typed` marker**: the package now ships its inline type annotations, so `mypy`/`pyright` type-check code that imports `evalview` (e.g. `from evalview import gate`) instead of treating it as untyped.
+- **`evalview check --watch`**: re-runs the check on every file change, so the `snapshot` / `check` loop you already know gains a watch mode without reaching for a third command. Delegates to the same watcher as `evalview watch`. Supports `TEST_PATH`, `--test`, `--fail-on`, `--strict`, and `--no-judge`; combining it with one-shot options (`--json`, `--report`, `--heal`, …) is a loud error rather than a silently dropped flag.
 
 ### Fixed
+- **`evalview watch` never re-ran on file change.** The watch loop runs under `asyncio.run()`, but a triggered check called the synchronous `gate()`, which calls `asyncio.run()` again — so every save failed with `asyncio.run() cannot be called from a running event loop`, rendered as a red `Check failed:` line. The startup banner and the initial check both succeeded, which is why this looked healthy. Triggered checks now go through `gate_async()`. Affected every release since watch mode shipped in 0.5.5.
 - Synced stale version strings: `evalview.__version__` (was 0.7.0) and the MCP registry `server.json` (was 0.6.1) now match the released version.
 
 ## [0.8.0] - 2026-05-15
