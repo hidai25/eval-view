@@ -344,9 +344,15 @@ description: This is missing required fields
 """
         )
 
-        # Loading should raise an error when it hits the invalid file
-        with pytest.raises(ValidationError):
+        # Loading should raise an error when it hits the invalid file.
+        # The directory loader wraps the underlying pydantic ValidationError
+        # in a ValueError so the message can name the offending file.
+        # ValidationError subclasses ValueError, so `except ValueError`
+        # callers are unaffected by the widening.
+        with pytest.raises(ValueError) as exc:
             TestCaseLoader.load_from_directory(test_dir)
+
+        assert "invalid.yaml" in str(exc.value)
 
     def test_load_preserves_field_values(self, tmp_path):
         """Test that all field values are correctly preserved when loading."""

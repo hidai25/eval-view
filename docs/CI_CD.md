@@ -28,7 +28,7 @@ jobs:
 
       - name: Check for regressions
         id: evalview
-        uses: hidai25/eval-view@v0.8.0
+        uses: hidai25/eval-view@v0.8.1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           fail-on: REGRESSION
