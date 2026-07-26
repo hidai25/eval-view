@@ -35,6 +35,18 @@ def _is_config_file(file_path: Path) -> bool:
     return file_path.name.lower() in CONFIG_FILE_PATTERNS
 
 
+def _is_skill_suite(data: Any) -> bool:
+    """Check whether parsed YAML is a skill test suite rather than a test case.
+
+    Skill suites (`SkillAgentTestSuite`) are consumed by `evalview skill`, not
+    by `check`/`run`, but they live in the same directory tree and share the
+    .yaml suffix. They're identified by the top-level `skill:` key — a
+    required field on the suite model that `TestCase` does not define, so the
+    discriminator can't collide.
+    """
+    return isinstance(data, dict) and "skill" in data
+
+
 def _parse_test_case_file(file_path: Path) -> Any:
     """Parse a YAML or TOML test case file into a dict.
 
@@ -108,7 +120,23 @@ class TestCaseLoader:
             if resolved in seen:
                 return
             seen.add(resolved)
-            test_cases.append(TestCaseLoader.load_from_file(file_path))
+
+            data = _parse_test_case_file(file_path)
+            if _is_skill_suite(data):
+                # Belongs to `evalview skill`, not to check/run.
+                return
+
+            try:
+                test_case = TestCase(**data)
+            except Exception as e:
+                # Name the file. Without it a directory of 30 test cases
+                # reports "3 validation errors for TestCase" and leaves you
+                # bisecting by hand.
+                raise ValueError(
+                    f"Failed to load test case from {file_path}: {e}"
+                ) from e
+            test_case.source_file = str(file_path)
+            test_cases.append(test_case)
 
         for file_path in dir_path.rglob(pattern):
             _ingest(file_path)

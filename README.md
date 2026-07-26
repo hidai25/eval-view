@@ -88,7 +88,7 @@ jobs:
     permissions: { pull-requests: write }
     steps:
       - uses: actions/checkout@v4
-      - uses: hidai25/eval-view@v0.8.0
+      - uses: hidai25/eval-view@v0.8.1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
 ```
