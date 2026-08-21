@@ -73,6 +73,11 @@ cohere = [
 mistral = [
     "mistralai>=1.0.0",
 ]
+# Pydantic AI adapter (native in-process integration). Pydantic AI itself
+# requires Python 3.10+, so this extra is unavailable on 3.9.
+pydantic-ai = [
+    "pydantic-ai-slim>=0.0.30; python_version >= '3.10'",
+]
 # All optional features
 all = [
     "plotly>=5.0",
@@ -81,6 +86,7 @@ all = [
     "posthog>=3.0.0",
     "cohere>=5.0.0",
     "mistralai>=1.0.0",
+    "pydantic-ai-slim>=0.0.30; python_version >= '3.10'",
 ]
 # Development dependencies
 dev = [
@@ -98,6 +104,9 @@ dev = [
     # For mock agent in dogfood tests
     "fastapi>=0.109.0",
     "uvicorn>=0.27.0",
+    # Pydantic AI adapter tests (requires Python 3.10+; skipped via
+    # pytest.importorskip on 3.9).
+    "pydantic-ai-slim>=0.0.30; python_version >= '3.10'",
 ]
 
 [project.scripts]
@@ -181,4 +190,10 @@ ignore_errors = true
 # them under python_version = "3.9" — skip following imports into them entirely.
 [[tool.mypy.overrides]]
 module = "_pytest.*"
+follow_imports = "skip"
+
+# pydantic_ai (an optional dependency requiring Python 3.10+) uses match
+# statements internally, which mypy can't parse under python_version = "3.9".
+[[tool.mypy.overrides]]
+module = "pydantic_ai.*"
 follow_imports = "skip"

@@ -21,6 +21,7 @@ from evalview.core.types import (
     StepTrace,
     StepMetrics,
     ExecutionMetrics,
+    ToolArgumentValidation,
 )
 
 
@@ -277,6 +278,165 @@ class TestToolCallEvaluator:
         assert result.correct == []
         assert result.missing == []
         assert result.unexpected == ["any_tool"]
+
+    def test_schema_invalid_tool_args_emits_reason_code(self):
+        """A step with invalid tool_argument_validation surfaces TOOL_ARGS_SCHEMA_INVALID."""
+        test_case = TestCaseModel(
+            name="test",
+            input=TestInputModel(query="test"),
+            expected=ExpectedBehavior(tools=["lookup_order"]),
+            thresholds=Thresholds(min_score=50.0),
+        )
+
+        trace = ExecutionTrace(
+            session_id="test",
+            start_time=datetime.now(),
+            end_time=datetime.now(),
+            steps=[
+                StepTrace(
+                    step_id="call-1",
+                    step_name="tool_call_1",
+                    tool_name="lookup_order",
+                    parameters={"order_id": "not-a-number"},
+                    output="",
+                    success=False,
+                    error="Arguments for tool 'lookup_order' failed Pydantic validation: [...]",
+                    metrics=StepMetrics(latency=100.0, cost=0.01),
+                    tool_argument_validation=ToolArgumentValidation(
+                        valid=False,
+                        errors=[{"type": "int_parsing", "loc": ["order_id"], "msg": "Input should be a valid integer"}],
+                        source="pydantic-ai",
+                    ),
+                ),
+            ],
+            final_output="test",
+            metrics=ExecutionMetrics(total_cost=0.01, total_latency=100.0),
+        )
+
+        evaluator = ToolCallEvaluator()
+        result = evaluator.evaluate(test_case, trace)
+
+        # Tool name is still "correct" — this is purely a schema-validation signal.
+        assert result.correct == ["lookup_order"]
+        assert result.accuracy == 1.0
+
+        schema_reasons = [rc for rc in result.reason_codes if rc.code == "TOOL_ARGS_SCHEMA_INVALID"]
+        assert len(schema_reasons) == 1
+        reason = schema_reasons[0]
+        assert reason.severity == "error"
+        assert reason.context["tool_name"] == "lookup_order"
+        assert reason.context["tool_call_id"] == "call-1"
+        assert reason.context["arguments"] == {"order_id": "not-a-number"}
+        assert reason.context["validation_errors"] == [
+            {"type": "int_parsing", "loc": ["order_id"], "msg": "Input should be a valid integer"}
+        ]
+        assert reason.context["validation_source"] == "pydantic-ai"
+
+    def test_valid_tool_args_emit_no_schema_reason_code(self):
+        """A step with valid tool_argument_validation must not emit the schema reason."""
+        test_case = TestCaseModel(
+            name="test",
+            input=TestInputModel(query="test"),
+            expected=ExpectedBehavior(tools=["lookup_order"]),
+            thresholds=Thresholds(min_score=50.0),
+        )
+
+        trace = ExecutionTrace(
+            session_id="test",
+            start_time=datetime.now(),
+            end_time=datetime.now(),
+            steps=[
+                StepTrace(
+                    step_id="call-1",
+                    step_name="tool_call_1",
+                    tool_name="lookup_order",
+                    parameters={"order_id": 123},
+                    output="Order 123 found",
+                    success=True,
+                    metrics=StepMetrics(latency=100.0, cost=0.01),
+                    tool_argument_validation=ToolArgumentValidation(valid=True),
+                ),
+            ],
+            final_output="test",
+            metrics=ExecutionMetrics(total_cost=0.01, total_latency=100.0),
+        )
+
+        evaluator = ToolCallEvaluator()
+        result = evaluator.evaluate(test_case, trace)
+
+        assert not any(rc.code == "TOOL_ARGS_SCHEMA_INVALID" for rc in result.reason_codes)
+
+    def test_missing_validation_metadata_emits_no_schema_reason_code(self):
+        """Steps without tool_argument_validation (older traces/adapters) are unaffected."""
+        test_case = TestCaseModel(
+            name="test",
+            input=TestInputModel(query="test"),
+            expected=ExpectedBehavior(tools=["lookup_order"]),
+            thresholds=Thresholds(min_score=50.0),
+        )
+
+        trace = ExecutionTrace(
+            session_id="test",
+            start_time=datetime.now(),
+            end_time=datetime.now(),
+            steps=[
+                StepTrace(
+                    step_id="call-1",
+                    step_name="tool_call_1",
+                    tool_name="lookup_order",
+                    parameters={"order_id": 123},
+                    output="Order 123 found",
+                    success=False,
+                    error="some unrelated failure",
+                    metrics=StepMetrics(latency=100.0, cost=0.01),
+                ),
+            ],
+            final_output="test",
+            metrics=ExecutionMetrics(total_cost=0.01, total_latency=100.0),
+        )
+
+        evaluator = ToolCallEvaluator()
+        result = evaluator.evaluate(test_case, trace)
+
+        assert not any(rc.code == "TOOL_ARGS_SCHEMA_INVALID" for rc in result.reason_codes)
+
+    def test_multiple_invalid_tool_calls_each_get_a_reason_code(self):
+        """Two separate invalid attempts produce two distinct reason codes."""
+        test_case = TestCaseModel(
+            name="test",
+            input=TestInputModel(query="test"),
+            expected=ExpectedBehavior(tools=["lookup_order"]),
+            thresholds=Thresholds(min_score=50.0),
+        )
+
+        def _invalid_step(step_id: str) -> StepTrace:
+            return StepTrace(
+                step_id=step_id,
+                step_name=f"tool_call_{step_id}",
+                tool_name="lookup_order",
+                parameters={"order_id": "bad"},
+                output="",
+                success=False,
+                error="invalid",
+                metrics=StepMetrics(latency=100.0, cost=0.01),
+                tool_argument_validation=ToolArgumentValidation(valid=False, errors=[{"type": "int_parsing"}]),
+            )
+
+        trace = ExecutionTrace(
+            session_id="test",
+            start_time=datetime.now(),
+            end_time=datetime.now(),
+            steps=[_invalid_step("call-1"), _invalid_step("call-2")],
+            final_output="test",
+            metrics=ExecutionMetrics(total_cost=0.01, total_latency=100.0),
+        )
+
+        evaluator = ToolCallEvaluator()
+        result = evaluator.evaluate(test_case, trace)
+
+        schema_reasons = [rc for rc in result.reason_codes if rc.code == "TOOL_ARGS_SCHEMA_INVALID"]
+        assert len(schema_reasons) == 2
+        assert {rc.context["tool_call_id"] for rc in schema_reasons} == {"call-1", "call-2"}
 
 
 # ============================================================================
@@ -1119,7 +1279,7 @@ class TestCostEvaluator:
 
         result = evaluator.evaluate(sample_test_case, sample_execution_trace)
         assert result.passed is True  # Positive edge cases should pass
-    
+
     negative_edge_cost_testdata =  [
         (Thresholds(min_score=70.0, max_cost=100.0), float("inf"))
     ]
@@ -1294,7 +1454,7 @@ class TestLatencyEvaluator:
 
         result = evaluator.evaluate(sample_test_case, sample_execution_trace)
         assert result.passed is True  # Positive edge cases should pass
-    
+
     negative_edge_latency_testdata =  [
         (Thresholds(min_score=70.0, max_latency=0.01), float("inf"))
     ]
@@ -1316,7 +1476,7 @@ class TestLatencyEvaluator:
         evaluator = LatencyEvaluator()
 
         result = evaluator.evaluate(sample_test_case, sample_execution_trace)
-        assert result.passed is False  # Negative latency should not pass    
+        assert result.passed is False  # Negative latency should not pass
 
     @pytest.mark.parametrize("thresholds, total_latency", [(Thresholds(min_score=70.0, max_latency=0.0), float("inf"))], ids=["zero_latency_threshold"])
     def test_zero_latency_threshold(self, thresholds, total_latency, sample_test_case, sample_execution_trace):

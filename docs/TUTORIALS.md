@@ -556,6 +556,7 @@ Failure Reasons:
 | `SEQUENCE_ORDER_VIOLATION` | error | Tools out of order | Use `sequence_mode: unordered` if order doesn't matter |
 | `PARAM_VALUE_CHANGED` | warning | Parameter value differs | Review and snapshot if OK |
 | `PARAM_TYPE_MISMATCH` | error | Parameter type changed | Check serialization |
+| `TOOL_ARGS_SCHEMA_INVALID` | error | Tool call's arguments failed the framework's schema validation (Pydantic AI only) | Update the agent's prompt or tool-call construction to match the tool's schema |
 
 ### Using Reason Codes in CI
 
