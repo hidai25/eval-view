@@ -657,6 +657,26 @@ class StepMetrics(BaseModel):
         )
 
 
+class ToolArgumentValidation(BaseModel):
+    """Outcome of validating a tool call's arguments against its schema.
+
+    Populated by adapters that can observe the agent framework's own
+    validation decision (e.g. Pydantic AI rejecting arguments before the
+    tool runs). Absent (``None`` on the owning ``StepTrace``) when the
+    adapter has no such signal — this is not the same as ``valid=True``.
+    """
+
+    valid: bool = Field(description="Whether the framework accepted the tool call's arguments")
+    errors: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Structured validation errors (e.g. Pydantic error details) when invalid",
+    )
+    source: str = Field(
+        default="pydantic-ai",
+        description="Which framework/mechanism produced this validation result",
+    )
+
+
 class StepTrace(BaseModel):
     """Trace of a single agent step."""
 
@@ -670,6 +690,10 @@ class StepTrace(BaseModel):
     metrics: StepMetrics
     turn_index: Optional[int] = None
     turn_query: Optional[str] = None
+    # Optional schema-validation outcome for the tool call's arguments.
+    # None means the adapter did not capture this signal (backward compatible
+    # default — existing traces/goldens without this field still load).
+    tool_argument_validation: Optional[ToolArgumentValidation] = None
 
 
 class ExecutionMetrics(BaseModel):

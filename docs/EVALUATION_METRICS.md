@@ -137,6 +137,37 @@ expected:
 
 See [Tool Categories](TOOL_CATEGORIES.md) for flexible matching by intent.
 
+### Pydantic AI: Tool Argument Schema Validation
+
+When the agent under test uses the [`pydantic-ai` adapter](../evalview/adapters/pydantic_ai_adapter.py), EvalView also captures whether Pydantic AI itself accepted or rejected each tool call's arguments *before* the tool ran.
+
+A tool can be name-correct while still having invalid arguments — e.g. the model calls `lookup_order` (matching `expected.tools`) but passes `{"order_id": "not-a-number"}` when the tool declares `order_id: int`. That distinction does not change `accuracy`, `correct`/`missing`/`unexpected`, or pass/fail; it is surfaced as a diagnostic `ReasonCode`:
+
+```json
+{
+  "code": "TOOL_ARGS_SCHEMA_INVALID",
+  "severity": "error",
+  "message": "Arguments for tool 'lookup_order' failed schema validation",
+  "context": {
+    "tool_name": "lookup_order",
+    "tool_call_id": "...",
+    "arguments": {"order_id": "not-a-number"},
+    "validation_errors": [
+      {"type": "int_parsing", "loc": ["order_id"], "msg": "Input should be a valid integer, unable to parse string as an integer"}
+    ],
+    "validation_source": "pydantic-ai"
+  },
+  "remediation": "Update the agent's prompt or tool-call construction so the arguments match the tool's declared schema."
+}
+```
+
+Notes:
+
+- This is Pydantic-AI-specific for now: it relies on `StepTrace.tool_argument_validation`, which only the `pydantic-ai` adapter currently populates. Other adapters leave it unset and are unaffected.
+- A tool call that Pydantic AI rejects for schema reasons is preserved in the trace as its own step (`success=False`) rather than merged with the corrected retry, so both the failed attempt and the eventual valid call are visible.
+- A `ModelRetry` raised by the tool body (a business-logic retry, not a schema violation) is **not** flagged with this code — only genuine Pydantic validation failures are.
+- This is purely diagnostic today: it does not change `accuracy`, and it does not introduce a new `DiffStatus`. A changed-but-valid argument still shows up as `TOOLS_CHANGED` in baseline diffs.
+
 ---
 
 ## Output Quality (LLM-as-Judge)

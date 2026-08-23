@@ -9,6 +9,7 @@ from evalview.core.types import (
     ForbiddenToolEvaluation,
     CategoryResult,
     ReasonCode,
+    StepTrace,
 )
 from evalview.core.tool_categories import ToolCategoryMatcher, get_default_matcher
 
@@ -120,6 +121,7 @@ class ToolCallEvaluator:
             missing, unexpected, expected_tools, set(actual_tools),
             expected_categories, category_results
         )
+        reason_codes.extend(self._generate_schema_validation_reason_codes(trace.steps))
 
         return ToolEvaluation(
             accuracy=accuracy,
@@ -331,4 +333,38 @@ class ToolCallEvaluator:
                     remediation=f"If '{tool}' is correct, add it to expected_tools in your test case."
                 ))
 
+        return reason_codes
+
+    def _generate_schema_validation_reason_codes(
+        self, steps: List[StepTrace]
+    ) -> List[ReasonCode]:
+        """Flag tool calls whose arguments failed the framework's own schema validation.
+
+        This is diagnostic only: it does not affect ``accuracy`` or the
+        missing/unexpected/correct lists above. A tool can be "correct" by
+        name while still having invalid arguments — that distinction is
+        exactly what this reason code exists to surface. Currently populated
+        by the Pydantic AI adapter via ``StepTrace.tool_argument_validation``.
+        """
+        reason_codes: List[ReasonCode] = []
+        for step in steps:
+            validation = step.tool_argument_validation
+            if validation is None or validation.valid:
+                continue
+            reason_codes.append(ReasonCode(
+                code="TOOL_ARGS_SCHEMA_INVALID",
+                severity="error",
+                message=f"Arguments for tool '{step.tool_name}' failed schema validation",
+                context={
+                    "tool_name": step.tool_name,
+                    "tool_call_id": step.step_id,
+                    "arguments": step.parameters,
+                    "validation_errors": validation.errors,
+                    "validation_source": validation.source,
+                },
+                remediation=(
+                    "Update the agent's prompt or tool-call construction so the "
+                    "arguments match the tool's declared schema."
+                ),
+            ))
         return reason_codes

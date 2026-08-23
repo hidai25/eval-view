@@ -22,11 +22,12 @@ Or via config::
 from __future__ import annotations
 
 import importlib
+import json
 import logging
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from evalview.adapters.base import AgentAdapter
 from evalview.core.types import (
@@ -35,9 +36,37 @@ from evalview.core.types import (
     StepMetrics,
     StepTrace,
     TokenUsage,
+    ToolArgumentValidation,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _json_safe(value: Any) -> Any:
+    """Recursively coerce a value into something JSON-serializable.
+
+    Pydantic's ``ErrorDetails`` entries carry ``loc`` as a tuple and may hold
+    other non-JSON-safe values in ``ctx``; both need to survive golden
+    save/load round-trips (JSON dump/parse).
+    """
+    if isinstance(value, (tuple, list)):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    try:
+        json.dumps(value)
+        return value
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _normalize_validation_errors(errors: List[Any]) -> List[Dict[str, Any]]:
+    """Convert Pydantic ``ErrorDetails`` entries into JSON-safe dictionaries."""
+    normalized: List[Dict[str, Any]] = []
+    for err in errors:
+        err_dict = err if isinstance(err, dict) else dict(err)
+        normalized.append({k: _json_safe(v) for k, v in err_dict.items()})
+    return normalized
 
 
 class PydanticAIAdapter(AgentAdapter):
@@ -104,7 +133,13 @@ class PydanticAIAdapter(AgentAdapter):
         Calls ``agent.run()`` (async), extracts tool calls from the typed
         message history, and returns a structured ``ExecutionTrace``.
         """
-        from pydantic_ai.messages import ModelResponse, ModelRequest
+        from pydantic_ai.messages import (
+            ModelRequest,
+            ModelResponse,
+            RetryPromptPart,
+            ToolCallPart,
+            ToolReturnPart,
+        )
 
         agent = self._resolve_agent()
         session_id = str(uuid.uuid4())[:12]
@@ -137,19 +172,40 @@ class PydanticAIAdapter(AgentAdapter):
         model_provider: Optional[str] = None
         step_idx = 0
 
-        # Build a map of tool_call_id → return content
-        tool_returns: Dict[str, str] = {}
+        # Build a map of tool_call_id → how that call was resolved, using the
+        # typed message parts rather than duck-typing so a RetryPromptPart
+        # (which also has tool_call_id + content) can't be mistaken for a
+        # ToolReturnPart.
+        #
+        # Resolution kinds:
+        #   ("return", output)        — tool executed and returned normally
+        #   ("invalid_args", errors)  — Pydantic AI rejected the arguments
+        #                               before the tool ran (schema violation)
+        #   ("retry", message)        — a non-schema retry (e.g. ModelRetry
+        #                               raised by the tool, or an unknown
+        #                               tool name); arguments were not
+        #                               rejected for violating the schema
+        resolutions: Dict[str, Tuple[str, Any]] = {}
         for msg in result.all_messages():
-            if isinstance(msg, ModelRequest):
-                for part in msg.parts:
-                    if hasattr(part, "tool_call_id") and hasattr(part, "content"):
-                        # ToolReturnPart
-                        content = part.content
-                        if isinstance(content, list):
-                            content = str(content)
-                        elif not isinstance(content, str):
-                            content = str(content)
-                        tool_returns[part.tool_call_id] = content
+            if not isinstance(msg, ModelRequest):
+                continue
+            for part in msg.parts:
+                if isinstance(part, ToolReturnPart):
+                    content = part.content
+                    if not isinstance(content, str):
+                        content = str(content)
+                    resolutions[part.tool_call_id] = ("return", content)
+                elif isinstance(part, RetryPromptPart):
+                    if isinstance(part.content, list):
+                        # Pydantic validation of the arguments failed before
+                        # the tool ran — a genuine schema violation.
+                        errors = _normalize_validation_errors(part.content)
+                        resolutions[part.tool_call_id] = ("invalid_args", errors)
+                    else:
+                        # A ModelRetry raised by the tool, or another
+                        # non-schema retry (e.g. unknown tool name). The
+                        # arguments themselves were not rejected as invalid.
+                        resolutions[part.tool_call_id] = ("retry", str(part.content))
 
         # Extract tool calls from ModelResponse messages
         for msg in result.all_messages():
@@ -160,12 +216,10 @@ class PydanticAIAdapter(AgentAdapter):
                     model_provider = getattr(msg, "provider_name", None)
 
                 for part in msg.parts:
-                    if hasattr(part, "tool_name") and hasattr(part, "args"):
-                        # ToolCallPart
-                        tool_call_id = getattr(part, "tool_call_id", "")
+                    if isinstance(part, ToolCallPart):
+                        tool_call_id = part.tool_call_id
                         args = part.args
                         if isinstance(args, str):
-                            import json
                             try:
                                 args = json.loads(args)
                             except (json.JSONDecodeError, ValueError):
@@ -173,7 +227,30 @@ class PydanticAIAdapter(AgentAdapter):
                         elif not isinstance(args, dict):
                             args = {"value": str(args)}
 
-                        tool_output = tool_returns.get(tool_call_id, "")
+                        tool_output: Any = ""
+                        success = True
+                        error: Optional[str] = None
+                        validation: Optional[ToolArgumentValidation] = None
+
+                        resolution = resolutions.get(tool_call_id)
+                        if resolution is not None:
+                            kind, payload = resolution
+                            if kind == "return":
+                                tool_output = payload
+                                validation = ToolArgumentValidation(valid=True)
+                            elif kind == "invalid_args":
+                                success = False
+                                error = (
+                                    f"Arguments for tool '{part.tool_name}' failed "
+                                    f"Pydantic validation: {payload}"
+                                )
+                                validation = ToolArgumentValidation(
+                                    valid=False, errors=payload
+                                )
+                            elif kind == "retry":
+                                success = False
+                                error = payload
+                                validation = ToolArgumentValidation(valid=True)
 
                         step_idx += 1
                         steps.append(StepTrace(
@@ -182,15 +259,18 @@ class PydanticAIAdapter(AgentAdapter):
                             tool_name=part.tool_name,
                             parameters=args,
                             output=tool_output,
-                            success=True,
+                            success=success,
+                            error=error,
                             metrics=StepMetrics(
                                 latency=elapsed_ms / max(step_idx, 1),
                                 cost=0.0,
                             ),
+                            tool_argument_validation=validation,
                         ))
 
-        # Token usage
-        usage = result.usage()
+        # Token usage. ``AgentRunResult.usage`` was a method on older Pydantic
+        # AI versions and became a property on newer ones; support both.
+        usage = result.usage() if callable(result.usage) else result.usage
         input_tokens = getattr(usage, "input_tokens", 0) or 0
         output_tokens = getattr(usage, "output_tokens", 0) or 0
 
