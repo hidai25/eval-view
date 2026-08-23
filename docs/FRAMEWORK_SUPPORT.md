@@ -11,7 +11,7 @@ EvalView supports multiple AI agent frameworks out of the box. Each framework ha
 | **LangGraph** | `langgraph` | ✅ | 8000 | `/api/chat` or `/invoke` |
 | **LangServe** | `http` or `streaming` | ✅ | 8000 | `/agent` or `/agent/stream` |
 | **CrewAI** | `crewai` | ✅ | 8000 | `/crew` |
-| **OpenAI Assistants** | `openai-assistants` | N/A | N/A | Uses OpenAI API |
+| **OpenAI (Responses API)** | `openai-assistants` | N/A | N/A | Uses OpenAI API |
 | **TapeScope** | `streaming` | ✅ | 3000 | `/api/unifiedchat` |
 | **Generic REST** | `http` | ✅ | Any | Any |
 | **Generic Streaming** | `streaming` | ✅ | Any | Any |
@@ -170,13 +170,18 @@ thresholds:
 
 ---
 
-### 3. OpenAI Assistants
+### 3. OpenAI (Responses API)
+
+> The adapter keeps its historical `openai-assistants` name for config
+> compatibility, but it runs on the Responses API — OpenAI removed the
+> Assistants API on August 26, 2026.
 
 **What it supports:**
-- OpenAI Assistants API
+- OpenAI Responses API (+ Conversations API for session state)
 - Function calling
 - Code interpreter
-- File search/retrieval
+- Web search
+- File search (requires `OPENAI_VECTOR_STORE_IDS` — the Responses API needs explicit vector store ids)
 
 **Setup:**
 ```bash
@@ -189,17 +194,27 @@ export OPENAI_API_KEY=sk-...
 **Config:**
 ```yaml
 adapter: openai-assistants
-assistant_id: asst_xxxxxxxxxxxxx  # Your assistant ID
 timeout: 120.0
+
+model:
+  name: gpt-4o
+
+# Optional: system instructions and built-in tools
+# instructions: "You are a helpful technical assistant."
+# tools:
+#   - code_interpreter
+
+# Optional: dashboard-managed Prompt object instead of inline instructions
+# prompt_id: pmpt_xxxxxxxxxxxxx
 ```
 
 **Test Case Example:**
 ```yaml
-name: "OpenAI Assistant Test"
+name: "OpenAI Agent Test"
 input:
   query: "Calculate the fibonacci sequence up to 10"
   context:
-    assistant_id: asst_xxxxxxxxxxxxx  # Can override here too
+    prompt_id: pmpt_xxxxxxxxxxxxx  # Can override here too
 
 expected:
   tools: [code_interpreter]
@@ -213,9 +228,9 @@ thresholds:
 ```
 
 **Notes:**
-- Requires `openai` Python package: `pip install openai`
-- Uses threads and runs under the hood
-- Automatically polls for completion
+- Requires `openai` Python package: `pip install "openai>=1.101.0"`
+- Uses the Responses + Conversations APIs under the hood
+- Runs are a single synchronous call — no polling
 
 ---
 

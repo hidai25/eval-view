@@ -71,6 +71,10 @@ def create_adapter(
             allow_private_urls=allow_private_urls,
         )
 
+    if adapter_type in ("openai", "openai-assistants"):
+        # Talks to the OpenAI Responses API via the SDK; takes no endpoint.
+        return adapter_class(timeout=timeout)
+
     return adapter_class(endpoint=endpoint, timeout=timeout)
 
 

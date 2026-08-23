@@ -485,53 +485,35 @@ def mock_aiohttp_session():
 
 @pytest.fixture
 def mock_openai_client():
-    """Mock OpenAI client for Assistants adapter tests."""
+    """Mock OpenAI client for Responses API adapter tests."""
     with patch("openai.AsyncOpenAI") as mock_class:
         mock_client = AsyncMock()
 
         # Mock models.list for health check
         mock_client.models.list = AsyncMock(return_value=MagicMock(data=[]))
 
-        # Mock beta.assistants.create
-        mock_client.beta.assistants.create = AsyncMock(
-            return_value=MagicMock(id="asst_123")
-        )
-        mock_client.beta.assistants.delete = AsyncMock()
-
-        # Mock beta.threads.create
-        mock_client.beta.threads.create = AsyncMock(
-            return_value=MagicMock(id="thread_123")
+        # Mock conversations.create (threads replacement)
+        mock_client.conversations.create = AsyncMock(
+            return_value=MagicMock(id="conv_123")
         )
 
-        # Mock beta.threads.messages
-        mock_client.beta.threads.messages.create = AsyncMock()
-        mock_client.beta.threads.messages.list = AsyncMock(
-            return_value=MagicMock(
-                data=[
-                    MagicMock(
-                        role="assistant",
-                        content=[
-                            MagicMock(type="text", text=MagicMock(value="Success!"))
-                        ],
-                    )
-                ]
-            )
+        # Mock responses.create — a completed response with one message item
+        mock_message = MagicMock(
+            type="message",
+            role="assistant",
+            content=[MagicMock(type="output_text", text="Success!")],
         )
-
-        # Mock beta.threads.runs
-        mock_run = MagicMock(
-            id="run_123",
+        mock_response = MagicMock(
+            id="resp_123",
             status="completed",
-            usage=MagicMock(prompt_tokens=100, completion_tokens=50),
-            last_error=None,
+            model="gpt-4o",
+            usage=MagicMock(input_tokens=100, output_tokens=50),
+            error=None,
+            incomplete_details=None,
+            output=[mock_message],
+            output_text="Success!",
         )
-        mock_client.beta.threads.runs.create = AsyncMock(return_value=mock_run)
-        mock_client.beta.threads.runs.retrieve = AsyncMock(return_value=mock_run)
-
-        # Mock beta.threads.runs.steps
-        mock_client.beta.threads.runs.steps.list = AsyncMock(
-            return_value=MagicMock(data=[])
-        )
+        mock_client.responses.create = AsyncMock(return_value=mock_response)
 
         mock_class.return_value = mock_client
         yield mock_client

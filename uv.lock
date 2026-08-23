@@ -660,7 +660,7 @@ requires-dist = [
     { name = "mistralai", marker = "extra == 'all'", specifier = ">=1.0.0" },
     { name = "mistralai", marker = "extra == 'mistral'", specifier = ">=1.0.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.7.0" },
-    { name = "openai", specifier = ">=1.12.0" },
+    { name = "openai", specifier = ">=1.101.0" },
     { name = "plotly", marker = "extra == 'all'", specifier = ">=5.0" },
     { name = "plotly", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "plotly", marker = "extra == 'reports'", specifier = ">=5.0" },

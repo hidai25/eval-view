@@ -2,7 +2,7 @@
 
 ## Goal
 
-Make an adapter (LangGraph, CrewAI, OpenAI Assistants, your custom one)
+Make an adapter (LangGraph, CrewAI, OpenAI, your custom one)
 emit traces using EvalView's portable agent-layer OTel semantic
 conventions. The result: traces from your adapter become consumable by
 any tool that adopts the same vocabulary — not just EvalView.

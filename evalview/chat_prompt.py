@@ -34,7 +34,7 @@ LLMs are non-deterministic. Statistical mode runs tests multiple times:
 | http | Generic REST API (default) | Yes |
 | langgraph | LangGraph / LangGraph Cloud | Yes |
 | crewai | CrewAI multi-agent | Yes |
-| openai-assistants | OpenAI Assistants API | No (uses SDK) |
+| openai-assistants | OpenAI Responses API | No (uses SDK) |
 | anthropic / claude | Anthropic Claude API | Yes |
 | huggingface / hf | HuggingFace Inference | Yes |
 | goose | Block's Goose CLI agent | No (uses CLI) |
@@ -46,7 +46,7 @@ LLMs are non-deterministic. Statistical mode runs tests multiple times:
 - examples/langgraph/ - LangGraph ReAct agent with search + calculator
 - examples/crewai/ - CrewAI multi-agent example
 - examples/anthropic/ - Claude API example
-- examples/openai-assistants/ - OpenAI Assistants example
+- examples/openai-assistants/ - OpenAI Responses API example
 - examples/huggingface/ - HuggingFace inference example
 
 ## HOW TO TEST GOOSE
@@ -280,7 +280,7 @@ Use `/skill` command in chat to run skill tests directly.
 | codex | OpenAI Codex CLI | Implemented |
 | langgraph | LangGraph SDK integration | Implemented |
 | crewai | CrewAI framework | Implemented |
-| openai-assistants | OpenAI Assistants API | Implemented |
+| openai-assistants | OpenAI Responses API | Implemented |
 | custom | User-provided runner script | Implemented |
 
 ### Two-Phase Evaluation

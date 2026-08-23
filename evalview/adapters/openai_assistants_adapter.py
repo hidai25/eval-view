@@ -1,13 +1,20 @@
-"""OpenAI Assistants API adapter for EvalView.
+"""OpenAI Responses API adapter for EvalView.
 
-Supports testing OpenAI Assistants with proper step tracking.
+Formerly the OpenAI Assistants API adapter. OpenAI removed the Assistants
+API (threads/runs/assistants) on August 26, 2026; its replacement is the
+Responses API for execution plus the Conversations API for multi-turn
+state. The adapter keeps its historical registry name
+("openai-assistants") so existing configs keep working, but it now speaks
+the Responses API. Server-side Assistant objects no longer exist — model,
+instructions, and tools are supplied per-request from adapter config, or
+via a dashboard-managed Prompt object referenced by ``prompt_id``.
 """
 
 import asyncio
 import json
 import os
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 import logging
 
 from evalview.adapters.base import AgentAdapter
@@ -23,13 +30,28 @@ from evalview.core.tracing import Tracer
 
 logger = logging.getLogger(__name__)
 
+# Output item types that are model narration rather than tool activity.
+_NON_TOOL_ITEM_TYPES = {"message", "reasoning", "compaction"}
+
 
 class OpenAIAssistantsAdapter(AgentAdapter):
-    """Adapter for OpenAI Assistants API.
+    """Adapter for OpenAI agents via the Responses + Conversations APIs.
 
     Requires:
     - OPENAI_API_KEY environment variable
-    - assistant_id in context or configured
+
+    Optional configuration:
+    - model via model_config (defaults to gpt-4o)
+    - instructions: system prompt for the agent
+    - prompt_id: id of a dashboard-managed Prompt object (pmpt_...),
+      also read from OPENAI_PROMPT_ID or test-case context
+    - tools: list of built-in tool names ("code_interpreter",
+      "web_search", "file_search") or raw Responses API tool dicts
+
+    The legacy ``assistant_id`` setting is accepted but ignored: OpenAI
+    removed the Assistants API on 2026-08-26, so asst_... ids can no
+    longer be resolved. Configure model/instructions/tools (or a
+    prompt_id) instead.
     """
 
     def __init__(
@@ -38,18 +60,24 @@ class OpenAIAssistantsAdapter(AgentAdapter):
         timeout: float = 120.0,
         verbose: bool = False,
         model_config: Optional[Dict[str, Any]] = None,
+        instructions: Optional[str] = None,
+        prompt_id: Optional[str] = None,
+        tools: Optional[List[Union[str, Dict[str, Any]]]] = None,
     ):
-        self.assistant_id = assistant_id
+        self.assistant_id = assistant_id  # legacy, unused
         self.timeout = timeout
         self.verbose = verbose
         self.model_config = model_config or {}
+        self.instructions = instructions
+        self.prompt_id = prompt_id
+        self.tools = tools
 
     @property
     def name(self) -> str:
         return "openai-assistants"
 
     async def execute(self, query: str, context: Optional[Dict[str, Any]] = None) -> ExecutionTrace:
-        """Execute OpenAI Assistant and capture trace."""
+        """Execute the agent via the Responses API and capture a trace."""
         try:
             from openai import AsyncOpenAI
         except ImportError:
@@ -58,17 +86,20 @@ class OpenAIAssistantsAdapter(AgentAdapter):
         from evalview.core.rationale import RationaleCollector
 
         context = context or {}
-        # Check context, then adapter config, then environment variable
-        assistant_id = context.get("assistant_id") or self.assistant_id or os.getenv("OPENAI_ASSISTANT_ID")
 
-        if not assistant_id:
-            # Try to auto-create with user confirmation
-            assistant_id = await self._auto_create_assistant(client=None)
-            if not assistant_id:
-                raise ValueError(
-                    "assistant_id required. Set OPENAI_ASSISTANT_ID env var, "
-                    "add to config, or include in test case context"
-                )
+        legacy_assistant_id = (
+            context.get("assistant_id") or self.assistant_id or os.getenv("OPENAI_ASSISTANT_ID")
+        )
+        if legacy_assistant_id:
+            logger.warning(
+                "assistant_id (%s) is ignored: OpenAI removed the Assistants API "
+                "on 2026-08-26. Configure model/instructions/tools or prompt_id "
+                "instead.",
+                legacy_assistant_id,
+            )
+
+        prompt_id = context.get("prompt_id") or self.prompt_id or os.getenv("OPENAI_PROMPT_ID")
+        model = self.model_config.get("name", "gpt-4o")
 
         start_time = datetime.now()
 
@@ -76,63 +107,53 @@ class OpenAIAssistantsAdapter(AgentAdapter):
         tracer = Tracer()
 
         if self.verbose:
-            logger.info(f"🚀 Executing OpenAI Assistant: {query}...")
-            logger.debug(f"Assistant ID: {assistant_id}")
+            logger.info(f"🚀 Executing OpenAI agent: {query}...")
+            logger.debug(f"Model: {model}")
 
         client = AsyncOpenAI()
 
         # Start agent-level span
-        async with tracer.start_span_async("Assistant Execution", SpanKind.AGENT):
-            # Create thread
-            thread = await client.beta.threads.create()
+        async with tracer.start_span_async("Agent Execution", SpanKind.AGENT):
+            # Conversations replace threads: they hold the multi-turn state
+            # and give us a stable session id.
+            conversation = await client.conversations.create()
 
-            # Add message
-            await client.beta.threads.messages.create(
-                thread_id=thread.id,
-                role="user",
-                content=query,
-            )
+            request: Dict[str, Any] = {
+                "model": model,
+                "input": query,
+                "conversation": conversation.id,
+            }
+            if prompt_id:
+                request["prompt"] = {"id": prompt_id}
+            if self.instructions:
+                request["instructions"] = self.instructions
+            tools = self._build_tools(has_prompt=bool(prompt_id))
+            if tools:
+                request["tools"] = tools
 
-            # Run assistant
+            # Responses run synchronously — no run polling loop.
             run_start = datetime.now()
-            run = await client.beta.threads.runs.create(
-                thread_id=thread.id,
-                assistant_id=assistant_id,
-            )
-
-            # Poll for completion
-            max_wait = self.timeout
-            waited = 0.0
-            poll_interval = 0.5
-
-            while run.status in ["queued", "in_progress", "requires_action"]:
-                if waited >= max_wait:
-                    raise TimeoutError(f"Assistant run exceeded timeout of {max_wait}s")
-
-                await asyncio.sleep(poll_interval)
-                waited += poll_interval
-
-                run = await client.beta.threads.runs.retrieve(
-                    thread_id=thread.id,
-                    run_id=run.id,
+            try:
+                response = await asyncio.wait_for(
+                    client.responses.create(**request),
+                    timeout=self.timeout,
                 )
-
-                if self.verbose and run.status == "in_progress":
-                    logger.debug(f"⏳ Run status: {run.status}")
-
+            except asyncio.TimeoutError:
+                raise TimeoutError(f"Response exceeded timeout of {self.timeout}s")
             run_end = datetime.now()
             run_duration = (run_end - run_start).total_seconds() * 1000
 
-            if run.status != "completed":
-                error_msg = f"Run failed with status: {run.status}"
-                if run.last_error:
-                    error_msg += f" - {run.last_error.message}"
+            if response.status not in (None, "completed"):
+                error_msg = f"Response failed with status: {response.status}"
+                if getattr(response, "error", None):
+                    error_msg += f" - {response.error.message}"
                 raise RuntimeError(error_msg)
 
             # Record LLM call span
-            model_name = run.model if hasattr(run, "model") else "gpt-4o"
-            input_tokens = run.usage.prompt_tokens if hasattr(run, "usage") and run.usage else 0
-            output_tokens = run.usage.completion_tokens if hasattr(run, "usage") and run.usage else 0
+            model_name = getattr(response, "model", None) or model
+            usage = getattr(response, "usage", None)
+            input_tokens = getattr(usage, "input_tokens", 0) or 0
+            output_tokens = getattr(usage, "output_tokens", 0) or 0
 
             # Calculate cost
             token_usage = TokenUsage(input_tokens=input_tokens, output_tokens=output_tokens)
@@ -150,32 +171,27 @@ class OpenAIAssistantsAdapter(AgentAdapter):
             )
 
             # Extract steps and record tool spans
-            steps = await self._extract_steps_with_tracing(client, thread.id, run.id, tracer)
+            steps = self._extract_steps_with_tracing(response, tracer)
 
-            # Get final message
-            messages = await client.beta.threads.messages.list(thread_id=thread.id)
-            final_output = ""
-            if messages.data:
-                for content in messages.data[0].content:
-                    if content.type == "text":
-                        final_output += content.text.value
+            # Final output: aggregated text of the response's message items
+            final_output = getattr(response, "output_text", "") or ""
 
         end_time = datetime.now()
 
-        # Calculate metrics from run
-        metrics = self._calculate_metrics(run, steps, start_time, end_time)
+        # Calculate metrics from response
+        metrics = self._calculate_metrics(response, steps, start_time, end_time)
 
         # Build trace context
         trace_context = tracer.build_trace_context()
 
         if self.verbose:
-            logger.info(f"✅ Assistant completed in {metrics.total_latency:.0f}ms")
+            logger.info(f"✅ Agent completed in {metrics.total_latency:.0f}ms")
 
         # Rationale capture: emit one tool_choice event per tool call so
         # cloud can group identical (query, prior-tools) decisions across
-        # runs. OpenAI Assistants doesn't expose o-series reasoning
-        # summaries through the Assistants API, so rationale_text stays
-        # None — the event itself is the signal.
+        # runs. Reasoning summaries from the Responses API are not
+        # captured here, so rationale_text stays None — the event itself
+        # is the signal.
         rationale = RationaleCollector()
         for i, st in enumerate(steps):
             rationale.capture_tool_choice(
@@ -187,7 +203,7 @@ class OpenAIAssistantsAdapter(AgentAdapter):
             )
 
         return ExecutionTrace(
-            session_id=thread.id,
+            session_id=conversation.id,
             start_time=start_time,
             end_time=end_time,
             steps=steps,
@@ -197,116 +213,137 @@ class OpenAIAssistantsAdapter(AgentAdapter):
             rationale_events=rationale.events(),
         )
 
-    async def _extract_steps(self, client, thread_id: str, run_id: str) -> List[StepTrace]:
-        """Extract steps from run with actual timing from OpenAI."""
-        return await self._extract_steps_with_tracing(client, thread_id, run_id, None)
+    def _build_tools(self, has_prompt: bool = False) -> List[Dict[str, Any]]:
+        """Translate configured tools into Responses API tool params.
 
-    async def _extract_steps_with_tracing(
-        self, client, thread_id: str, run_id: str, tracer: Optional[Tracer]
-    ) -> List[StepTrace]:
-        """Extract steps from run with actual timing and optional tracing."""
+        Accepts shorthand names or raw tool dicts. Defaults to
+        code_interpreter, matching the adapter's historical default —
+        except when running a dashboard Prompt object, whose own tool
+        configuration would be silently overridden by request-level
+        tools, so no defaults are injected then.
+        """
+        if self.tools is not None:
+            configured = self.tools
+        elif has_prompt:
+            configured = []
+        else:
+            configured = ["code_interpreter"]
+
+        tools: List[Dict[str, Any]] = []
+        for tool in configured:
+            if isinstance(tool, dict):
+                tools.append(tool)
+                continue
+
+            name = str(tool).lower()
+            if name in ("code_interpreter", "code"):
+                tools.append({"type": "code_interpreter", "container": {"type": "auto"}})
+            elif name == "web_search":
+                tools.append({"type": "web_search"})
+            elif name in ("file_search", "retrieval"):
+                vector_store_ids = [
+                    vs.strip()
+                    for vs in os.getenv("OPENAI_VECTOR_STORE_IDS", "").split(",")
+                    if vs.strip()
+                ]
+                if vector_store_ids:
+                    tools.append({"type": "file_search", "vector_store_ids": vector_store_ids})
+                else:
+                    logger.warning(
+                        "file_search requires vector store ids in the Responses API; "
+                        "set OPENAI_VECTOR_STORE_IDS or pass a full tool dict. Skipping."
+                    )
+            else:
+                logger.warning(f"Unknown tool shorthand '{tool}' — skipping.")
+        return tools
+
+    def _extract_steps(self, response) -> List[StepTrace]:
+        """Extract steps from a response's output items."""
+        return self._extract_steps_with_tracing(response, None)
+
+    def _extract_steps_with_tracing(self, response, tracer: Optional[Tracer]) -> List[StepTrace]:
+        """Extract tool-call steps from response output items.
+
+        The Responses API returns tool activity inline as typed output
+        items (function_call, code_interpreter_call, file_search_call,
+        ...) instead of the removed Run Steps API. Per-item timing is not
+        exposed, so step latency is 0 and cost distribution falls back to
+        an even split.
+        """
         steps = []
 
-        # Get run steps
-        run_steps = await client.beta.threads.runs.steps.list(
-            thread_id=thread_id,
-            run_id=run_id,
-        )
+        for item in getattr(response, "output", None) or []:
+            item_type = getattr(item, "type", "")
 
-        for i, step in enumerate(run_steps.data):
-            # Calculate actual step latency from timestamps
-            step_latency = 0.0
-            if hasattr(step, 'created_at') and hasattr(step, 'completed_at'):
-                if step.created_at and step.completed_at:
-                    step_latency = (step.completed_at - step.created_at) * 1000  # ms
+            if item_type in _NON_TOOL_ITEM_TYPES:
+                # Narration/message items aren't user-facing tool steps.
+                continue
 
-            if step.type == "tool_calls":
-                # Extract tool calls
-                for tool_call in step.step_details.tool_calls:
-                    if tool_call.type == "function":
-                        tool_name = tool_call.function.name
-                        parameters = (
-                            json.loads(tool_call.function.arguments)
-                            if tool_call.function.arguments
-                            else {}
-                        )
-                        output = (
-                            tool_call.function.output
-                            if hasattr(tool_call.function, "output")
-                            else None
-                        )
+            step_id = getattr(item, "id", None) or getattr(item, "call_id", None) or ""
 
-                        step_trace = StepTrace(
-                            step_id=tool_call.id,
-                            step_name=tool_name,
-                            tool_name=tool_name,
-                            parameters=parameters,
-                            output=output,
-                            success=True,
-                            metrics=StepMetrics(latency=step_latency, cost=0.0),
-                        )
-                        steps.append(step_trace)
+            if item_type == "function_call":
+                tool_name = item.name
+                step_name = tool_name
+                try:
+                    parameters = json.loads(item.arguments) if item.arguments else {}
+                except (ValueError, TypeError):
+                    parameters = {"raw": item.arguments}
+                # Function outputs live in separate function_call_output
+                # items supplied by the caller; a single eval turn has none.
+                output = None
 
-                        # Record tool span
-                        if tracer:
-                            tracer.record_tool_call(
-                                tool_name=tool_name,
-                                parameters=parameters,
-                                result=output,
-                                duration_ms=step_latency,
-                            )
+            elif item_type == "code_interpreter_call":
+                tool_name = "code_interpreter"
+                step_name = "Code Interpreter"
+                parameters = {"input": item.code}
+                output = "\n".join(
+                    out.logs
+                    for out in (item.outputs or [])
+                    if getattr(out, "type", "") == "logs"
+                )
 
-                    elif tool_call.type == "code_interpreter":
-                        tool_name = "code_interpreter"
-                        parameters = {"input": tool_call.code_interpreter.input}
-                        output = "\n".join(
-                            [log.get("text", "") for log in tool_call.code_interpreter.outputs]
-                        )
+            elif item_type == "file_search_call":
+                tool_name = "file_search"
+                step_name = "File Search"
+                parameters = {"queries": list(getattr(item, "queries", []) or [])}
+                output = None
 
-                        step_trace = StepTrace(
-                            step_id=tool_call.id,
-                            step_name="Code Interpreter",
-                            tool_name=tool_name,
-                            parameters=parameters,
-                            output=output,
-                            success=True,
-                            metrics=StepMetrics(latency=step_latency, cost=0.0),
-                        )
-                        steps.append(step_trace)
+            elif item_type == "web_search_call":
+                tool_name = "web_search"
+                step_name = "Web Search"
+                parameters = {}
+                output = None
 
-                        # Record tool span
-                        if tracer:
-                            tracer.record_tool_call(
-                                tool_name=tool_name,
-                                parameters=parameters,
-                                result=output,
-                                duration_ms=step_latency,
-                            )
+            elif item_type.endswith("_call"):
+                # Future/other built-in tools: record generically so the
+                # trace stays complete.
+                tool_name = item_type[: -len("_call")]
+                step_name = tool_name
+                parameters = {}
+                output = None
 
-                    elif tool_call.type == "retrieval":
-                        tool_name = "retrieval"
-                        step_trace = StepTrace(
-                            step_id=tool_call.id,
-                            step_name="File Search",
-                            tool_name=tool_name,
-                            parameters={},
-                            output=None,
-                            success=True,
-                            metrics=StepMetrics(latency=step_latency, cost=0.0),
-                        )
-                        steps.append(step_trace)
+            else:
+                continue
 
-                        # Record tool span
-                        if tracer:
-                            tracer.record_tool_call(
-                                tool_name=tool_name,
-                                parameters={},
-                                result=None,
-                                duration_ms=step_latency,
-                            )
+            step_trace = StepTrace(
+                step_id=step_id,
+                step_name=step_name,
+                tool_name=tool_name,
+                parameters=parameters,
+                output=output,
+                success=True,
+                metrics=StepMetrics(latency=0.0, cost=0.0),
+            )
+            steps.append(step_trace)
 
-            # Skip message_creation - it's an internal step, not a user-facing tool
-            # Users shouldn't need to expect this in their test cases
+            # Record tool span
+            if tracer:
+                tracer.record_tool_call(
+                    tool_name=tool_name,
+                    parameters=parameters,
+                    result=output,
+                    duration_ms=0.0,
+                )
 
         return steps
 
@@ -330,24 +367,25 @@ class OpenAIAssistantsAdapter(AgentAdapter):
         return 0.0
 
     def _calculate_metrics(
-        self, run, steps: List[StepTrace], start_time: datetime, end_time: datetime
+        self, response, steps: List[StepTrace], start_time: datetime, end_time: datetime
     ) -> ExecutionMetrics:
-        """Calculate execution metrics from run."""
+        """Calculate execution metrics from the response."""
         total_latency = (end_time - start_time).total_seconds() * 1000
 
-        # OpenAI provides usage - convert to TokenUsage object
+        # Responses report usage as input/output tokens
         token_usage = None
-        if hasattr(run, "usage") and run.usage:
+        usage = getattr(response, "usage", None)
+        if usage:
             token_usage = TokenUsage(
-                input_tokens=getattr(run.usage, "prompt_tokens", 0),
-                output_tokens=getattr(run.usage, "completion_tokens", 0),
+                input_tokens=getattr(usage, "input_tokens", 0) or 0,
+                output_tokens=getattr(usage, "output_tokens", 0) or 0,
                 cached_tokens=0,
             )
 
         # Calculate cost based on model and tokens (2024-2025 pricing)
         total_cost = 0.0
-        if token_usage and hasattr(run, "model"):
-            model = run.model
+        if token_usage and getattr(response, "model", None):
+            model = response.model
             input_tokens = token_usage.input_tokens
             output_tokens = token_usage.output_tokens
 
@@ -383,94 +421,13 @@ class OpenAIAssistantsAdapter(AgentAdapter):
             total_tokens=token_usage,
         )
 
-    async def _auto_create_assistant(self, client=None) -> Optional[str]:
-        """Auto-create an assistant with user confirmation.
-
-        Returns:
-            The created assistant_id or None if user declined
-        """
-        from rich.console import Console
-        from rich.prompt import Confirm
-
-        console = Console()
-
-        console.print("\n[yellow]No OpenAI Assistant ID found.[/yellow]")
-        console.print("\nWould you like to create one automatically?")
-        console.print("[dim]This will create an assistant with code_interpreter tool for testing.[/dim]\n")
-
-        if not Confirm.ask("[bold]Create assistant?[/bold]", default=True):
-            console.print("[dim]Skipped. Set OPENAI_ASSISTANT_ID manually to continue.[/dim]")
-            return None
-
-        try:
-            from openai import AsyncOpenAI
-
-            if client is None:
-                client = AsyncOpenAI()
-
-            console.print("\n[dim]Creating assistant...[/dim]")
-
-            # Create assistant with useful default tools
-            assistant = await client.beta.assistants.create(
-                name="EvalView Test Assistant",
-                instructions="You are a helpful assistant for testing. Use tools when appropriate to answer questions accurately.",
-                model=self.model_config.get("name", "gpt-4o"),
-                tools=[
-                    {"type": "code_interpreter"},  # For calculations, data analysis
-                ],
-            )
-
-            assistant_id = assistant.id
-
-            # Save to .env.local
-            self._save_assistant_id(assistant_id)
-
-            console.print(f"[green]✓ Created assistant: {assistant_id}[/green]")
-            console.print("[dim]Saved to .env.local[/dim]\n")
-
-            # Update environment for current session
-            os.environ["OPENAI_ASSISTANT_ID"] = assistant_id
-            self.assistant_id = assistant_id
-
-            return assistant_id
-
-        except Exception as e:
-            console.print(f"[red]Failed to create assistant: {e}[/red]")
-            return None
-
-    def _save_assistant_id(self, assistant_id: str) -> None:
-        """Save assistant ID to .env.local file."""
-        env_file = ".env.local"
-        line = f"OPENAI_ASSISTANT_ID={assistant_id}\n"
-
-        # Read existing content
-        existing_lines = []
-        if os.path.exists(env_file):
-            with open(env_file, "r") as f:
-                existing_lines = f.readlines()
-
-        # Remove existing OPENAI_ASSISTANT_ID line if present
-        new_lines = [line for line in existing_lines if not line.startswith("OPENAI_ASSISTANT_ID=")]
-
-        # Ensure last line ends with newline
-        if new_lines and not new_lines[-1].endswith("\n"):
-            new_lines[-1] += "\n"
-
-        # Add new assistant ID
-        new_lines.append(line)
-
-        # Write back
-        with open(env_file, "w") as f:
-            f.writelines(new_lines)
-
     async def health_check(self) -> bool:
         """Check if OpenAI API is accessible."""
         try:
             from openai import AsyncOpenAI
 
             client = AsyncOpenAI()
-            # Try to list assistants
-            await client.beta.assistants.list(limit=1)
+            await client.models.list()
             return True
         except Exception:
             return False

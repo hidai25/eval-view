@@ -1,6 +1,6 @@
 # EvalView Adapters — Connect Any AI Agent to EvalView
 
-> Adapters are the bridge between EvalView and your AI agent. EvalView includes dedicated adapters for LangGraph, CrewAI, OpenAI Assistants, Anthropic Claude, HuggingFace, Ollama, MCP servers, and generic HTTP/streaming APIs. You can also build custom adapters for proprietary frameworks.
+> Adapters are the bridge between EvalView and your AI agent. EvalView includes dedicated adapters for LangGraph, CrewAI, OpenAI (Responses API), Anthropic Claude, HuggingFace, Ollama, MCP servers, and generic HTTP/streaming APIs. You can also build custom adapters for proprietary frameworks.
 
 Adapters connect EvalView to your AI agent's API. EvalView includes adapters for common patterns and makes it easy to build custom ones.
 
@@ -383,11 +383,11 @@ class LangServeAdapter(AgentAdapter):
         # ... build ExecutionTrace
 ```
 
-### OpenAI Assistants API
+### OpenAI Responses API
 
 ```python
 class OpenAIAssistantsAdapter(AgentAdapter):
-    """Adapter for OpenAI Assistants API."""
+    """Adapter for the OpenAI Responses API (formerly Assistants)."""
 
     async def execute(self, query: str, context=None) -> ExecutionTrace:
         import openai
@@ -395,42 +395,37 @@ class OpenAIAssistantsAdapter(AgentAdapter):
         client = openai.AsyncOpenAI()
         start_time = datetime.now()
 
-        # Create thread and run
-        thread = await client.beta.threads.create()
-        await client.beta.threads.messages.create(
-            thread_id=thread.id,
-            role="user",
-            content=query
+        # Conversations replace threads for multi-turn state
+        conversation = await client.conversations.create()
+
+        # A response replaces the message + run + polling loop
+        response = await client.responses.create(
+            model="gpt-4o",
+            conversation=conversation.id,
+            input=query,
+            tools=[{"type": "code_interpreter", "container": {"type": "auto"}}],
         )
 
-        run = await client.beta.threads.runs.create(
-            thread_id=thread.id,
-            assistant_id=context.get("assistant_id")
-        )
-
-        # Poll for completion
-        while run.status in ["queued", "in_progress"]:
-            await asyncio.sleep(0.5)
-            run = await client.beta.threads.runs.retrieve(
-                thread_id=thread.id,
-                run_id=run.id
-            )
-
-        # Extract steps
+        # Extract steps from typed output items (replaces run steps)
         steps = []
-        for step in run.steps:
-            if step.type == "tool_calls":
-                for tool_call in step.step_details.tool_calls:
-                    steps.append(StepTrace(
-                        step_id=tool_call.id,
-                        tool_name=tool_call.function.name,
-                        parameters=json.loads(tool_call.function.arguments),
-                        # ... more fields
-                    ))
+        for item in response.output:
+            if item.type == "function_call":
+                steps.append(StepTrace(
+                    step_id=item.id,
+                    tool_name=item.name,
+                    parameters=json.loads(item.arguments),
+                    # ... more fields
+                ))
+            elif item.type == "code_interpreter_call":
+                steps.append(StepTrace(
+                    step_id=item.id,
+                    tool_name="code_interpreter",
+                    parameters={"input": item.code},
+                    # ... more fields
+                ))
 
-        # Get final message
-        messages = await client.beta.threads.messages.list(thread_id=thread.id)
-        final_output = messages.data[0].content[0].text.value
+        # Final message text
+        final_output = response.output_text
 
         end_time = datetime.now()
         # ... build ExecutionTrace

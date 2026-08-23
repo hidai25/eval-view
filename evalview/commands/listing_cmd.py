@@ -102,7 +102,7 @@ def _adapters_list():
         "http": ("Generic REST API adapter", "Yes"),
         "langgraph": ("LangGraph / LangGraph Cloud", "Yes"),
         "crewai": ("CrewAI multi-agent", "Yes"),
-        "openai-assistants": ("OpenAI Assistants API", "No (uses SDK)"),
+        "openai-assistants": ("OpenAI Responses API", "No (uses SDK)"),
         "anthropic": ("Anthropic Claude API", "Yes"),
         "claude": ("Alias for anthropic", "Yes"),
         "huggingface": ("HuggingFace Inference", "Yes"),

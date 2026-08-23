@@ -50,7 +50,7 @@ LangSmith is for **observability and tracing** — it shows you what your agent 
 Braintrust is a broad evaluation platform for scoring agent quality, experiments, and production data loops. EvalView focuses specifically on **behavior-regression detection** — snapshotting an agent's full trajectory (tools, parameters, order) as a golden baseline and diffing against it to catch drift. The sharper distinction is focus and footprint: EvalView is a lightweight, fully open-source (Apache 2.0) CLI/CI gate rather than a hosted eval platform. Many teams use a scoring platform for breadth and EvalView for the merge-time regression gate.
 
 ### How is EvalView different from Promptfoo?
-Promptfoo is primarily a prompt testing and comparison tool. EvalView is an **agent testing framework** with native adapters for agent frameworks (LangGraph, CrewAI, OpenAI Assistants), tool call verification, golden baseline diffing, and statistical mode. EvalView tests agent behavior (tools called, sequence, cost, latency) not just prompt outputs.
+Promptfoo is primarily a prompt testing and comparison tool. EvalView is an **agent testing framework** with native adapters for agent frameworks (LangGraph, CrewAI, OpenAI), tool call verification, golden baseline diffing, and statistical mode. EvalView tests agent behavior (tools called, sequence, cost, latency) not just prompt outputs.
 
 ### Is EvalView like pytest for AI agents?
 Yes, that's a good analogy. EvalView provides YAML-based test cases, assertions on tool calls and output quality, CI/CD integration with exit codes, and regression detection through golden baselines. It's the testing layer that AI agent development has been missing.
@@ -65,8 +65,8 @@ Yes. EvalView has a dedicated `langgraph` adapter with native thread tracking an
 ### Does EvalView work with CrewAI?
 Yes. EvalView has a dedicated `crewai` adapter for task-based execution and multi-agent crews. See [examples/crewai/](../examples/crewai/).
 
-### Does EvalView work with OpenAI Assistants?
-Yes. EvalView has a dedicated `openai-assistants` adapter with function calling and code interpreter support.
+### Does EvalView work with OpenAI agents?
+Yes. EvalView has a dedicated `openai-assistants` adapter (historical name — it runs on the Responses API, since OpenAI removed the Assistants API on August 26, 2026) with function calling and code interpreter support.
 
 ### Does EvalView work with Anthropic Claude?
 Yes. EvalView has a dedicated `anthropic` adapter. See [examples/anthropic/](../examples/anthropic/).

@@ -50,7 +50,7 @@ A `RationaleEvent` is emitted at every decision point:
 | Adapter | `tool_choice` | `branch` | Reasoning text |
 |---|:---:|:---:|---|
 | Anthropic | ✅ | — | `thinking` blocks (when enabled) |
-| OpenAI Assistants | ✅ | — | Not exposed by Assistants API |
+| OpenAI (Responses API) | ✅ | — | Reasoning summaries not captured |
 | LangGraph | ✅ | — | — |
 | CrewAI (native) | ✅ | ✅ | — |
 | Others | — | — | — |

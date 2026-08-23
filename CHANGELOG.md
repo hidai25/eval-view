@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Migrated off the OpenAI Assistants API before its August 26, 2026 removal.** Both OpenAI adapters (`evalview/adapters/openai_assistants_adapter.py` and `evalview/skills/adapters/openai_assistants_adapter.py`) now run on the Responses API, with the Conversations API supplying session state — every `client.beta.threads.*` / `client.beta.assistants.*` call site is gone. The `openai-assistants` adapter name, `AgentType.OPENAI_ASSISTANTS`, and existing YAML configs keep working. Requires `openai>=1.101.0`.
+  - Runs are now a single synchronous `responses.create` call — no more thread creation, run polling, or Run Steps fetching. Tool activity is read from the response's typed output items (`function_call`, `code_interpreter_call`, `file_search_call`, ...).
+  - Server-side Assistant objects no longer exist: model, `instructions`, and `tools` come from adapter config (new keys, alongside the existing `model:` block), or point `prompt_id` / `OPENAI_PROMPT_ID` at a dashboard-managed Prompt object. `assistant_id` / `OPENAI_ASSISTANT_ID` are ignored with a warning, and the interactive assistant auto-creation flow is gone.
+  - Custom function calls no longer abort the run (the Assistants `requires_action` cancel path): they are recorded as tool-call trace events and the run completes.
+  - `file_search` now needs explicit vector store ids (a Responses API requirement) — set `OPENAI_VECTOR_STORE_IDS` (comma-separated) or pass a full tool dict.
+  - Per-step latency is no longer available (the Responses API doesn't expose per-item timing), so step cost attribution uses the even-split fallback.
+  - `examples/openai-assistants/` updated for the new flow; `create_assistant.py` removed.
+
 ## [0.8.1] - 2026-07-26
 
 ### Added

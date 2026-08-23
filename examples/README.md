@@ -1,6 +1,6 @@
 # EvalView Examples — Working Test Configurations for AI Agent Frameworks
 
-> Ready-to-use EvalView test configurations for LangGraph, CrewAI, AutoGen, Dify, OpenAI Assistants, Anthropic Claude, HuggingFace, Ollama, and more. Each example includes test cases, adapter configuration, and step-by-step instructions.
+> Ready-to-use EvalView test configurations for LangGraph, CrewAI, AutoGen, Dify, OpenAI, Anthropic Claude, HuggingFace, Ollama, and more. Each example includes test cases, adapter configuration, and step-by-step instructions.
 
 Working examples for the most popular AI agent frameworks.
 
@@ -21,7 +21,7 @@ evalview run --pattern examples/<framework>/test-case.yaml
 | 🚢 **CrewAI** | [crewai/](crewai/) | Multi-agent team collaboration |
 | 🤖 **AutoGen** | [autogen/](autogen/) | Multi-agent conversation patterns |
 | 🎨 **Dify** | [dify/](dify/) | Visual workflow builder |
-| 💬 **OpenAI Assistants** | [openai-assistants/](openai-assistants/) | Native OpenAI Assistants API |
+| 💬 **OpenAI** | [openai-assistants/](openai-assistants/) | Native OpenAI Responses API |
 | 🤖 **Anthropic** | [anthropic/](anthropic/) | Claude direct API + Claude Agent SDK |
 
 ## New to EvalView?
