@@ -181,6 +181,7 @@ thresholds:
 - Function calling
 - Code interpreter
 - Web search
+- File search (requires `OPENAI_VECTOR_STORE_IDS` — the Responses API needs explicit vector store ids)
 
 **Setup:**
 ```bash
@@ -227,9 +228,9 @@ thresholds:
 ```
 
 **Notes:**
-- Requires `openai` Python package: `pip install openai`
-- Uses threads and runs under the hood
-- Automatically polls for completion
+- Requires `openai` Python package: `pip install "openai>=1.101.0"`
+- Uses the Responses + Conversations APIs under the hood
+- Runs are a single synchronous call — no polling
 
 ---
 

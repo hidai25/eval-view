@@ -370,7 +370,10 @@ Use the available tools (code interpreter, file search) as needed to complete ta
         """
         tools: List[Dict[str, Any]] = []
 
-        enable_code_interpreter = True
+        # Default to code_interpreter — unless a dashboard Prompt object is
+        # in use, whose own tool configuration would be silently overridden
+        # by request-level tools.
+        enable_code_interpreter = not self.responses_config.prompt_id
         enable_file_search = False
 
         # Check configured tools

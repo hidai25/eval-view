@@ -127,7 +127,7 @@ class OpenAIAssistantsAdapter(AgentAdapter):
                 request["prompt"] = {"id": prompt_id}
             if self.instructions:
                 request["instructions"] = self.instructions
-            tools = self._build_tools()
+            tools = self._build_tools(has_prompt=bool(prompt_id))
             if tools:
                 request["tools"] = tools
 
@@ -213,13 +213,21 @@ class OpenAIAssistantsAdapter(AgentAdapter):
             rationale_events=rationale.events(),
         )
 
-    def _build_tools(self) -> List[Dict[str, Any]]:
+    def _build_tools(self, has_prompt: bool = False) -> List[Dict[str, Any]]:
         """Translate configured tools into Responses API tool params.
 
         Accepts shorthand names or raw tool dicts. Defaults to
-        code_interpreter, matching the adapter's historical default.
+        code_interpreter, matching the adapter's historical default —
+        except when running a dashboard Prompt object, whose own tool
+        configuration would be silently overridden by request-level
+        tools, so no defaults are injected then.
         """
-        configured = self.tools if self.tools is not None else ["code_interpreter"]
+        if self.tools is not None:
+            configured = self.tools
+        elif has_prompt:
+            configured = []
+        else:
+            configured = ["code_interpreter"]
 
         tools: List[Dict[str, Any]] = []
         for tool in configured:
@@ -276,7 +284,10 @@ class OpenAIAssistantsAdapter(AgentAdapter):
             if item_type == "function_call":
                 tool_name = item.name
                 step_name = tool_name
-                parameters = json.loads(item.arguments) if item.arguments else {}
+                try:
+                    parameters = json.loads(item.arguments) if item.arguments else {}
+                except (ValueError, TypeError):
+                    parameters = {"raw": item.arguments}
                 # Function outputs live in separate function_call_output
                 # items supplied by the caller; a single eval turn has none.
                 output = None
