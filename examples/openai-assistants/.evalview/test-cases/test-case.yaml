@@ -1,12 +1,11 @@
-# EvalView Test Case: OpenAI Assistants
-# Tests an OpenAI Assistants API agent
+# EvalView Test Case: OpenAI Responses API
+# Tests an OpenAI agent via the Responses API
 #
 # Required environment variables:
 #   OPENAI_API_KEY - Your OpenAI API key
-#   OPENAI_ASSISTANT_ID - Your assistant ID (run: python examples/openai-assistants/create_assistant.py)
 
-name: "OpenAI Assistant Analysis"
-description: "Test OpenAI Assistant's ability to analyze and respond"
+name: "OpenAI Agent Analysis"
+description: "Test an OpenAI agent's ability to analyze and respond"
 
 adapter: openai-assistants
 # No endpoint needed - uses OpenAI SDK directly
@@ -29,4 +28,4 @@ expected:
 thresholds:
   min_score: 80
   max_cost: 0.50
-  max_latency: 60000  # 60s - OpenAI Assistants can be slow
+  max_latency: 60000  # 60s - code interpreter runs can be slow

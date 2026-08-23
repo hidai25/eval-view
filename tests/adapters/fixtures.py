@@ -233,12 +233,13 @@ def tapescope_events() -> List[Dict[str, Any]]:
 
 
 @dataclass
-class MockOpenAIRun:
-    """Mock OpenAI Assistants run object."""
+class MockOpenAIResponse:
+    """Mock OpenAI Responses API response object."""
 
-    id: str = "run_abc123"
+    id: str = "resp_abc123"
     status: str = "completed"
     model: str = "gpt-4o"
+    output_text: str = "Done."
 
     @property
     def usage(self):
@@ -246,13 +247,17 @@ class MockOpenAIRun:
 
         class Usage:
             total_tokens = 1500
-            prompt_tokens = 500
-            completion_tokens = 1000
+            input_tokens = 500
+            output_tokens = 1000
 
         return Usage()
 
     @property
-    def last_error(self):
+    def output(self):
+        return []
+
+    @property
+    def error(self):
         return None
 
 

@@ -66,7 +66,7 @@ Positioning reflects each tool's primary focus as of June 2026, based on public 
 
 ## Supported Frameworks
 
-LangGraph, CrewAI, OpenAI Assistants, Anthropic Claude, HuggingFace, Ollama, MCP servers, and any HTTP API.
+LangGraph, CrewAI, OpenAI (Responses API), Anthropic Claude, HuggingFace, Ollama, MCP servers, and any HTTP API.
 
 ## Documentation
 

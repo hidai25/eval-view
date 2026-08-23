@@ -290,7 +290,7 @@ captures what the real layer actually returned.
 | Adapter | Tool mocks | Response mocks | HTTP mocks |
 |---|:---:|:---:|:---:|
 | Anthropic | ✅ | via opt-in | — |
-| OpenAI Assistants | ✅ | via opt-in | — |
+| OpenAI (Responses API) | ✅ | via opt-in | — |
 | LangGraph (HTTP) | — | — | — ¹ |
 | CrewAI native | ✅ | via opt-in | — |
 | HTTP generic | — | — | — ¹ |

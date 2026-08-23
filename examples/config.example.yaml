@@ -8,8 +8,8 @@ adapter: http
 # Your agent's API endpoint
 endpoint: http://localhost:3000/api/agent
 
-# Optional: Assistant/Agent ID (for OpenAI Assistants, etc.)
-# assistant_id: asst_xxxxx
+# Optional: Assistant/Agent ID (for LangGraph graphs, etc.)
+# assistant_id: agent
 
 # Request timeout in seconds
 timeout: 30.0

@@ -1,43 +1,56 @@
-# OpenAI Assistants Example — Testing OpenAI Assistants API Agents with EvalView
+# OpenAI Example — Testing OpenAI Responses API Agents with EvalView
 
-> Test OpenAI Assistants API agents with EvalView — verify function calling, code interpreter usage, file search, output quality, and detect regressions.
+> Test OpenAI agents built on the Responses API with EvalView — verify function calling, code interpreter usage, output quality, and detect regressions.
+
+> **Migration note:** This example previously targeted the OpenAI Assistants
+> API, which OpenAI removed on **August 26, 2026**. The `openai-assistants`
+> adapter keeps its name for config compatibility, but it now runs on the
+> Responses API (with the Conversations API for session state). There is no
+> assistant to create anymore — model, instructions, and tools are configured
+> per-request from your EvalView config.
 
 ## Setup
 
-### 1. Create an Assistant
-
-Go to https://platform.openai.com/assistants and create an assistant, or use the API:
-
-```python
-from openai import OpenAI
-client = OpenAI()
-
-assistant = client.beta.assistants.create(
-    name="Test Assistant",
-    instructions="You are a helpful assistant that can search the web and analyze data.",
-    model="gpt-4o",
-    tools=[
-        {"type": "code_interpreter"},
-        {"type": "file_search"}
-    ]
-)
-
-print(f"Assistant ID: {assistant.id}")
-```
-
-### 2. Set Environment Variables
+### 1. Set Environment Variables
 
 ```bash
 export OPENAI_API_KEY=your-api-key
-export OPENAI_ASSISTANT_ID=asst_xxxxx  # From step 1
+```
+
+That's it — no assistant ID needed. Optionally, if you manage a reusable
+Prompt object in the OpenAI dashboard (https://platform.openai.com/prompts),
+you can point the adapter at it:
+
+```bash
+export OPENAI_PROMPT_ID=pmpt_xxxxx  # Optional
+```
+
+### 2. Configure the Adapter
+
+Model, instructions, and tools live in `.evalview/config.yaml`:
+
+```yaml
+adapter: openai-assistants  # Historical name — runs on the Responses API
+timeout: 120
+
+model:
+  name: gpt-4o
+
+# Optional: system instructions for the agent under test
+# instructions: "You are a helpful technical assistant."
+
+# Optional: built-in tools (defaults to code_interpreter)
+# tools:
+#   - code_interpreter
 ```
 
 ### 3. Run a Simple Server (Optional)
 
-If you need an HTTP wrapper:
+If you need an HTTP wrapper around your own agent:
 
 ```python
 # server.py
+import os
 from flask import Flask, request, jsonify
 from openai import OpenAI
 
@@ -47,18 +60,14 @@ client = OpenAI()
 @app.route('/chat', methods=['POST'])
 def chat():
     data = request.json
-    thread = client.beta.threads.create()
-    client.beta.threads.messages.create(
-        thread_id=thread.id,
-        role="user",
-        content=data['query']
+    conversation = client.conversations.create()
+    response = client.responses.create(
+        model="gpt-4o",
+        conversation=conversation.id,
+        input=data['query'],
+        tools=[{"type": "code_interpreter", "container": {"type": "auto"}}],
     )
-    run = client.beta.threads.runs.create_and_poll(
-        thread_id=thread.id,
-        assistant_id=os.environ['OPENAI_ASSISTANT_ID']
-    )
-    messages = client.beta.threads.messages.list(thread_id=thread.id)
-    return jsonify({"output": messages.data[0].content[0].text.value})
+    return jsonify({"output": response.output_text})
 
 if __name__ == '__main__':
     app.run(port=8000)
@@ -72,6 +81,6 @@ evalview run --pattern examples/openai-assistants/test-case.yaml
 
 ## Links
 
-- **Assistants API**: https://platform.openai.com/docs/assistants/overview
-- **Playground**: https://platform.openai.com/assistants
-- **Quickstart**: https://platform.openai.com/docs/assistants/quickstart
+- **Responses API**: https://platform.openai.com/docs/api-reference/responses
+- **Conversations API**: https://platform.openai.com/docs/api-reference/conversations
+- **Assistants migration guide**: https://platform.openai.com/docs/assistants/migration

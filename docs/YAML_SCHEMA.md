@@ -242,7 +242,10 @@ Adapter-specific configuration. Common fields:
 | `headers` | object | Custom HTTP headers | http, langgraph, crewai |
 | `streaming` | boolean | Enable streaming mode | langgraph, tapescope |
 | `mode` | string | Execution mode | langgraph (`standard`, `streaming`, `cloud`) |
-| `assistant_id` | string | OpenAI Assistant ID | openai-assistants |
+| `instructions` | string | System instructions for the agent | openai-assistants |
+| `prompt_id` | string | OpenAI dashboard Prompt object ID (`pmpt_...`) | openai-assistants |
+| `tools` | list | Built-in tools (e.g. `code_interpreter`) | openai-assistants |
+| `assistant_id` | string | LangGraph graph/assistant name | langgraph |
 | `verbose` | boolean | Enable verbose logging | All |
 
 **Example:**
@@ -266,7 +269,7 @@ adapter_config:
 | HTTP (Generic) | `http` | Generic REST API adapter |
 | LangGraph | `langgraph` | LangGraph agents (local or Cloud) |
 | CrewAI | `crewai` | CrewAI multi-agent systems |
-| OpenAI Assistants | `openai-assistants` | OpenAI Assistants API |
+| OpenAI | `openai-assistants` | OpenAI Responses API (historical name kept for config compatibility) |
 | TapeScope | `tapescope` | JSONL streaming APIs |
 | Streaming | `streaming` | Generic SSE streaming adapter |
 

@@ -80,6 +80,9 @@ def build_adapter(
             timeout=cfg.get("timeout", 120.0),
             verbose=verbose,
             model_config=model_config,
+            instructions=cfg.get("instructions"),
+            prompt_id=cfg.get("prompt_id"),
+            tools=cfg.get("tools"),
         )
 
     if adapter_type in ("streaming", "tapescope", "jsonl"):

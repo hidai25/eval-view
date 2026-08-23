@@ -1,10 +1,15 @@
-adapter: openai-assistants
-# assistant_id will be read from OPENAI_ASSISTANT_ID env var
-# If not set, EvalView will offer to create one for you!
+adapter: openai-assistants  # Historical name — runs on the OpenAI Responses API
 timeout: 120
 
 model:
   name: gpt-4o
+
+# Optional: system instructions for the agent under test
+# instructions: "You are a helpful technical assistant."
+
+# Optional: built-in tools (defaults to code_interpreter)
+# tools:
+#   - code_interpreter
 
 # Test cases location
 test_dir: test-cases

@@ -209,7 +209,7 @@ evalview capture --agent http://localhost:8000/invoke --multi-turn
 |-------|:-----------:|:-------------:|
 | LangGraph | Yes | Yes |
 | CrewAI | Yes | Yes |
-| OpenAI Assistants | Yes | Yes |
+| OpenAI (Responses API) | Yes | Yes |
 | Anthropic Claude | Yes | Yes |
 | HuggingFace | Yes | Yes |
 | Ollama | Yes | Yes |

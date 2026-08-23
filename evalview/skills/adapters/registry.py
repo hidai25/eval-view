@@ -155,7 +155,7 @@ class SkillAdapterRegistry:
         except ImportError as e:
             logger.debug(f"CrewAISkillAdapter not available: {e}")
 
-        # OpenAI Assistants adapter - OpenAI Assistants API
+        # OpenAI adapter - OpenAI Responses API (formerly Assistants)
         try:
             from evalview.skills.adapters.openai_assistants_adapter import (
                 OpenAIAssistantsSkillAdapter,

@@ -565,7 +565,7 @@ async def run_chat(
                             "crewai": "CrewAI multi-agent",
                             "anthropic": "Anthropic Claude API",
                             "claude": "Alias for anthropic",
-                            "openai-assistants": "OpenAI Assistants API",
+                            "openai-assistants": "OpenAI Responses API",
                             "tapescope": "JSONL streaming API",
                             "streaming": "Alias for tapescope",
                             "jsonl": "Alias for tapescope",
