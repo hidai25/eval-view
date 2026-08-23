@@ -22,6 +22,18 @@ from evalview.skills.adapters.openai_assistants_adapter import (
 from evalview.skills.agent_types import AgentConfig, AgentType
 
 
+@pytest.fixture(autouse=True)
+def _clear_openai_env(monkeypatch):
+    """Isolate tests from ambient OpenAI configuration."""
+    for var in (
+        "OPENAI_ASSISTANT_ID",
+        "OPENAI_PROMPT_ID",
+        "OPENAI_VECTOR_STORE_IDS",
+        "OPENAI_MODEL",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+
 def make_response(status="completed", with_tools=True):
     """Build a mock Responses API response with typed output items."""
     items = []
@@ -79,6 +91,20 @@ def make_client(response):
 
 class TestOpenAIResponsesAdapter:
     """Core adapter: evalview/adapters/openai_assistants_adapter.py."""
+
+    async def test_malformed_function_arguments_do_not_crash_trace(self):
+        response = make_response(with_tools=False)
+        bad_call = MagicMock(type="function_call", id="fc_bad", call_id="call_bad", arguments="{not json")
+        bad_call.name = "broken_tool"
+        response.output.insert(0, bad_call)
+        client = make_client(response)
+        with patch("openai.AsyncOpenAI", return_value=client):
+            adapter = OpenAIAssistantsAdapter()
+            trace = await adapter.execute("q")
+
+        assert trace.steps[0].tool_name == "broken_tool"
+        assert trace.steps[0].parameters == {"raw": "{not json"}
+        assert trace.final_output == "The answer is 42."
 
     async def test_execute_captures_tool_steps_and_output(self):
         client = make_client(make_response())
@@ -143,6 +169,16 @@ class TestOpenAIResponsesAdapter:
         assert kwargs["instructions"] == "Be terse."
         # file_search is skipped without OPENAI_VECTOR_STORE_IDS
         assert kwargs["tools"] == [{"type": "web_search"}]
+
+    async def test_prompt_id_alone_sends_no_default_tools(self):
+        # A dashboard Prompt object defines its own tools; injecting the
+        # default code_interpreter would silently override them.
+        client = make_client(make_response(with_tools=False))
+        with patch("openai.AsyncOpenAI", return_value=client):
+            adapter = OpenAIAssistantsAdapter(prompt_id="pmpt_1")
+            await adapter.execute("hi")
+
+        assert "tools" not in client.responses.create.call_args.kwargs
 
     async def test_timeout_raises_timeout_error(self):
         client = make_client(make_response())
@@ -229,6 +265,21 @@ class TestOpenAIResponsesSkillAdapter:
 
         with pytest.raises(AgentTimeoutError):
             await adapter.execute(skill, "run it")
+
+    async def test_prompt_id_alone_sends_no_default_tools(self, skill):
+        config = AgentConfig(
+            type=AgentType.OPENAI_ASSISTANTS,
+            env={"OPENAI_API_KEY": "test-key", "OPENAI_PROMPT_ID": "pmpt_1"},
+        )
+        adapter = OpenAIAssistantsSkillAdapter(config)
+        client = make_client(make_response(with_tools=False))
+        adapter._client = client
+
+        await adapter.execute(skill, "run it")
+
+        kwargs = client.responses.create.call_args.kwargs
+        assert kwargs["prompt"] == {"id": "pmpt_1"}
+        assert "tools" not in kwargs
 
     async def test_cleanup_is_noop(self, agent_config):
         adapter = OpenAIAssistantsSkillAdapter(agent_config)
