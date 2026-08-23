@@ -67,7 +67,7 @@ evalview run
 The judge (Llama) is **independent** from the agent you're testing. You can use HuggingFace/Llama to evaluate any agent:
 
 ```yaml
-# .evalview/config.yaml - Test OpenAI Assistants, judged by Llama
+# .evalview/config.yaml - Test an OpenAI agent, judged by Llama
 adapter: openai-assistants
 model:
   name: gpt-4o

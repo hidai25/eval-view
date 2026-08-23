@@ -1,6 +1,6 @@
 # Getting Started with EvalView
 
-> **What is EvalView?** An open-source, pytest-style testing framework for AI agents that detects regressions when you change prompts, swap models, or update tools. Works with LangGraph, CrewAI, OpenAI Assistants, Anthropic Claude, HuggingFace, Ollama, and any HTTP API.
+> **What is EvalView?** An open-source, pytest-style testing framework for AI agents that detects regressions when you change prompts, swap models, or update tools. Works with LangGraph, CrewAI, OpenAI, Anthropic Claude, HuggingFace, Ollama, and any HTTP API.
 
 EvalView is lightweight, YAML-first, and gets you testing AI agents in under 5 minutes. No database required, no vendor lock-in, works offline with Ollama.
 
@@ -224,7 +224,7 @@ See `.github/workflows/evalview.yml` for a complete example.
 - `http` - Generic REST API (default)
 - `langgraph` - LangGraph / LangGraph Cloud
 - `crewai` - CrewAI agents
-- `openai-assistants` - OpenAI Assistants API
+- `openai-assistants` - OpenAI Responses API
 - `streaming` / `tapescope` - JSONL streaming APIs
 
 ## Configuring LLM-as-Judge

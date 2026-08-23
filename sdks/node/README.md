@@ -187,7 +187,7 @@ Works with **LangGraph, CrewAI, OpenAI, Claude, Mistral, HuggingFace, Ollama, MC
 |-------|:-----------:|:-------------:|
 | LangGraph | ✅ | ✅ |
 | CrewAI | ✅ | ✅ |
-| OpenAI Assistants | ✅ | ✅ |
+| OpenAI (Responses API) | ✅ | ✅ |
 | Claude Code | ✅ | ✅ |
 | Ollama | ✅ | ✅ |
 | Any HTTP API | ✅ | ✅ |

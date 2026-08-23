@@ -9,7 +9,7 @@ Available Adapters:
     - OpenClawAdapter: OpenClaw autonomous agent CLI
     - LangGraphSkillAdapter: LangGraph SDK/Cloud
     - CrewAISkillAdapter: CrewAI multi-agent framework
-    - OpenAIAssistantsSkillAdapter: OpenAI Assistants API
+    - OpenAIAssistantsSkillAdapter: OpenAI Responses API
     - CustomAdapter: User-provided scripts
 
 Usage:

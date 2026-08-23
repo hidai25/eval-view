@@ -1,11 +1,15 @@
-"""OpenAI Assistants API adapter for skill testing.
+"""OpenAI Responses API adapter for skill testing.
 
 This module provides an adapter for executing skills through OpenAI's
-Assistants API, capturing detailed execution traces via the Run Steps API.
+Responses API, capturing detailed execution traces from the response's
+typed output items.
 
-The OpenAI Assistants API (https://platform.openai.com/docs/assistants)
-provides a stateful, multi-turn conversation interface with built-in
-tool use, code interpreter, and file handling capabilities.
+Formerly built on the Assistants API (assistants/threads/runs), which
+OpenAI removed on August 26, 2026. The Responses API
+(https://platform.openai.com/docs/api-reference/responses) is its
+replacement: a single synchronous call that runs the model with
+instructions and built-in tools and returns tool activity inline, with
+the Conversations API available for multi-turn state.
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────────┐
@@ -14,24 +18,23 @@ Architecture:
     │                                                                  │
     │  Skill Injection:                                               │
     │  ┌─────────────────────────────────────────────────────────────┐│
-    │  │  Assistant Configuration                                    ││
+    │  │  Response Request                                           ││
     │  │  ├── instructions: {skill.instructions}                    ││
     │  │  ├── tools: [code_interpreter, file_search, functions]     ││
     │  │  └── model: gpt-4o                                         ││
     │  └─────────────────────────────────────────────────────────────┘│
     │                                                                  │
     │  Execution Flow:                                                │
-    │  1. Create/reuse Assistant with skill instructions              │
-    │  2. Create Thread for conversation                              │
-    │  3. Add user message with query                                 │
-    │  4. Create Run and poll for completion                          │
-    │  5. Retrieve Run Steps for trace capture                        │
-    │  6. Parse tool calls, code execution, outputs                   │
+    │  1. Build instructions from skill                               │
+    │  2. Create Response with query, instructions, and tools         │
+    │  3. Await completion (no polling — the call is synchronous)     │
+    │  4. Walk typed output items for trace capture                   │
+    │  5. Parse tool calls, code execution, outputs                   │
     │                                                                  │
-    │  Trace Capture via Run Steps:                                   │
-    │  ├── message_creation: Final assistant response                 │
-    │  ├── tool_calls: Function calls, code interpreter              │
-    │  └── Token usage from Run metadata                              │
+    │  Trace Capture via Output Items:                                │
+    │  ├── message: Final assistant response                          │
+    │  ├── *_call items: Function calls, code interpreter             │
+    │  └── Token usage from response.usage                            │
     └─────────────────────────────────────────────────────────────────┘
 
 Example usage:
@@ -44,8 +47,7 @@ Example usage:
 
 Security considerations:
     - API key validated but never logged
-    - Assistants are cleaned up after test (optional)
-    - File uploads sanitized and size-limited
+    - No server-side objects created (nothing to clean up)
     - Request timeouts enforced
 
 Author: EvalView Team
@@ -58,7 +60,6 @@ import os
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
 from typing import Any, Dict, Final, List, Optional, TYPE_CHECKING
 import logging
 
@@ -82,46 +83,32 @@ logger = logging.getLogger(__name__)
 
 # Constants
 _DEFAULT_MODEL: Final[str] = "gpt-4o"
-_DEFAULT_POLL_INTERVAL: Final[float] = 1.0
-_MAX_POLL_ATTEMPTS: Final[int] = 300  # 5 minutes with 1s interval
-
-
-class RunStatus(str, Enum):
-    """OpenAI Run status values."""
-    QUEUED = "queued"
-    IN_PROGRESS = "in_progress"
-    REQUIRES_ACTION = "requires_action"
-    CANCELLING = "cancelling"
-    CANCELLED = "cancelled"
-    FAILED = "failed"
-    COMPLETED = "completed"
-    EXPIRED = "expired"
+_MAX_OUTPUT_TOKENS: Final[int] = 4096
 
 
 @dataclass
-class AssistantConfig:
-    """Configuration for OpenAI Assistant creation.
+class ResponsesConfig:
+    """Configuration for OpenAI Responses API execution.
 
     Attributes:
         api_key: OpenAI API key.
         model: Model to use (e.g., gpt-4o).
-        assistant_id: Optional existing assistant ID to reuse.
-        cleanup_assistant: Whether to delete assistant after test.
+        prompt_id: Optional dashboard-managed Prompt object id (pmpt_...)
+            to run instead of inline instructions.
     """
     api_key: str
     model: str = _DEFAULT_MODEL
-    assistant_id: Optional[str] = None
-    cleanup_assistant: bool = True
+    prompt_id: Optional[str] = None
 
     @classmethod
-    def from_agent_config(cls, config: AgentConfig) -> "AssistantConfig":
-        """Create AssistantConfig from AgentConfig.
+    def from_agent_config(cls, config: AgentConfig) -> "ResponsesConfig":
+        """Create ResponsesConfig from AgentConfig.
 
         Args:
             config: Agent configuration from test suite.
 
         Returns:
-            Configured AssistantConfig.
+            Configured ResponsesConfig.
 
         Raises:
             SkillAgentAdapterError: If API key not found.
@@ -135,31 +122,40 @@ class AssistantConfig:
                 adapter_name="openai-assistants",
             )
 
+        if env.get("OPENAI_ASSISTANT_ID") or os.getenv("OPENAI_ASSISTANT_ID"):
+            logger.warning(
+                "OPENAI_ASSISTANT_ID is ignored: OpenAI removed the Assistants "
+                "API on 2026-08-26. Skill instructions are now passed inline "
+                "via the Responses API (or set OPENAI_PROMPT_ID)."
+            )
+
         return cls(
             api_key=api_key,
             model=env.get("OPENAI_MODEL", os.getenv("OPENAI_MODEL", _DEFAULT_MODEL)),
-            assistant_id=env.get("OPENAI_ASSISTANT_ID"),
-            cleanup_assistant=env.get("CLEANUP_ASSISTANT", "true").lower() == "true",
+            prompt_id=env.get("OPENAI_PROMPT_ID", os.getenv("OPENAI_PROMPT_ID")),
         )
 
 
-class OpenAIAssistantsSkillAdapter(SkillAgentAdapter):
-    """Adapter for executing skills through OpenAI Assistants API.
+# Backwards-compatible alias for the pre-migration config name.
+AssistantConfig = ResponsesConfig
 
-    This adapter creates an OpenAI Assistant configured with the skill's
-    instructions, executes queries via the Threads API, and captures
-    detailed traces from Run Steps.
+
+class OpenAIAssistantsSkillAdapter(SkillAgentAdapter):
+    """Adapter for executing skills through the OpenAI Responses API.
+
+    This adapter injects the skill's instructions into a Responses API
+    request, executes the query, and captures detailed traces from the
+    response's typed output items.
 
     Features:
-        - Automatic Assistant creation with skill injection
-        - Thread-based conversation management
-        - Detailed trace capture via Run Steps API
+        - Skill injection via per-request instructions
+        - Detailed trace capture from response output items
         - Support for Code Interpreter and File Search tools
-        - Token usage tracking from Run metadata
+        - Token usage tracking from response.usage
 
     Attributes:
         config: Agent configuration from test suite.
-        assistant_config: OpenAI-specific configuration.
+        responses_config: OpenAI-specific configuration.
         _client: Cached OpenAI client instance.
 
     Example:
@@ -169,15 +165,14 @@ class OpenAIAssistantsSkillAdapter(SkillAgentAdapter):
     """
 
     def __init__(self, config: AgentConfig) -> None:
-        """Initialize OpenAI Assistants adapter.
+        """Initialize OpenAI Responses adapter.
 
         Args:
             config: Agent configuration from test suite.
         """
         super().__init__(config)
-        self.assistant_config = AssistantConfig.from_agent_config(config)
+        self.responses_config = ResponsesConfig.from_agent_config(config)
         self._client: Optional["AsyncOpenAI"] = None
-        self._created_assistants: List[str] = []
 
     @property
     def name(self) -> str:
@@ -197,7 +192,7 @@ class OpenAIAssistantsSkillAdapter(SkillAgentAdapter):
         if self._client is None:
             try:
                 from openai import AsyncOpenAI
-                self._client = AsyncOpenAI(api_key=self.assistant_config.api_key)
+                self._client = AsyncOpenAI(api_key=self.responses_config.api_key)
             except ImportError:
                 raise SkillAgentAdapterError(
                     "openai package required. Install with: pip install openai",
@@ -221,7 +216,7 @@ class OpenAIAssistantsSkillAdapter(SkillAgentAdapter):
             )
             return True
         except Exception as e:
-            logger.debug(f"OpenAI Assistants health check failed: {e}")
+            logger.debug(f"OpenAI Responses health check failed: {e}")
             return False
 
     async def execute(
@@ -230,10 +225,10 @@ class OpenAIAssistantsSkillAdapter(SkillAgentAdapter):
         query: str,
         context: Optional[Dict[str, Any]] = None,
     ) -> SkillAgentTrace:
-        """Execute a skill test through OpenAI Assistants API.
+        """Execute a skill test through the OpenAI Responses API.
 
-        Creates an Assistant with skill instructions, runs a conversation,
-        and captures the full execution trace.
+        Builds a request with the skill's instructions, runs it, and
+        captures the full execution trace from the response.
 
         Args:
             skill: The skill to test.
@@ -262,78 +257,55 @@ class OpenAIAssistantsSkillAdapter(SkillAgentAdapter):
         total_output_tokens = 0
         final_output = ""
 
-        assistant_id = None
-        thread_id = None
-
         try:
-            # Create or get assistant
-            assistant_id = await self._get_or_create_assistant(skill)
+            request: Dict[str, Any] = {
+                "model": self.responses_config.model,
+                "input": query,
+                "instructions": self._build_skill_instructions(skill),
+                "max_output_tokens": _MAX_OUTPUT_TOKENS,
+            }
+            if self.responses_config.prompt_id:
+                request["prompt"] = {"id": self.responses_config.prompt_id}
+            tools = self._get_tools_config()
+            if tools:
+                request["tools"] = tools
 
-            # Create thread
-            thread = await self.client.beta.threads.create()
-            thread_id = thread.id
-
-            # Add user message
-            await self.client.beta.threads.messages.create(
-                thread_id=thread_id,
-                role="user",
-                content=query,
-            )
-
-            # Create and run
-            run = await self.client.beta.threads.runs.create(
-                thread_id=thread_id,
-                assistant_id=assistant_id,
-                max_completion_tokens=4096,
-            )
-
-            # Poll for completion
-            run = await self._poll_run(
-                thread_id=thread_id,
-                run_id=run.id,
+            # The Responses API is synchronous — no run creation/polling.
+            response = await asyncio.wait_for(
+                self.client.responses.create(**request),
+                timeout=self.config.timeout,
             )
 
             # Extract token usage
-            if run.usage:
-                total_input_tokens = run.usage.prompt_tokens
-                total_output_tokens = run.usage.completion_tokens
+            if response.usage:
+                total_input_tokens = response.usage.input_tokens
+                total_output_tokens = response.usage.output_tokens
 
-            # Get run steps for trace
-            steps = await self.client.beta.threads.runs.steps.list(
-                thread_id=thread_id,
-                run_id=run.id,
-            )
-
-            # Process steps for trace
-            for step in steps.data:
-                self._process_run_step(
-                    step=step,
+            # Process typed output items for trace
+            for item in response.output or []:
+                self._process_output_item(
+                    item=item,
                     events=events,
                     tool_calls=tool_calls,
                     files_created=files_created,
                     commands_ran=commands_ran,
                 )
 
-            # Get final output from messages
-            messages = await self.client.beta.threads.messages.list(
-                thread_id=thread_id,
-                order="desc",
-                limit=1,
-            )
+            # Final output: aggregated text across message items
+            final_output = getattr(response, "output_text", "") or ""
 
-            if messages.data:
-                last_message = messages.data[0]
-                if last_message.role == "assistant":
-                    for content_block in last_message.content:
-                        if content_block.type == "text":
-                            final_output = content_block.text.value
-
-            # Check for run failure
-            if run.status == RunStatus.FAILED:
-                error_msg = "Run failed"
-                if run.last_error:
-                    error_msg = f"{run.last_error.code}: {run.last_error.message}"
+            # Check for response failure
+            if response.status == "failed":
+                error_msg = "Response failed"
+                if response.error:
+                    error_msg = f"{response.error.code}: {response.error.message}"
                 errors.append(error_msg)
+            elif response.status == "incomplete":
+                reason = ""
+                details = getattr(response, "incomplete_details", None)
+                if details:
+                    reason = f": {getattr(details, 'reason', '')}"
+                errors.append(f"Response incomplete{reason}")
 
         except asyncio.TimeoutError:
             raise AgentTimeoutError(self.name, self.config.timeout)
@@ -341,20 +313,7 @@ class OpenAIAssistantsSkillAdapter(SkillAgentAdapter):
             raise
         except Exception as e:
             errors.append(str(e))
-            logger.error(f"OpenAI Assistants execution error: {e}")
-
-        finally:
-            # Cleanup assistant if configured
-            if (
-                self.assistant_config.cleanup_assistant
-                and assistant_id
-                and assistant_id in self._created_assistants
-            ):
-                try:
-                    await self.client.beta.assistants.delete(assistant_id)
-                    self._created_assistants.remove(assistant_id)
-                except Exception as e:
-                    logger.warning(f"Failed to cleanup assistant: {e}")
+            logger.error(f"OpenAI Responses execution error: {e}")
 
         end_time = datetime.now()
         self._last_raw_output = final_output
@@ -376,38 +335,8 @@ class OpenAIAssistantsSkillAdapter(SkillAgentAdapter):
             errors=errors,
         )
 
-    async def _get_or_create_assistant(self, skill: Skill) -> str:
-        """Get existing or create new assistant with skill.
-
-        Args:
-            skill: Skill to inject into assistant.
-
-        Returns:
-            Assistant ID.
-        """
-        # Use existing assistant if specified
-        if self.assistant_config.assistant_id:
-            return self.assistant_config.assistant_id
-
-        # Build assistant instructions with skill
-        instructions = self._build_skill_instructions(skill)
-
-        # Determine tools to enable
-        tools = self._get_tools_config()
-
-        # Create new assistant
-        assistant = await self.client.beta.assistants.create(
-            name=f"EvalView Skill Test: {skill.metadata.name}",
-            instructions=instructions,
-            model=self.assistant_config.model,
-            tools=tools,
-        )
-
-        self._created_assistants.append(assistant.id)
-        return assistant.id
-
     def _build_skill_instructions(self, skill: Skill) -> str:
-        """Build assistant instructions with skill injection.
+        """Build system instructions with skill injection.
 
         Args:
             skill: Skill to inject.
@@ -434,160 +363,117 @@ Use the available tools (code interpreter, file search) as needed to complete ta
 """
 
     def _get_tools_config(self) -> List[Dict[str, Any]]:
-        """Get tools configuration for assistant.
+        """Get tools configuration for the Responses API request.
 
         Returns:
             List of tool configurations.
         """
-        tools = []
+        tools: List[Dict[str, Any]] = []
+
+        enable_code_interpreter = True
+        enable_file_search = False
 
         # Check configured tools
         if self.config.tools:
             tool_set = set(t.lower() for t in self.config.tools)
+            enable_code_interpreter = "code_interpreter" in tool_set or "code" in tool_set
+            enable_file_search = "file_search" in tool_set or "retrieval" in tool_set
 
-            if "code_interpreter" in tool_set or "code" in tool_set:
-                tools.append({"type": "code_interpreter"})
+        if enable_code_interpreter:
+            tools.append({"type": "code_interpreter", "container": {"type": "auto"}})
 
-            if "file_search" in tool_set or "retrieval" in tool_set:
-                tools.append({"type": "file_search"})
-
-        else:
-            # Default: enable code interpreter
-            tools.append({"type": "code_interpreter"})
+        if enable_file_search:
+            # Unlike Assistants, the Responses API requires explicit
+            # vector store ids for file_search.
+            env = self.config.env or {}
+            raw_ids = env.get(
+                "OPENAI_VECTOR_STORE_IDS", os.getenv("OPENAI_VECTOR_STORE_IDS", "")
+            )
+            vector_store_ids = [vs.strip() for vs in raw_ids.split(",") if vs.strip()]
+            if vector_store_ids:
+                tools.append({"type": "file_search", "vector_store_ids": vector_store_ids})
+            else:
+                logger.warning(
+                    "file_search requires vector store ids in the Responses API; "
+                    "set OPENAI_VECTOR_STORE_IDS to enable it. Skipping."
+                )
 
         return tools
 
-    async def _poll_run(
+    def _process_output_item(
         self,
-        thread_id: str,
-        run_id: str,
-    ) -> Any:
-        """Poll run until completion or timeout.
-
-        Args:
-            thread_id: Thread ID.
-            run_id: Run ID.
-
-        Returns:
-            Completed Run object.
-
-        Raises:
-            asyncio.TimeoutError: If polling exceeds timeout.
-        """
-        deadline = asyncio.get_event_loop().time() + self.config.timeout
-
-        terminal_statuses = {
-            RunStatus.COMPLETED,
-            RunStatus.FAILED,
-            RunStatus.CANCELLED,
-            RunStatus.EXPIRED,
-        }
-
-        while asyncio.get_event_loop().time() < deadline:
-            run = await self.client.beta.threads.runs.retrieve(
-                thread_id=thread_id,
-                run_id=run_id,
-            )
-
-            if run.status in terminal_statuses:
-                return run
-
-            if run.status == RunStatus.REQUIRES_ACTION:
-                # Handle required actions (tool outputs)
-                # For skill testing, we typically don't have custom functions
-                # that require user-provided outputs
-                logger.warning(
-                    f"Run requires action but no handler configured: {run.required_action}"
-                )
-                # Cancel the run to avoid hanging
-                await self.client.beta.threads.runs.cancel(
-                    thread_id=thread_id,
-                    run_id=run_id,
-                )
-                raise SkillAgentAdapterError(
-                    "Run requires action (custom function outputs) which is not supported",
-                    adapter_name=self.name,
-                )
-
-            await asyncio.sleep(_DEFAULT_POLL_INTERVAL)
-
-        raise asyncio.TimeoutError("Run polling timeout exceeded")
-
-    def _process_run_step(
-        self,
-        step: Any,
+        item: Any,
         events: List[TraceEvent],
         tool_calls: List[str],
         files_created: List[str],
         commands_ran: List[str],
     ) -> None:
-        """Process a run step for trace capture.
+        """Process a response output item for trace capture.
 
-        Extracts tool calls and outputs from the step details.
+        Extracts tool calls and outputs from the typed output items that
+        replaced the Assistants Run Steps API.
 
         Args:
-            step: Run step object.
+            item: Response output item.
             events: List to append trace events.
             tool_calls: List to append tool names.
             files_created: List to append created files.
             commands_ran: List to append commands.
         """
-        if step.type == "tool_calls":
-            for tool_call in step.step_details.tool_calls:
-                tool_type = tool_call.type
+        item_type = getattr(item, "type", "")
 
-                if tool_type == "code_interpreter":
-                    tool_calls.append("code_interpreter")
+        if item_type == "code_interpreter_call":
+            tool_calls.append("code_interpreter")
 
-                    # Extract code input
-                    code_input = tool_call.code_interpreter.input
-                    events.append(TraceEvent(
-                        type=TraceEventType.TOOL_CALL,
-                        tool_name="code_interpreter",
-                        tool_input={"code": code_input},
-                    ))
+            # Extract code input
+            code_input = item.code
+            events.append(TraceEvent(
+                type=TraceEventType.TOOL_CALL,
+                tool_name="code_interpreter",
+                tool_input={"code": code_input},
+            ))
 
-                    # Track as command execution
-                    if code_input:
-                        commands_ran.append(f"[python] {code_input[:100]}...")
+            # Track as command execution
+            if code_input:
+                commands_ran.append(f"[python] {code_input[:100]}...")
 
-                    # Check for file outputs
-                    for output in tool_call.code_interpreter.outputs:
-                        if output.type == "image":
-                            files_created.append(f"[generated_image:{output.image.file_id}]")
+            # Check for file outputs
+            for output in item.outputs or []:
+                if getattr(output, "type", "") == "image":
+                    files_created.append(f"[generated_image:{output.url}]")
 
-                elif tool_type == "file_search":
-                    tool_calls.append("file_search")
-                    events.append(TraceEvent(
-                        type=TraceEventType.TOOL_CALL,
-                        tool_name="file_search",
-                    ))
+        elif item_type == "file_search_call":
+            tool_calls.append("file_search")
+            events.append(TraceEvent(
+                type=TraceEventType.TOOL_CALL,
+                tool_name="file_search",
+            ))
 
-                elif tool_type == "function":
-                    func_name = tool_call.function.name
-                    tool_calls.append(func_name)
+        elif item_type == "function_call":
+            func_name = item.name
+            tool_calls.append(func_name)
 
-                    try:
-                        import json
-                        func_args = json.loads(tool_call.function.arguments)
-                    except Exception:
-                        func_args = {"raw": tool_call.function.arguments}
+            try:
+                import json
+                func_args = json.loads(item.arguments)
+            except Exception:
+                func_args = {"raw": item.arguments}
 
-                    events.append(TraceEvent(
-                        type=TraceEventType.TOOL_CALL,
-                        tool_name=func_name,
-                        tool_input=func_args,
-                    ))
+            events.append(TraceEvent(
+                type=TraceEventType.TOOL_CALL,
+                tool_name=func_name,
+                tool_input=func_args,
+            ))
 
-                    # Track file operations from function args
-                    self._track_function_operations(
-                        func_name=func_name,
-                        func_args=func_args,
-                        files_created=files_created,
-                        commands_ran=commands_ran,
-                    )
+            # Track file operations from function args
+            self._track_function_operations(
+                func_name=func_name,
+                func_args=func_args,
+                files_created=files_created,
+                commands_ran=commands_ran,
+            )
 
-        elif step.type == "message_creation":
+        elif item_type == "message":
             events.append(TraceEvent(
                 type=TraceEventType.LLM_CALL,
                 tool_name="message_creation",
@@ -623,15 +509,9 @@ Use the available tools (code interpreter, file search) as needed to complete ta
                 commands_ran.append(cmd)
 
     async def cleanup(self) -> None:
-        """Clean up all created assistants.
+        """Clean up adapter resources.
 
-        Call this to delete any assistants created during testing
-        that weren't automatically cleaned up.
+        Retained for interface compatibility. The Responses API creates
+        no server-side Assistant objects, so there is nothing to delete.
         """
-        for assistant_id in self._created_assistants[:]:
-            try:
-                await self.client.beta.assistants.delete(assistant_id)
-                self._created_assistants.remove(assistant_id)
-                logger.debug(f"Cleaned up assistant: {assistant_id}")
-            except Exception as e:
-                logger.warning(f"Failed to cleanup assistant {assistant_id}: {e}")
+        return None

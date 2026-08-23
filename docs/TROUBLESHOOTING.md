@@ -120,7 +120,7 @@ lsof -i :8000
 **Framework-specific timeouts:**
 - CrewAI: Often needs 120s+ for multi-agent workflows
 - LangGraph: 30-60s typical
-- OpenAI Assistants: 60-120s depending on tools
+- OpenAI (Responses API): 60-120s depending on tools
 
 ### `SSRFProtectionError: Hostname blocked`
 
@@ -183,19 +183,25 @@ LangGraph uses different field names depending on the underlying model:
 
 EvalView handles both automatically.
 
-### OpenAI Assistants
+### OpenAI (Responses API)
 
-#### Polling timeout
-Assistants run asynchronously and need polling. Increase timeout if runs are timing out:
+#### Timeout
+Responses run synchronously; runs that use code interpreter can still be
+slow. Increase the timeout if requests are timing out:
 ```yaml
 adapter_config:
   timeout: 120
 ```
 
-#### Missing assistant_id
+#### assistant_id is ignored
+OpenAI removed the Assistants API on August 26, 2026, so `asst_...` ids can
+no longer be resolved and the adapter warns and ignores them. Configure the
+model, instructions, and tools directly instead:
 ```yaml
 adapter_config:
-  assistant_id: asst_xxxxx
+  instructions: "You are a helpful technical assistant."
+  tools:
+    - code_interpreter
 ```
 
 ---
@@ -339,7 +345,7 @@ Response: I don't have access to real-time weather information...
 
 1. **Use an agent with tools:**
    ```yaml
-   # OpenAI Assistants with code_interpreter
+   # OpenAI (Responses API) with code_interpreter
    adapter: openai-assistants
 
    # LangGraph with custom tools
@@ -372,7 +378,7 @@ Not all adapters support the same features. Know what each can do:
 
 | Adapter | Has Tools | Streaming | Use Case |
 |---------|-----------|-----------|----------|
-| `openai-assistants` | ✅ code_interpreter, file_search, custom | ❌ | OpenAI Assistants API |
+| `openai-assistants` | ✅ code_interpreter, file_search, custom | ❌ | OpenAI Responses API |
 | `anthropic` | ❌ Plain Claude | ❌ | Simple Claude API calls |
 | `langgraph` | ✅ Custom tools | ✅ | LangGraph agents |
 | `crewai` | ✅ Agent tools | ❌ | CrewAI multi-agent |
@@ -382,7 +388,7 @@ Not all adapters support the same features. Know what each can do:
 **Matching tests to adapters:**
 
 ```yaml
-# ✅ Good: Testing OpenAI Assistant with tool expectations
+# ✅ Good: Testing an OpenAI agent with tool expectations
 adapter: openai-assistants
 expected:
   tools: ["code_interpreter"]

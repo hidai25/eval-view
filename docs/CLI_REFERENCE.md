@@ -461,7 +461,7 @@ evalview connect
 ```
 
 Supports 7+ frameworks with automatic detection:
-LangGraph, CrewAI, OpenAI Assistants, Anthropic Claude, AutoGen, Dify, Custom APIs
+LangGraph, CrewAI, OpenAI, Anthropic Claude, AutoGen, Dify, Custom APIs
 
 ---
 
