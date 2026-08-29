@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Score trend slope in `RegressionTracker.get_statistics()`.** The aggregate stats (`avg`/`min`/`max`/`pass_rate`) describe a window but not its direction, so a test that loses a few points every run reports a healthy-looking average right up until it crosses the threshold. `score` now carries a `trend` block — `slope` (score points per run, negative means degrading), `direction` (`improving`/`worsening`/`stable`), `significant`, and `run_count` — computed as an OLS fit over the window. `evalview trends --test <name>` renders it next to the existing score lines, so a test averaging 74.0 across a 68-80 range now also reports `Trend: worsening (-3.00/run over 5 runs)`.
+  - The fit reuses `evalview.core.drift_tracker._compute_slope` rather than adding a second regression implementation. `statistics.linear_regression` is deliberately not used: it is Python 3.10+ and EvalView supports 3.9.
+  - Slopes are classified against a 1.0 point-per-run threshold (`DEFAULT_TREND_THRESHOLD`), matched to the 0-100 score scale, and fewer than three runs (`MIN_TREND_RUNS`) always reports `stable` — an OLS fit through two points describes noise. Sub-threshold drift renders as `stable ... (within noise)` so CI gates don't fire on jitter.
+  - Additive only: the existing `score` keys and every other `get_statistics()` field are unchanged. `ScoreTrend` is exported from `evalview.tracking`.
+
 ### Changed
 - **Migrated off the OpenAI Assistants API before its August 26, 2026 removal.** Both OpenAI adapters (`evalview/adapters/openai_assistants_adapter.py` and `evalview/skills/adapters/openai_assistants_adapter.py`) now run on the Responses API, with the Conversations API supplying session state — every `client.beta.threads.*` / `client.beta.assistants.*` call site is gone. The `openai-assistants` adapter name, `AgentType.OPENAI_ASSISTANTS`, and existing YAML configs keep working. Requires `openai>=1.101.0`.
   - Runs are now a single synchronous `responses.create` call — no more thread creation, run polling, or Run Steps fetching. Tool activity is read from the response's typed output items (`function_call`, `code_interpreter_call`, `file_search_call`, ...).

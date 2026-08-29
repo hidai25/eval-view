@@ -21,6 +21,7 @@ from evalview.telemetry.decorators import track_command
 def trends(days: int, test: str):
     """Show performance trends over time."""
     from evalview.tracking import RegressionTracker
+    from evalview.tracking.regression import MIN_TREND_RUNS
     from rich.table import Table
 
     tracker = RegressionTracker()
@@ -46,6 +47,22 @@ def trends(days: int, test: str):
             console.print(f"  Current: {stats['score']['current']:.1f}")
             console.print(f"  Average: {stats['score']['avg']:.1f}")
             console.print(f"  Range: {stats['score']['min']:.1f} - {stats['score']['max']:.1f}")
+
+        # Rendered outside the block above so a latest score of 0.0 — a total
+        # failure, and exactly when the direction matters most — still reports.
+        trend_stats = stats["score"]["trend"]
+        if trend_stats["run_count"] >= MIN_TREND_RUNS:
+            color = {
+                "improving": "green",
+                "worsening": "red",
+                "stable": "dim",
+            }.get(trend_stats["direction"], "dim")
+            suffix = "" if trend_stats["significant"] else " (within noise)"
+            console.print(
+                f"  Trend: [{color}]{trend_stats['direction']}[/{color}] "
+                f"({trend_stats['slope']:+.2f}/run over {trend_stats['run_count']} runs)"
+                f"{suffix}"
+            )
 
         if stats["cost"]["current"]:
             console.print("\n[cyan]Cost:[/cyan]")
