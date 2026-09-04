@@ -30,8 +30,16 @@ class ChatSession:
         self.total_tokens = 0
         self.last_tokens = 0
 
-    async def stream_response(self, user_message: str) -> AsyncGenerator[str, None]:
-        """Get a response from the LLM via streaming."""
+    async def stream_response(
+        self, user_message: str, *, raise_errors: bool = False
+    ) -> AsyncGenerator[str, None]:
+        """Stream a reply; service callers can propagate failures instead of scoring them.
+
+        Interactive callers retain the displayed error message. In strict mode,
+        a failed turn is rolled back so retries do not retain incomplete evidence.
+        """
+        history_length = len(self.history)
+        self.last_tokens = 0
         self.history.append({"role": "user", "content": user_message})
 
         collected_text = ""
@@ -44,6 +52,8 @@ class ChatSession:
             elif self.provider == LLMProvider.ANTHROPIC:
                 stream_gen = self._stream_anthropic()
             else:
+                if raise_errors:
+                    raise ValueError(f"Provider {self.provider.value} not yet supported for chat.")
                 yield f"Provider {self.provider.value} not yet supported for chat."
                 return
 
@@ -60,6 +70,9 @@ class ChatSession:
             self.history.append({"role": "assistant", "content": collected_text})
 
         except Exception as e:
+            if raise_errors:
+                del self.history[history_length:]
+                raise
             error_msg = f"\n\n[Error: {str(e)}]"
             yield error_msg
             self.history.append({"role": "assistant", "content": error_msg})
@@ -76,17 +89,18 @@ class ChatSession:
 
         messages = [{"role": "system", "content": SYSTEM_PROMPT}] + self.history
 
-        stream = await client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=0.7,
-            max_tokens=2000,
-            stream=True
-        )
-
-        async for chunk in stream:
-            if chunk.choices and chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
+        async with client:
+            stream = await client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=2000,
+                stream=True,
+            )
+            async with stream:
+                async for chunk in stream:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
 
     async def _stream_openai(self) -> AsyncGenerator[str, None]:
         """Stream chat using OpenAI."""
@@ -118,11 +132,12 @@ class ChatSession:
         else:
             params["max_tokens"] = 2000
 
-        stream = await client.chat.completions.create(**params)
-
-        async for chunk in stream:
-            if chunk.choices and chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
+        async with client:
+            stream = await client.chat.completions.create(**params)
+            async with stream:
+                async for chunk in stream:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
 
     async def _stream_anthropic(self) -> AsyncGenerator[str, None]:
         """Stream chat using Anthropic."""
@@ -130,15 +145,16 @@ class ChatSession:
 
         client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-        async with client.messages.stream(
-            model=self.model,
-            max_tokens=2000,
-            system=SYSTEM_PROMPT,
-            messages=self.history,  # type: ignore[arg-type]
-            temperature=0.7,
-        ) as stream:
-            async for text in stream.text_stream:
-                yield text
+        async with client:
+            async with client.messages.stream(
+                model=self.model,
+                max_tokens=2000,
+                system=SYSTEM_PROMPT,
+                messages=self.history,  # type: ignore[arg-type]
+                temperature=0.7,
+            ) as stream:
+                async for text in stream.text_stream:
+                    yield text
 
     # Keep old methods as simple aliases for backward compatibility if needed,
     # but they are not used in the new loop

@@ -50,7 +50,7 @@ LLMs are non-deterministic. Statistical mode runs tests multiple times:
 - examples/huggingface/ - HuggingFace inference example
 
 ## HOW TO TEST GOOSE
-```command
+```bash
 evalview run examples/goosebench/tasks/
 ```
 Goose doesn't need a server - it runs via CLI. The goose adapter calls `goose run` directly.
@@ -62,6 +62,8 @@ Goose doesn't need a server - it runs via CLI. The goose adapter calls `goose ru
    evalview run examples/langgraph/ --verbose
 
 ## YAML TEST CASE SCHEMA
+Required top-level fields are name, input, and expected. Adapter and endpoint may
+come from project configuration; thresholds are optional and have defaults.
 ```yaml
 name: "Test Name"
 adapter: goose  # or http, langgraph, crewai, etc.
@@ -103,70 +105,75 @@ thresholds:
 ```
 
 ## KEY COMMANDS
-```command
+```bash
 evalview demo
 ```
 Shows a demo of regression detection.
 
-```command
-evalview demo
+```bash
+evalview init
 ```
 Interactive setup wizard.
 
-```command
+```bash
 evalview run
 ```
 Run tests in tests/test-cases/.
 
-```command
+```bash
 evalview run examples/goosebench/tasks/
 ```
 Run tests from a specific path.
 
-```command
+```bash
 evalview run --diff
 ```
 Compare against golden baseline (detect regressions).
 
-```command
+```bash
 evalview run --verbose
 ```
 Show detailed output.
 
-```command
+```bash
 evalview run --runs 10
 ```
 Statistical mode: run each test 10 times, get pass@k metrics.
 
-```command
+```bash
 evalview run --runs 10 --pass-rate 0.7
 ```
 Statistical mode with custom pass rate (70% must pass).
 
-```command
+```bash
 evalview run --difficulty hard
 ```
 Filter tests by difficulty level (trivial/easy/medium/hard/expert).
 
-```command
+```bash
 evalview adapters
 ```
 List all available adapters.
 
-```command
-evalview golden save .evalview/results/xxx.json
+```bash
+evalview snapshot
 ```
-Save a run as baseline for regression detection.
+Execute the configured tests and save a golden baseline.
+
+```bash
+evalview check
+```
+Execute the same tests and compare them with the saved golden baseline.
 
 ## CI/CD INTEGRATION
 EvalView integrates with GitHub Actions to block PRs with regressions.
 
-```command
+```bash
 evalview ci comment
 ```
 Post test results as a PR comment. Shows pass/fail, score, cost, latency, and changes from baseline.
 
-```command
+```bash
 evalview ci comment --dry-run
 ```
 Preview the PR comment without posting.
@@ -403,48 +410,48 @@ tests:
 ```
 
 ### Skill Test Commands
-```command
+```bash
 evalview skill test tests/my-skill.yaml
 ```
 Legacy mode (system prompt + string matching).
 
-```command
+```bash
 evalview skill test tests/my-skill.yaml --agent claude-code
 ```
 Agent mode - executes skill through Claude Code CLI.
 
-```command
+```bash
 evalview skill test tests/my-skill.yaml -a claude-code -t ./traces/
 ```
 Save JSONL traces for debugging.
 
-```command
+```bash
 evalview skill test tests/my-skill.yaml -a claude-code --no-rubric
 ```
 Skip Phase 2 rubric evaluation (deterministic checks only).
 
-```command
+```bash
 evalview skill test tests/my-skill.yaml --cwd /path/to/workspace
 ```
 Run in specific working directory.
 
-```command
+```bash
 evalview skill test tests/my-skill.yaml --max-turns 20
 ```
 Override max conversation turns.
 
 ### Other Skill Commands
-```command
+```bash
 evalview skill validate ./SKILL.md
 ```
 Validate a skill file for correct structure.
 
-```command
+```bash
 evalview skill list ~/.claude/skills/
 ```
 List all skills in a directory.
 
-```command
+```bash
 evalview skill doctor ~/.claude/skills/
 ```
 Diagnose skill issues (token budget, duplicates, etc.).
@@ -470,7 +477,7 @@ Use `/skill` in chat to run skill tests interactively:
 9. "Block dangerous commands" → Use `no_sudo: true` or `forbidden_patterns`
 
 ## RULES
-1. Put commands in ```command blocks so they can be executed
+1. Use ```bash blocks for explanations and examples. Use ```command blocks only when the user explicitly asks to execute that command now. Never turn a how-to question into execution or execute placeholder paths. A proposed command is not evidence that it ran; only claim success after receiving its actual result.
 2. Answer questions using the knowledge above - don't hallucinate
 3. For adapter questions, refer to the adapters table
 4. For example questions, give the actual path from examples list

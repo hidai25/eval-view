@@ -231,13 +231,20 @@ def run_with_spinner(fn: Any, label: str, n_tests: int) -> Any:
     return result_holder[0]
 
 
-def _create_adapter(adapter_type: str, endpoint: str, timeout: float = 30.0, allow_private_urls: bool = True) -> "AgentAdapter":
+def _create_adapter(
+    adapter_type: str,
+    endpoint: str,
+    timeout: float = 30.0,
+    allow_private_urls: bool = True,
+    adapter_config: Optional[Dict[str, Any]] = None,
+) -> "AgentAdapter":
     """Factory function for creating adapters based on type."""
     return create_adapter(
         adapter_type=adapter_type,
         endpoint=endpoint,
         timeout=timeout,
         allow_private_urls=allow_private_urls,
+        adapter_config=adapter_config,
     )
 
 
@@ -472,13 +479,30 @@ def _build_adapter_for_tc(
     endpoint = tc.endpoint or (config.endpoint if config else None)
 
     # These adapters have their own auth/model and don't need an HTTP endpoint
-    _no_endpoint_adapters = {"opencode", "goose", "openai-assistants", "mistral", "cohere", "aider"}
+    _no_endpoint_adapters = {"opencode", "goose", "openai", "openai-assistants", "mistral", "cohere", "aider"}
     needs_endpoint = adapter_type not in _no_endpoint_adapters if adapter_type else True
 
     if not adapter_type or (needs_endpoint and not endpoint):
         return None
 
     allow_private = getattr(config, "allow_private_urls", True) if config else True
+
+    if adapter_type in ("openai", "openai-assistants"):
+        openai_cfg: Dict[str, Any] = {}
+        if config:
+            openai_cfg["model"] = getattr(config, "model", None)
+            if config.adapter in ("openai", "openai-assistants"):
+                for key in ("instructions", "prompt_id", "tools", "assistant_id"):
+                    openai_cfg[key] = getattr(config, key, None)
+        openai_cfg.update(tc.adapter_config or {})
+        if getattr(tc, "model", None):
+            openai_cfg["model"] = {"name": tc.model}
+        return _create_adapter(
+            adapter_type,
+            "",
+            timeout=timeout,
+            adapter_config=openai_cfg,
+        )
 
     if adapter_type == "opencode":
         from evalview.adapters.opencode_adapter import OpenCodeAdapter

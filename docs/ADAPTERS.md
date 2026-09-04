@@ -500,7 +500,7 @@ asyncio.run(test_adapter())
 - See `evalview/adapters/http_adapter.py` for simple example
 - See `evalview/adapters/tapescope_adapter.py` for streaming example
 - Open an issue on GitHub with your use case
-- Check [DEBUGGING.md](../DEBUGGING.md) for troubleshooting
+- Check [DEBUGGING.md](DEBUGGING.md) for troubleshooting
 
 ## Contributing Adapters
 

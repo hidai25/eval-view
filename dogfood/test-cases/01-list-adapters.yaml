@@ -4,7 +4,9 @@ name: "List Adapters Knowledge"
 description: "Test that EvalView chat knows about available adapters"
 
 input:
-  query: "What adapters does EvalView support?"
+  query: "Run `evalview adapters` now and explain which adapters EvalView supports."
+  context:
+    allowed_commands: ["evalview adapters"]
 
 expected:
   tools:

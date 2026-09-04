@@ -24,6 +24,11 @@ jobs:
         python -m pip install --upgrade pip
         pip install build twine
 
+    - name: Validate release version and changelog
+      env:
+        RELEASE_TAG: ${{ github.event.release.tag_name }}
+      run: python scripts/check_release.py --tag "$RELEASE_TAG"
+
     - name: Build package
       run: |
         python -m build
@@ -32,9 +37,14 @@ jobs:
       run: |
         twine check dist/*
 
+    - name: Validate built distributions and installed CLI
+      env:
+        RELEASE_TAG: ${{ github.event.release.tag_name }}
+      run: python scripts/check_release.py --tag "$RELEASE_TAG" --dist dist --smoke
+
     - name: Publish to PyPI
       env:
         TWINE_USERNAME: __token__
         TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
       run: |
-        twine upload dist/* --skip-existing
+        twine upload dist/*

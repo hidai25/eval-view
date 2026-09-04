@@ -1,6 +1,6 @@
 """Configuration models for EvalView."""
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Union
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -228,6 +228,18 @@ class EvalViewConfig(BaseModel):
     headers: Dict[str, str] = Field(default_factory=dict)
     allow_private_urls: bool = True
     model: Optional[Dict[str, Any]] = None
+    instructions: Optional[str] = None
+    prompt_id: Optional[str] = None
+    tools: Optional[List[Union[str, Dict[str, Any]]]] = None
+    assistant_id: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def allow_endpointless_openai_config(cls, data: Any) -> Any:
+        """OpenAI SDK adapters do not use an HTTP endpoint in project config."""
+        if isinstance(data, dict) and data.get("adapter") in ("openai", "openai-assistants"):
+            return {"endpoint": "", **data}
+        return data
 
     # Budget cap — maximum total spend for a single run (dollars).
     budget: Optional[float] = Field(

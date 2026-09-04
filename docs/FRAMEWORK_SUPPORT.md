@@ -175,10 +175,12 @@ thresholds:
 > The adapter keeps its historical `openai-assistants` name for config
 > compatibility, but it runs on the Responses API — OpenAI removed the
 > Assistants API on August 26, 2026.
+> This migration is **unreleased**; PyPI 0.8.1 still uses Assistants. Read the
+> [migration and installation guide](OPENAI_MIGRATION.md) before upgrading.
 
 **What it supports:**
-- OpenAI Responses API (+ Conversations API for session state)
-- Function calling
+- OpenAI Responses API with user/assistant history for multi-turn tests
+- Hosted tools; custom function execution requires your own agent via the HTTP adapter
 - Code interpreter
 - Web search
 - File search (requires `OPENAI_VECTOR_STORE_IDS` — the Responses API needs explicit vector store ids)
@@ -345,7 +347,7 @@ elif adapter_type == "my-adapter":
     adapter = MyAdapter(...)
 ```
 
-See [ADAPTERS.md](docs/ADAPTERS.md) for full guide.
+See [ADAPTERS.md](ADAPTERS.md) for full guide.
 
 ---
 
@@ -420,7 +422,7 @@ timeout: 120.0  # 2 minutes
 
 - Check [QUICKSTART_LANGGRAPH.md](QUICKSTART_LANGGRAPH.md) for LangGraph
 - Check [SETUP_LANGGRAPH_EXAMPLE.md](SETUP_LANGGRAPH_EXAMPLE.md) for detailed setup
-- Check [ADAPTERS.md](docs/ADAPTERS.md) for custom adapters
+- Check [ADAPTERS.md](ADAPTERS.md) for custom adapters
 - Open an issue: https://github.com/hidai25/eval-view/issues
 
 ---

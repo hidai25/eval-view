@@ -46,7 +46,6 @@ def build_adapter(
     from evalview.adapters.tapescope_adapter import TapeScopeAdapter
     from evalview.adapters.langgraph_adapter import LangGraphAdapter
     from evalview.adapters.crewai_adapter import CrewAIAdapter
-    from evalview.adapters.openai_assistants_adapter import OpenAIAssistantsAdapter
 
     resolved_endpoint = endpoint or cfg.get("endpoint", "")
 
@@ -74,15 +73,14 @@ def build_adapter(
             allow_private_urls=allow_private_urls,
         )
 
-    if adapter_type == "openai-assistants":
-        return OpenAIAssistantsAdapter(
-            assistant_id=cfg.get("assistant_id"),
+    if adapter_type in ("openai", "openai-assistants"):
+        from evalview.core.adapter_factory import create_adapter
+
+        return create_adapter(
+            adapter_type,
+            "",
             timeout=cfg.get("timeout", 120.0),
-            verbose=verbose,
-            model_config=model_config,
-            instructions=cfg.get("instructions"),
-            prompt_id=cfg.get("prompt_id"),
-            tools=cfg.get("tools"),
+            adapter_config={"model": model_config, **cfg, "verbose": verbose},
         )
 
     if adapter_type in ("streaming", "tapescope", "jsonl"):
@@ -214,10 +212,32 @@ def get_test_adapter(
     Raises:
         ValueError: When neither a test-specific nor global adapter is available.
     """
-    API_ONLY_ADAPTERS = {"openai-assistants", "goose", "mistral", "opencode", "aider"}
+    API_ONLY_ADAPTERS = {"openai", "openai-assistants", "goose", "mistral", "opencode", "aider"}
 
     test_adapter_type = test_case.adapter
     test_endpoint = test_case.endpoint
+
+    # OpenAI project settings and per-test overrides must resolve identically
+    # in run, snapshot, and check, including tests that inherit the adapter.
+    from evalview.adapters.openai_assistants_adapter import OpenAIAssistantsAdapter
+
+    inherited_openai = isinstance(global_adapter, OpenAIAssistantsAdapter)
+    if test_adapter_type in ("openai", "openai-assistants") or (
+        test_adapter_type is None and inherited_openai
+    ):
+        openai_cfg: Dict[str, Any] = {"model": model_config}
+        if inherited_openai:
+            for key in ("instructions", "prompt_id", "tools", "assistant_id", "timeout"):
+                openai_cfg[key] = getattr(global_adapter, key)
+            openai_cfg["model"] = global_adapter.model_config
+        openai_cfg.update(test_case.adapter_config or {})
+        if getattr(test_case, "model", None):
+            openai_cfg["model"] = {"name": test_case.model}
+        return build_adapter(
+            test_adapter_type or "openai-assistants", test_endpoint,
+            openai_cfg, model_config, verbose, allow_private_urls,
+        )
+
     has_test_adapter = test_adapter_type and (test_endpoint or test_adapter_type in API_ONLY_ADAPTERS)
 
     if has_test_adapter:
