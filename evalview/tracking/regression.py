@@ -3,10 +3,20 @@
 import subprocess
 from pathlib import Path
 from typing import Optional, Dict, Any, List
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 from evalview.core.types import EvaluationResult
+from evalview.core.drift_tracker import _compute_slope
 from evalview.tracking.database import TrackingDatabase
+
+
+# Minimum absolute slope, in score points per run, for a trend to count as
+# significant. Scores are on a 0-100 scale, so 1.0 means "a point of score per
+# run" — roughly 10 points of drift across a 10-run window.
+DEFAULT_TREND_THRESHOLD = 1.0
+
+# An OLS fit through fewer than three points describes noise, not a trend.
+MIN_TREND_RUNS = 3
 
 
 @dataclass
@@ -29,6 +39,68 @@ class RegressionReport:
     is_regression: bool
     severity: str  # "none", "minor", "moderate", "critical"
     issues: List[str]
+
+
+@dataclass
+class ScoreTrend:
+    """Direction of a test's score across its recent runs."""
+
+    slope: float  # score points per run; negative means degrading
+    direction: str  # "improving", "worsening", "stable"
+    significant: bool  # mirrors direction != "stable"
+    run_count: int
+
+
+def _compute_trend(
+    scores_oldest_first: List[float],
+    threshold: float = DEFAULT_TREND_THRESHOLD,
+) -> ScoreTrend:
+    """
+    Classify the direction of chronologically ordered scores.
+
+    Delegates the fit to :func:`evalview.core.drift_tracker._compute_slope` so
+    there is a single OLS implementation in the codebase. That helper is used
+    rather than ``statistics.linear_regression`` because the latter is Python
+    3.10+ and EvalView supports 3.9.
+
+    ``_compute_slope`` guards ``n < 2`` to keep its own division safe; the
+    stricter ``MIN_TREND_RUNS`` guard here is a separate, statistical judgement
+    that two points are not enough to call a direction.
+
+    Args:
+        scores_oldest_first: Scores ordered oldest run first. Callers reading
+            from ``TrackingDatabase.get_test_history`` must reverse it, since
+            that query returns newest first.
+        threshold: Minimum absolute slope, in score points per run, that counts
+            as a real trend rather than noise.
+
+    Returns:
+        Trend over the supplied scores. Fewer than ``MIN_TREND_RUNS`` points
+        yields a zero-slope "stable" trend. ``significant`` is a convenience
+        mirror of ``direction != "stable"``, kept so callers can gate CI on a
+        single boolean.
+    """
+    run_count = len(scores_oldest_first)
+    if run_count < MIN_TREND_RUNS:
+        return ScoreTrend(slope=0.0, direction="stable", significant=False, run_count=run_count)
+
+    # Round before classifying so the reported slope always reproduces the
+    # reported direction.
+    slope = round(_compute_slope(scores_oldest_first), 4)
+
+    if slope > threshold:
+        direction = "improving"
+    elif slope < -threshold:
+        direction = "worsening"
+    else:
+        direction = "stable"
+
+    return ScoreTrend(
+        slope=slope,
+        direction=direction,
+        significant=direction != "stable",
+        run_count=run_count,
+    )
 
 
 class RegressionTracker:
@@ -265,7 +337,8 @@ class RegressionTracker:
             days: Number of days to analyze
 
         Returns:
-            Statistics dictionary
+            Statistics dictionary. ``score["trend"]`` holds the OLS slope over
+            the window, which reveals monotonic drift that avg/min/max hide.
         """
         history = self.db.get_test_history(test_name, days)
 
@@ -283,6 +356,10 @@ class RegressionTracker:
         passed_count = sum(1 for h in history if h["passed"])
         failed_count = len(history) - passed_count
 
+        # get_test_history orders newest first; the fit needs oldest first or the
+        # slope comes out sign-flipped.
+        trend = _compute_trend(list(reversed(scores)))
+
         return {
             "test_name": test_name,
             "total_runs": len(history),
@@ -295,6 +372,7 @@ class RegressionTracker:
                 "avg": sum(scores) / len(scores) if scores else None,
                 "min": min(scores) if scores else None,
                 "max": max(scores) if scores else None,
+                "trend": asdict(trend),
             },
             "cost": {
                 "current": costs[0] if costs else None,
