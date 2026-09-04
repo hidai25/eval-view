@@ -27,7 +27,7 @@ import click
 
 from evalview.commands.shared import console
 from evalview.commands.since_cmd import _load_history
-from evalview.core.drift_tracker import _compute_slope
+from evalview.core.trends import compute_slope
 from evalview.telemetry.decorators import track_command
 
 
@@ -171,7 +171,7 @@ def _build_rows(
         ]
         if not sims:
             continue
-        slope = _compute_slope(sims)
+        slope = compute_slope(sims)
         color, label = _classify(slope, len(sims))
 
         status_series = [

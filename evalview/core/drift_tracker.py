@@ -29,6 +29,13 @@ from math import sqrt
 from typing import Any, Dict, List, Optional, Tuple
 
 from evalview.core.diff import TraceDiff
+from evalview.core.trends import (
+    DEFAULT_SCORE_TREND_THRESHOLD,
+    DEFAULT_SCORE_TREND_WINDOW,
+    ScoreTrend,
+    compute_score_trend,
+    compute_slope,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -100,41 +107,8 @@ def _prompt_fingerprint(base_path: Path) -> Optional[str]:
 _MAX_HISTORY_ENTRIES = 10_000
 
 
-def _compute_slope(values: List[float]) -> float:
-    """Compute the OLS (ordinary least squares) regression slope.
-
-    This is the mathematically correct definition of a linear regression
-    slope — not the naive endpoint difference (first vs. last value), which
-    is sensitive to outliers and ignores all intermediate data points.
-
-    Args:
-        values: Sequence of numeric values ordered chronologically
-                (e.g., output similarities over successive checks).
-
-    Returns:
-        Slope of the best-fit line through the points (x=index, y=value).
-        Negative slope = declining trend. Returns 0.0 for fewer than 2 points.
-
-    Example:
-        >>> _compute_slope([0.95, 0.93, 0.91, 0.89])
-        -0.02  # declining 2% per check
-        >>> _compute_slope([0.95, 0.93, 0.97, 0.91])
-        -0.013  # noisy but slightly declining
-    """
-    n = len(values)
-    if n < 2:
-        return 0.0
-
-    # x values are just the indices 0, 1, ..., n-1
-    x_mean = (n - 1) / 2.0
-    y_mean = sum(values) / n
-
-    numerator = sum((i - x_mean) * (v - y_mean) for i, v in enumerate(values))
-    denominator = sum((i - x_mean) ** 2 for i in range(n))
-
-    if denominator == 0.0:
-        return 0.0
-    return numerator / denominator
+# Backward-compatible alias for callers that imported the old private helper.
+_compute_slope = compute_slope
 
 
 class DriftTracker:
@@ -239,6 +213,12 @@ class DriftTracker:
         # re-running the analysis. Absent in older entries; readers
         # must tolerate missing keys.
         if result is not None:
+            score = getattr(result, "score", None)
+            if score is not None:
+                try:
+                    entry["score"] = round(float(score), 4)
+                except (TypeError, ValueError):
+                    logger.debug("Skipping non-numeric score for %s: %r", test_name, score)
             anom = getattr(result, "anomaly_report", None)
             if anom and anom.get("anomalies"):
                 entry["has_anomalies"] = True
@@ -291,7 +271,7 @@ class DriftTracker:
             return None  # Not enough data for a reliable trend estimate
 
         similarities = [r["output_similarity"] for r in recent]
-        slope = _compute_slope(similarities)
+        slope = compute_slope(similarities)
 
         if slope < slope_threshold:
             first_val = similarities[0]
@@ -334,7 +314,7 @@ class DriftTracker:
             return ("insufficient_history", None)
 
         similarities = [r["output_similarity"] for r in recent]
-        slope = _compute_slope(similarities)
+        slope = compute_slope(similarities)
 
         # Rising or flat — not a drift concern
         if slope >= -0.005:
@@ -358,6 +338,33 @@ class DriftTracker:
             List of check records, newest first.
         """
         return list(reversed(self._load_recent(test_name, limit)))
+
+    def get_score_trend(
+        self,
+        test_name: str,
+        window: int = DEFAULT_SCORE_TREND_WINDOW,
+        threshold: float = DEFAULT_SCORE_TREND_THRESHOLD,
+    ) -> ScoreTrend:
+        """Return the score trend over the latest scored checks.
+
+        Older history entries may not contain an absolute ``score``. Those
+        entries are ignored instead of treating a baseline-relative score diff
+        as an absolute score.
+        """
+        if window <= 0:
+            raise ValueError("trend window must be positive")
+
+        scores: List[float] = []
+        for entry in self._load_recent(test_name, _MAX_HISTORY_ENTRIES):
+            score = entry.get("score")
+            if score is None:
+                continue
+            try:
+                scores.append(float(score))
+            except (TypeError, ValueError):
+                logger.debug("Skipping invalid historical score for %s: %r", test_name, score)
+
+        return compute_score_trend(scores[-window:], threshold=threshold)
 
     def compute_variance(
         self,

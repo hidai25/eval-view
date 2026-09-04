@@ -789,7 +789,7 @@ def _execute_check_tests(
             results.append(result)
             diffs.append((tc.name, diff))
             golden_traces[tc.name] = golden
-            drift_tracker.record_check(tc.name, diff)
+            drift_tracker.record_check(tc.name, diff, result=result)
 
     return diffs, results, drift_tracker, golden_traces
 

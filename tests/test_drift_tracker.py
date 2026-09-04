@@ -3,6 +3,7 @@
 import shutil
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -31,6 +32,12 @@ def _make_diff(similarity: float, status: DiffStatus = DiffStatus.PASSED) -> Tra
 
 class TestComputeSlope:
     """Unit tests for the OLS slope function."""
+
+    def test_public_helper_preserves_private_alias(self):
+        from evalview.core.drift_tracker import _compute_slope
+        from evalview.core.trends import compute_slope
+
+        assert _compute_slope is compute_slope
 
     def test_perfect_decline(self):
         from evalview.core.drift_tracker import _compute_slope
@@ -99,12 +106,17 @@ class TestDriftTrackerRecordAndLoad:
     def test_record_stores_correct_fields(self, tmp_dir):
         from evalview.core.drift_tracker import DriftTracker
         tracker = DriftTracker(base_path=tmp_dir)
-        tracker.record_check("my-test", _make_diff(0.91, DiffStatus.OUTPUT_CHANGED))
+        tracker.record_check(
+            "my-test",
+            _make_diff(0.91, DiffStatus.OUTPUT_CHANGED),
+            result=SimpleNamespace(score=72.5),
+        )
         history = tracker.get_test_history("my-test")
         entry = history[0]
         assert entry["test"] == "my-test"
         assert entry["status"] == "output_changed"
         assert entry["output_similarity"] == pytest.approx(0.91, abs=0.001)
+        assert entry["score"] == pytest.approx(72.5)
 
     def test_filters_by_test_name(self, tmp_dir):
         from evalview.core.drift_tracker import DriftTracker
@@ -147,6 +159,56 @@ class TestDriftTrackerRecordAndLoad:
             f.write('{"test": "my-test", "output_similarity": 0.93}\n')
         history = tracker.get_test_history("my-test")
         assert len(history) == 2  # malformed line skipped
+
+
+class TestScoreTrend:
+    """Absolute score trends use a bounded recent check window."""
+
+    @pytest.fixture
+    def tmp_dir(self):
+        directory = tempfile.mkdtemp()
+        yield Path(directory)
+        shutil.rmtree(directory)
+
+    def test_uses_last_ten_scored_checks(self, tmp_dir):
+        from evalview.core.drift_tracker import DriftTracker
+
+        tracker = DriftTracker(base_path=tmp_dir)
+        scores = [10.0, 20.0, 30.0, 40.0, 50.0]
+        scores.extend([90.0 - 2.0 * index for index in range(10)])
+        for score in scores:
+            tracker.record_check(
+                "my-test",
+                _make_diff(0.95),
+                result=SimpleNamespace(score=score),
+            )
+
+        trend = tracker.get_score_trend("my-test")
+
+        assert trend.run_count == 10
+        assert trend.slope == pytest.approx(-2.0)
+        assert trend.direction == "worsening"
+
+    def test_ignores_legacy_entries_without_absolute_scores(self, tmp_dir):
+        from evalview.core.drift_tracker import DriftTracker
+
+        tracker = DriftTracker(base_path=tmp_dir)
+        tracker.record_check("my-test", _make_diff(0.95))
+        tracker.record_check(
+            "my-test", _make_diff(0.95), result=SimpleNamespace(score=80.0)
+        )
+
+        trend = tracker.get_score_trend("my-test")
+
+        assert trend.run_count == 1
+        assert trend.direction == "stable"
+
+    def test_rejects_non_positive_window(self, tmp_dir):
+        from evalview.core.drift_tracker import DriftTracker
+
+        tracker = DriftTracker(base_path=tmp_dir)
+        with pytest.raises(ValueError, match="positive"):
+            tracker.get_score_trend("my-test", window=0)
 
 
 class TestDriftDetection:

@@ -1,22 +1,27 @@
 """Regression detection and comparison logic."""
 
 import subprocess
-from pathlib import Path
-from typing import Optional, Dict, Any, List
 from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
+from evalview.core.trends import (
+    DEFAULT_SCORE_TREND_THRESHOLD,
+    DEFAULT_SCORE_TREND_WINDOW,
+    MIN_TREND_RUNS as CORE_MIN_TREND_RUNS,
+    ScoreTrend,
+    compute_score_trend,
+)
 from evalview.core.types import EvaluationResult
-from evalview.core.drift_tracker import _compute_slope
 from evalview.tracking.database import TrackingDatabase
 
 
 # Minimum absolute slope, in score points per run, for a trend to count as
 # significant. Scores are on a 0-100 scale, so 1.0 means "a point of score per
 # run" — roughly 10 points of drift across a 10-run window.
-DEFAULT_TREND_THRESHOLD = 1.0
-
-# An OLS fit through fewer than three points describes noise, not a trend.
-MIN_TREND_RUNS = 3
+DEFAULT_TREND_THRESHOLD = DEFAULT_SCORE_TREND_THRESHOLD
+DEFAULT_TREND_WINDOW = DEFAULT_SCORE_TREND_WINDOW
+MIN_TREND_RUNS = CORE_MIN_TREND_RUNS
 
 
 @dataclass
@@ -41,16 +46,6 @@ class RegressionReport:
     issues: List[str]
 
 
-@dataclass
-class ScoreTrend:
-    """Direction of a test's score across its recent runs."""
-
-    slope: float  # score points per run; negative means degrading
-    direction: str  # "improving", "worsening", "stable"
-    significant: bool  # mirrors direction != "stable"
-    run_count: int
-
-
 def _compute_trend(
     scores_oldest_first: List[float],
     threshold: float = DEFAULT_TREND_THRESHOLD,
@@ -58,14 +53,8 @@ def _compute_trend(
     """
     Classify the direction of chronologically ordered scores.
 
-    Delegates the fit to :func:`evalview.core.drift_tracker._compute_slope` so
-    there is a single OLS implementation in the codebase. That helper is used
-    rather than ``statistics.linear_regression`` because the latter is Python
-    3.10+ and EvalView supports 3.9.
-
-    ``_compute_slope`` guards ``n < 2`` to keep its own division safe; the
-    stricter ``MIN_TREND_RUNS`` guard here is a separate, statistical judgement
-    that two points are not enough to call a direction.
+    Delegates to :mod:`evalview.core.trends` so tracking and check JSON use the
+    same OLS implementation and classification thresholds.
 
     Args:
         scores_oldest_first: Scores ordered oldest run first. Callers reading
@@ -76,31 +65,10 @@ def _compute_trend(
 
     Returns:
         Trend over the supplied scores. Fewer than ``MIN_TREND_RUNS`` points
-        yields a zero-slope "stable" trend. ``significant`` is a convenience
-        mirror of ``direction != "stable"``, kept so callers can gate CI on a
-        single boolean.
+        yields a zero-slope "stable" trend. ``significant`` means the magnitude
+        threshold was crossed; it is not a statistical hypothesis test.
     """
-    run_count = len(scores_oldest_first)
-    if run_count < MIN_TREND_RUNS:
-        return ScoreTrend(slope=0.0, direction="stable", significant=False, run_count=run_count)
-
-    # Round before classifying so the reported slope always reproduces the
-    # reported direction.
-    slope = round(_compute_slope(scores_oldest_first), 4)
-
-    if slope > threshold:
-        direction = "improving"
-    elif slope < -threshold:
-        direction = "worsening"
-    else:
-        direction = "stable"
-
-    return ScoreTrend(
-        slope=slope,
-        direction=direction,
-        significant=direction != "stable",
-        run_count=run_count,
-    )
+    return compute_score_trend(scores_oldest_first, threshold=threshold)
 
 
 class RegressionTracker:
@@ -328,18 +296,27 @@ class RegressionTracker:
             git_branch=latest.get("git_branch"),
         )
 
-    def get_statistics(self, test_name: str, days: int = 30) -> Dict[str, Any]:
+    def get_statistics(
+        self,
+        test_name: str,
+        days: int = 30,
+        trend_window: int = DEFAULT_TREND_WINDOW,
+    ) -> Dict[str, Any]:
         """
         Get statistics for a test over time.
 
         Args:
             test_name: Name of test
             days: Number of days to analyze
+            trend_window: Maximum number of recent runs used for score trend
 
         Returns:
             Statistics dictionary. ``score["trend"]`` holds the OLS slope over
-            the window, which reveals monotonic drift that avg/min/max hide.
+            the latest ``trend_window`` runs in the selected day range.
         """
+        if trend_window <= 0:
+            raise ValueError("trend_window must be positive")
+
         history = self.db.get_test_history(test_name, days)
 
         if not history:
@@ -356,9 +333,10 @@ class RegressionTracker:
         passed_count = sum(1 for h in history if h["passed"])
         failed_count = len(history) - passed_count
 
-        # get_test_history orders newest first; the fit needs oldest first or the
-        # slope comes out sign-flipped.
-        trend = _compute_trend(list(reversed(scores)))
+        # get_test_history orders newest first. Bound the trend to recent runs,
+        # then reverse it so the OLS fit receives chronological scores.
+        recent_scores = scores[:trend_window]
+        trend = _compute_trend(list(reversed(recent_scores)))
 
         return {
             "test_name": test_name,

@@ -106,6 +106,47 @@ def _aggregate_token_summary(
     }
 
 
+def _build_score_trend_payload(
+    diffs: List[Tuple[str, "TraceDiff"]],
+    drift_tracker: Optional["DriftTracker"],
+) -> Optional[Dict[str, Any]]:
+    """Build a conservative suite-level score-trend summary for CI JSON."""
+    if drift_tracker is None:
+        return None
+
+    from dataclasses import asdict
+
+    from evalview.core.trends import DEFAULT_SCORE_TREND_WINDOW
+
+    by_test: Dict[str, Dict[str, Any]] = {}
+    for name, _ in diffs:
+        trend = drift_tracker.get_score_trend(name, window=DEFAULT_SCORE_TREND_WINDOW)
+        if trend.run_count > 0:
+            by_test[name] = asdict(trend)
+
+    if not by_test:
+        return None
+
+    worsening = sorted(
+        name for name, trend in by_test.items() if trend["direction"] == "worsening"
+    )
+    improving = sorted(
+        name for name, trend in by_test.items() if trend["direction"] == "improving"
+    )
+
+    # A worsening test wins over improvements elsewhere so `.trend.direction`
+    # is safe to use as a conservative CI gate across a multi-test suite.
+    direction = "worsening" if worsening else "improving" if improving else "stable"
+    return {
+        "direction": direction,
+        "significant": direction != "stable",
+        "window": DEFAULT_SCORE_TREND_WINDOW,
+        "worsening_tests": worsening,
+        "improving_tests": improving,
+        "tests": by_test,
+    }
+
+
 def _print_parameter_diffs(tool_diffs: List["ToolDiff"]) -> None:
     """Print parameter-level differences for tool calls."""
     from rich.table import Table
@@ -490,6 +531,7 @@ def _display_check_results(
 
     if json_output:
         token_summary = _aggregate_token_summary(results, golden_traces)
+        score_trend_payload = _build_score_trend_payload(diffs, drift_tracker)
         output: Dict[str, Any] = {
             "summary": {
                 "total_tests": len(diffs),
@@ -507,6 +549,11 @@ def _display_check_results(
                     "test_name": name,
                     "status": diff.overall_severity.value,
                     "score_delta": diff.score_diff,
+                    "score_trend": (
+                        score_trend_payload["tests"].get(name)
+                        if score_trend_payload is not None
+                        else None
+                    ),
                     "has_tool_diffs": len(diff.tool_diffs) > 0,
                     "tool_diffs": [
                         {
@@ -563,6 +610,8 @@ def _display_check_results(
                 output["summary"]["baseline_token_usage"] = token_summary["baseline_token_usage"].model_dump()
             if token_summary.get("token_delta_pct") is not None:
                 output["summary"]["token_delta_pct"] = token_summary["token_delta_pct"]
+        if score_trend_payload is not None:
+            output["trend"] = score_trend_payload
         if healing_summary:
             output["healing"] = {
                 "total_healed": healing_summary.total_healed,
