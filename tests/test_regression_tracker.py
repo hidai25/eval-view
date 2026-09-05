@@ -4,6 +4,7 @@ import pytest
 
 from evalview.tracking.regression import (
     DEFAULT_TREND_THRESHOLD,
+    DEFAULT_TREND_WINDOW,
     MIN_TREND_RUNS,
     RegressionTracker,
     ScoreTrend,
@@ -68,6 +69,10 @@ class TestComputeTrend:
         scores = [80.0, 79.5, 79.0, 78.5]  # -0.5 per run
         assert _compute_trend(scores).direction == "stable"
         assert _compute_trend(scores, threshold=0.1).direction == "worsening"
+
+    def test_negative_threshold_is_rejected(self):
+        with pytest.raises(ValueError, match="non-negative"):
+            _compute_trend([80.0, 79.0, 78.0], threshold=-1.0)
 
     def test_noisy_series_uses_all_points_not_endpoints(self):
         # Endpoints are equal, but the bulk of the series declines, so an
@@ -180,6 +185,34 @@ class TestGetStatisticsTrend:
         assert trend["direction"] == "stable"
         assert trend["run_count"] == 1
 
+    def test_trend_uses_only_the_most_recent_runs(self, tmp_path):
+        tracker = self._tracker(tmp_path)
+        scores = [10.0, 20.0, 30.0, 40.0, 50.0]
+        scores.extend([90.0 - 2.0 * index for index in range(DEFAULT_TREND_WINDOW)])
+        for score in scores:
+            tracker.db.store_result(test_name="checkout", score=score, passed=True)
+
+        trend = tracker.get_statistics("checkout", days=30)["score"]["trend"]
+
+        assert trend["run_count"] == DEFAULT_TREND_WINDOW
+        assert trend["slope"] == pytest.approx(-2.0)
+        assert trend["direction"] == "worsening"
+
+    def test_trend_window_is_configurable(self, tmp_path):
+        tracker = self._tracker(tmp_path)
+        for score in (90.0, 80.0, 70.0, 60.0, 50.0):
+            tracker.db.store_result(test_name="checkout", score=score, passed=True)
+
+        trend = tracker.get_statistics("checkout", trend_window=3)["score"]["trend"]
+
+        assert trend["run_count"] == 3
+        assert trend["slope"] == pytest.approx(-10.0)
+
+    def test_non_positive_trend_window_is_rejected(self, tmp_path):
+        tracker = self._tracker(tmp_path)
+        with pytest.raises(ValueError, match="positive"):
+            tracker.get_statistics("checkout", trend_window=0)
+
     def test_no_history_omits_score_block(self, tmp_path):
         tracker = self._tracker(tmp_path)
         stats = tracker.get_statistics("never-run", days=30)
@@ -225,11 +258,11 @@ class TestTrendsCommandDisplay:
         assert result.exit_code == 0
         assert "improving" in result.output
 
-    def test_sub_threshold_drift_is_marked_as_noise(self):
+    def test_sub_threshold_drift_is_marked_as_below_threshold(self):
         result = self._run([80.0, 79.9, 79.8, 79.7, 79.6])
         assert result.exit_code == 0
         assert "stable" in result.output
-        assert "within noise" in result.output
+        assert "below threshold" in result.output
 
     def test_trend_suppressed_below_minimum_runs(self):
         result = self._run([80.0, 70.0])
@@ -237,8 +270,10 @@ class TestTrendsCommandDisplay:
         assert "Trend:" not in result.output
 
     def test_trend_reported_even_when_latest_score_is_zero(self):
-        # 0.0 is falsy, so the surrounding Score block is skipped — the trend
-        # must still print, since a collapse to zero is when it matters most.
         result = self._run([60.0, 40.0, 20.0, 0.0])
         assert result.exit_code == 0
+        assert "Score:" in result.output
+        assert "Current: 0.0" in result.output
+        assert "Average: 30.0" in result.output
+        assert "Range: 0.0 - 60.0" in result.output
         assert "worsening" in result.output

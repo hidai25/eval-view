@@ -185,6 +185,10 @@ EvalView handles both automatically.
 
 ### OpenAI (Responses API)
 
+The Responses migration is currently unreleased. PyPI 0.8.1 still uses the removed
+Assistants API; see the [migration guide](OPENAI_MIGRATION.md) for installation
+status and configuration steps.
+
 #### Timeout
 Responses run synchronously; runs that use code interpreter can still be
 slow. Increase the timeout if requests are timing out:
@@ -193,10 +197,11 @@ adapter_config:
   timeout: 120
 ```
 
-#### assistant_id is ignored
+#### Legacy assistant_id requires migration
 OpenAI removed the Assistants API on August 26, 2026, so `asst_...` ids can
-no longer be resolved and the adapter warns and ignores them. Configure the
-model, instructions, and tools directly instead:
+no longer be resolved. Legacy-only configuration fails rather than silently
+testing a default agent. Provide a replacement Prompt or explicitly migrate
+the model, instructions, and tools, then remove the old ID. For a per-test override:
 ```yaml
 adapter_config:
   instructions: "You are a helpful technical assistant."

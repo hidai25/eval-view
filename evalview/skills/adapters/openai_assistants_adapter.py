@@ -8,8 +8,8 @@ Formerly built on the Assistants API (assistants/threads/runs), which
 OpenAI removed on August 26, 2026. The Responses API
 (https://platform.openai.com/docs/api-reference/responses) is its
 replacement: a single synchronous call that runs the model with
-instructions and built-in tools and returns tool activity inline, with
-the Conversations API available for multi-turn state.
+instructions and built-in tools and returns tool activity inline. Prior
+user/assistant messages are replayed when supplied in the execution context.
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────────┐
@@ -20,7 +20,7 @@ Architecture:
     │  ┌─────────────────────────────────────────────────────────────┐│
     │  │  Response Request                                           ││
     │  │  ├── instructions: {skill.instructions}                    ││
-    │  │  ├── tools: [code_interpreter, file_search, functions]     ││
+    │  │  ├── tools: [code_interpreter, file_search, web_search]    ││
     │  │  └── model: gpt-4o                                         ││
     │  └─────────────────────────────────────────────────────────────┘│
     │                                                                  │
@@ -33,7 +33,7 @@ Architecture:
     │                                                                  │
     │  Trace Capture via Output Items:                                │
     │  ├── message: Final assistant response                          │
-    │  ├── *_call items: Function calls, code interpreter             │
+    │  ├── *_call items: Hosted tool execution (custom calls fail)     │
     │  └── Token usage from response.usage                            │
     └─────────────────────────────────────────────────────────────────┘
 
@@ -97,7 +97,7 @@ class ResponsesConfig:
             to run instead of inline instructions.
     """
     api_key: str
-    model: str = _DEFAULT_MODEL
+    model: Optional[str] = _DEFAULT_MODEL
     prompt_id: Optional[str] = None
 
     @classmethod
@@ -122,7 +122,17 @@ class ResponsesConfig:
                 adapter_name="openai-assistants",
             )
 
+        prompt_id = env.get("OPENAI_PROMPT_ID", os.getenv("OPENAI_PROMPT_ID"))
+        model = config.model or env.get("OPENAI_MODEL", os.getenv("OPENAI_MODEL"))
         if env.get("OPENAI_ASSISTANT_ID") or os.getenv("OPENAI_ASSISTANT_ID"):
+            if not (prompt_id or config.tools is not None):
+                raise SkillAgentAdapterError(
+                    "OPENAI_ASSISTANT_ID no longer identifies an executable agent: the "
+                    "Assistants API shut down on 2026-08-26. Migrate its configuration to "
+                    "OPENAI_PROMPT_ID or explicit model/tools and remove the legacy ID. "
+                    "Skill instructions are supplied inline.",
+                    adapter_name="openai-assistants",
+                )
             logger.warning(
                 "OPENAI_ASSISTANT_ID is ignored: OpenAI removed the Assistants "
                 "API on 2026-08-26. Skill instructions are now passed inline "
@@ -131,8 +141,8 @@ class ResponsesConfig:
 
         return cls(
             api_key=api_key,
-            model=env.get("OPENAI_MODEL", os.getenv("OPENAI_MODEL", _DEFAULT_MODEL)),
-            prompt_id=env.get("OPENAI_PROMPT_ID", os.getenv("OPENAI_PROMPT_ID")),
+            model=model or (None if prompt_id else _DEFAULT_MODEL),
+            prompt_id=prompt_id,
         )
 
 
@@ -259,15 +269,19 @@ class OpenAIAssistantsSkillAdapter(SkillAgentAdapter):
 
         try:
             request: Dict[str, Any] = {
-                "model": self.responses_config.model,
                 "input": query,
                 "instructions": self._build_skill_instructions(skill),
                 "max_output_tokens": _MAX_OUTPUT_TOKENS,
             }
+            history = context.get("conversation_history")
+            if history:
+                request["input"] = [*history, {"role": "user", "content": query}]
+            if self.responses_config.model:
+                request["model"] = self.responses_config.model
             if self.responses_config.prompt_id:
                 request["prompt"] = {"id": self.responses_config.prompt_id}
             tools = self._get_tools_config()
-            if tools:
+            if tools or self.config.tools is not None:
                 request["tools"] = tools
 
             # The Responses API is synchronous — no run creation/polling.
@@ -290,6 +304,17 @@ class OpenAIAssistantsSkillAdapter(SkillAgentAdapter):
                     files_created=files_created,
                     commands_ran=commands_ran,
                 )
+            pending_functions = [
+                item.name for item in (response.output or []) if item.type == "function_call"
+            ]
+            if pending_functions:
+                raise SkillAgentAdapterError(
+                    "Custom function calls were requested but not executed: "
+                    + ", ".join(pending_functions)
+                    + ". This adapter cannot execute custom functions or submit their outputs. "
+                    "Use an adapter for your agent's complete tool-execution loop.",
+                    adapter_name=self.name,
+                )
 
             # Final output: aggregated text across message items
             final_output = getattr(response, "output_text", "") or ""
@@ -299,21 +324,24 @@ class OpenAIAssistantsSkillAdapter(SkillAgentAdapter):
                 error_msg = "Response failed"
                 if response.error:
                     error_msg = f"{response.error.code}: {response.error.message}"
-                errors.append(error_msg)
+                raise SkillAgentAdapterError(error_msg, adapter_name=self.name)
             elif response.status == "incomplete":
                 reason = ""
                 details = getattr(response, "incomplete_details", None)
                 if details:
                     reason = f": {getattr(details, 'reason', '')}"
-                errors.append(f"Response incomplete{reason}")
+                raise SkillAgentAdapterError(f"Response incomplete{reason}", adapter_name=self.name)
+            elif response.status not in (None, "completed"):
+                raise SkillAgentAdapterError(
+                    f"Response did not complete: {response.status}", adapter_name=self.name
+                )
 
         except asyncio.TimeoutError:
             raise AgentTimeoutError(self.name, self.config.timeout)
         except SkillAgentAdapterError:
             raise
         except Exception as e:
-            errors.append(str(e))
-            logger.error(f"OpenAI Responses execution error: {e}")
+            raise SkillAgentAdapterError(str(e), adapter_name=self.name) from e
 
         end_time = datetime.now()
         self._last_raw_output = final_output
@@ -375,12 +403,20 @@ Use the available tools (code interpreter, file search) as needed to complete ta
         # by request-level tools.
         enable_code_interpreter = not self.responses_config.prompt_id
         enable_file_search = False
+        enable_web_search = False
 
         # Check configured tools
-        if self.config.tools:
+        if self.config.tools is not None:
             tool_set = set(t.lower() for t in self.config.tools)
+            unknown = tool_set - {"code_interpreter", "code", "file_search", "retrieval", "web_search"}
+            if unknown:
+                raise SkillAgentAdapterError(
+                    "Unsupported OpenAI skill tools: " + ", ".join(sorted(unknown)),
+                    adapter_name=self.name,
+                )
             enable_code_interpreter = "code_interpreter" in tool_set or "code" in tool_set
             enable_file_search = "file_search" in tool_set or "retrieval" in tool_set
+            enable_web_search = "web_search" in tool_set
 
         if enable_code_interpreter:
             tools.append({"type": "code_interpreter", "container": {"type": "auto"}})
@@ -396,10 +432,14 @@ Use the available tools (code interpreter, file search) as needed to complete ta
             if vector_store_ids:
                 tools.append({"type": "file_search", "vector_store_ids": vector_store_ids})
             else:
-                logger.warning(
+                raise SkillAgentAdapterError(
                     "file_search requires vector store ids in the Responses API; "
-                    "set OPENAI_VECTOR_STORE_IDS to enable it. Skipping."
+                    "set OPENAI_VECTOR_STORE_IDS to enable it.",
+                    adapter_name=self.name,
                 )
+
+        if enable_web_search:
+            tools.append({"type": "web_search"})
 
         return tools
 
@@ -424,6 +464,7 @@ Use the available tools (code interpreter, file search) as needed to complete ta
             commands_ran: List to append commands.
         """
         item_type = getattr(item, "type", "")
+        completed = getattr(item, "status", None) == "completed"
 
         if item_type == "code_interpreter_call":
             tool_calls.append("code_interpreter")
@@ -434,22 +475,25 @@ Use the available tools (code interpreter, file search) as needed to complete ta
                 type=TraceEventType.TOOL_CALL,
                 tool_name="code_interpreter",
                 tool_input={"code": code_input},
+                tool_success=completed,
             ))
 
             # Track as command execution
-            if code_input:
+            if code_input and completed:
                 commands_ran.append(f"[python] {code_input[:100]}...")
 
             # Check for file outputs
-            for output in item.outputs or []:
+            for output in (item.outputs or []) if completed else []:
                 if getattr(output, "type", "") == "image":
                     files_created.append(f"[generated_image:{output.url}]")
 
-        elif item_type == "file_search_call":
-            tool_calls.append("file_search")
+        elif item_type in ("file_search_call", "web_search_call"):
+            tool_name = item_type.removesuffix("_call")
+            tool_calls.append(tool_name)
             events.append(TraceEvent(
                 type=TraceEventType.TOOL_CALL,
-                tool_name="file_search",
+                tool_name=tool_name,
+                tool_success=completed,
             ))
 
         elif item_type == "function_call":
@@ -459,6 +503,8 @@ Use the available tools (code interpreter, file search) as needed to complete ta
             try:
                 import json
                 func_args = json.loads(item.arguments)
+                if not isinstance(func_args, dict):
+                    func_args = {"raw": item.arguments}
             except Exception:
                 func_args = {"raw": item.arguments}
 
@@ -466,50 +512,15 @@ Use the available tools (code interpreter, file search) as needed to complete ta
                 type=TraceEventType.TOOL_CALL,
                 tool_name=func_name,
                 tool_input=func_args,
+                tool_success=False,
+                tool_error="Custom function requested but not executed by this adapter",
             ))
-
-            # Track file operations from function args
-            self._track_function_operations(
-                func_name=func_name,
-                func_args=func_args,
-                files_created=files_created,
-                commands_ran=commands_ran,
-            )
 
         elif item_type == "message":
             events.append(TraceEvent(
                 type=TraceEventType.LLM_CALL,
                 tool_name="message_creation",
             ))
-
-    def _track_function_operations(
-        self,
-        func_name: str,
-        func_args: Dict[str, Any],
-        files_created: List[str],
-        commands_ran: List[str],
-    ) -> None:
-        """Track file and command operations from function calls.
-
-        Args:
-            func_name: Function name.
-            func_args: Function arguments.
-            files_created: List to append created files.
-            commands_ran: List to append commands.
-        """
-        func_lower = func_name.lower()
-
-        # File operations
-        if any(w in func_lower for w in ("write", "create", "save")):
-            path = func_args.get("path", func_args.get("file_path", ""))
-            if path:
-                files_created.append(path)
-
-        # Command operations
-        elif any(w in func_lower for w in ("run", "exec", "shell", "command")):
-            cmd = func_args.get("command", func_args.get("cmd", ""))
-            if cmd:
-                commands_ran.append(cmd)
 
     async def cleanup(self) -> None:
         """Clean up adapter resources.

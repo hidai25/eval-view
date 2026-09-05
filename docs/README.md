@@ -56,6 +56,7 @@ If you're new:
 |----------|-------------|
 | [Framework Support](FRAMEWORK_SUPPORT.md) | Overview of supported agent stacks |
 | [Adapters Guide](ADAPTERS.md) | Built-in adapters and custom adapter design |
+| [OpenAI Migration](OPENAI_MIGRATION.md) | Assistants shutdown, unreleased Responses migration, and configuration changes |
 | [Backend Requirements](BACKEND_REQUIREMENTS.md) | What your backend must expose for testing |
 | [Quick Start: LangGraph](QUICKSTART_LANGGRAPH.md) | LangGraph setup |
 | [Quick Start: HuggingFace](QUICKSTART_HUGGINGFACE.md) | Open-source local/hosted setup |
@@ -83,10 +84,16 @@ If you're new:
 
 ## Contributing
 
+When editing documentation, run `python scripts/check_docs_links.py` from the
+repository root after installing the development dependencies. CI checks local
+link targets in tracked root Markdown files and `docs/`; external URLs and heading
+anchors are outside this check's scope.
+
 | Document | Description |
 |----------|-------------|
 | [Repository Guidelines](AGENTS.md) | Project structure, conventions, and contributor guide |
 | [Agent Recipes](agent-recipes/README.md) | Step-by-step recipes for common extension tasks |
+| [Releasing EvalView](RELEASING.md) | Version checks, artifact smoke tests, and verifying a PyPI release |
 
 ## Website Guides
 
@@ -111,6 +118,7 @@ Use the website when you want the cleaner comparison and search-intent pages. Us
 | [Tutorials](TUTORIALS.md) | Longer step-by-step workflows |
 | [Debugging Guide](DEBUGGING.md) | Triage failing tests and unexpected diffs |
 | [Troubleshooting](TROUBLESHOOTING.md) | Common errors and fixes |
+| [Why EvalView exists: I Was Running an AI Casino](https://medium.com/@hidaibarmor/i-was-running-an-ai-casino-then-i-started-writing-tests-for-my-agents-93cb3468ce1e) | Hidai's origin story about a $42.93 agent failure and the regression tests it inspired; published December 2025, so use the current docs for commands and adapter setup |
 
 ## Guides
 

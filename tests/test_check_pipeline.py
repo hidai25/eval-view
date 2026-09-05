@@ -10,8 +10,10 @@ detection feature work:
 - Semantic diff warning is shown when OPENAI_API_KEY is missing
 """
 
+import json
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -163,6 +165,7 @@ class TestExecuteCheckTestsReturnType:
 
         history = drift_tracker.get_test_history("my-test")
         assert len(history) == 1, "DriftTracker should have one entry after one check"
+        assert history[0]["score"] == pytest.approx(90.0)
 
 
 # ---------------------------------------------------------------------------
@@ -373,6 +376,102 @@ class TestDriftTrackerReuse:
         assert len(instantiation_calls) == 0, (
             "DriftTracker should NOT be re-instantiated when drift_tracker is passed"
         )
+
+
+class TestCheckJsonScoreTrend:
+    """`check --json` exposes a conservative suite-level score trend."""
+
+    def test_worsening_score_trend_is_machine_readable(self, tmp_path, capsys):
+        from evalview.commands.check_display import _display_check_results
+        from evalview.core.diff import DiffStatus, OutputDiff, TraceDiff
+        from evalview.core.drift_tracker import DriftTracker
+
+        output_diff = OutputDiff(
+            similarity=1.0,
+            golden_preview="",
+            actual_preview="",
+            diff_lines=[],
+            severity=DiffStatus.PASSED,
+        )
+        diff = TraceDiff(
+            test_name="my-test",
+            has_differences=False,
+            tool_diffs=[],
+            output_diff=output_diff,
+            score_diff=0.0,
+            latency_diff=0.0,
+            overall_severity=DiffStatus.PASSED,
+        )
+        tracker = DriftTracker(base_path=tmp_path)
+        for score in (90.0, 85.0, 80.0):
+            tracker.record_check(
+                "my-test",
+                diff,
+                result=SimpleNamespace(
+                    score=score,
+                    anomaly_report=None,
+                    trust_report=None,
+                    coherence_report=None,
+                ),
+            )
+
+        analysis = {
+            "has_regressions": False,
+            "has_tools_changed": False,
+            "has_output_changed": False,
+            "all_passed": True,
+        }
+        _display_check_results(
+            [("my-test", diff)],
+            analysis,
+            MagicMock(),
+            False,
+            True,
+            drift_tracker=tracker,
+        )
+
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["trend"]["direction"] == "worsening"
+        assert payload["trend"]["significant"] is True
+        assert payload["trend"]["worsening_tests"] == ["my-test"]
+        assert payload["trend"]["tests"]["my-test"] == {
+            "slope": -5.0,
+            "direction": "worsening",
+            "significant": True,
+            "run_count": 3,
+        }
+        assert payload["diffs"][0]["score_trend"] == payload["trend"]["tests"]["my-test"]
+
+    def test_any_worsening_test_wins_suite_direction(self, tmp_path):
+        from evalview.commands.check_display import _build_score_trend_payload
+        from evalview.core.diff import DiffStatus, TraceDiff
+        from evalview.core.drift_tracker import DriftTracker
+
+        tracker = DriftTracker(base_path=tmp_path)
+        diffs = []
+        for name, scores in {
+            "improving": (70.0, 75.0, 80.0),
+            "worsening": (90.0, 85.0, 80.0),
+        }.items():
+            diff = TraceDiff(
+                test_name=name,
+                has_differences=False,
+                tool_diffs=[],
+                output_diff=None,
+                score_diff=0.0,
+                latency_diff=0.0,
+                overall_severity=DiffStatus.PASSED,
+            )
+            diffs.append((name, diff))
+            for score in scores:
+                tracker.record_check(name, diff, result=SimpleNamespace(score=score))
+
+        payload = _build_score_trend_payload(diffs, tracker)
+
+        assert payload is not None
+        assert payload["direction"] == "worsening"
+        assert payload["worsening_tests"] == ["worsening"]
+        assert payload["improving_tests"] == ["improving"]
 
 
 # ---------------------------------------------------------------------------

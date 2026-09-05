@@ -4,7 +4,9 @@ name: "Golden Baseline Knowledge"
 description: "Test that EvalView chat understands regression testing concepts"
 
 input:
-  query: "What is a golden baseline in EvalView and how do I create one?"
+  query: "Run `evalview snapshot --help` now, then explain what a golden baseline is and how it supports regression testing. Do not create a baseline."
+  context:
+    allowed_commands: ["evalview snapshot --help"]
 
 expected:
   tools:

@@ -11,6 +11,7 @@
 <p align="center">
   <a href="https://pypi.org/project/evalview/"><img src="https://img.shields.io/pypi/v/evalview.svg?label=release" alt="PyPI version"></a>
   <a href="https://pypi.org/project/evalview/"><img src="https://img.shields.io/pypi/dm/evalview.svg?label=downloads" alt="PyPI downloads"></a>
+  <a href="https://github.com/hidai25/eval-view/actions/workflows/ci.yml"><img src="https://github.com/hidai25/eval-view/actions/workflows/ci.yml/badge.svg?branch=main" alt="Package CI"></a>
   <a href="https://github.com/hidai25/eval-view/actions/workflows/dogfood.yml"><img src="https://github.com/hidai25/eval-view/actions/workflows/dogfood.yml/badge.svg" alt="Daily dogfood"></a>
   <a href="https://github.com/hidai25/eval-view/stargazers"><img src="https://img.shields.io/github/stars/hidai25/eval-view?style=social" alt="GitHub stars"></a>
   <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
@@ -27,6 +28,12 @@ Your agent returns `200` and looks fine. But a model update, a provider change, 
 <sub>↑ 30-second live demo — no API key needed</sub>
 
 ## Quick Start
+
+> **OpenAI adapter migration:** OpenAI shut down the Assistants API on **August 26, 2026**.
+> The latest published EvalView release, **0.8.1**, still uses that API; the Responses API
+> migration is currently **unreleased source**. If you use `openai-assistants`, follow the
+> [migration guide](docs/OPENAI_MIGRATION.md) before running your tests. An `assistant_id`
+> alone cannot preserve your agent's configuration. Other adapters are unaffected.
 
 ```bash
 pip install evalview
@@ -70,9 +77,11 @@ This makes EvalView a **merge-time regression gate**, which is a different job f
 
 ## EvalView tests itself in public, every day
 
-The badge at the top is live. Every day at 09:00 UTC, a [GitHub Action](.github/workflows/dogfood.yml) runs EvalView against EvalView — including a regression check where **the tool snapshots a live agent and diffs it with the same `snapshot` / `check` loop** this README asks you to trust. It also runs the full test suite, type checks, `evalview demo`, the end-to-end flows, an `evalview monitor` smoke test, and chat-mode self-tests.
+Every day at 09:00 UTC, a [GitHub Action](.github/workflows/dogfood.yml) runs EvalView against EvalView. It exercises `snapshot` / `check` against a local mock agent, the unit suite, type checks, `evalview demo`, end-to-end flows, and an `evalview monitor` smoke test. Separate live-provider checks test evaluator behavior and the chat assistant.
 
-When something breaks, the run opens a single rolling [`🐕 dogfood` issue](https://github.com/hidai25/eval-view/issues?q=label%3Adogfood) and keeps updating it until the tool is green again — so failures are public, not quietly patched.
+Package CI and daily dogfood have separate badges. A provider outage, exhausted quota, or missing credential means the live checks could not establish health; it does not prove an agent regression. Failed or incomplete required checks must still fail dogfood. Full logs and reports are retained as workflow artifacts, and a single rolling [`🐕 dogfood` issue](https://github.com/hidai25/eval-view/issues?q=label%3Adogfood) stays open until every required check succeeds.
+
+See [incident #264](https://github.com/hidai25/eval-view/issues/264) for the unresolved live-provider failure history and [the triage guide](docs/INTERNAL_DOGFOODING.md#daily-failure-triage) for interpreting it. Trust warnings are evidence to investigate, not proof of gaming or of a particular root cause.
 
 [Live dogfood runs →](https://github.com/hidai25/eval-view/actions/workflows/dogfood.yml) · [How it works →](docs/INTERNAL_DOGFOODING.md)
 
@@ -122,6 +131,12 @@ result.diffs    # per-test scores and tool diffs
 EvalView also does multi-turn testing, statistical/pass@k runs, record/replay cassettes, model-drift canaries, production monitoring with Slack alerts, and auto-generated regression tests from incidents. These are power-user features — start with `snapshot` and `check`, reach for the rest when you need them.
 
 → [Full feature reference](docs/CLI_REFERENCE.md) · [Getting Started](docs/GETTING_STARTED.md) · [FAQ](docs/FAQ.md)
+
+→ [Documentation index](docs/README.md) · [OpenAI migration](docs/OPENAI_MIGRATION.md) · [Release process](docs/RELEASING.md)
+
+### Why I built EvalView
+
+An agent that looked successful kept pulling entire documents into its context and made one question cost $42.93. That experience led me to build EvalView. I wrote about it in [“I Was Running an AI Casino. Then I Started Writing Tests for My Agents”](https://medium.com/@hidaibarmor/i-was-running-an-ai-casino-then-i-started-writing-tests-for-my-agents-93cb3468ce1e). The December 2025 post is the origin story; use the current docs for setup and commands.
 
 ## Contributing
 

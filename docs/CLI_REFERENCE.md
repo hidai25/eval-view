@@ -142,6 +142,26 @@ evalview check --dry-run                    # Preview plan, no API calls
 evalview check --budget 0.50               # Cap spend at $0.50
 ```
 
+### Score trends in CI JSON
+
+Checks persist each test's absolute score and compute an OLS trend over the 10
+most recent scored checks. The `--json` payload includes a conservative suite
+summary at `trend`: if any test is worsening, `trend.direction` is
+`"worsening"`. Per-test slopes and sample counts are available under
+`trend.tests` and on each item in `diffs[].score_trend`.
+
+```bash
+if [ "$(evalview check --json | jq -r '.trend.direction // "stable"')" = "worsening" ]; then
+  echo "Score trend is worsening"
+  exit 1
+fi
+```
+
+The first two scored checks report `stable` with `significant: false`; at least
+three points are required. Older history entries created before absolute-score
+tracking are ignored. `significant` means the 1.0-point-per-run magnitude
+threshold was crossed, not that a statistical hypothesis test was performed.
+
 ### Model / Runtime Detection
 
 `evalview check` runs a layered detector during baseline comparison:

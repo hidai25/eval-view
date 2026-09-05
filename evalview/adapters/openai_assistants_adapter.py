@@ -2,10 +2,10 @@
 
 Formerly the OpenAI Assistants API adapter. OpenAI removed the Assistants
 API (threads/runs/assistants) on August 26, 2026; its replacement is the
-Responses API for execution plus the Conversations API for multi-turn
-state. The adapter keeps its historical registry name
-("openai-assistants") so existing configs keep working, but it now speaks
-the Responses API. Server-side Assistant objects no longer exist — model,
+Responses API for execution plus isolated Conversations with replayed
+user/assistant history for multi-turn tests. The adapter keeps its historical registry name
+("openai-assistants"), but Assistant IDs require migration to explicit
+configuration. Server-side Assistant objects no longer exist — model,
 instructions, and tools are supplied per-request from adapter config, or
 via a dashboard-managed Prompt object referenced by ``prompt_id``.
 """
@@ -48,7 +48,7 @@ class OpenAIAssistantsAdapter(AgentAdapter):
     - tools: list of built-in tool names ("code_interpreter",
       "web_search", "file_search") or raw Responses API tool dicts
 
-    The legacy ``assistant_id`` setting is accepted but ignored: OpenAI
+    The legacy ``assistant_id`` setting requires an explicit replacement: OpenAI
     removed the Assistants API on 2026-08-26, so asst_... ids can no
     longer be resolved. Configure model/instructions/tools (or a
     prompt_id) instead.
@@ -59,7 +59,7 @@ class OpenAIAssistantsAdapter(AgentAdapter):
         assistant_id: Optional[str] = None,
         timeout: float = 120.0,
         verbose: bool = False,
-        model_config: Optional[Dict[str, Any]] = None,
+        model_config: Optional[Union[str, Dict[str, Any]]] = None,
         instructions: Optional[str] = None,
         prompt_id: Optional[str] = None,
         tools: Optional[List[Union[str, Dict[str, Any]]]] = None,
@@ -67,7 +67,7 @@ class OpenAIAssistantsAdapter(AgentAdapter):
         self.assistant_id = assistant_id  # legacy, unused
         self.timeout = timeout
         self.verbose = verbose
-        self.model_config = model_config or {}
+        self.model_config = {"name": model_config} if isinstance(model_config, str) else (model_config or {})
         self.instructions = instructions
         self.prompt_id = prompt_id
         self.tools = tools
@@ -87,10 +87,21 @@ class OpenAIAssistantsAdapter(AgentAdapter):
 
         context = context or {}
 
+        prompt_id = context.get("prompt_id") or self.prompt_id or os.getenv("OPENAI_PROMPT_ID")
+        model = self.model_config.get("name") or os.getenv("OPENAI_MODEL")
         legacy_assistant_id = (
             context.get("assistant_id") or self.assistant_id or os.getenv("OPENAI_ASSISTANT_ID")
         )
         if legacy_assistant_id:
+            # A model setting existed before migration and does not replace
+            # the instructions/tool definitions formerly held by an Assistant.
+            if not (prompt_id or self.instructions is not None or self.tools is not None):
+                raise ValueError(
+                    "assistant_id / OPENAI_ASSISTANT_ID no longer identifies an executable agent: "
+                    "the Assistants API shut down on 2026-08-26. Migrate its model, instructions, "
+                    "and tools to adapter config or set prompt_id / OPENAI_PROMPT_ID, then "
+                    "remove the legacy Assistant ID."
+                )
             logger.warning(
                 "assistant_id (%s) is ignored: OpenAI removed the Assistants API "
                 "on 2026-08-26. Configure model/instructions/tools or prompt_id "
@@ -98,8 +109,9 @@ class OpenAIAssistantsAdapter(AgentAdapter):
                 legacy_assistant_id,
             )
 
-        prompt_id = context.get("prompt_id") or self.prompt_id or os.getenv("OPENAI_PROMPT_ID")
-        model = self.model_config.get("name", "gpt-4o")
+        if not model and not prompt_id:
+            model = "gpt-4o"
+        tools = self._build_tools(has_prompt=bool(prompt_id))
 
         start_time = datetime.now()
 
@@ -110,25 +122,34 @@ class OpenAIAssistantsAdapter(AgentAdapter):
             logger.info(f"🚀 Executing OpenAI agent: {query}...")
             logger.debug(f"Model: {model}")
 
-        client = AsyncOpenAI()
+        client = AsyncOpenAI(timeout=self.timeout, max_retries=0)
 
-        # Start agent-level span
-        async with tracer.start_span_async("Agent Execution", SpanKind.AGENT):
-            # Conversations replace threads: they hold the multi-turn state
-            # and give us a stable session id.
-            conversation = await client.conversations.create()
+        # Close the HTTP client before this execution's event loop ends, even
+        # when a request fails or a pending custom function aborts execution.
+        async with client, tracer.start_span_async("Agent Execution", SpanKind.AGENT):
+            # Each execution is isolated. Shared multi-turn runners supply the
+            # prior user/assistant messages, which are replayed exactly once.
+            try:
+                conversation = await asyncio.wait_for(
+                    client.conversations.create(), timeout=self.timeout
+                )
+            except asyncio.TimeoutError:
+                raise TimeoutError(f"Conversation creation exceeded timeout of {self.timeout}s")
 
             request: Dict[str, Any] = {
-                "model": model,
                 "input": query,
                 "conversation": conversation.id,
             }
+            history = context.get("conversation_history")
+            if history:
+                request["input"] = [*history, {"role": "user", "content": query}]
+            if model:
+                request["model"] = model
             if prompt_id:
                 request["prompt"] = {"id": prompt_id}
-            if self.instructions:
+            if self.instructions is not None:
                 request["instructions"] = self.instructions
-            tools = self._build_tools(has_prompt=bool(prompt_id))
-            if tools:
+            if tools or self.tools is not None:
                 request["tools"] = tools
 
             # Responses run synchronously — no run polling loop.
@@ -150,7 +171,7 @@ class OpenAIAssistantsAdapter(AgentAdapter):
                 raise RuntimeError(error_msg)
 
             # Record LLM call span
-            model_name = getattr(response, "model", None) or model
+            model_name = getattr(response, "model", None) or model or "unknown"
             usage = getattr(response, "usage", None)
             input_tokens = getattr(usage, "input_tokens", 0) or 0
             output_tokens = getattr(usage, "output_tokens", 0) or 0
@@ -172,6 +193,16 @@ class OpenAIAssistantsAdapter(AgentAdapter):
 
             # Extract steps and record tool spans
             steps = self._extract_steps_with_tracing(response, tracer)
+            pending_functions = [
+                item.name for item in (response.output or []) if item.type == "function_call"
+            ]
+            if pending_functions:
+                raise RuntimeError(
+                    "Custom function calls were requested but not executed: "
+                    + ", ".join(pending_functions)
+                    + ". This adapter does not execute custom functions or submit their outputs. "
+                    "Use the HTTP adapter to evaluate your agent's complete tool-execution loop."
+                )
 
             # Final output: aggregated text of the response's message items
             final_output = getattr(response, "output_text", "") or ""
@@ -211,6 +242,8 @@ class OpenAIAssistantsAdapter(AgentAdapter):
             metrics=metrics,
             trace_context=trace_context,
             rationale_events=rationale.events(),
+            model_id=model_name,
+            model_provider="openai",
         )
 
     def _build_tools(self, has_prompt: bool = False) -> List[Dict[str, Any]]:
@@ -249,12 +282,12 @@ class OpenAIAssistantsAdapter(AgentAdapter):
                 if vector_store_ids:
                     tools.append({"type": "file_search", "vector_store_ids": vector_store_ids})
                 else:
-                    logger.warning(
+                    raise ValueError(
                         "file_search requires vector store ids in the Responses API; "
-                        "set OPENAI_VECTOR_STORE_IDS or pass a full tool dict. Skipping."
+                        "set OPENAI_VECTOR_STORE_IDS or pass a full tool dict."
                     )
             else:
-                logger.warning(f"Unknown tool shorthand '{tool}' — skipping.")
+                raise ValueError(f"Unknown OpenAI tool shorthand: '{tool}'. Use a supported built-in or a Responses API tool dict.")
         return tools
 
     def _extract_steps(self, response) -> List[StepTrace]:
@@ -280,12 +313,17 @@ class OpenAIAssistantsAdapter(AgentAdapter):
                 continue
 
             step_id = getattr(item, "id", None) or getattr(item, "call_id", None) or ""
+            success = getattr(item, "status", None) in (None, "completed")
+            error = None if success else f"Tool call status: {item.status}"
 
             if item_type == "function_call":
+                success = False
+                error = "Custom function requested but not executed by this adapter"
                 tool_name = item.name
                 step_name = tool_name
                 try:
-                    parameters = json.loads(item.arguments) if item.arguments else {}
+                    arguments = json.loads(item.arguments) if item.arguments else {}
+                    parameters = arguments if isinstance(arguments, dict) else {"raw": item.arguments}
                 except (ValueError, TypeError):
                     parameters = {"raw": item.arguments}
                 # Function outputs live in separate function_call_output
@@ -331,7 +369,8 @@ class OpenAIAssistantsAdapter(AgentAdapter):
                 tool_name=tool_name,
                 parameters=parameters,
                 output=output,
-                success=True,
+                success=success,
+                error=error,
                 metrics=StepMetrics(latency=0.0, cost=0.0),
             )
             steps.append(step_trace)
@@ -342,6 +381,7 @@ class OpenAIAssistantsAdapter(AgentAdapter):
                     tool_name=tool_name,
                     parameters=parameters,
                     result=output,
+                    error=error,
                     duration_ms=0.0,
                 )
 

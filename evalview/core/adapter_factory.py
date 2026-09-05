@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Any, Dict, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from evalview.adapters.base import AgentAdapter
@@ -14,6 +14,7 @@ def create_adapter(
     endpoint: str,
     timeout: float = 30.0,
     allow_private_urls: bool = True,
+    adapter_config: Optional[Dict[str, Any]] = None,
 ) -> "AgentAdapter":
     """Create an agent adapter from a normalized adapter type."""
     if adapter_type == "cohere":
@@ -73,7 +74,16 @@ def create_adapter(
 
     if adapter_type in ("openai", "openai-assistants"):
         # Talks to the OpenAI Responses API via the SDK; takes no endpoint.
-        return adapter_class(timeout=timeout)
+        cfg = adapter_config or {}
+        return OpenAIAssistantsAdapter(
+            timeout=cfg.get("timeout", timeout),
+            verbose=cfg.get("verbose", False),
+            model_config=cfg.get("model"),
+            instructions=cfg.get("instructions"),
+            prompt_id=cfg.get("prompt_id"),
+            tools=cfg.get("tools"),
+            assistant_id=cfg.get("assistant_id"),
+        )
 
     return adapter_class(endpoint=endpoint, timeout=timeout)
 
@@ -85,4 +95,5 @@ def create_adapter_from_config(config: "EvalViewConfig") -> "AgentAdapter":
         endpoint=config.endpoint,
         timeout=getattr(config, "timeout", 30.0),
         allow_private_urls=getattr(config, "allow_private_urls", True),
+        adapter_config=config.model_dump(exclude_none=True),
     )

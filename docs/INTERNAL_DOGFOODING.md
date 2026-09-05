@@ -13,6 +13,44 @@ The point is to make the internal build loop repeatable:
 6. run `check`
 7. ship
 
+## Daily failure triage
+
+The [daily workflow](../.github/workflows/dogfood.yml) has two kinds of evidence:
+
+| Check | What it establishes |
+| --- | --- |
+| Unit tests, type checks, mock-agent snapshot/check, demo, and monitor smoke test | Package behavior under reproducible local conditions |
+| Provider preflight, live evaluator tests, and chat-agent tests | Live service availability and behavior with the configured provider |
+
+A missing key, exhausted quota, timeout, or provider error makes the live run
+incomplete. Keep it visibly failing and report the service problem. It must not
+be converted to an agent answer, a passing skipped test, or a new baseline.
+
+1. Open the workflow summary and download its logs/reports artifact. Record the
+   failing step, source revision, model, and provider error category.
+2. If preflight reports exhausted quota, the maintainer must restore billing for
+   the API project used by the `OPENAI_API_KEY` Actions secret, or replace that
+   secret with an authorized, funded project's key. Never include keys in issues.
+3. After restoring access, manually rerun **Daily Dogfood** on the reviewed code.
+   Provider recovery does not resolve any remaining behavior failures automatically.
+4. For an actual behavior failure, reproduce it with a focused test and inspect
+   the raw tool outputs and trust findings before changing code or expectations.
+5. The rolling issue may close only after **all required checks succeed**. A
+   failed setup, interrupted run, or skipped live stage is not recovery.
+
+[Issue #264](https://github.com/hidai25/eval-view/issues/264) records the history.
+Its September 4, 2026 run reports `credit_balance_exhausted` from OpenAI. Earlier
+entries also contain execution timeouts and trust warnings; fixing quota does not
+establish that those older issues are resolved. Before this follow-up, the workflow
+could report overall success despite its recorded failures, so historical green
+badges alone are not evidence of a healthy run.
+
+The chat harness now distinguishes instructions to execute from explanatory code
+examples. It runs only explicitly approved commands, in an isolated directory,
+and asks for a final answer after recording the actual tool results. Trust checks
+remain enabled. Their warnings warrant investigation; they are not a causal proof
+of gaming, provider drift, or a library defect.
+
 ## Canonical Internal Slices
 
 These are the default internal slices for EvalView development.

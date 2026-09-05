@@ -1,13 +1,18 @@
 # OpenAI Example — Testing OpenAI Responses API Agents with EvalView
 
-> Test OpenAI agents built on the Responses API with EvalView — verify function calling, code interpreter usage, output quality, and detect regressions.
+> Test OpenAI agents built on the Responses API with EvalView — verify hosted tool usage, output quality, and detect regressions.
 
 > **Migration note:** This example previously targeted the OpenAI Assistants
 > API, which OpenAI removed on **August 26, 2026**. The `openai-assistants`
 > adapter keeps its name for config compatibility, but it now runs on the
-> Responses API (with the Conversations API for session state). There is no
+> Responses API (with isolated Conversations and replayed prior messages). There is no
 > assistant to create anymore — model, instructions, and tools are configured
 > per-request from your EvalView config.
+
+> **Installation:** This example requires the **unreleased development source**.
+> PyPI 0.8.1 still uses Assistants. Follow the [migration guide](../../docs/OPENAI_MIGRATION.md)
+> to preserve your agent settings. Custom function execution requires your own
+> agent loop, connected through the HTTP adapter.
 
 ## Setup
 

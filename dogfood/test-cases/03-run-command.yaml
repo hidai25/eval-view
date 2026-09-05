@@ -4,7 +4,9 @@ name: "Run Command Generation"
 description: "Test that EvalView chat can generate valid run commands"
 
 input:
-  query: "How do I run the demo tests?"
+  query: "Run `evalview demo` now and explain what its results demonstrate."
+  context:
+    allowed_commands: ["evalview demo"]
 
 expected:
   tools:
