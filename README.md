@@ -12,7 +12,8 @@
   <a href="https://pypi.org/project/evalview/"><img src="https://img.shields.io/pypi/v/evalview.svg?label=release" alt="PyPI version"></a>
   <a href="https://pypi.org/project/evalview/"><img src="https://img.shields.io/pypi/dm/evalview.svg?label=downloads" alt="PyPI downloads"></a>
   <a href="https://github.com/hidai25/eval-view/actions/workflows/ci.yml"><img src="https://github.com/hidai25/eval-view/actions/workflows/ci.yml/badge.svg?branch=main" alt="Package CI"></a>
-  <a href="https://github.com/hidai25/eval-view/actions/workflows/dogfood.yml"><img src="https://github.com/hidai25/eval-view/actions/workflows/dogfood.yml/badge.svg" alt="Daily dogfood"></a>
+  <a href="https://github.com/hidai25/eval-view/actions/workflows/dogfood.yml"><img src="https://github.com/hidai25/eval-view/actions/workflows/dogfood.yml/badge.svg?branch=main" alt="Core Dogfood"></a>
+  <a href="https://github.com/hidai25/eval-view/actions/workflows/dogfood-live.yml"><img src="https://github.com/hidai25/eval-view/actions/workflows/dogfood-live.yml/badge.svg?branch=main&amp;event=workflow_dispatch" alt="Live Provider Checks (manual)"></a>
   <a href="https://github.com/hidai25/eval-view/stargazers"><img src="https://img.shields.io/github/stars/hidai25/eval-view?style=social" alt="GitHub stars"></a>
   <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
 </p>
@@ -54,6 +55,9 @@ That's the whole loop. `check` returns one of:
 
 It diffs the **whole trajectory** — tool names, parameters, and order — not just the final string. The deterministic tool + sequence diff runs offline, with no API key. Add an LLM judge only when you want output-quality scoring.
 
+Executing your agent can still incur backend API charges: `--no-judge` skips the
+judge, not those calls. Embedding-based semantic comparison is opt-in.
+
 No agent yet? See it work in 30 seconds:
 
 ```bash
@@ -77,13 +81,29 @@ This makes EvalView a **merge-time regression gate**, which is a different job f
 
 ## EvalView tests itself in public, every day
 
-Every day at 09:00 UTC, a [GitHub Action](.github/workflows/dogfood.yml) runs EvalView against EvalView. It exercises `snapshot` / `check` against a local mock agent, the unit suite, type checks, `evalview demo`, end-to-end flows, and an `evalview monitor` smoke test. Separate live-provider checks test evaluator behavior and the chat assistant.
+Every day at 09:00 UTC, on pull requests, and on pushes to main,
+[Core Dogfood](.github/workflows/dogfood.yml) exercises the non-live test suite,
+type checks, local mock-agent `snapshot` / `check`, `evalview demo`, end-to-end
+flows, and an `evalview monitor` smoke test. It uses no paid API credentials and
+makes no paid inference calls. GitHub runner usage is separate.
 
-Package CI and daily dogfood have separate badges. A provider outage, exhausted quota, or missing credential means the live checks could not establish health; it does not prove an agent regression. Failed or incomplete required checks must still fail dogfood. Full logs and reports are retained as workflow artifacts, and a single rolling [`🐕 dogfood` issue](https://github.com/hidai25/eval-view/issues?q=label%3Adogfood) stays open until every required check succeeds.
+[Live Provider Checks](.github/workflows/dogfood-live.yml) test the real evaluator and
+chat assistant only when a maintainer explicitly opts into paid API use on main.
+They have no automatic schedule. Their badge records the last manual run; a green
+core badge does not establish live-provider health or rule out provider drift.
 
-See [incident #264](https://github.com/hidai25/eval-view/issues/264) for the unresolved live-provider failure history and [the triage guide](docs/INTERNAL_DOGFOODING.md#daily-failure-triage) for interpreting it. Trust warnings are evidence to investigate, not proof of gaming or of a particular root cause.
+Package CI, core dogfood, and live checks have separate badges. Failed or incomplete
+checks remain visible within their scope, with logs and reports preserved as
+artifacts. Rolling issues use separate `dogfood-core` and `dogfood-live` labels.
+A provider outage, exhausted quota, or missing credential means live health is
+unavailable; it does not prove an agent regression.
 
-[Live dogfood runs →](https://github.com/hidai25/eval-view/actions/workflows/dogfood.yml) · [How it works →](docs/INTERNAL_DOGFOODING.md)
+The historical [incident #264](https://github.com/hidai25/eval-view/issues/264)
+remains available for maintainer review of fresh evidence from both scopes. Neither
+workflow automatically closes it. Trust warnings are evidence to investigate,
+not proof of gaming or of a particular root cause.
+
+[Core runs →](https://github.com/hidai25/eval-view/actions/workflows/dogfood.yml) · [Manual live runs →](https://github.com/hidai25/eval-view/actions/workflows/dogfood-live.yml) · [Run and triage guide →](docs/INTERNAL_DOGFOODING.md#daily-failure-triage)
 
 ## CI: block regressions in every PR
 

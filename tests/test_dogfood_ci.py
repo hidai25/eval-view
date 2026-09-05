@@ -13,7 +13,7 @@ import pytest
 import yaml
 
 from dogfood import preflight
-from dogfood.summarize import CHECKS, summarize
+from dogfood.summarize import SCOPE_CHECKS, main as summarize_main, summarize
 
 
 def workflow_step(step_id):
@@ -78,25 +78,83 @@ def test_log_capture_preserves_real_exit_code_and_evidence(tmp_path, exit_code):
 
 
 def test_continue_on_error_cannot_turn_failed_outcome_green():
-    steps = {name: {"outcome": "success"} for name in CHECKS}
+    steps = {name: {"outcome": "success"} for name in SCOPE_CHECKS["core"]}
     steps["pytest"] = {"outcome": "failure", "conclusion": "success"}
     failed, _ = summarize(steps)
     assert failed == ["pytest"]
 
 
-def test_only_complete_success_is_green():
-    steps = {name: {"outcome": "success"} for name in CHECKS}
-    assert summarize(steps)[0] == []
-    del steps["dogfood"]
-    assert summarize(steps)[0] == ["dogfood"]
-    assert len(summarize({})[0]) == len(CHECKS)
+@pytest.mark.parametrize("scope", ["core", "live"])
+def test_only_complete_success_in_selected_scope_is_green(scope):
+    steps = {name: {"outcome": "success"} for name in SCOPE_CHECKS[scope]}
+    assert summarize(steps, scope)[0] == []
+    missing = next(iter(SCOPE_CHECKS[scope]))
+    del steps[missing]
+    assert summarize(steps, scope)[0] == [SCOPE_CHECKS[scope][missing]]
+    assert len(summarize({}, scope)[0]) == len(SCOPE_CHECKS[scope])
+
+
+def test_core_success_does_not_claim_live_recovery():
+    steps = {name: {"outcome": "success"} for name in SCOPE_CHECKS["core"]}
+    steps["provider"] = {"outcome": "failure"}
+    failed, summary = summarize(steps, "core")
+    assert failed == []
+    assert "Core Dogfood Results" in summary
+    assert "Live provider coverage is reported separately" in summary
+    assert "| provider |" not in summary
+    assert summarize(steps, "live")[0] == ["provider", "pytest-llm", "dogfood"]
+
+
+@pytest.mark.parametrize("scope", ["", "invalid"])
+def test_invalid_summary_scope_fails_closed(scope):
+    with pytest.raises(ValueError, match="DOGFOOD_SCOPE"):
+        summarize({}, scope)
+
+
+def test_cli_requires_explicit_scope(monkeypatch, tmp_path):
+    monkeypatch.delenv("DOGFOOD_SCOPE", raising=False)
+    monkeypatch.setenv("CHECK_STEPS", "{}")
+    output = tmp_path / "output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    with pytest.raises(ValueError, match="DOGFOOD_SCOPE"):
+        summarize_main()
+    assert not output.exists()
+
+
+def test_core_workflow_preserves_free_checks_and_excludes_paid_stages():
+    path = Path(__file__).resolve().parents[1] / ".github/workflows/dogfood.yml"
+    text = path.read_text()
+    workflow = yaml.safe_load(text)
+    assert workflow["concurrency"] == {
+        "group": "core-dogfood-${{ github.ref }}",
+        "cancel-in-progress": False,
+    }
+    triggers = workflow.get("on", workflow.get(True))
+    assert triggers["push"]["branches"] == ["main"]
+    assert triggers["pull_request"]["branches"] == ["main"]
+    assert "schedule" in triggers and "workflow_dispatch" in triggers
+    job = workflow["jobs"]["dogfood"]
+    assert job["env"]["DOGFOOD_SCOPE"] == "core"
+    steps = job["steps"]
+    ids = {step.get("id") for step in steps}
+    assert set(SCOPE_CHECKS["core"]) <= ids
+    assert not set(SCOPE_CHECKS["live"]) & ids
+    assert "secrets." not in text
+    assert "dogfood.preflight" not in text
+    assert "not requires_api_key" in next(step["run"] for step in steps if step.get("id") == "pytest")
+    issue_step = next(step for step in steps if step.get("uses", "").startswith("actions/github-script"))
+    assert "github.event_name != 'pull_request'" in issue_step["if"]
+    assert "github.ref == 'refs/heads/main'" in issue_step["if"]
+    artifact = next(step for step in steps if step.get("uses", "").startswith("actions/upload-artifact"))
+    assert artifact["with"]["name"].startswith("core-dogfood-evidence-")
+    assert artifact["with"]["retention-days"] == 30
 
 
 def test_provider_outage_blocks_live_checks_without_calling_them_passed():
-    steps = {name: {"outcome": "success"} for name in CHECKS}
+    steps = {name: {"outcome": "success"} for name in SCOPE_CHECKS["live"]}
     steps["provider"] = {"outcome": "failure"}
     steps["pytest_llm"] = steps["dogfood"] = {"outcome": "skipped"}
-    failed, summary = summarize(steps)
+    failed, summary = summarize(steps, "live")
     assert failed == ["provider", "pytest-llm", "dogfood"]
     assert "blocked by provider preflight" in summary
     assert "unavailable, not passing" in summary

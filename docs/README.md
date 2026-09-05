@@ -33,7 +33,7 @@ If you're new:
 | [YAML Test Case Schema](YAML_SCHEMA.md) | Complete schema for authoring test cases |
 | [Comparisons](COMPARISONS.md) | EvalView vs LangSmith, Langfuse, Braintrust, DeepEval, and Promptfoo |
 | [Operating Model](OPERATING_MODEL.md) | How to run EvalView with frontier-lab rigor and startup-team practicality |
-| [Internal Dogfooding](INTERNAL_DOGFOODING.md) | The lightweight internal ship gate for EvalView itself |
+| [Internal Dogfooding](INTERNAL_DOGFOODING.md) | Automatic provider-free core checks, manual paid live checks, and incident triage |
 
 ## Core Concepts
 
@@ -77,6 +77,7 @@ If you're new:
 |----------|-------------|
 | [CI/CD Integration](CI_CD.md) | GitHub Actions, GitLab CI, CircleCI |
 | [AI Agent Testing in CI/CD](AI_AGENT_TESTING_CI.md) | Search-intent guide for regression testing agents in CI |
+| [Core and Live Dogfood](../dogfood/README.md) | Run local core tests or explicitly opt into live-provider verification |
 | [MCP Contract Testing](MCP_CONTRACTS.md) | Detect external MCP server interface drift |
 | [Skills Testing](SKILLS_TESTING.md) | Test `SKILL.md` behavior with real agents |
 | [Chat Mode](CHAT_MODE.md) | Interactive CLI guidance and exploration |

@@ -15,28 +15,40 @@ The point is to make the internal build loop repeatable:
 
 ## Daily failure triage
 
-The [daily workflow](../.github/workflows/dogfood.yml) has two kinds of evidence:
+Core and live-provider checks produce separate evidence and statuses:
 
-| Check | What it establishes |
-| --- | --- |
-| Unit tests, type checks, mock-agent snapshot/check, demo, and monitor smoke test | Package behavior under reproducible local conditions |
-| Provider preflight, live evaluator tests, and chat-agent tests | Live service availability and behavior with the configured provider |
+| Workflow | When it runs | What it establishes |
+| --- | --- | --- |
+| [Core Dogfood](../.github/workflows/dogfood.yml) | Daily at 09:00 UTC, pull requests, main pushes, or manually | Non-live tests, type checks, mock-agent snapshot/check, demo, and monitor behavior without paid inference |
+| [Live Provider Checks](../.github/workflows/dogfood-live.yml) | Manually, on main, with explicit paid-API confirmation | Provider access, live evaluator behavior, and chat-agent behavior with the configured models |
+
+Core runs use no paid API credentials. “Provider-free” means zero paid inference
+calls, not zero GitHub runner cost. Mock tests can catch library regressions but
+cannot establish provider availability, model quality, or provider drift. The live
+badge describes its last manual run, not a continuously monitored service.
 
 A missing key, exhausted quota, timeout, or provider error makes the live run
 incomplete. Keep it visibly failing and report the service problem. It must not
 be converted to an agent answer, a passing skipped test, or a new baseline.
 
+Each workflow maintains only its own rolling issue: `dogfood-core` or
+`dogfood-live`. An issue may close only when every required check in that scope
+succeeds. A successful core run cannot close a live failure, and a successful
+live run cannot close a core failure. Setup errors and incomplete evidence fail
+their scope even when subsequent diagnostics continue.
+
 1. Open the workflow summary and download its logs/reports artifact. Record the
    failing step, source revision, model, and provider error category.
-2. If preflight reports exhausted quota, the maintainer must restore billing for
-   the API project used by the `OPENAI_API_KEY` Actions secret, or replace that
-   secret with an authorized, funded project's key. Never include keys in issues.
-3. After restoring access, manually rerun **Daily Dogfood** on the reviewed code.
-   Provider recovery does not resolve any remaining behavior failures automatically.
+2. For a live preflight failure, inspect the funded API project behind the
+   `OPENAI_API_KEY` Actions secret. Quota, credential, and provider failures are
+   service problems; never include keys in issues.
+3. After restoring access, explicitly opt into **Live Provider Checks** on the
+   reviewed main revision. Provider recovery does not resolve remaining behavior
+   failures automatically. Core checks can continue independently.
 4. For an actual behavior failure, reproduce it with a focused test and inspect
    the raw tool outputs and trust findings before changing code or expectations.
-5. The rolling issue may close only after **all required checks succeed**. A
-   failed setup, interrupted run, or skipped live stage is not recovery.
+5. Review the complete evidence for the affected scope. A failed setup,
+   interrupted run, or skipped required stage is not recovery.
 
 [Issue #264](https://github.com/hidai25/eval-view/issues/264) records the history.
 Its September 4, 2026 run reports `credit_balance_exhausted` from OpenAI. Earlier
@@ -45,11 +57,42 @@ establish that those older issues are resolved. Before this follow-up, the workf
 could report overall success despite its recorded failures, so historical green
 badges alone are not evidence of a healthy run.
 
+The split deliberately preserves this historical incident: neither workflow
+automatically closes #264. A maintainer must review fresh successful core **and**
+live evidence, along with the older timeouts and trust findings, before resolving
+it. Splitting the workflows is not a claim of funded provider recovery.
+
 The chat harness now distinguishes instructions to execute from explanatory code
 examples. It runs only explicitly approved commands, in an isolated directory,
 and asks for a final answer after recording the actual tool results. Trust checks
 remain enabled. Their warnings warrant investigation; they are not a causal proof
 of gaming, provider drift, or a library defect.
+
+## Manually verify the live provider
+
+After the workflow changes are merged, a maintainer can choose **Live Provider
+Checks** in GitHub Actions, select `main`, and enable `confirm_paid_api`. The
+confirmation defaults to false and the workflow rejects other branches.
+The equivalent CLI command is:
+
+```bash
+gh workflow run dogfood-live.yml --repo hidai25/eval-view --ref main -f confirm_paid_api=true
+```
+
+This authorizes real API calls using the funded `OPENAI_API_KEY` repository
+secret. The live workflow keeps `gpt-5.4-mini` and `gpt-4o`; it does not substitute
+mock results. There is no automatic weekly or other live schedule.
+
+The workflow serializes test execution, bounds retries, and limits concurrent runs.
+Preflight, live evaluator tests, and chat tests have 1-, 5-, and 8-minute limits;
+the 25-minute job timeout also leaves room for setup and saving evidence.
+These controls do not guarantee a dollar cap.
+Use a dedicated API project and provider-enforced spend controls for a financial
+limit; budget notifications alone are not an enforced cap.
+
+`--no-judge` disables judge calls only. Running a cloud-backed agent still uses
+its API, and opting into semantic comparison may use embedding APIs. Core
+dogfood uses local mocks and leaves semantic-diff embeddings disabled.
 
 ## Canonical Internal Slices
 
@@ -197,7 +240,7 @@ This is intentionally lightweight.
 It does **not** yet provide:
 
 - automatic slice selection
-- enforced ship gates in CI
+- automatic selection and enforcement of the feature-specific slices above
 - automatic bug-to-test conversion
 
 Those can come later if they prove useful.
