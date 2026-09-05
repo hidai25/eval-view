@@ -35,17 +35,34 @@ pip install -e ".[dev]"
 
 ### Running Tests
 
+The default contributor check excludes tests that call real providers. It needs
+no paid API credentials:
+
 **With uv (faster):**
 ```bash
-make test           # or: uv run pytest
-make test-cov       # with coverage
+uv run pytest -m 'not requires_api_key'
+uv run pytest -m 'not requires_api_key' --cov=evalview
 ```
 
 **With pip:**
 ```bash
-make pip-test       # or: pytest
-make pip-test-cov   # with coverage
+pytest -m 'not requires_api_key'
+pytest -m 'not requires_api_key' --cov=evalview
 ```
+
+`make test` and an unfiltered `pytest` also collect the provider tests; they may
+make paid calls when provider credentials are present. Add the
+`requires_api_key` marker to every test that needs a real provider, and mock
+provider responses in ordinary regression tests.
+
+Package CI and **Core Dogfood** run automatically without paid inference. Core
+dogfood also exercises local mock-agent flows daily and on PR/main changes.
+**Live Provider Checks** are a separate, manual-only workflow on main that
+requires a funded API key and explicit `confirm_paid_api=true`. Its last-run
+status does not follow from a passing core check. See
+[Internal Dogfooding](docs/INTERNAL_DOGFOODING.md) for the dispatch command,
+scoped issue handling, and interpretation of the results. Provider-free checks
+still consume normal runner resources.
 
 ### Code Quality
 
