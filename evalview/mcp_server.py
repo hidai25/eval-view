@@ -428,7 +428,18 @@ class MCPServer:
                 request = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            response = self._handle(request)
+            try:
+                response = self._handle(request)
+            except Exception as exc:
+                # One bad request must not take the whole server down.
+                req_id = request.get("id") if isinstance(request, dict) else None
+                if req_id is None:
+                    continue
+                response = {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {"code": -32603, "message": f"Internal error: {exc}"},
+                }
             if response is not None:
                 sys.stdout.write(json.dumps(response) + "\n")
                 sys.stdout.flush()
@@ -461,14 +472,23 @@ class MCPServer:
 
         if method == "tools/call":
             tool_name = params.get("name", "")
-            arguments = params.get("arguments", {})
-            output = self._call_tool(tool_name, arguments)
+            arguments = params.get("arguments") or {}
+            is_error = False
+            if not isinstance(arguments, dict):
+                output = "Error: 'arguments' must be an object."
+                is_error = True
+            else:
+                try:
+                    output = self._call_tool(tool_name, arguments)
+                except Exception as exc:
+                    output = f"Error: {tool_name} failed: {exc}"
+                    is_error = True
             return {
                 "jsonrpc": "2.0",
                 "id": req_id,
                 "result": {
                     "content": [{"type": "text", "text": output}],
-                    "isError": False,
+                    "isError": is_error,
                 },
             }
 

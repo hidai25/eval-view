@@ -115,6 +115,69 @@ class TestProtocol:
         assert "Unknown tool" in text
 
 
+class TestBadArguments:
+    """A bad tool argument must return an error, not kill the stdio server."""
+
+    def _serve(self, server, requests):
+        import io
+        import json
+
+        stdin = io.StringIO("".join(json.dumps(r) + "\n" for r in requests))
+        stdout = io.StringIO()
+        with patch("sys.stdin", stdin), patch("sys.stdout", stdout):
+            server.serve()
+        return [json.loads(line) for line in stdout.getvalue().splitlines()]
+
+    @pytest.mark.parametrize(
+        "arguments",
+        [{"name": 5, "query": "x"}, None, ["not", "an", "object"]],
+    )
+    def test_bad_create_test_arguments_return_error_and_keep_serving(
+        self, server, tmp_test_dir, arguments
+    ):
+        server.test_path = tmp_test_dir
+        responses = self._serve(
+            server,
+            [
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {"name": "create_test", "arguments": arguments},
+                },
+                {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+            ],
+        )
+        assert [r["id"] for r in responses] == [1, 2]
+        assert responses[0]["result"]["content"][0]["text"].startswith("Error")
+        assert "tools" in responses[1]["result"]
+
+    def test_tool_exception_returns_is_error(self, server):
+        with patch.object(server, "_call_tool", side_effect=RuntimeError("boom")):
+            resp = server._handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 7,
+                    "method": "tools/call",
+                    "params": {"name": "create_test", "arguments": {}},
+                }
+            )
+        assert resp["result"]["isError"] is True
+        assert "boom" in resp["result"]["content"][0]["text"]
+
+    def test_handler_exception_returns_jsonrpc_error_and_keeps_serving(self, server):
+        responses = self._serve(
+            server,
+            [
+                {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": None},
+                {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+            ],
+        )
+        assert [r["id"] for r in responses] == [1, 2]
+        assert responses[0]["error"]["code"] == -32603
+        assert "tools" in responses[1]["result"]
+
+
 # ============================================================================
 # Tool Schema Contract Tests
 # ============================================================================
