@@ -19,7 +19,8 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from evalview.mcp_server import MCPServer, TOOLS, _EVALVIEW_VERSION
+from evalview.core.loader import TestCaseLoader
+from evalview.mcp_server import MCPServer, TOOLS, ToolError, _EVALVIEW_VERSION
 
 
 # ============================================================================
@@ -113,6 +114,17 @@ class TestProtocol:
         })
         text = resp["result"]["content"][0]["text"]
         assert "Unknown tool" in text
+        assert resp["result"]["isError"] is True
+
+    def test_tool_validation_error_is_flagged(self, server):
+        resp = server._handle({
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {"name": "create_test", "arguments": {"name": "x"}},
+        })
+        assert resp["result"]["isError"] is True
+        assert "'name' and 'query' are required" in resp["result"]["content"][0]["text"]
 
 
 class TestBadArguments:
@@ -122,7 +134,10 @@ class TestBadArguments:
         import io
         import json
 
-        stdin = io.StringIO("".join(json.dumps(r) + "\n" for r in requests))
+        # A str is sent as a raw line; anything else is JSON-encoded.
+        stdin = io.StringIO(
+            "".join((r if isinstance(r, str) else json.dumps(r)) + "\n" for r in requests)
+        )
         stdout = io.StringIO()
         with patch("sys.stdin", stdin), patch("sys.stdout", stdout):
             server.serve()
@@ -130,7 +145,7 @@ class TestBadArguments:
 
     @pytest.mark.parametrize(
         "arguments",
-        [{"name": 5, "query": "x"}, None, ["not", "an", "object"]],
+        [{"name": 5, "query": "x"}, None, ["not", "an", "object"], []],
     )
     def test_bad_create_test_arguments_return_error_and_keep_serving(
         self, server, tmp_test_dir, arguments
@@ -150,6 +165,7 @@ class TestBadArguments:
         )
         assert [r["id"] for r in responses] == [1, 2]
         assert responses[0]["result"]["content"][0]["text"].startswith("Error")
+        assert responses[0]["result"]["isError"] is True
         assert "tools" in responses[1]["result"]
 
     def test_tool_exception_returns_is_error(self, server):
@@ -166,16 +182,57 @@ class TestBadArguments:
         assert "boom" in resp["result"]["content"][0]["text"]
 
     def test_handler_exception_returns_jsonrpc_error_and_keeps_serving(self, server):
-        responses = self._serve(
-            server,
-            [
-                {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": None},
-                {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
-            ],
-        )
+        real_handle = server._handle
+
+        def handle_failing_on_first(req):
+            if req.get("id") == 1:
+                raise RuntimeError("boom")
+            return real_handle(req)
+
+        with patch.object(server, "_handle", side_effect=handle_failing_on_first):
+            responses = self._serve(
+                server,
+                [
+                    {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+                    {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+                ],
+            )
         assert [r["id"] for r in responses] == [1, 2]
         assert responses[0]["error"]["code"] == -32603
         assert "tools" in responses[1]["result"]
+
+    def test_null_params_is_treated_as_empty(self, server):
+        resp = server._handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": None})
+        assert resp["result"]["isError"] is True
+        assert "Unknown tool" in resp["result"]["content"][0]["text"]
+
+    def test_non_object_params_return_invalid_params(self, server):
+        resp = server._handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": [1]})
+        assert resp["error"]["code"] == -32602
+
+    def test_request_without_method_returns_invalid_request(self, server):
+        resp = server._handle({"jsonrpc": "2.0", "id": 1})
+        assert resp["error"]["code"] == -32600
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "method": 5})["error"]["code"] == -32600
+
+    def test_response_shaped_message_gets_no_reply(self, server):
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "result": {}}) is None
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "error": {"code": 1}}) is None
+
+    def test_lines_without_an_id_are_logged_and_skipped(self, server, capsys):
+        responses = self._serve(
+            server,
+            [
+                "not json",
+                "5",
+                '[{"jsonrpc": "2.0", "id": 9, "method": "tools/list"}]',
+                {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+            ],
+        )
+        assert [r["id"] for r in responses] == [2]
+        err = capsys.readouterr().err
+        assert "not valid JSON" in err
+        assert err.count("not a JSON object") == 2
 
 
 # ============================================================================
@@ -423,14 +480,14 @@ class TestCompareFlagWiring:
     @patch("evalview.mcp_server.shutil.which", return_value="/usr/bin/evalview")
     def test_compare_missing_endpoints(self, mock_which):
         server = MCPServer()
-        result = server._call_tool("compare_agents", {"v1": "http://localhost:8000"})
-        assert "Error" in result
+        with pytest.raises(ToolError, match="'v1' and 'v2'"):
+            server._call_tool("compare_agents", {"v1": "http://localhost:8000"})
 
     @patch("evalview.mcp_server.shutil.which", return_value="/usr/bin/evalview")
     def test_compare_missing_both(self, mock_which):
         server = MCPServer()
-        result = server._call_tool("compare_agents", {})
-        assert "Error" in result
+        with pytest.raises(ToolError, match="'v1' and 'v2'"):
+            server._call_tool("compare_agents", {})
 
 
 class TestReplayFlagWiring:
@@ -515,27 +572,91 @@ class TestCreateTest:
         })
         assert "Created" in result
         path = os.path.join(tmp_test_dir, "hello-world.yaml")
-        assert os.path.exists(path)
-        with open(path) as f:
-            content = f.read()
-        assert 'name: "hello-world"' in content
-        assert 'query: "Say hello"' in content
-        assert "greet" in content
-        assert "delete_all" in content
-        assert "min_score: 80" in content
+        test_case = TestCaseLoader.load_from_file(path)
+        assert test_case.name == "hello-world"
+        assert test_case.input.query == "Say hello"
+        assert test_case.expected.tools == ["greet"]
+        assert test_case.expected.forbidden_tools == ["delete_all"]
+        assert test_case.expected.output.contains == ["hello"]
+        assert test_case.thresholds.min_score == 80
+
+    def test_minimal_test_loads(self, tmp_test_dir):
+        # Only the required fields: the file must still be a valid test case.
+        server = MCPServer(test_path=tmp_test_dir)
+        server._call_tool("create_test", {"name": "minimal", "query": "Say hello"})
+        test_case = TestCaseLoader.load_from_file(os.path.join(tmp_test_dir, "minimal.yaml"))
+        assert test_case.input.query == "Say hello"
+        assert test_case.expected.tools is None
+        assert test_case.thresholds.min_score == 70
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            'Say "hi" to me',
+            "line one\nline two",
+            "key: value # not a comment",
+            'x"\nthresholds:\n  min_score: 0\nz: "',
+        ],
+    )
+    def test_special_characters_round_trip(self, tmp_test_dir, query):
+        server = MCPServer(test_path=tmp_test_dir)
+        server._call_tool("create_test", {
+            "name": "special",
+            "query": query,
+            "description": 'has "quotes": and colons',
+            "expected_output_contains": ['he said "ok"', "a: b"],
+        })
+        test_case = TestCaseLoader.load_from_file(os.path.join(tmp_test_dir, "special.yaml"))
+        assert test_case.input.query == query
+        assert test_case.description == 'has "quotes": and colons'
+        assert test_case.expected.output.contains == ['he said "ok"', "a: b"]
+        assert test_case.thresholds.min_score == 70
+
+    @pytest.mark.parametrize("name", ["../escaped", "a/b", "café"])
+    def test_name_the_loader_rejects_writes_nothing(self, tmp_test_dir, name):
+        # "../escaped" would otherwise write outside test_path.
+        server = MCPServer(test_path=os.path.join(tmp_test_dir, "tests"))
+        with pytest.raises(ToolError, match="name must contain only"):
+            server._call_tool("create_test", {"name": name, "query": "x"})
+        assert os.listdir(tmp_test_dir) == []
+
+    def test_single_string_tool_list_is_one_tool(self, tmp_test_dir):
+        server = MCPServer(test_path=tmp_test_dir)
+        server._call_tool("create_test", {"name": "one", "query": "x", "expected_tools": "calculator"})
+        test_case = TestCaseLoader.load_from_file(os.path.join(tmp_test_dir, "one.yaml"))
+        assert test_case.expected.tools == ["calculator"]
+
+    @pytest.mark.parametrize(
+        "bad_args, message",
+        [
+            ({"name": 5}, "'name' must be a string"),
+            ({"description": ["x"]}, "'description' must be a string"),
+            ({"expected_tools": [1]}, "'expected_tools' must be a list"),
+            ({"forbidden_tools": [""]}, "'forbidden_tools' must be a list"),
+            ({"expected_output_contains": {"a": 1}}, "'expected_output_contains' must be a list"),
+            ({"min_score": "high"}, "'min_score' must be a number"),
+            ({"min_score": 150}, "'min_score' must be a number"),
+            ({"min_score": True}, "'min_score' must be a number"),
+            ({"test_path": 3}, "'test_path' must be a string"),
+        ],
+    )
+    def test_rejects_wrong_types(self, tmp_test_dir, bad_args, message):
+        server = MCPServer(test_path=tmp_test_dir)
+        with pytest.raises(ToolError, match=message):
+            server._call_tool("create_test", {"name": "typed", "query": "x", **bad_args})
+        assert os.listdir(tmp_test_dir) == []
 
     def test_rejects_duplicate(self, tmp_test_dir):
         server = MCPServer(test_path=tmp_test_dir)
         server._call_tool("create_test", {"name": "dup", "query": "test"})
-        result = server._call_tool("create_test", {"name": "dup", "query": "test"})
-        assert "Error" in result
-        assert "already exists" in result
+        with pytest.raises(ToolError, match="already exists"):
+            server._call_tool("create_test", {"name": "dup", "query": "test"})
 
     def test_rejects_missing_fields(self):
         server = MCPServer()
-        assert "Error" in server._call_tool("create_test", {"name": "x"})
-        assert "Error" in server._call_tool("create_test", {"query": "x"})
-        assert "Error" in server._call_tool("create_test", {})
+        for args in ({"name": "x"}, {"query": "x"}, {}):
+            with pytest.raises(ToolError, match="'name' and 'query' are required"):
+                server._call_tool("create_test", args)
 
 
 # ============================================================================
@@ -546,6 +667,5 @@ class TestMissingBinary:
     @patch("evalview.mcp_server.shutil.which", return_value=None)
     def test_returns_install_error(self, mock_which):
         server = MCPServer()
-        result = server._call_tool("list_tests", {})
-        assert "evalview not found" in result
-        assert "pip install" in result
+        with pytest.raises(ToolError, match="evalview not found in PATH. Run: pip install"):
+            server._call_tool("list_tests", {})
