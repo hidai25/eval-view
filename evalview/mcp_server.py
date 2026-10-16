@@ -1,13 +1,17 @@
 """EvalView MCP Server — exposes the full evalview CLI as MCP tools for Claude Code."""
 
+import io
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import traceback
 from importlib.metadata import version as _pkg_version, PackageNotFoundError
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
+
+import yaml
 
 # Matches CSI sequences (\x1b[...m), OSC sequences (\x1b]...\x07), and single-char escapes
 _ANSI_ESCAPE = re.compile(r"\x1b(?:\[[0-9;]*[A-Za-z]|\][^\x07]*\x07|[@-_][0-`]?)")
@@ -412,6 +416,59 @@ TOOLS = [
 ]
 
 
+_TOOL_NAMES = {t["name"] for t in TOOLS}
+
+
+class ToolError(Exception):
+    """A tool call failed in a way the caller can fix; reported with ``isError: true``."""
+
+
+def _jsonrpc_error(req_id: Any, code: int, message: str) -> Dict[str, Any]:
+    return {"jsonrpc": "2.0", "id": req_id, "error": {"code": code, "message": message}}
+
+
+def _log(message: str) -> None:
+    # stdout carries the protocol, so diagnostics go to stderr (MCP hosts log it).
+    sys.stderr.write(f"evalview mcp: {message}\n")
+    sys.stderr.flush()
+
+
+def _str_arg(args: Dict[str, Any], key: str) -> str:
+    value = args.get(key)
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise ToolError(f"Error: '{key}' must be a string.")
+    return value
+
+
+def _str_list_arg(args: Dict[str, Any], key: str) -> List[str]:
+    value = args.get(key)
+    if value is None:
+        return []
+    if isinstance(value, str):
+        value = [value]  # a single name sent without a list
+    if not isinstance(value, list) or not all(isinstance(v, str) and v.strip() for v in value):
+        raise ToolError(f"Error: '{key}' must be a list of non-empty strings.")
+    return value
+
+
+def _min_score_arg(value: Any) -> Union[int, float]:
+    if value is None:
+        return 70
+    message = "Error: 'min_score' must be a number from 0 to 100."
+    if isinstance(value, bool):
+        raise ToolError(message)
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        raise ToolError(message) from None
+    if not 0 <= score <= 100:
+        raise ToolError(message)
+    # Whole numbers stay ints so the file reads "80", not "80.0".
+    return int(score) if score.is_integer() else score
+
+
 class MCPServer:
     """Synchronous stdio JSON-RPC MCP server for EvalView."""
 
@@ -420,34 +477,59 @@ class MCPServer:
 
     def serve(self) -> None:
         """Run the synchronous stdin/stdout JSON-RPC loop."""
+        if isinstance(sys.stdin, io.TextIOWrapper):
+            # MCP messages are UTF-8 whatever the locale (cp1252 on Windows), and
+            # one bad byte must not end the loop.
+            sys.stdin.reconfigure(encoding="utf-8", errors="replace")
         for raw_line in sys.stdin:
             line = raw_line.strip()
             if not line:
                 continue
+            # MCP requires a reply to carry the request's id. A line that is not
+            # a JSON object has no id to answer, so it is logged and skipped.
             try:
                 request = json.loads(line)
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, RecursionError):
+                # RecursionError: nesting too deep for the parser.
+                _log(f"skipped a line that could not be parsed as JSON: {line[:200]}")
+                continue
+            if not isinstance(request, dict):
+                _log("skipped a message that is not a JSON object (batches are not supported)")
                 continue
             try:
                 response = self._handle(request)
             except Exception as exc:
                 # One bad request must not take the whole server down.
-                req_id = request.get("id") if isinstance(request, dict) else None
+                traceback.print_exc(file=sys.stderr)
+                req_id = request.get("id")
                 if req_id is None:
                     continue
-                response = {
-                    "jsonrpc": "2.0",
-                    "id": req_id,
-                    "error": {"code": -32603, "message": f"Internal error: {exc}"},
-                }
+                response = _jsonrpc_error(req_id, -32603, f"Internal error: {exc}")
             if response is not None:
                 sys.stdout.write(json.dumps(response) + "\n")
                 sys.stdout.flush()
 
     def _handle(self, req: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        method = req.get("method", "")
+        method = req.get("method")
         req_id = req.get("id")
-        params = req.get("params", {})
+        params = req.get("params")
+        if params is None:
+            params = {}
+
+        if req_id is None:
+            # Notifications get no reply. None of them needs action here, and a
+            # tools/call sent as one is not run: its result would have nowhere to go.
+            return None
+
+        if not isinstance(method, str):
+            # A message without a method is either a response (this server sends
+            # no requests, so there is nothing to match it to) or malformed.
+            if "result" in req or "error" in req:
+                return None
+            return _jsonrpc_error(req_id, -32600, "Invalid Request: 'method' must be a string.")
+
+        if not isinstance(params, dict):
+            return _jsonrpc_error(req_id, -32602, "Invalid params: 'params' must be an object.")
 
         if method == "initialize":
             return {
@@ -472,7 +554,9 @@ class MCPServer:
 
         if method == "tools/call":
             tool_name = params.get("name", "")
-            arguments = params.get("arguments") or {}
+            arguments = params.get("arguments")
+            if arguments is None:
+                arguments = {}
             is_error = False
             if not isinstance(arguments, dict):
                 output = "Error: 'arguments' must be an object."
@@ -480,6 +564,9 @@ class MCPServer:
             else:
                 try:
                     output = self._call_tool(tool_name, arguments)
+                except ToolError as exc:
+                    output = str(exc)
+                    is_error = True
                 except Exception as exc:
                     output = f"Error: {tool_name} failed: {exc}"
                     is_error = True
@@ -492,64 +579,77 @@ class MCPServer:
                 },
             }
 
-        # Unknown method — return error only if it has an id (i.e. it's a request not a notification)
-        if req_id is not None:
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "error": {"code": -32601, "message": f"Unknown method: {method}"},
-            }
-
-        return None
+        return _jsonrpc_error(req_id, -32601, f"Unknown method: {method}")
 
     def _create_test(self, args: Dict[str, Any]) -> str:
-        test_name = args.get("name", "").strip()
-        query = args.get("query", "").strip()
+        test_name = _str_arg(args, "name").strip()
+        query = _str_arg(args, "query").strip()
         if not test_name or not query:
-            return "Error: 'name' and 'query' are required."
+            raise ToolError("Error: 'name' and 'query' are required.")
+        description = _str_arg(args, "description").strip()
+        expected_tools = _str_list_arg(args, "expected_tools")
+        forbidden_tools = _str_list_arg(args, "forbidden_tools")
+        expected_output = _str_list_arg(args, "expected_output_contains")
+        min_score = _min_score_arg(args.get("min_score"))
+        test_path = _str_arg(args, "test_path") or self.test_path
 
-        test_path = args.get("test_path", self.test_path)
-        slug = test_name.lower().replace(" ", "-").replace("_", "-")
+        expected: Dict[str, Any] = {}
+        if expected_tools:
+            expected["tools"] = expected_tools
+        if forbidden_tools:
+            # Any call to one of these is a hard fail.
+            expected["forbidden_tools"] = forbidden_tools
+        if expected_output:
+            expected["output"] = {"contains": expected_output}
+
+        test_case: Dict[str, Any] = {"name": test_name}
+        if description:
+            test_case["description"] = description
+        test_case["input"] = {"query": query}
+        test_case["expected"] = expected
+        test_case["thresholds"] = {"min_score": min_score}
+
+        # Validate with the model the loader uses, so the file always loads. Its
+        # name rule also keeps path separators out of the filename below.
+        from pydantic import ValidationError
+
+        from evalview.core.loader import CONFIG_FILE_PATTERNS
+        from evalview.core.types import TestCase
+
+        try:
+            TestCase(**test_case)
+        except ValidationError as exc:
+            problems = "; ".join(
+                f"{'.'.join(str(part) for part in err['loc'])}: {err['msg']}"
+                for err in exc.errors()
+            )
+            raise ToolError(f"Error: invalid test case: {problems}") from None
+
+        # Same rule as TestGenerator._slugify.
+        slug = re.sub(r"[^a-z0-9]+", "-", test_name.lower()).strip("-")
+        if not slug:
+            raise ToolError("Error: 'name' must contain at least one letter or digit.")
+        if f"{slug}.yaml" in CONFIG_FILE_PATTERNS:
+            raise ToolError(
+                f"Error: '{test_name}' would be saved as {slug}.yaml, which the loader skips "
+                "as a config file. Choose a different name."
+            )
         filename = os.path.join(test_path, f"{slug}.yaml")
 
-        if os.path.exists(filename):
-            return f"Error: test already exists at {filename}. Delete it first or choose a different name."
-
+        # safe_dump quotes and escapes values, so quotes, colons or newlines in
+        # them can't break the file or add keys to it. allow_unicode=False keeps
+        # the file ASCII, so it reads the same in any locale encoding.
+        content = yaml.safe_dump(test_case, sort_keys=False, allow_unicode=False)
         os.makedirs(test_path, exist_ok=True)
-
-        lines = [f'name: "{test_name}"']
-
-        description = args.get("description", "")
-        if description:
-            lines.append(f'description: "{description}"')
-
-        lines += ["", "input:", f'  query: "{query}"', "", "expected:"]
-
-        expected_tools = args.get("expected_tools", [])
-        if expected_tools:
-            lines.append("  tools:")
-            for t in expected_tools:
-                lines.append(f"    - {t}")
-
-        forbidden_tools = args.get("forbidden_tools", [])
-        if forbidden_tools:
-            lines.append("  # Tools that must NEVER be called — hard-fail if any are invoked.")
-            lines.append("  forbidden_tools:")
-            for t in forbidden_tools:
-                lines.append(f"    - {t}")
-
-        expected_output = args.get("expected_output_contains", [])
-        if expected_output:
-            lines.append("  output:")
-            lines.append("    contains:")
-            for s in expected_output:
-                lines.append(f'      - "{s}"')
-
-        min_score = args.get("min_score", 70)
-        lines += ["", "thresholds:", f"  min_score: {int(min_score)}"]
-
-        with open(filename, "w") as f:
-            f.write("\n".join(lines) + "\n")
+        try:
+            # "x" fails if anything is already at the path, a symlink included,
+            # so an existing file is never overwritten or followed.
+            with open(filename, "x", encoding="utf-8") as f:
+                f.write(content)
+        except FileExistsError:
+            raise ToolError(
+                f"Error: test already exists at {filename}. Delete it first or choose a different name."
+            ) from None
 
         summary_parts = [f"query: {query}"]
         if expected_tools:
@@ -566,11 +666,14 @@ class MCPServer:
         )
 
     def _call_tool(self, name: str, args: Dict[str, Any]) -> str:
+        if not isinstance(name, str) or name not in _TOOL_NAMES:
+            raise ToolError(f"Unknown tool: {name}")
+
         if name == "create_test":
             return self._create_test(args)
 
         if not shutil.which("evalview"):
-            return "Error: evalview not found in PATH. Run: pip install -e ."
+            raise ToolError("Error: evalview not found in PATH. Run: pip install -e .")
 
         if name == "run_check":
             # Use subprocess when advanced flags are present; direct API otherwise
@@ -603,26 +706,27 @@ class MCPServer:
             cmd = ["evalview", "golden", "list"]
 
         elif name == "validate_skill":
-            skill_path = os.path.normpath(args.get("skill_path", ""))
+            # Check before normpath, which turns "" into ".".
+            skill_path = _str_arg(args, "skill_path")
             if not skill_path:
-                return "Error: 'skill_path' is required."
-            cmd = ["evalview", "skill", "validate", skill_path]
+                raise ToolError("Error: 'skill_path' is required.")
+            cmd = ["evalview", "skill", "validate", os.path.normpath(skill_path)]
 
         elif name == "generate_skill_tests":
-            skill_path = os.path.normpath(args.get("skill_path", ""))
+            skill_path = _str_arg(args, "skill_path")
             if not skill_path:
-                return "Error: 'skill_path' is required."
-            cmd = ["evalview", "skill", "generate-tests", skill_path, "--auto"]
+                raise ToolError("Error: 'skill_path' is required.")
+            cmd = ["evalview", "skill", "generate-tests", os.path.normpath(skill_path), "--auto"]
             if args.get("output_path"):
                 cmd += ["-o", os.path.normpath(args["output_path"])]
             if args.get("count"):
                 cmd += ["-c", str(int(args["count"]))]
 
         elif name == "run_skill_test":
-            test_file = os.path.normpath(args.get("test_file", ""))
+            test_file = _str_arg(args, "test_file")
             if not test_file:
-                return "Error: 'test_file' is required."
-            cmd = ["evalview", "skill", "test", test_file, "--json"]
+                raise ToolError("Error: 'test_file' is required.")
+            cmd = ["evalview", "skill", "test", os.path.normpath(test_file), "--json"]
             if args.get("agent"):
                 cmd += ["--agent", args["agent"]]
             if args.get("no_rubric") is True:
@@ -639,7 +743,7 @@ class MCPServer:
             v1 = args.get("v1", "")
             v2 = args.get("v2", "")
             if not v1 or not v2:
-                return "Error: 'v1' and 'v2' endpoint URLs are required."
+                raise ToolError("Error: 'v1' and 'v2' endpoint URLs are required.")
             cmd = ["evalview", "compare", "--v1", v1, "--v2", v2, "--no-open"]
             if args.get("tests"):
                 cmd += ["--tests", os.path.normpath(args["tests"])]
@@ -665,7 +769,7 @@ class MCPServer:
                 cmd += ["--no-browser"]
 
         else:
-            return f"Unknown tool: {name}"
+            raise ToolError(f"Unknown tool: {name}")
 
         env = {**os.environ, "NO_COLOR": "1", "FORCE_COLOR": "0"}
         # Timeout tiers based on the subcommand, not substring matching on args:
@@ -685,15 +789,17 @@ class MCPServer:
                 timeout=timeout, stdin=subprocess.DEVNULL,
             )
         except subprocess.TimeoutExpired:
-            return (
+            raise ToolError(
                 f"Error: Command timed out after {timeout}s.\n"
                 f"Command: {' '.join(cmd)}\n"
                 f"Tip: Check that your API key is set and the model is reachable."
-            )
+            ) from None
         output = result.stdout
         if result.stderr:
             output += result.stderr
         output = _ANSI_ESCAPE.sub("", output).strip()
+        if not output and result.returncode != 0:
+            raise ToolError(f"Command exited with code {result.returncode}")
         return output or f"Command exited with code {result.returncode}"
 
     def _run_check_subprocess(self, args: Dict[str, Any]) -> str:
@@ -721,9 +827,8 @@ class MCPServer:
             cmd += ["--budget", str(args["budget"])]
         if args.get("dry_run") is True:
             cmd += ["--dry-run"]
-        if args.get("tag"):
-            for t in args["tag"]:
-                cmd += ["--tag", t]
+        for t in _str_list_arg(args, "tag"):
+            cmd += ["--tag", t]
         if args.get("fail_on"):
             cmd += ["--fail-on", args["fail_on"]]
         if args.get("timeout"):
@@ -746,15 +851,17 @@ class MCPServer:
                 timeout=proc_timeout, stdin=subprocess.DEVNULL,
             )
         except subprocess.TimeoutExpired:
-            return (
+            raise ToolError(
                 f"Error: Command timed out after {proc_timeout}s.\n"
                 f"Command: {' '.join(cmd)}\n"
                 f"Tip: Heal and statistical modes take longer — try fewer tests or a higher timeout."
-            )
+            ) from None
         output = result.stdout
         if result.stderr:
             output += result.stderr
         output = _ANSI_ESCAPE.sub("", output).strip()
+        if not output and result.returncode != 0:
+            raise ToolError(f"Command exited with code {result.returncode}")
         return output or f"Command exited with code {result.returncode}"
 
     def _run_check_direct(self, args: Dict[str, Any]) -> str:
@@ -821,10 +928,14 @@ class MCPServer:
             env = {**os.environ, "NO_COLOR": "1", "FORCE_COLOR": "0"}
             try:
                 proc = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=60, stdin=subprocess.DEVNULL)
-                fallback_output = proc.stdout + (proc.stderr or "")
-                return _ANSI_ESCAPE.sub("", fallback_output).strip() or f"Error: {e}"
-            except Exception:
-                return f"Error running check: {e}"
+            except Exception as fallback_exc:
+                raise ToolError(
+                    f"Error running check: {e} (subprocess fallback also failed: {fallback_exc})"
+                ) from None
+            fallback_output = _ANSI_ESCAPE.sub("", proc.stdout + (proc.stderr or "")).strip()
+            if not fallback_output:
+                raise ToolError(f"Error: {e}")
+            return fallback_output
 
     def _generate_visual_report(self, args: Dict[str, Any]) -> str:
         """Generate a beautiful HTML visual report from results JSON."""
@@ -838,7 +949,7 @@ class MCPServer:
             pattern = ".evalview/results/*.json"
             files = sorted(glob.glob(pattern))
             if not files:
-                return (
+                raise ToolError(
                     "No results found in .evalview/results/. "
                     "Run `evalview run` or `evalview snapshot` first."
                 )
@@ -846,20 +957,22 @@ class MCPServer:
 
         results_file = os.path.normpath(results_file)
         if not os.path.exists(results_file):
-            return f"Results file not found: {results_file}"
+            raise ToolError(f"Results file not found: {results_file}")
 
         try:
             with open(results_file, encoding="utf-8") as f:
                 _json.load(f)
         except Exception as exc:
-            return f"Failed to load results: {exc}"
+            raise ToolError(f"Failed to load results: {exc}") from exc
 
         # Convert raw dicts to EvaluationResult objects
         try:
             from evalview.reporters.json_reporter import JSONReporter
             results = JSONReporter.load_as_results(results_file)
         except Exception as exc:
-            return f"Failed to parse results — file may be in an unsupported format. ({exc})"
+            raise ToolError(
+                f"Failed to parse results — file may be in an unsupported format. ({exc})"
+            ) from exc
 
         try:
             from evalview.visualization import generate_visual_report
@@ -878,4 +991,4 @@ class MCPServer:
                 f"Open in browser or share the HTML file."
             )
         except Exception as exc:
-            return f"Failed to generate report: {exc}"
+            raise ToolError(f"Failed to generate report: {exc}") from exc
