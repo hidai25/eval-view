@@ -611,7 +611,8 @@ class MCPServer:
             TestCase(**test_case)
         except ValidationError as exc:
             problems = "; ".join(
-                f"{'.'.join(str(part) for part in err['loc'])}: {err['msg']}" for err in exc.errors()
+                f"{'.'.join(str(part) for part in err['loc'])}: {err['msg']}"
+                for err in exc.errors()
             )
             raise ToolError(f"Error: invalid test case: {problems}") from None
 
