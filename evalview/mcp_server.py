@@ -1,5 +1,6 @@
 """EvalView MCP Server — exposes the full evalview CLI as MCP tools for Claude Code."""
 
+import io
 import json
 import os
 import re
@@ -8,7 +9,7 @@ import subprocess
 import sys
 import traceback
 from importlib.metadata import version as _pkg_version, PackageNotFoundError
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import yaml
 
@@ -452,7 +453,9 @@ def _str_list_arg(args: Dict[str, Any], key: str) -> List[str]:
     return value
 
 
-def _min_score_arg(value: Any) -> int:
+def _min_score_arg(value: Any) -> Union[int, float]:
+    if value is None:
+        return 70
     message = "Error: 'min_score' must be a number from 0 to 100."
     if isinstance(value, bool):
         raise ToolError(message)
@@ -462,7 +465,8 @@ def _min_score_arg(value: Any) -> int:
         raise ToolError(message) from None
     if not 0 <= score <= 100:
         raise ToolError(message)
-    return int(score)
+    # Whole numbers stay ints so the file reads "80", not "80.0".
+    return int(score) if score.is_integer() else score
 
 
 class MCPServer:
@@ -473,6 +477,10 @@ class MCPServer:
 
     def serve(self) -> None:
         """Run the synchronous stdin/stdout JSON-RPC loop."""
+        if isinstance(sys.stdin, io.TextIOWrapper):
+            # MCP messages are UTF-8 whatever the locale (cp1252 on Windows), and
+            # one bad byte must not end the loop.
+            sys.stdin.reconfigure(encoding="utf-8", errors="replace")
         for raw_line in sys.stdin:
             line = raw_line.strip()
             if not line:
@@ -481,8 +489,9 @@ class MCPServer:
             # a JSON object has no id to answer, so it is logged and skipped.
             try:
                 request = json.loads(line)
-            except json.JSONDecodeError:
-                _log(f"skipped a line that is not valid JSON: {line[:200]}")
+            except (json.JSONDecodeError, RecursionError):
+                # RecursionError: nesting too deep for the parser.
+                _log(f"skipped a line that could not be parsed as JSON: {line[:200]}")
                 continue
             if not isinstance(request, dict):
                 _log("skipped a message that is not a JSON object (batches are not supported)")
@@ -507,16 +516,19 @@ class MCPServer:
         if params is None:
             params = {}
 
+        if req_id is None:
+            # Notifications get no reply. None of them needs action here, and a
+            # tools/call sent as one is not run: its result would have nowhere to go.
+            return None
+
         if not isinstance(method, str):
             # A message without a method is either a response (this server sends
             # no requests, so there is nothing to match it to) or malformed.
-            if req_id is None or "result" in req or "error" in req:
+            if "result" in req or "error" in req:
                 return None
             return _jsonrpc_error(req_id, -32600, "Invalid Request: 'method' must be a string.")
 
         if not isinstance(params, dict):
-            if req_id is None:
-                return None
             return _jsonrpc_error(req_id, -32602, "Invalid params: 'params' must be an object.")
 
         if method == "initialize":
@@ -567,11 +579,7 @@ class MCPServer:
                 },
             }
 
-        # Unknown method — return error only if it has an id (i.e. it's a request not a notification)
-        if req_id is not None:
-            return _jsonrpc_error(req_id, -32601, f"Unknown method: {method}")
-
-        return None
+        return _jsonrpc_error(req_id, -32601, f"Unknown method: {method}")
 
     def _create_test(self, args: Dict[str, Any]) -> str:
         test_name = _str_arg(args, "name").strip()
@@ -582,7 +590,7 @@ class MCPServer:
         expected_tools = _str_list_arg(args, "expected_tools")
         forbidden_tools = _str_list_arg(args, "forbidden_tools")
         expected_output = _str_list_arg(args, "expected_output_contains")
-        min_score = _min_score_arg(args.get("min_score", 70))
+        min_score = _min_score_arg(args.get("min_score"))
         test_path = _str_arg(args, "test_path") or self.test_path
 
         expected: Dict[str, Any] = {}
@@ -605,6 +613,7 @@ class MCPServer:
         # name rule also keeps path separators out of the filename below.
         from pydantic import ValidationError
 
+        from evalview.core.loader import CONFIG_FILE_PATTERNS
         from evalview.core.types import TestCase
 
         try:
@@ -616,18 +625,31 @@ class MCPServer:
             )
             raise ToolError(f"Error: invalid test case: {problems}") from None
 
-        slug = test_name.lower().replace(" ", "-").replace("_", "-")
+        # Same rule as TestGenerator._slugify.
+        slug = re.sub(r"[^a-z0-9]+", "-", test_name.lower()).strip("-")
+        if not slug:
+            raise ToolError("Error: 'name' must contain at least one letter or digit.")
+        if f"{slug}.yaml" in CONFIG_FILE_PATTERNS:
+            raise ToolError(
+                f"Error: '{test_name}' would be saved as {slug}.yaml, which the loader skips "
+                "as a config file. Choose a different name."
+            )
         filename = os.path.join(test_path, f"{slug}.yaml")
-        if os.path.exists(filename):
+
+        # safe_dump quotes and escapes values, so quotes, colons or newlines in
+        # them can't break the file or add keys to it. allow_unicode=False keeps
+        # the file ASCII, so it reads the same in any locale encoding.
+        content = yaml.safe_dump(test_case, sort_keys=False, allow_unicode=False)
+        os.makedirs(test_path, exist_ok=True)
+        try:
+            # "x" fails if anything is already at the path, a symlink included,
+            # so an existing file is never overwritten or followed.
+            with open(filename, "x", encoding="utf-8") as f:
+                f.write(content)
+        except FileExistsError:
             raise ToolError(
                 f"Error: test already exists at {filename}. Delete it first or choose a different name."
-            )
-
-        os.makedirs(test_path, exist_ok=True)
-        # safe_dump quotes and escapes values, so quotes, colons or newlines in
-        # them can't break the file or add keys to it.
-        with open(filename, "w", encoding="utf-8") as f:
-            yaml.safe_dump(test_case, f, sort_keys=False, allow_unicode=True)
+            ) from None
 
         summary_parts = [f"query: {query}"]
         if expected_tools:
@@ -684,26 +706,27 @@ class MCPServer:
             cmd = ["evalview", "golden", "list"]
 
         elif name == "validate_skill":
-            skill_path = os.path.normpath(args.get("skill_path", ""))
+            # Check before normpath, which turns "" into ".".
+            skill_path = _str_arg(args, "skill_path")
             if not skill_path:
                 raise ToolError("Error: 'skill_path' is required.")
-            cmd = ["evalview", "skill", "validate", skill_path]
+            cmd = ["evalview", "skill", "validate", os.path.normpath(skill_path)]
 
         elif name == "generate_skill_tests":
-            skill_path = os.path.normpath(args.get("skill_path", ""))
+            skill_path = _str_arg(args, "skill_path")
             if not skill_path:
                 raise ToolError("Error: 'skill_path' is required.")
-            cmd = ["evalview", "skill", "generate-tests", skill_path, "--auto"]
+            cmd = ["evalview", "skill", "generate-tests", os.path.normpath(skill_path), "--auto"]
             if args.get("output_path"):
                 cmd += ["-o", os.path.normpath(args["output_path"])]
             if args.get("count"):
                 cmd += ["-c", str(int(args["count"]))]
 
         elif name == "run_skill_test":
-            test_file = os.path.normpath(args.get("test_file", ""))
+            test_file = _str_arg(args, "test_file")
             if not test_file:
                 raise ToolError("Error: 'test_file' is required.")
-            cmd = ["evalview", "skill", "test", test_file, "--json"]
+            cmd = ["evalview", "skill", "test", os.path.normpath(test_file), "--json"]
             if args.get("agent"):
                 cmd += ["--agent", args["agent"]]
             if args.get("no_rubric") is True:
@@ -804,9 +827,8 @@ class MCPServer:
             cmd += ["--budget", str(args["budget"])]
         if args.get("dry_run") is True:
             cmd += ["--dry-run"]
-        if args.get("tag"):
-            for t in args["tag"]:
-                cmd += ["--tag", t]
+        for t in _str_list_arg(args, "tag"):
+            cmd += ["--tag", t]
         if args.get("fail_on"):
             cmd += ["--fail-on", args["fail_on"]]
         if args.get("timeout"):
@@ -906,8 +928,10 @@ class MCPServer:
             env = {**os.environ, "NO_COLOR": "1", "FORCE_COLOR": "0"}
             try:
                 proc = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=60, stdin=subprocess.DEVNULL)
-            except Exception:
-                raise ToolError(f"Error running check: {e}") from None
+            except Exception as fallback_exc:
+                raise ToolError(
+                    f"Error running check: {e} (subprocess fallback also failed: {fallback_exc})"
+                ) from None
             fallback_output = _ANSI_ESCAPE.sub("", proc.stdout + (proc.stderr or "")).strip()
             if not fallback_output:
                 raise ToolError(f"Error: {e}")

@@ -201,6 +201,47 @@ class TestBadArguments:
         assert responses[0]["error"]["code"] == -32603
         assert "tools" in responses[1]["result"]
 
+    def test_deeply_nested_json_is_skipped_and_serving_continues(self, server, capsys):
+        # Deep enough to exceed the parser's recursion limit.
+        responses = self._serve(
+            server,
+            ["[" * 100_000 + "]" * 100_000, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}],
+        )
+        assert [r["id"] for r in responses] == [2]
+        assert "could not be parsed as JSON" in capsys.readouterr().err
+
+    def test_invalid_utf8_does_not_stop_the_server(self, server):
+        import io
+        import json
+
+        raw = (
+            b'{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "x": "\xff\xfe"}\n'
+            b'{"jsonrpc": "2.0", "id": 2, "method": "tools/list"}\n'
+        )
+        # A real stdin is a TextIOWrapper; serve() switches it to UTF-8 with replacement.
+        stdin = io.TextIOWrapper(io.BytesIO(raw), encoding="ascii")
+        stdout = io.StringIO()
+        with patch("sys.stdin", stdin), patch("sys.stdout", stdout):
+            server.serve()
+        responses = [json.loads(line) for line in stdout.getvalue().splitlines()]
+        assert [r["id"] for r in responses] == [1, 2]
+
+    def test_tools_call_without_id_is_not_run(self, server, tmp_test_dir):
+        server.test_path = tmp_test_dir
+        responses = self._serve(
+            server,
+            [
+                {
+                    "jsonrpc": "2.0",
+                    "method": "tools/call",
+                    "params": {"name": "create_test", "arguments": {"name": "n", "query": "q"}},
+                },
+                {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+            ],
+        )
+        assert [r["id"] for r in responses] == [2]
+        assert os.listdir(tmp_test_dir) == []
+
     def test_null_params_is_treated_as_empty(self, server):
         resp = server._handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": None})
         assert resp["result"]["isError"] is True
@@ -231,7 +272,7 @@ class TestBadArguments:
         )
         assert [r["id"] for r in responses] == [2]
         err = capsys.readouterr().err
-        assert "not valid JSON" in err
+        assert "could not be parsed as JSON" in err
         assert err.count("not a JSON object") == 2
 
 
@@ -332,6 +373,31 @@ class TestCheckFlagWiring:
         cmd = mock_run.call_args[0][0]
         assert "--strict" in cmd
         assert "--json" in cmd
+
+    @patch("evalview.mcp_server.subprocess.run")
+    @patch("evalview.mcp_server.shutil.which", return_value="/usr/bin/evalview")
+    def test_single_string_tag_is_one_tag(self, mock_which, mock_run):
+        mock_run.return_value = MagicMock(stdout='{}', stderr="", returncode=0)
+        server = MCPServer()
+        server._run_check_subprocess({"tag": "tool_use"})
+        cmd = mock_run.call_args[0][0]
+        assert cmd.count("--tag") == 1
+        assert cmd[cmd.index("--tag") + 1] == "tool_use"
+
+    @patch("evalview.api.gate", side_effect=RuntimeError("api down"))
+    @patch(
+        "evalview.mcp_server.subprocess.run",
+        side_effect=subprocess.TimeoutExpired(cmd="evalview check", timeout=60),
+    )
+    @patch("evalview.mcp_server.shutil.which", return_value="/usr/bin/evalview")
+    def test_direct_check_fallback_failure_reports_both_causes(
+        self, mock_which, mock_run, mock_gate
+    ):
+        server = MCPServer()
+        with pytest.raises(ToolError) as excinfo:
+            server._run_check_direct({})
+        assert "api down" in str(excinfo.value)
+        assert "timed out" in str(excinfo.value)
 
     @patch("evalview.mcp_server.subprocess.run")
     @patch("evalview.mcp_server.shutil.which", return_value="/usr/bin/evalview")
@@ -620,6 +686,47 @@ class TestCreateTest:
             server._call_tool("create_test", {"name": name, "query": "x"})
         assert os.listdir(tmp_test_dir) == []
 
+    @pytest.mark.parametrize("name", ["_", "."])
+    def test_name_without_letters_or_digits_is_rejected(self, tmp_test_dir, name):
+        server = MCPServer(test_path=tmp_test_dir)
+        with pytest.raises(ToolError, match="letter or digit"):
+            server._call_tool("create_test", {"name": name, "query": "x"})
+
+    @pytest.mark.parametrize("name", ["config", "Config"])
+    def test_name_the_loader_skips_as_config_is_rejected(self, tmp_test_dir, name):
+        server = MCPServer(test_path=tmp_test_dir)
+        with pytest.raises(ToolError, match="skips as a config file"):
+            server._call_tool("create_test", {"name": name, "query": "x"})
+        assert os.listdir(tmp_test_dir) == []
+
+    def test_non_ascii_text_is_written_as_ascii_and_round_trips(self, tmp_test_dir):
+        # The loader opens files in the locale encoding (cp1252 on Windows).
+        server = MCPServer(test_path=tmp_test_dir)
+        query = "Où est le café? Ёлка"
+        server._call_tool("create_test", {"name": "accents", "query": query})
+        path = os.path.join(tmp_test_dir, "accents.yaml")
+        with open(path, "rb") as f:
+            f.read().decode("ascii")
+        assert TestCaseLoader.load_from_file(path).input.query == query
+
+    @pytest.mark.parametrize("min_score, expected", [(99.5, 99.5), (80.0, 80), ("75", 75), (None, 70)])
+    def test_min_score_values(self, tmp_test_dir, min_score, expected):
+        server = MCPServer(test_path=tmp_test_dir)
+        server._call_tool("create_test", {"name": "scored", "query": "x", "min_score": min_score})
+        test_case = TestCaseLoader.load_from_file(os.path.join(tmp_test_dir, "scored.yaml"))
+        assert test_case.thresholds.min_score == expected
+
+    @pytest.mark.skipif(os.name == "nt", reason="symlinks need extra privileges on Windows")
+    def test_existing_symlink_is_not_followed(self, tmp_test_dir):
+        test_path = os.path.join(tmp_test_dir, "tests")
+        os.makedirs(test_path)
+        target = os.path.join(tmp_test_dir, "outside.txt")
+        os.symlink(target, os.path.join(test_path, "linked.yaml"))  # dangling
+        server = MCPServer(test_path=test_path)
+        with pytest.raises(ToolError, match="already exists"):
+            server._call_tool("create_test", {"name": "linked", "query": "x"})
+        assert not os.path.exists(target)
+
     def test_single_string_tool_list_is_one_tool(self, tmp_test_dir):
         server = MCPServer(test_path=tmp_test_dir)
         server._call_tool("create_test", {"name": "one", "query": "x", "expected_tools": "calculator"})
@@ -669,3 +776,30 @@ class TestMissingBinary:
         server = MCPServer()
         with pytest.raises(ToolError, match="evalview not found in PATH. Run: pip install"):
             server._call_tool("list_tests", {})
+
+
+class TestSkillToolArguments:
+    @pytest.mark.parametrize(
+        "tool, key",
+        [
+            ("validate_skill", "skill_path"),
+            ("generate_skill_tests", "skill_path"),
+            ("run_skill_test", "test_file"),
+        ],
+    )
+    @patch("evalview.mcp_server.subprocess.run")
+    @patch("evalview.mcp_server.shutil.which", return_value="/usr/bin/evalview")
+    def test_missing_path_is_rejected(self, mock_which, mock_run, tool, key):
+        # normpath("") is ".", which used to slip past the required check.
+        server = MCPServer()
+        with pytest.raises(ToolError, match=f"'{key}' is required"):
+            server._call_tool(tool, {})
+        mock_run.assert_not_called()
+
+    @patch("evalview.mcp_server.subprocess.run")
+    @patch("evalview.mcp_server.shutil.which", return_value="/usr/bin/evalview")
+    def test_path_is_normalized(self, mock_which, mock_run):
+        mock_run.return_value = MagicMock(stdout="ok", stderr="", returncode=0)
+        server = MCPServer()
+        server._call_tool("validate_skill", {"skill_path": "skills/../skills/demo"})
+        assert mock_run.call_args[0][0][-1] == os.path.normpath("skills/demo")
