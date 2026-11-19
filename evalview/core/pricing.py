@@ -3,11 +3,15 @@
 Single source of truth for all model pricing across EvalView.
 Both adapter cost calculation and judge cost tracking use this table.
 
-Pricing is per 1 million tokens. Update when providers change prices.
+Pricing is per 1 million tokens. OpenAI, Anthropic and Google models are priced from
+llm-prices (read from each provider's pricing page, dated per row); this table covers
+the other providers and ids llm-prices does not list. Update when providers change prices.
 Last verified: March 2026.
 """
 
 from typing import Dict, Optional, Tuple
+
+import llm_prices
 
 # Format: (input_price_per_1M, output_price_per_1M, cached_input_price_per_1M)
 #
@@ -20,9 +24,9 @@ from typing import Dict, Optional, Tuple
 
 MODEL_PRICING: Dict[str, Tuple[float, float, float]] = {
     # ── OpenAI GPT-5 family ──────────────────────────────────────────
-    "gpt-5.4":           (2.00, 8.00, 0.50),
-    "gpt-5.4-mini":      (0.10, 0.40, 0.025),
-    "gpt-5.1":           (2.00, 8.00, 0.50),
+    "gpt-5.4":           (2.50, 15.00, 0.25),
+    "gpt-5.4-mini":      (0.75, 4.50, 0.075),
+    "gpt-5.1":           (1.25, 10.00, 0.125),
     "gpt-5":             (1.25, 10.00, 0.125),
     "gpt-5-mini":        (0.25, 2.00, 0.025),
     "gpt-5-nano":        (0.05, 0.40, 0.005),
@@ -39,18 +43,18 @@ MODEL_PRICING: Dict[str, Tuple[float, float, float]] = {
     "o1":                (15.00, 60.00, 7.50),
     "o1-mini":           (1.10, 4.40, 0.275),
     # ── Anthropic Claude 4 family ────────────────────────────────────
-    "claude-opus-4-6":               (15.00, 75.00, 1.50),
-    "claude-opus-4-5-20251101":      (15.00, 75.00, 1.50),
+    "claude-opus-4-6":               (5.00, 25.00, 0.50),
+    "claude-opus-4-5-20251101":      (5.00, 25.00, 0.50),
     "claude-sonnet-4-6":             (3.00, 15.00, 0.30),
     "claude-sonnet-4-5-20250929":    (3.00, 15.00, 0.30),
-    "claude-haiku-4-5-20251001":     (0.80, 4.00, 0.08),
+    "claude-haiku-4-5-20251001":     (1.00, 5.00, 0.10),
     # ── Anthropic Claude 3.5 (legacy) ────────────────────────────────
     "claude-3-5-sonnet":  (3.00, 15.00, 0.30),
     "claude-3-5-haiku":   (0.80, 4.00, 0.08),
     # ── Google Gemini ────────────────────────────────────────────────
     "gemini-3.0":         (1.25, 5.00, 0.30),
     "gemini-2.5-pro":     (1.25, 10.00, 0.30),
-    "gemini-2.5-flash":   (0.15, 0.60, 0.0375),
+    "gemini-2.5-flash":   (0.30, 2.50, 0.03),
     "gemini-2.0-flash":   (0.10, 0.40, 0.025),
     "gemini-1.5-pro":     (1.25, 5.00, 0.30),
     # ── xAI Grok ─────────────────────────────────────────────────────
@@ -79,6 +83,11 @@ def _find_pricing(model_name: str) -> Tuple[float, float, float]:
     """Find pricing for a model by exact match, then partial match, then default."""
     model_name = model_name.lower().strip()
 
+    # OpenAI, Anthropic and Google list prices
+    listed = _list_pricing(model_name)
+    if listed is not None:
+        return listed
+
     # Exact match
     if model_name in MODEL_PRICING:
         return MODEL_PRICING[model_name]
@@ -89,6 +98,16 @@ def _find_pricing(model_name: str) -> Tuple[float, float, float]:
             return MODEL_PRICING[key]
 
     return MODEL_PRICING["default"]
+
+
+def _list_pricing(model_name: str) -> Optional[Tuple[float, float, float]]:
+    price = llm_prices.lookup(model_name)
+    if price is None or price.provider not in ("openai", "anthropic", "google"):
+        return None
+    if price.input is None or price.output is None:
+        return None
+    cached = price.cache_read if price.cache_read is not None else price.input
+    return (price.input, price.output, cached)
 
 
 def calculate_cost(
