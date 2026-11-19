@@ -80,7 +80,7 @@ MODEL_PRICING: Dict[str, Tuple[float, float, float]] = {
 
 
 def _find_pricing(model_name: str) -> Tuple[float, float, float]:
-    """Find pricing for a model by exact match, then partial match, then default."""
+    """Find catalog pricing, then a table match, then default pricing."""
     model_name = model_name.lower().strip()
 
     # OpenAI, Anthropic and Google list prices
@@ -88,6 +88,11 @@ def _find_pricing(model_name: str) -> Tuple[float, float, float]:
     if listed is not None:
         return listed
 
+    return _table_pricing(model_name)
+
+
+def _table_pricing(model_name: str) -> Tuple[float, float, float]:
+    """Find table pricing for a normalized model name, or return the default."""
     # Exact match
     if model_name in MODEL_PRICING:
         return MODEL_PRICING[model_name]
@@ -160,10 +165,13 @@ def format_pricing_line(model_name: str) -> Optional[str]:
     Returns None if using default/fallback pricing.
     """
     model_lower = model_name.lower().strip()
-    if model_lower not in MODEL_PRICING and not any(
-        k in model_lower or model_lower in k for k in MODEL_PRICING if k != "default"
-    ):
-        return None
+    prices = _list_pricing(model_lower)
+    if prices is None:
+        if model_lower not in MODEL_PRICING and not any(
+            k in model_lower or model_lower in k for k in MODEL_PRICING if k != "default"
+        ):
+            return None
+        prices = _table_pricing(model_lower)
 
-    input_price, output_price, _ = _find_pricing(model_name)
+    input_price, output_price, _ = prices
     return f"${input_price}/M input, ${output_price}/M output"
