@@ -38,7 +38,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: evalview-report
-          path: evalview-report.html
+          path: ${{ steps.evalview.outputs.report-file }}
           if-no-files-found: ignore
 
       - name: Post PR comment

@@ -547,6 +547,7 @@ def test_investigate_verdict_injects_stability_recommendation() -> None:
     def mk_diff(name: str, status: DiffStatus, tool_changes: int = 0) -> Any:
         d = MagicMock()
         d.overall_severity = status
+        d.forbidden_tool_violations = []
         # Non-empty tool_diffs so the recommendations engine produces a
         # real high-severity rec to compete with the stability rec.
         d.tool_diffs = [MagicMock(type="added", actual_tool=f"new_{name}")] * tool_changes
@@ -588,6 +589,7 @@ def test_block_release_does_not_inject_stability_rec() -> None:
 
     d = MagicMock()
     d.overall_severity = DiffStatus.REGRESSION
+    d.forbidden_tool_violations = []
     d.tool_diffs = [MagicMock(type="added", actual_tool="new_tool")]
     d.output_diff = None
     d.score_diff = -6.0

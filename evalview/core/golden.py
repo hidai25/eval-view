@@ -12,10 +12,14 @@ Storage format:
 
 import json
 import hashlib
+import shutil
+import sys
+import tempfile
 from collections import defaultdict
+from contextlib import contextmanager
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, Iterator, List
 from pydantic import BaseModel, Field
 import logging
 
@@ -65,6 +69,47 @@ class GoldenStore:
         """
         self.base_path = base_path or Path(".")
         self.golden_dir = self.base_path / ".evalview" / "golden"
+        self._reset_dir = self.golden_dir.parent / ".snapshot-reset"
+        self._previous = self._reset_dir / "previous"
+        self._prepared = self._reset_dir / "prepared"
+        if self._previous.exists() or self._prepared.exists():
+            # A reset is publishing, or was interrupted after moving the originals.
+            with self._write_lock():
+                pass
+
+    @contextmanager
+    def _write_lock(self) -> Iterator[None]:
+        """Serialize golden mutations, including recovery after process termination."""
+        self._reset_dir.mkdir(parents=True, exist_ok=True)
+        with (self._reset_dir / "lock").open("a+b") as lock:
+            if sys.platform == "win32":
+                import msvcrt
+
+                lock.seek(0)
+                msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            # Both platforms release the lock when the file closes, including on
+            # process death. Never unlink the lock file while another writer waits.
+            self._finish_reset()
+            yield
+
+    def _finish_reset(self) -> None:
+        """Restore an interrupted handoff or discard the backup of a completed one."""
+        if self._previous.is_dir():
+            if not self.golden_dir.exists() or not any(self.golden_dir.iterdir()):
+                if self.golden_dir.exists():
+                    self.golden_dir.rmdir()
+                self._previous.rename(self.golden_dir)
+            elif self._prepared.exists():
+                raise OSError(f"Cannot restore baselines over {self.golden_dir}. Original files are in {self._previous}.")
+            else:
+                # The prepared directory has been renamed into place.
+                shutil.rmtree(self._previous)
+        if self._prepared.is_dir():
+            shutil.rmtree(self._prepared)
 
     def _get_golden_path(self, test_name: str, variant_name: Optional[str] = None) -> Path:
         """Get path to golden trace file for a test.
@@ -112,17 +157,6 @@ class GoldenStore:
         Raises:
             ValueError: If trying to save more than 5 variants
         """
-        self.golden_dir.mkdir(parents=True, exist_ok=True)
-
-        # Check variant limit (max 5 variants per test)
-        if variant_name:
-            existing_variants = self.count_variants(result.test_case)
-            if existing_variants >= 5 and not self._get_golden_path(result.test_case, variant_name).exists():
-                raise ValueError(
-                    f"Maximum 5 variants allowed per test. Test '{result.test_case}' already has {existing_variants} variants. "
-                    f"Delete an existing variant first."
-                )
-
         # Extract tool sequence
         tool_sequence = [step.tool_name for step in result.trace.steps]
 
@@ -162,11 +196,62 @@ class GoldenStore:
 
         # Save
         golden_path = self._get_golden_path(result.test_case, variant_name)
-        with open(golden_path, "w") as f:
-            f.write(golden.model_dump_json(indent=2))
+        with self._write_lock():
+            self.golden_dir.mkdir(parents=True, exist_ok=True)
+            if variant_name:
+                existing_variants = self.count_variants(result.test_case)
+                if existing_variants >= 5 and not golden_path.exists():
+                    raise ValueError(
+                        f"Maximum 5 variants allowed per test. Test '{result.test_case}' already has {existing_variants} variants. "
+                        f"Delete an existing variant first."
+                    )
+            golden_path.write_text(golden.model_dump_json(indent=2), encoding="utf-8")
 
         logger.info(f"Saved golden trace: {golden_path}")
         return golden_path
+
+    def replace_all(
+        self, results: List[EvaluationResult], notes: Optional[str], variant_name: Optional[str]
+    ) -> Dict[str, Path]:
+        """Publish a complete snapshot reset after every replacement has been written."""
+        if not results or any(not result.passed for result in results):
+            raise ValueError("A reset requires a passing result for every selected test.")
+
+        self._reset_dir.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="stage-", dir=self._reset_dir) as workspace:
+            staged = GoldenStore(Path(workspace))
+            saved = {}
+            for result in results:
+                path = staged.save_golden(result, notes=notes, variant_name=variant_name)
+                saved[result.test_case] = self.golden_dir / path.name
+            if len(set(saved.values())) != len(results):
+                raise ValueError("Multiple selected tests map to the same baseline file.")
+            for name, destination in saved.items():
+                path = staged.golden_dir / destination.name
+                baseline = GoldenTrace.model_validate_json(path.read_bytes())
+                if baseline.metadata.test_name != name:
+                    raise ValueError(f"Staged baseline {path.name} does not belong to {name}.")
+
+            with self._write_lock():
+                if self.golden_dir.exists():
+                    if self.golden_dir.is_symlink():
+                        raise ValueError(f"Cannot reset a symlinked baseline directory: {self.golden_dir}.")
+                    # Keep project files that are not baselines, e.g. a .gitkeep.
+                    shutil.copytree(
+                        self.golden_dir, staged.golden_dir, dirs_exist_ok=True, symlinks=True,
+                        ignore=lambda directory, names: [
+                            name for name in names
+                            if Path(directory) == self.golden_dir and name.endswith(".golden.json")
+                        ],
+                    )
+                try:
+                    staged.golden_dir.rename(self._prepared)
+                    if self.golden_dir.exists():
+                        self.golden_dir.rename(self._previous)
+                    self._prepared.rename(self.golden_dir)
+                finally:
+                    self._finish_reset()
+        return saved
 
     def load_golden(self, test_name: str) -> Optional[GoldenTrace]:
         """
@@ -218,9 +303,10 @@ class GoldenStore:
             True if deleted, False if not found
         """
         golden_path = self._get_golden_path(test_name, variant_name)
-        if golden_path.exists():
-            golden_path.unlink()
-            return True
+        with self._write_lock():
+            if golden_path.exists():
+                golden_path.unlink()
+                return True
         return False
 
     def load_all_golden_variants(self, test_name: str) -> List[GoldenTrace]:
@@ -263,11 +349,11 @@ class GoldenStore:
             test_name: Name of the test
             data: Golden trace data as a dict
         """
-        self.golden_dir.mkdir(parents=True, exist_ok=True)
         golden = GoldenTrace.model_validate(data)
         path = self._get_golden_path(test_name, None)
-        with open(path, "w") as f:
-            f.write(golden.model_dump_json(indent=2))
+        with self._write_lock():
+            self.golden_dir.mkdir(parents=True, exist_ok=True)
+            path.write_text(golden.model_dump_json(indent=2), encoding="utf-8")
         logger.info(f"Restored golden from cloud: {path}")
 
     def count_variants(self, test_name: str) -> int:

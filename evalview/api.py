@@ -71,6 +71,7 @@ class GateSummary:
     tools_changed: int = 0
     output_changed: int = 0
     execution_failures: int = 0
+    requested_tests: int = 0
 
 
 # Re-export from the shared module so existing callers keep working
@@ -82,10 +83,12 @@ class GateResult:
     """Structured result from a gate() call.
 
     Attributes:
-        passed: True when no test matched any status in ``fail_on``.
+        passed: True when all requested tests were compared and no hard
+            failure or status in ``fail_on`` was observed.
         exit_code: 0 if passed, 1 if failed.  Matches the semantics of
             ``evalview check --fail-on``.
-        status: The worst DiffStatus seen across all tests.
+        status: INCOMPLETE if the suite could not be fully compared, otherwise
+            the worst DiffStatus seen across all tests.
         summary: Aggregate pass/fail/change counts.
         diffs: Per-test diff objects with scores, tool diffs, and outputs.
         observability: Aggregate observability signals (anomalies, trust, coherence).
@@ -132,6 +135,7 @@ def _build_gate_result(
     total_tests: int,
     fail_on: Set[DiffStatus],
     results: Optional[List[Any]] = None,
+    error: Optional[str] = None,
 ) -> GateResult:
     """Convert raw execution output into a GateResult."""
     from evalview.commands.shared import _analyze_check_diffs
@@ -165,6 +169,12 @@ def _build_gate_result(
     # execution_failures = tests that were submitted but didn't produce a diff
     # (adapter errors, timeouts, missing baselines)
     execution_failures = max(0, total_tests - len(diffs))
+    if execution_failures and not error:
+        error = f"Only {len(diffs)} of {total_tests} requested tests produced a comparison."
+    if total_tests == 0 and not error:
+        error = "No matching test cases found."
+    if error:
+        analysis["all_passed"] = False
     summary = GateSummary(
         total=len(diffs),
         unchanged=sum(1 for _, d in diffs if d.overall_severity == DiffStatus.PASSED),
@@ -172,15 +182,22 @@ def _build_gate_result(
         tools_changed=sum(1 for _, d in diffs if d.overall_severity == DiffStatus.TOOLS_CHANGED),
         output_changed=sum(1 for _, d in diffs if d.overall_severity == DiffStatus.OUTPUT_CHANGED),
         execution_failures=execution_failures,
+        requested_tests=total_tests,
     )
 
-    worst = _worst_status(diffs)
-    has_failure = any(d.overall_severity in fail_on for _, d in diffs)
+    worst = DiffStatus.INCOMPLETE if error else _worst_status(diffs)
+    has_failure = bool(error) or any(
+        d.overall_severity in fail_on or list(d.forbidden_tool_violations) for _, d in diffs
+    )
 
     # Raw JSON for callers that want everything
     raw: Dict[str, Any] = {
+        "status": worst.value,
+        "passed": not has_failure,
         "summary": {
             "total": summary.total,
+            "requested_tests": total_tests,
+            "execution_failures": execution_failures,
             "unchanged": summary.unchanged,
             "regressions": summary.regressions,
             "tools_changed": summary.tools_changed,
@@ -192,6 +209,7 @@ def _build_gate_result(
             {
                 "test_name": name,
                 "status": d.overall_severity.value,
+                "forbidden_tool_violations": list(d.forbidden_tool_violations),
                 "score_delta": d.score_diff,
                 "tool_diffs_count": len(d.tool_diffs),
                 "model_changed": getattr(d, "model_changed", False),
@@ -200,6 +218,8 @@ def _build_gate_result(
             for name, d in diffs
         ],
     }
+    if error:
+        raw["error"] = error
 
     # Build observability signals from evaluation results
     from evalview.core.observability import extract_observability_summary
@@ -225,7 +245,7 @@ def gate(
     test_name: Optional[str] = None,
     fail_on: Optional[Set[DiffStatus]] = None,
     judge_model: Optional[str] = None,
-    semantic_diff: bool = False,
+    semantic_diff: Optional[bool] = None,
     timeout: float = 30.0,
     quick: bool = False,
 ) -> GateResult:
@@ -242,7 +262,8 @@ def gate(
             Default: ``{DiffStatus.REGRESSION}``.
         judge_model: Explicit judge model (e.g. ``"gpt-5.4-mini"``).
             ``None`` = use config or env var.
-        semantic_diff: Enable embedding-based semantic similarity.
+        semantic_diff: Override the project's OpenAI embedding setting. When
+            omitted, embeddings require an explicit opt-in in project config.
         timeout: Per-test timeout in seconds.
         quick: If True, skip LLM-as-judge evaluation.  Uses deterministic
             scoring only (tool diff + output comparison).  Free and fast —
@@ -280,7 +301,7 @@ async def gate_async(
     test_name: Optional[str] = None,
     fail_on: Optional[Set[DiffStatus]] = None,
     judge_model: Optional[str] = None,
-    semantic_diff: bool = False,
+    semantic_diff: Optional[bool] = None,
     timeout: float = 30.0,
     quick: bool = False,
 ) -> GateResult:
@@ -314,7 +335,7 @@ async def _gate_impl(
     test_name: Optional[str],
     fail_on: Set[DiffStatus],
     judge_model: Optional[str],
-    semantic_diff: bool,
+    semantic_diff: Optional[bool],
     timeout: float,
     quick: bool = False,
 ) -> GateResult:
@@ -326,43 +347,31 @@ async def _gate_impl(
     )
     from evalview.core.config import apply_judge_config
 
-    # Load config
-    config = _load_config_if_exists()
-
-    # Resolve judge model (non-interactive — never prompt stdin)
-    # Quick mode skips the judge entirely — no API key needed.
-    if not quick:
-        if judge_model:
-            apply_judge_model(judge_model, interactive=False)
-        elif config:
-            apply_judge_config(config)
-
     # Load test cases
     test_path = Path(test_dir)
-    if not test_path.exists():
-        return GateResult(
-            passed=True,
-            exit_code=0,
-            status=DiffStatus.PASSED,
-            summary=GateSummary(),
-            diffs=[],
-            raw_json={"error": f"Test directory not found: {test_dir}"},
-        )
+    if not test_path.is_dir():
+        return _build_gate_result([], 0, fail_on, error=f"Test directory not found: {test_dir}")
 
-    test_cases = TestCaseLoader.load_from_directory(test_path)
+    try:
+        test_cases = TestCaseLoader.load_from_directory(test_path)
+    except Exception as exc:
+        return _build_gate_result([], 0, fail_on, error=f"Failed to load test cases: {exc}")
 
     if test_name:
         test_cases = [tc for tc in test_cases if tc.name == test_name]
 
     if not test_cases:
-        return GateResult(
-            passed=True,
-            exit_code=0,
-            status=DiffStatus.PASSED,
-            summary=GateSummary(),
-            diffs=[],
-            raw_json={"error": "No matching test cases found"},
-        )
+        return _build_gate_result([], 0, fail_on, error="No matching test cases found")
+
+    try:
+        config = _load_config_if_exists()
+        if not quick:
+            if judge_model:
+                apply_judge_model(judge_model, interactive=False)
+            elif config:
+                apply_judge_config(config)
+    except Exception as exc:
+        return _build_gate_result([], len(test_cases), fail_on, error=f"Invalid gate configuration: {exc}")
 
     # Execute tests — call the internal pipeline directly.
     # _execute_check_tests uses asyncio.run() internally, but we're already

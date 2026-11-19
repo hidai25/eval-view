@@ -302,6 +302,15 @@ def recommend(
 
 def recommend_from_trace_diff(diff: Any) -> List[Recommendation]:
     """Generate recommendations from a TraceDiff object (CLI integration)."""
+    forbidden = list(getattr(diff, "forbidden_tool_violations", []))
+    if forbidden:
+        return [Recommendation(
+            action="Enforce the forbidden-tool policy",
+            confidence="high",
+            category="guardrail",
+            detail=f"Prevent the agent from invoking {', '.join(forbidden)} and rerun the check.",
+            severity="high",
+        )]
     tools_added: List[str] = []
     tools_removed: List[str] = []
     tool_changes = 0

@@ -125,7 +125,7 @@ def evalview_check(evalview_golden_store: GoldenStore, request: pytest.FixtureRe
                 "Review output changes carefully — this may be model drift."
             )
 
-        return diff
+        return diff.with_evaluation(result)
 
     return _check
 

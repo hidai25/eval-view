@@ -18,7 +18,7 @@ from evalview.core.types import ExecutionTrace, ExecutionMetrics, TokenUsage, Tu
 
 if TYPE_CHECKING:
     from evalview.core.types import EvaluationResult, TestCase
-    from evalview.core.config import EvalViewConfig
+    from evalview.core.config import DiffConfig, EvalViewConfig
     from evalview.core.diff import TraceDiff
     from evalview.core.golden import GoldenStore, GoldenTrace
     from evalview.core.drift_tracker import DriftTracker
@@ -652,11 +652,21 @@ def _execute_snapshot_tests(
     return results
 
 
+def _check_diff_config(config: Optional["EvalViewConfig"], semantic_diff: Optional[bool]) -> "DiffConfig":
+    """Apply an explicit CLI or SDK override without mutating project settings."""
+    from evalview.core.config import DiffConfig
+
+    settings = config.get_diff_config() if config else DiffConfig()
+    if semantic_diff is None:
+        return settings
+    return settings.model_copy(update={"semantic_diff_enabled": semantic_diff})
+
+
 def _execute_check_tests(
     test_cases: List["TestCase"],
     config: Optional["EvalViewConfig"],
     json_output: bool,
-    semantic_diff: bool = False,
+    semantic_diff: Optional[bool] = None,
     timeout: float = 30.0,
     skip_llm_judge: bool = False,
     budget_tracker: Optional["BudgetTracker"] = None,
@@ -677,19 +687,11 @@ def _execute_check_tests(
     """
     from evalview.core.golden import GoldenStore
     from evalview.core.diff import DiffEngine
-    from evalview.core.config import DiffConfig
     from evalview.core.drift_tracker import DriftTracker
     from evalview.evaluators.evaluator import Evaluator
 
-    diff_config = config.get_diff_config() if config else DiffConfig()
-    # --semantic-diff flag overrides config file setting
-    if semantic_diff:
-        diff_config = DiffConfig(
-            **{**diff_config.model_dump(), "semantic_diff_enabled": True}
-        )
-
     store = GoldenStore()
-    diff_engine = DiffEngine(config=diff_config)
+    diff_engine = DiffEngine(config=_check_diff_config(config, semantic_diff))
     drift_tracker = DriftTracker()
     evaluator = Evaluator(skip_llm_judge=skip_llm_judge)
 
@@ -722,7 +724,7 @@ def _execute_check_tests(
             diff = await diff_engine.compare_multi_reference_async(
                 golden_variants, trace, result.score
             )
-            return result, diff, golden_variants[0]
+            return result, diff.with_evaluation(result), golden_variants[0]
 
         async def _run_all_with_budget() -> None:
             from evalview.core.budget import BudgetExhausted
@@ -789,7 +791,7 @@ def _execute_check_tests(
             diff = await diff_engine.compare_multi_reference_async(
                 golden_variants, trace, result.score
             )
-            return result, diff, golden_variants[0]
+            return result, diff.with_evaluation(result), golden_variants[0]
 
         # Run all tests concurrently in a single event loop.
         # return_exceptions=True means exceptions are returned as values (not raised),

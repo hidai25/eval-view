@@ -82,7 +82,8 @@ def gate_or_revert(
         quick: If True, skip LLM judge — deterministic checks only ($0, fast).
 
     Returns:
-        True if the change is safe (no regressions), False if it was reverted.
+        True when the gate passes. An incomplete run returns False and leaves
+        the workspace available for diagnosis.
 
     Example::
 
@@ -96,6 +97,9 @@ def gate_or_revert(
 
     if result.passed:
         return True
+    if result.status == DiffStatus.INCOMPLETE:
+        logger.warning("Gate incomplete: %s", result.raw_json.get("error"))
+        return False
 
     # Has regressions — revert
     logger.warning(
@@ -139,6 +143,13 @@ def check_and_decide(
 
     result = gate(test_dir=test_dir, fail_on=fail_on, timeout=timeout)
     changed = [d.test_name for d in result.diffs if not d.passed]
+    if result.status == DiffStatus.INCOMPLETE:
+        return GateDecision(
+            action="review",
+            reason=result.raw_json.get("error", "The gate did not complete."),
+            gate_result=result,
+            changed_tests=changed,
+        )
 
     # All clean
     if result.summary.regressions == 0 and result.summary.tools_changed == 0 and result.summary.output_changed == 0:

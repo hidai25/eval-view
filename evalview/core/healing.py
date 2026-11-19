@@ -69,6 +69,16 @@ class HealingDiagnosis(BaseModel):
     root_cause_category: Optional[str] = None
     details: Dict[str, Any] = Field(default_factory=dict)
 
+    @classmethod
+    def forbidden(cls, violations: List[str], *, on_retry: bool = False) -> "HealingDiagnosis":
+        observation = "Retry called forbidden tool" if on_retry else "Forbidden tool called"
+        return cls(
+            action=HealingAction.BLOCKED,
+            trigger=HealingTrigger.FORBIDDEN_TOOL,
+            reason=f"{observation}: {', '.join(violations)}",
+            details={"violations": violations},
+        )
+
 
 class HealingResult(BaseModel):
     """Result of attempting to heal a single test."""
@@ -132,22 +142,15 @@ class HealingEngine:
     ) -> HealingDiagnosis:
         """Pure, deterministic, zero side effects, zero cost."""
 
-        # 1. PASSED -> NO_ACTION
+        violations = result.forbidden_tool_violations
+        if violations:
+            return HealingDiagnosis.forbidden(violations)
+
         if diff.overall_severity == DiffStatus.PASSED:
             return HealingDiagnosis(
                 action=HealingAction.NO_ACTION,
                 trigger=HealingTrigger.OTHER,
                 reason="passed",
-            )
-
-        # 2. Forbidden tool -> BLOCKED
-        ft_eval = result.evaluations.forbidden_tools
-        if ft_eval and not ft_eval.passed:
-            return HealingDiagnosis(
-                action=HealingAction.BLOCKED,
-                trigger=HealingTrigger.FORBIDDEN_TOOL,
-                reason=f"forbidden tool called: {', '.join(ft_eval.violations)}",
-                details={"violations": ft_eval.violations},
             )
 
         # 3. Tool added/removed/reordered -> FLAG_REVIEW
@@ -278,9 +281,26 @@ class HealingEngine:
             )
 
         retry_result = await self._evaluator.evaluate(test_case, retry_trace)
-        retry_diff = await diff_engine.compare_multi_reference_async(
+        retry_comparison = await diff_engine.compare_multi_reference_async(
             golden_variants, retry_trace, retry_result.score
         )
+        retry_diff = retry_comparison.with_evaluation(retry_result)
+
+        if retry_diff.forbidden_tool_violations:
+            return HealingResult(
+                test_name=test_case.name,
+                original_status=diff.overall_severity.value,
+                diagnosis=HealingDiagnosis.forbidden(retry_diff.forbidden_tool_violations, on_retry=True),
+                attempted=True,
+                healed=False,
+                final_status=retry_diff.overall_severity.value,
+                original_score=result.score,
+                baseline_score=golden.metadata.score,
+                retry_score=retry_result.score,
+                retry_status=retry_diff.overall_severity.value,
+                baseline_model=golden.metadata.model_id,
+                actual_model=retry_result.trace.model_id,
+            )
 
         # Retry passed?
         if retry_diff.overall_severity == DiffStatus.PASSED:

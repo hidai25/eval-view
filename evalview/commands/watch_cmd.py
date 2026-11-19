@@ -105,6 +105,7 @@ def run_watch(
     fail_on: str,
     sound: bool,
     interval: float,
+    semantic_diff: Optional[bool] = None,
 ) -> None:
     """Run the watch loop until interrupted.
 
@@ -144,6 +145,7 @@ def run_watch(
         fail_statuses=fail_statuses,
         sound=sound,
         trigger_path=None,
+        semantic_diff=semantic_diff,
     )
 
     # Start watching
@@ -156,6 +158,7 @@ def run_watch(
             fail_statuses=fail_statuses,
             sound=sound,
             debounce_seconds=interval,
+            semantic_diff=semantic_diff,
         ))
     except KeyboardInterrupt:
         console.print("\n[dim]Watch stopped.[/dim]")
@@ -194,6 +197,7 @@ def _run_check(
     fail_statuses: set,
     sound: bool,
     trigger_path: Optional[str],
+    semantic_diff: Optional[bool] = None,
 ) -> None:
     """Run a single check cycle synchronously. Used for the initial run only.
 
@@ -210,6 +214,7 @@ def _run_check(
             test_name=test_name,
             quick=quick,
             fail_on=fail_statuses,
+            semantic_diff=semantic_diff,
         )
     except Exception as e:
         console.print(f"[red]Check failed:[/red] {e}\n")
@@ -225,6 +230,7 @@ async def _run_check_async(
     fail_statuses: set,
     sound: bool,
     trigger_path: Optional[str],
+    semantic_diff: Optional[bool] = None,
 ) -> None:
     """Run a single check cycle from inside the watch loop's event loop.
 
@@ -243,6 +249,7 @@ async def _run_check_async(
             test_name=test_name,
             quick=quick,
             fail_on=fail_statuses,
+            semantic_diff=semantic_diff,
         )
     except Exception as e:
         console.print(f"[red]Check failed:[/red] {e}\n")
@@ -270,6 +277,10 @@ def _render_check_result(result: Any, sound: bool) -> None:
     from evalview.core.project_state import ProjectStateStore
 
     if not result.diffs:
+        if result.status == DiffStatus.INCOMPLETE:
+            console.print("[red]Check incomplete.[/red]", end=" ")
+            console.print(result.raw_json.get("error", "No comparisons completed."), markup=False)
+            return
         console.print("[yellow]No tests matched any baselines.[/yellow]")
         console.print("[dim]Run evalview snapshot to capture baselines first.[/dim]\n")
         return
@@ -340,6 +351,7 @@ async def _watch_loop(
     fail_statuses: set,
     sound: bool,
     debounce_seconds: float,
+    semantic_diff: Optional[bool] = None,
 ) -> None:
     """Main async watch loop with simple debounce.
 
@@ -416,6 +428,7 @@ async def _watch_loop(
                     fail_statuses=fail_statuses,
                     sound=sound,
                     trigger_path=trigger,
+                    semantic_diff=semantic_diff,
                 )
             finally:
                 with _lock:

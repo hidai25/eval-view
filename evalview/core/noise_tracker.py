@@ -106,11 +106,14 @@ class ConfirmationGate:
         self,
         currently_failing: Iterable[str],
         strict: Optional[Iterable[str]] = None,
+        unverified: Optional[Iterable[str]] = None,
     ) -> GateDecision:
         """Advance the gate by one cycle.
 
         Args:
             currently_failing: Set of test names that failed this cycle.
+            unverified: Prior failures with no new passing or failing evidence.
+                They retain their previous state without confirming or resolving.
             strict: Names of tests marked `gate: strict` in their YAML —
                 these bypass the confirmation gate entirely. A strict
                 test that fails even once alerts immediately, without
@@ -153,7 +156,8 @@ class ConfirmationGate:
         relaxed_currently = currently - strict_set
 
         # Pending tests that passed this cycle → self-resolved (false positive).
-        self_resolved = self.pending - relaxed_currently
+        unverified_set = set(unverified or ()) - currently
+        self_resolved = self.pending - relaxed_currently - unverified_set
 
         # Previously pending AND still failing → promote to confirmed.
         # These are the ones that actually fire alerts.
@@ -178,8 +182,8 @@ class ConfirmationGate:
         # Update the gate's state for the next cycle. Strict tests are
         # excluded from the internal buckets so they keep alerting every
         # cycle until they pass.
-        self.pending = new_pending
-        self.confirmed_alerted = newly_confirmed | still_confirmed
+        self.pending = new_pending | (self.pending & unverified_set)
+        self.confirmed_alerted = newly_confirmed | still_confirmed | (self.confirmed_alerted & unverified_set)
 
         return decision
 

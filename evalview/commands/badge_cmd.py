@@ -20,6 +20,7 @@ _STATUS_CONFIG: Dict[str, Dict[str, Any]] = {
     "output_changed": {"label": "evalview", "message": "output changed", "color": "yellow"},
     "regression": {"label": "evalview", "message": "regression", "color": "red"},
     "no_baselines": {"label": "evalview", "message": "no baselines", "color": "lightgrey"},
+    "incomplete": {"label": "evalview", "message": "incomplete", "color": "red"},
     "error": {"label": "evalview", "message": "error", "color": "lightgrey"},
 }
 
@@ -112,25 +113,29 @@ def _badge_from_check(quick: bool, test_dir: str) -> dict:
         console.print(f"[red]Check failed:[/red] {e}")
         return _STATUS_CONFIG["error"].copy() | {"schemaVersion": 1}
 
-    if not result.diffs:
-        return _STATUS_CONFIG["no_baselines"].copy() | {"schemaVersion": 1}
-
     s = result.summary
-    total = s.total
+    return _badge_for_counts(
+        compared=s.total, requested=s.requested_tests, unchanged=s.unchanged,
+        regressions=s.regressions, incomplete=not result.passed and "error" in result.raw_json,
+    )
 
-    if s.regressions > 0:
+
+def _badge_for_counts(compared: int, requested: int, unchanged: int, regressions: int, incomplete: bool) -> dict:
+    if incomplete or compared < requested:
+        cfg = _STATUS_CONFIG["incomplete"].copy()
+        if requested:
+            cfg["message"] = f"incomplete: {compared}/{requested} compared"
+        if regressions:
+            cfg["message"] += f", {regressions} regression{'s' if regressions != 1 else ''}"
+    elif regressions:
         cfg = _STATUS_CONFIG["regression"].copy()
-        cfg["message"] = f"{s.regressions} regression{'s' if s.regressions != 1 else ''}"
-    elif s.tools_changed > 0 or s.output_changed > 0:
-        changed = s.tools_changed + s.output_changed
-        cfg = _STATUS_CONFIG["tools_changed"].copy()
-        cfg["message"] = f"{total - changed}/{total} passing"
+        cfg["message"] = f"{regressions} regression{'s' if regressions != 1 else ''}"
+    elif compared:
+        cfg = _STATUS_CONFIG["passed" if unchanged == compared else "tools_changed"].copy()
+        cfg["message"] = f"{unchanged}/{compared} passing"
     else:
-        cfg = _STATUS_CONFIG["passed"].copy()
-        cfg["message"] = f"{total}/{total} passing"
-
-    cfg["schemaVersion"] = 1
-    return cfg
+        cfg = _STATUS_CONFIG["no_baselines"].copy()
+    return {**cfg, "schemaVersion": 1}
 
 
 def _badge_from_last_result() -> dict:
@@ -170,56 +175,35 @@ def _badge_from_last_result() -> dict:
         summary = data.get("summary", {})
         total = summary.get("total_tests", summary.get("total", 0))
         regressions = summary.get("regressions", 0)
-        tools_changed = summary.get("tools_changed", 0)
-        output_changed = summary.get("output_changed", 0)
-        unchanged = summary.get("unchanged", summary.get("passed", 0))
+        changed = regressions + summary.get("tools_changed", 0) + summary.get("output_changed", 0)
+        unchanged = summary.get("unchanged", summary.get("passed", total - changed))
 
-        if regressions > 0:
-            cfg = _STATUS_CONFIG["regression"].copy()
-            cfg["message"] = f"{regressions} regression{'s' if regressions != 1 else ''}"
-        elif tools_changed > 0 or output_changed > 0:
-            cfg = _STATUS_CONFIG["tools_changed"].copy()
-            cfg["message"] = f"{unchanged}/{total} passing"
-        elif total > 0:
-            cfg = _STATUS_CONFIG["passed"].copy()
-            cfg["message"] = f"{total}/{total} passing"
-        else:
-            return _STATUS_CONFIG["no_baselines"].copy() | {"schemaVersion": 1}
-
-        cfg["schemaVersion"] = 1
-        return cfg
+        return _badge_for_counts(
+            compared=total,
+            requested=summary.get("requested_tests", total + summary.get("execution_failures", 0)),
+            unchanged=unchanged,
+            regressions=regressions,
+            incomplete=data.get("status") == "incomplete" or bool(data.get("error")),
+        )
     except (json.JSONDecodeError, KeyError):
         return _STATUS_CONFIG["error"].copy() | {"schemaVersion": 1}
 
 
-def update_badge_after_check(diffs: list, total_tests: int) -> None:
+def update_badge_after_check(diffs: list, total_tests: int, incomplete: bool = False) -> None:
     """Auto-update badge JSON after a check. Called from check_cmd if badge file exists.
 
     Only writes if the badge file already exists (opt-in — user must run
     ``evalview badge`` once to create it).
     """
-    badge_path = Path(_DEFAULT_BADGE_PATH)
-    if not badge_path.exists():
-        return
-
     from evalview.core.diff import DiffStatus
 
     regressions = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.REGRESSION)
-    tools_changed = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.TOOLS_CHANGED)
-    output_changed = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.OUTPUT_CHANGED)
     passed = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.PASSED)
+    update_badge_counts(len(diffs), total_tests, passed, regressions, incomplete)
 
-    if regressions > 0:
-        cfg = _STATUS_CONFIG["regression"].copy()
-        cfg["message"] = f"{regressions} regression{'s' if regressions != 1 else ''}"
-    elif tools_changed > 0 or output_changed > 0:
-        cfg = _STATUS_CONFIG["tools_changed"].copy()
-        cfg["message"] = f"{passed}/{total_tests} passing"
-    elif total_tests > 0:
-        cfg = _STATUS_CONFIG["passed"].copy()
-        cfg["message"] = f"{total_tests}/{total_tests} passing"
-    else:
-        return
 
-    cfg["schemaVersion"] = 1
-    badge_path.write_text(json.dumps(cfg, indent=2) + "\n")
+def update_badge_counts(compared: int, requested: int, unchanged: int, regressions: int, incomplete: bool) -> None:
+    badge_path = Path(_DEFAULT_BADGE_PATH)
+    if badge_path.exists():
+        cfg = _badge_for_counts(compared, requested, unchanged, regressions, incomplete)
+        badge_path.write_text(json.dumps(cfg, indent=2) + "\n")

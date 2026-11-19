@@ -17,11 +17,20 @@ import pytest
 from click.testing import CliRunner
 
 from evalview.commands.watch_cmd import _run_check_async, run_watch, watch
+from evalview.core.diff import DiffStatus
 
 
 def _fake_result():
     """A GateResult-shaped stub with no diffs (the early-return path)."""
-    return SimpleNamespace(diffs=[], passed=True, summary=None)
+    return SimpleNamespace(diffs=[], passed=True, summary=None, status=DiffStatus.PASSED)
+
+
+def test_watch_reports_incomplete_gate(tmp_path, capsys):
+    from evalview.api import gate
+    from evalview.commands.watch_cmd import _render_check_result
+
+    _render_check_result(gate(str(tmp_path / "missing"), quick=True), sound=False)
+    assert "Check incomplete." in capsys.readouterr().out
 
 
 class TestWatchAsyncCheck:
@@ -78,10 +87,11 @@ class TestCheckWatchFlag:
         (tmp_path / "tests").mkdir()
 
         with patch("evalview.commands.watch_cmd.run_watch") as mock_watch:
-            CliRunner().invoke(check, [str(tmp_path / "tests"), "--watch", "--no-judge"])
+            CliRunner().invoke(check, [str(tmp_path / "tests"), "--watch", "--no-judge", "--no-semantic-diff"])
 
         assert mock_watch.called
         kwargs = mock_watch.call_args.kwargs
+        assert kwargs["semantic_diff"] is False
         # --no-judge maps onto the watcher's quick mode.
         assert kwargs["quick"] is True
         assert kwargs["fail_on"] == "REGRESSION"

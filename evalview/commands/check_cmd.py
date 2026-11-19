@@ -6,7 +6,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, NoReturn, Optional, TYPE_CHECKING
 
 import click
 
@@ -16,6 +16,7 @@ from evalview.commands.shared import (
     _cloud_pull,
     _create_adapter,
     _execute_check_tests,
+    _check_diff_config,
     _analyze_check_diffs,
 )
 from evalview.commands.check_display import (
@@ -57,8 +58,35 @@ if TYPE_CHECKING:
 # analysis. Erroring is deliberate — silently dropping a flag the user typed
 # would be worse than refusing it.
 _WATCH_UNSUPPORTED_HELP = (
-    "Watch mode supports TEST_PATH, --test, --fail-on, --strict, and --no-judge."
+    "Watch mode supports TEST_PATH, --test, --fail-on, --strict, --no-judge, and the semantic diff flags."
 )
+
+
+def _abort_incomplete_check(message: str, json_output: bool, requested_tests: int = 0) -> NoReturn:
+    """Return a machine-readable error even when execution never started."""
+    from evalview.commands.badge_cmd import update_badge_counts
+    update_badge_counts(0, requested_tests, 0, 0, incomplete=True)
+    if json_output:
+        click.echo(json.dumps({
+            "status": "incomplete",
+            "passed": False,
+            "error": message,
+            "summary": {
+                "total_tests": 0,
+                "requested_tests": requested_tests,
+                "execution_failures": requested_tests,
+                "unchanged": 0,
+                "regressions": 0,
+                "tools_changed": 0,
+                "output_changed": 0,
+                "effective_all_passed": False,
+                "has_unresolved_failures": True,
+            },
+            "diffs": [],
+        }))
+    else:
+        click.echo(message, err=True)
+    sys.exit(1)
 
 
 def _run_watch_mode(
@@ -80,6 +108,7 @@ def _run_watch_mode(
     auto_variant: bool,
     judge_model: Optional[str],
     heal_mode: bool,
+    semantic_diff: Optional[bool],
 ) -> None:
     """Delegate `check --watch` to the shared watcher in `watch_cmd`."""
     unsupported = [
@@ -127,12 +156,13 @@ def _run_watch_mode(
         fail_on=resolved_fail_on,
         sound=False,
         interval=2.0,
+        semantic_diff=semantic_diff,
     )
 
 
 
 @click.command("check")
-@click.argument("test_path", default="tests", type=click.Path(exists=True))
+@click.argument("test_path", default="tests", type=click.Path())
 @click.option("--test", "-t", help="Check only this specific test")
 @click.option("--tag", "tags", multiple=True, help="Check only tests tagged with this behavior (repeatable).")
 @click.option("--json", "json_output", is_flag=True, help="Output JSON for CI")
@@ -145,9 +175,8 @@ def _run_watch_mode(
     "semantic_diff",
     default=None,
     help=(
-        "Enable/disable embedding-based semantic similarity. "
-        "Auto-enabled when OPENAI_API_KEY is set (adds ~$0.00004/test). "
-        "Use --no-semantic-diff to opt out."
+        "Compare baseline and current output via OpenAI embeddings. Off by default. "
+        "Either flag overrides diff.semantic_diff_enabled in the project config."
     ),
 )
 @click.option("--budget", type=float, default=None, help="Maximum total budget in dollars.")
@@ -155,12 +184,12 @@ def _run_watch_mode(
 @click.option("--dry-run", "dry_run", is_flag=True, default=False, help="Preview test plan without executing.")
 @click.option("--ai-root-cause", "ai_root_cause", is_flag=True, default=False, help="Use AI to explain low-confidence regressions (requires LLM provider, makes LLM API calls).")
 @click.option("--explain", "explain", is_flag=True, default=False, help="Deep semantic root-cause analysis: feeds full baseline+current traces to LLM for a narrative explanation (requires LLM provider, makes LLM API calls).")
-@click.option("--statistical", "statistical_runs", type=int, default=None, help="Run each test N times for variance analysis (e.g. --statistical 10).")
+@click.option("--statistical", "statistical_runs", type=int, default=None, help="Run each test N times (at least 3). Any incomplete run or run failing the selected gate policy fails the check.")
 @click.option("--auto-variant", "auto_variant", is_flag=True, default=False, help="Auto-discover and save distinct execution paths as golden variants (use with --statistical).")
 @click.option("--judge", "judge_model", default=None, help="Judge model for scoring (e.g. gpt-5.4-mini, sonnet, deepseek-chat).")
 @click.option("--no-judge", "no_judge", is_flag=True, default=False, help="Skip LLM-as-judge evaluation. Uses deterministic scoring only (scores capped at 75). No API key required.")
 @click.option("--heal", "heal_mode", is_flag=True, default=False, help="Auto-retry flaky failures, propose candidate variants. Never touches forbidden tools.")
-@click.option("--watch", "watch_mode", is_flag=True, default=False, help="Re-run this check on every file change (Ctrl+C to stop). Supports TEST_PATH, --test, --fail-on, --strict, --no-judge.")
+@click.option("--watch", "watch_mode", is_flag=True, default=False, help="Re-run this check on every file change (Ctrl+C to stop). Supports TEST_PATH, --test, --fail-on, --strict, --no-judge, and the semantic diff flags.")
 @track_command("check")
 def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, fail_on: str, strict: bool, report_path: Optional[str], csv_path: Optional[str], semantic_diff: Optional[bool], budget: Optional[float], timeout: float, dry_run: bool, ai_root_cause: bool, explain: bool, statistical_runs: Optional[int], auto_variant: bool, judge_model: Optional[str], no_judge: bool, heal_mode: bool, watch_mode: bool):
     """Decide whether it's safe to ship this agent change.
@@ -186,7 +215,7 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
         evalview check --report report.html              # Generate HTML report
         evalview check --fail-on REGRESSION,TOOLS_CHANGED
         evalview check --strict                          # Fail on any change
-        evalview check --no-semantic-diff                # Opt out of semantic diff
+        evalview check --semantic-diff                   # Opt in to OpenAI embeddings
         evalview check --dry-run                         # Preview plan, no API calls
         evalview check --budget 0.50                     # Cap spend at $0.50
         evalview check --timeout 60                      # 60 second timeout per test
@@ -198,12 +227,10 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
         evalview check --watch                           # Re-run on every file change
     """
     if budget is not None and budget <= 0:
-        click.echo("Error: --budget must be a positive number.", err=True)
-        sys.exit(1)
+        _abort_incomplete_check("Error: --budget must be a positive number.", json_output)
 
     if timeout <= 0:
-        click.echo("Error: --timeout must be a positive number.", err=True)
-        sys.exit(1)
+        _abort_incomplete_check("Error: --timeout must be a positive number.", json_output)
 
     if watch_mode:
         _run_watch_mode(
@@ -224,6 +251,7 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
             auto_variant=auto_variant,
             judge_model=judge_model,
             heal_mode=heal_mode,
+            semantic_diff=semantic_diff,
         )
         return
 
@@ -237,6 +265,8 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
     store = GoldenStore()
     state_store = ProjectStateStore()
     test_path = _resolve_default_test_path(test_path)
+    if not Path(test_path).is_dir():
+        _abort_incomplete_check(f"Test directory not found: {test_path}", json_output)
 
     state = state_store.load()
 
@@ -254,34 +284,33 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
 
     # Verify snapshots exist
     goldens = store.list_golden()
-    if not goldens:
-        if not json_output:
-            Celebrations.no_snapshot_found()
-        sys.exit(1)
-
-    if not json_output:
-        _print_baseline_context(goldens, state)
-        console.print(f"[cyan]▶ {get_random_checking_message()}[/cyan]\n")
-
     # Load test cases
     loader = TestCaseLoader()
     try:
         test_cases = loader.load_from_directory(Path(test_path))
     except Exception as e:
-        console.print(f"[red]❌ Failed to load test cases: {e}[/red]\n")
-        sys.exit(1)
+        _abort_incomplete_check(f"Failed to load test cases: {e}", json_output)
 
     # Filter to specific test if requested
     if test:
         test_cases = [tc for tc in test_cases if tc.name == test]
         if not test_cases:
-            console.print(f"[red]❌ No test found with name: {test}[/red]\n")
-            sys.exit(1)
+            _abort_incomplete_check(f"No test found with name: {test}", json_output)
 
     test_cases, active_tags = _filter_test_cases_by_tags(test_cases, tags)
     if active_tags and not test_cases:
-        console.print(f"[red]❌ No tests matched tags: {', '.join(active_tags)}[/red]\n")
-        sys.exit(1)
+        _abort_incomplete_check(f"No tests matched tags: {', '.join(active_tags)}", json_output)
+
+    if statistical_runs is not None and statistical_runs < 3:
+        _abort_incomplete_check("--statistical requires at least 3 runs.", json_output)
+    requested_tests = len(test_cases) * (statistical_runs or 1)
+    if not goldens:
+        if not json_output:
+            Celebrations.no_snapshot_found()
+        _abort_incomplete_check("No golden baselines found. Run evalview snapshot.", json_output, requested_tests)
+    if not json_output:
+        _print_baseline_context(goldens, state)
+        console.print(f"[cyan]▶ {get_random_checking_message()}[/cyan]\n")
 
     test_metadata = {
         tc.name: {
@@ -292,8 +321,10 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
         for tc in test_cases
     }
 
-    # Load config
-    config = _load_config_if_exists()
+    try:
+        config = _load_config_if_exists()
+    except Exception as exc:
+        _abort_incomplete_check(f"Invalid gate configuration: {exc}", json_output, requested_tests)
 
     # Apply judge config: --judge flag > interactive picker > config.yaml
     from evalview.commands.shared import apply_judge_model
@@ -303,33 +334,17 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
     from evalview.core.llm_provider import judge_cost_tracker
     judge_cost_tracker.reset()
 
-    # Resolve semantic diff: explicit flag > config file > auto-enable.
     from evalview.core.semantic_diff import SemanticDiff
-    key_available = SemanticDiff.is_available()
-
-    if semantic_diff is None:
-        config_setting = config.get_diff_config().semantic_diff_enabled if config else None
-        if config_setting is False:
-            semantic_diff = False
-        else:
-            semantic_diff = key_available
-        if semantic_diff and not json_output:
-            state_for_notice = state_store.load()
-            if not state_for_notice.semantic_auto_noticed:
-                console.print(
-                    "[dim]ℹ  Semantic diff auto-enabled (OPENAI_API_KEY detected). "
-                    f"{SemanticDiff.cost_notice()}. "
-                    "Use --no-semantic-diff to opt out.[/dim]\n"
-                )
-                state_for_notice.semantic_auto_noticed = True
-                state_store.save(state_for_notice)
-    elif semantic_diff and not key_available:
+    semantic_diff = bool(_check_diff_config(config, semantic_diff).semantic_diff_enabled)
+    if semantic_diff and not SemanticDiff.is_available():
         if not json_output:
             console.print(
-                "[yellow]⚠  --semantic-diff requested but OPENAI_API_KEY is not set. "
+                "[yellow]⚠  Semantic diff requested but OPENAI_API_KEY is not set. "
                 "Falling back to lexical comparison.[/yellow]\n"
             )
         semantic_diff = False
+    elif semantic_diff and not json_output:
+        console.print(f"[dim]{SemanticDiff.cost_notice()}. Baseline and current outputs are sent to OpenAI.[/dim]\n")
 
     # Dry-run mode — show plan and exit
     if dry_run:
@@ -362,13 +377,13 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
                     "This usually means tests were regenerated or renamed since the last snapshot.\n\n"
                     "[bold]To fix:[/bold]\n"
                     "  [bold]evalview snapshot[/bold]         capture new baselines for current tests\n"
-                    "  [bold]evalview snapshot --reset[/bold]  clear old baselines first, then capture fresh",
+                    "  [bold]evalview snapshot --reset[/bold]  replace existing baselines once every selected test passes",
                     border_style="yellow",
                     title="No matching baselines",
                     padding=(1, 2),
                 )
             )
-        sys.exit(0)
+        _abort_incomplete_check("No test cases match the saved baselines.", json_output, requested_tests)
 
     # Budget tracking with circuit breaker
     budget_tracker = None
@@ -377,11 +392,7 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
         budget_tracker = BudgetTracker(limit=budget)
 
     # Statistical mode — run tests N times and cluster results
-    if statistical_runs:
-        if statistical_runs < 3:
-            console.print("[red]Error: --statistical requires at least 3 runs.[/red]")
-            sys.exit(1)
-
+    if statistical_runs is not None:
         if (ai_root_cause or explain) and not json_output:
             console.print(
                 "[yellow]⚠  --ai-root-cause / --explain are not applied in --statistical mode "
@@ -391,34 +402,74 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
         if not json_output:
             console.print(f"[cyan]▶ Statistical mode: running each test {statistical_runs} times...[/cyan]\n")
 
+        from collections import Counter
+        from evalview.core.quarantine import QuarantineStore
         from evalview.core.variant_clusterer import cluster_results, suggest_variants, format_cluster_summary
         from evalview.evaluators.statistical_evaluator import compute_statistical_metrics, compute_flakiness_score
 
         all_stat_results: Dict[str, List] = {}
+        status_counts: Counter[DiffStatus] = Counter()
+        run_summaries = []
+        failed_runs = 0
+        quarantine = QuarantineStore()
 
         for run_idx in range(statistical_runs):
             if not json_output:
                 console.print(f"  [dim]Run {run_idx + 1}/{statistical_runs}...[/dim]")
 
             run_diffs, run_results, _, _ = _execute_check_tests(
-                test_cases, config, json_output=True, semantic_diff=semantic_diff, timeout=timeout,
+                matched_tests, config, json_output=True, semantic_diff=semantic_diff, timeout=timeout,
                 skip_llm_judge=no_judge, budget_tracker=budget_tracker,
             )
+            compared_names = {name for name, _ in run_diffs}
+            missing_tests = [tc.name for tc in test_cases if tc.name not in compared_names]
+            run_exit = _compute_check_exit_code(
+                run_diffs, fail_on, strict, execution_failures=len(test_cases) - len(run_diffs),
+                quarantine=quarantine,
+            )
+            failed_runs += run_exit
+            status_counts.update(diff.overall_severity for _, diff in run_diffs)
+            if json_output:
+                run_summaries.append({
+                    "run": run_idx + 1,
+                    "passed": run_exit == 0,
+                    "missing_tests": missing_tests,
+                    "diffs": [
+                        {
+                            "test_name": name,
+                            "status": diff.overall_severity.value,
+                            "forbidden_tool_violations": list(diff.forbidden_tool_violations),
+                        }
+                        for name, diff in run_diffs
+                    ],
+                })
+            elif missing_tests:
+                console.print(f"    Missing comparisons: {', '.join(missing_tests)}")
 
             for result in run_results:
                 test_name = result.test_case
                 if test_name not in all_stat_results:
                     all_stat_results[test_name] = []
                 all_stat_results[test_name].append(result)
+            if budget_tracker is not None and budget_tracker.halted:
+                break
 
         # Cluster and display results per test
+        compared = sum(status_counts.values())
+        execution_failures = requested_tests - compared
+        budget_halted = budget_tracker is not None and budget_tracker.halted
+        passed = not (failed_runs or execution_failures or budget_halted)
+        statistics = {}
         if not json_output:
             console.print()
-            for test_name, test_results in all_stat_results.items():
+        for test_name, test_results in all_stat_results.items():
+            scores = [r.score for r in test_results]
+            stats = compute_statistical_metrics(scores)
+            flakiness = compute_flakiness_score(test_results, stats)
+            if json_output:
+                statistics[test_name] = {"scores": stats.model_dump(), "flakiness": flakiness.model_dump()}
+            else:
                 clusters = cluster_results(test_results)
-                scores = [r.score for r in test_results]
-                stats = compute_statistical_metrics(scores)
-                flakiness = compute_flakiness_score(test_results, stats)
 
                 console.print(
                     f"[bold]{test_name}[/bold]  "
@@ -429,8 +480,12 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
                 console.print()
 
                 # Auto-variant: save distinct paths
-                if auto_variant:
-                    suggested = suggest_variants(clusters)
+                if auto_variant and not execution_failures:
+                    safe_clusters = [
+                        cluster for cluster in clusters
+                        if not any(member.forbidden_tool_violations for member in cluster.members)
+                    ]
+                    suggested = suggest_variants(safe_clusters)
                     if len(suggested) > 1:
                         existing = store.load_all_golden_variants(test_name)
                         existing_count = len(existing) if existing else 0
@@ -461,31 +516,63 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
                                     console.print(f"    [green]✓ Saved variant '{variant_name}': {variant_cluster.sequence_key}[/green]")
                                 console.print()
 
-            console.print()
-
-        sys.exit(0)
+        if json_output:
+            summary = {
+                "requested_tests": requested_tests,
+                "total_tests": compared,
+                "execution_failures": execution_failures,
+                "unchanged": status_counts[DiffStatus.PASSED],
+                "regressions": status_counts[DiffStatus.REGRESSION],
+                "tools_changed": status_counts[DiffStatus.TOOLS_CHANGED],
+                "output_changed": status_counts[DiffStatus.OUTPUT_CHANGED],
+                "effective_all_passed": passed and status_counts[DiffStatus.PASSED] == requested_tests,
+            }
+            payload: Dict[str, Any] = {
+                "status": "passed" if passed else "failed",
+                "passed": passed,
+                "summary": summary,
+                "runs": run_summaries,
+                "statistics": statistics,
+            }
+            if execution_failures or budget_halted:
+                payload["status"] = "incomplete"
+                payload["error"] = f"Compared {compared} of {requested_tests} requested test executions."
+                if budget_halted:
+                    payload["error"] += " Budget exhausted."
+            click.echo(json.dumps(payload))
+        else:
+            console.print(f"Compared {compared}/{requested_tests} requested test executions. "
+                          f"{failed_runs} run(s) failed the gate policy.")
+            if budget_halted:
+                console.print("[red]Budget exhausted.[/red]")
+        from evalview.commands.badge_cmd import update_badge_counts
+        update_badge_counts(
+            compared, requested_tests, status_counts[DiffStatus.PASSED],
+            status_counts[DiffStatus.REGRESSION], bool(execution_failures or budget_halted),
+        )
+        sys.exit(0 if passed else 1)
 
     # Execute tests and compare against golden — show spinner while waiting
     if not json_output:
         from evalview.commands.shared import run_with_spinner
         diffs, results, drift_tracker, golden_traces = run_with_spinner(
-            lambda: _execute_check_tests(test_cases, config, json_output, semantic_diff, timeout, skip_llm_judge=no_judge, budget_tracker=budget_tracker),
+            lambda: _execute_check_tests(matched_tests, config, json_output, semantic_diff, timeout, skip_llm_judge=no_judge, budget_tracker=budget_tracker),
             "Checking",
             len(test_cases),
         )
     else:
         diffs, results, drift_tracker, golden_traces = _execute_check_tests(
-            test_cases, config, json_output, semantic_diff, timeout, skip_llm_judge=no_judge, budget_tracker=budget_tracker
+            matched_tests, config, json_output, semantic_diff, timeout, skip_llm_judge=no_judge, budget_tracker=budget_tracker
         )
 
-    golden_names = {golden.test_name for golden in goldens}
-    baseline_test_cases = [tc for tc in test_cases if tc.name in golden_names]
-    execution_failures = max(0, len(baseline_test_cases) - len(results))
+    execution_failures = len(test_cases) - len(diffs)
+    budget_halted = budget_tracker is not None and budget_tracker.halted
 
     # --- Healing pass (never mutates original diffs) ---
     healing_summary = None
+    retry_violations: Dict[str, List[str]] = {}
     all_failures_retry_healed = False
-    if heal_mode and diffs:
+    if heal_mode and diffs and not budget_halted:
         import asyncio as _asyncio
         from evalview.core.healing import (
             HealingEngine, HealingSummary, HealingAction, HealingTrigger,
@@ -494,12 +581,11 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
             MIN_VARIANT_SCORE, MAX_COST_MULTIPLIER, MAX_LATENCY_MULTIPLIER,
             MAX_AUTO_VARIANTS,
         )
-        from evalview.core.diff import DiffEngine as _HealDiffEngine, DiffConfig as _HealDiffConfig
+        from evalview.core.diff import DiffEngine as _HealDiffEngine
         from evalview.evaluators.evaluator import Evaluator as _HealEvaluator
 
-        _heal_diff_config = config.get_diff_config() if config else _HealDiffConfig()
-        heal_diff_engine = _HealDiffEngine(config=_heal_diff_config)
-        heal_evaluator = _HealEvaluator()
+        heal_diff_engine = _HealDiffEngine(config=_check_diff_config(config, semantic_diff))
+        heal_evaluator = _HealEvaluator(skip_llm_judge=no_judge)
         engine = HealingEngine(store, heal_evaluator)
 
         healing_results: List[Any] = []
@@ -649,6 +735,11 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
         )
         if healing_results:
             healing_summary.audit_path = save_audit_log(healing_summary)
+            retry_violations = {
+                r.test_name: r.diagnosis.details["violations"]
+                for r in healing_results
+                if r.attempted and r.diagnosis.trigger == HealingTrigger.FORBIDDEN_TOOL
+            }
         all_failures_retry_healed = _all_failures_retry_healed(
             diffs, healing_summary, execution_failures=execution_failures
         )
@@ -656,16 +747,16 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
     # Analyze diffs
     analysis = _analyze_check_diffs(diffs)
     analysis["execution_failures"] = execution_failures
+    analysis["budget_exhausted"] = budget_halted
+    if budget_halted:
+        analysis["all_passed"] = False
     if execution_failures > 0:
         analysis["all_passed"] = False
         analysis["has_execution_failures"] = True
+        compared_names = {name for name, _ in diffs}
+        analysis["missing_tests"] = [tc.name for tc in test_cases if tc.name not in compared_names]
 
-    # Don't treat zero-test runs as a real pass — no tests were compared
-    # But execution failures still count as failures even with 0 diffs.
     actually_compared = len(diffs)
-    if actually_compared == 0 and execution_failures == 0:
-        analysis["all_passed"] = True  # Not a failure, but not a real check
-        analysis["nothing_compared"] = True
 
     analysis["healing_enabled"] = bool(heal_mode)
     analysis["healing_all_resolved"] = all_failures_retry_healed
@@ -714,12 +805,6 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
             if skipped > 0:
                 console.print(f"[red]   {skipped} test(s) skipped to stay within budget[/red]")
             console.print()
-            sys.exit(1)
-        elif budget is not None and total_cost > budget:
-            console.print(
-                f"[red]⚠  Budget exceeded: ${total_cost:.4f} > ${budget:.2f} limit[/red]\n"
-            )
-            sys.exit(1)
 
     # AI root cause enrichment (opt-in via --ai-root-cause)
     import asyncio as _asyncio_rc
@@ -778,6 +863,8 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
         execution_failures=execution_failures,
         golden_traces=golden_traces,
         quarantine=shared_quarantine,
+        retry_forbidden_tool_violations=retry_violations,
+        budget_exhausted=budget_halted,
     )
 
     # --- Enrich verdict payload with observability signals ---
@@ -803,7 +890,7 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
         _render_verdict_panel(verdict_output)
 
     if execution_failures > 0 and not json_output:
-        _print_check_failure_guidance(baseline_test_cases, config)
+        _print_check_failure_guidance(matched_tests, config)
 
     auto_report = _should_auto_generate_report(
         report_path=report_path,
@@ -878,7 +965,7 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
 
     # Auto-update badge if it exists
     from evalview.commands.badge_cmd import update_badge_after_check
-    update_badge_after_check(diffs, len(diffs))
+    update_badge_after_check(diffs, len(test_cases), incomplete=budget_halted)
 
     # ── Push results to EvalView Cloud (best-effort) ──
     # Runs after all display/report work so it never blocks the user
@@ -904,7 +991,9 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
             _n_output = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.OUTPUT_CHANGED)
             _n_passed = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.PASSED)
 
-            if _n_regression > 0:
+            if execution_failures or budget_halted:
+                _cloud_status = "incomplete"
+            elif _n_regression > 0:
                 _cloud_status = "regression"
             elif _n_tools > 0:
                 _cloud_status = "tools_changed"
@@ -920,6 +1009,8 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
                 **_get_git_context(),
                 "summary": {
                     "total": len(diffs),
+                    "requested_tests": len(test_cases),
+                    "execution_failures": execution_failures,
                     "unchanged": _n_passed,
                     "regressions": _n_regression,
                     "tools_changed": _n_tools,
@@ -956,7 +1047,9 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
     )
 
     # --heal exit code: 0 only if every failure was retry-healed
-    if all_failures_retry_healed:
+    if retry_violations or budget_halted:
+        exit_code = 1
+    elif all_failures_retry_healed:
         exit_code = 0
 
     if (

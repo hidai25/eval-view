@@ -101,6 +101,8 @@ Options:
   -n, --notes TEXT    Notes about this snapshot
   --variant TEXT      Save as named variant (max 5 per test)
   --approve-generated Approve generated draft tests before snapshotting
+  --preview           Show proposed changes without writing baselines
+  --reset             Replace all baselines after every selected test passes
 ```
 
 ### Examples
@@ -126,11 +128,16 @@ Options:
   --json              Output JSON for CI
   --fail-on TEXT      Comma-separated statuses to fail on (default: REGRESSION)
   --strict            Fail on any change
+  --statistical N     Repeat each test at least 3 times and apply the gate to every repetition
   --report PATH       Generate HTML report
-  --semantic-diff/--no-semantic-diff  Toggle embedding-based similarity
+  --semantic-diff/--no-semantic-diff  Use OpenAI embeddings for baseline and current output (opt-in)
   --budget FLOAT      Maximum total budget in dollars
   --dry-run           Preview check plan without executing
 ```
+
+Forbidden tool calls and incomplete comparisons always exit nonzero. This includes a missing suite, an agent execution failure and a selected case without a saved baseline. In JSON, `summary.requested_tests` counts requested comparisons and `summary.total_tests` counts completed comparisons. Statistical mode counts each repetition separately.
+
+Set `diff.semantic_diff_enabled: true` in project configuration or pass `--semantic-diff` to send baseline and current output to OpenAI for comparison. Pass `--no-semantic-diff` to override project consent for a run. The Python SDK accepts the same override as `semantic_diff=False` and disables embeddings in quick mode.
 
 ### Examples
 

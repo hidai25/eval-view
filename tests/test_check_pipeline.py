@@ -6,8 +6,7 @@ detection feature work:
 - _execute_check_tests returns (diffs, results, drift_tracker, golden_traces) — four-tuple
 - Concurrent gather: one failing test does not cancel the others
 - DriftTracker is populated during execution and passed to _display_check_results
-- Semantic diff notice is shown when OPENAI_API_KEY is present
-- Semantic diff warning is shown when OPENAI_API_KEY is missing
+- Embeddings are requested only when the caller or project explicitly enables them
 """
 
 import json
@@ -50,6 +49,7 @@ def _make_fake_result(test_name: str, score: float = 90.0):
     result.test_case = test_name
     result.score = score
     result.passed = score >= 70
+    result.forbidden_tool_violations = []
     result.trace = _make_fake_trace()
     return result
 
@@ -475,55 +475,105 @@ class TestCheckJsonScoreTrend:
 
 
 # ---------------------------------------------------------------------------
-# Test: semantic diff CLI notice / warning
+# Test embedding consent through the public entry points.
 # ---------------------------------------------------------------------------
 
-class TestSemanticDiffNotice:
-    """Verify the semantic diff privacy notice and availability warning."""
+@pytest.fixture
+def semantic_project(tmp_path, monkeypatch):
+    from evalview.core.semantic_diff import SemanticDiff
 
-    @pytest.fixture
-    def project(self, tmp_path):
-        _write_config(tmp_path)
-        _write_test_yaml(tmp_path / "tests", "my-test")
-        _write_golden(tmp_path, "my-test")
-        return tmp_path
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OPENAI_API_KEY", "unused-test-key")
+    monkeypatch.setenv("EVALVIEW_TELEMETRY_DISABLED", "1")
+    monkeypatch.setenv("CI", "1")
+    config = _write_config(tmp_path)
+    _write_test_yaml(tmp_path / "tests", "my-test")
+    _write_golden(tmp_path, "my-test")
+    trace = _make_fake_trace()
+    monkeypatch.setattr(
+        "evalview.commands.shared._build_adapter_for_tc",
+        lambda *args: SimpleNamespace(execute=AsyncMock(return_value=trace)),
+    )
+    embed = AsyncMock(return_value=[[1.0], [1.0]])
+    monkeypatch.setattr(SemanticDiff, "_embed", embed)
+    return config, embed
 
-    def test_notice_shown_when_available(self, project, monkeypatch, capsys):
-        """When OPENAI_API_KEY is set, print the cost notice before running."""
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-        from evalview.core.semantic_diff import SemanticDiff
 
-        with patch.object(SemanticDiff, "is_available", return_value=True):
-            with patch.object(SemanticDiff, "cost_notice", return_value="~$0.00004/check"):
-                # Simulate what the check command does before calling _execute_check_tests
-                from rich.console import Console
-                console = Console()
-                if SemanticDiff.is_available():
-                    console.print(
-                        f"[dim]ℹ  Semantic diff enabled. {SemanticDiff.cost_notice()} "
-                        "Agent outputs are sent to OpenAI for embedding comparison.[/dim]\n"
-                    )
+@pytest.mark.parametrize(
+    "config_setting, flags, expected_calls",
+    [
+        (None, [], 0),
+        (True, [], 1),
+        (False, ["--semantic-diff"], 1),
+        (True, ["--no-semantic-diff"], 0),
+    ],
+)
+def test_cli_embedding_consent(semantic_project, config_setting, flags, expected_calls):
+    from click.testing import CliRunner
+    from evalview.commands.check_cmd import check
 
-        # We trust the logic is correct; the key test is is_available() + cost_notice() integrate
-        assert SemanticDiff.cost_notice() is not None
+    config, embed = semantic_project
+    if config_setting is not None:
+        with config.open("a") as stream:
+            stream.write(yaml.safe_dump({"diff": {"semantic_diff_enabled": config_setting}}))
+    result = CliRunner().invoke(check, ["tests", "--no-judge", "--json", *flags])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["summary"]["total_tests"] == 1
+    assert embed.await_count == expected_calls
+    if expected_calls:
+        assert embed.await_args.args[0] == ["The answer is 42.", "The answer is 42."]
 
-    def test_warning_shown_when_key_missing(self, project, monkeypatch):
-        """When OPENAI_API_KEY is missing, is_available() returns False."""
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        from evalview.core.semantic_diff import SemanticDiff
-        assert SemanticDiff.is_available() is False
+
+@pytest.mark.parametrize("kwargs, expected_calls", [
+    ({}, 1), ({"semantic_diff": False}, 0), ({"quick": True}, 0),
+])
+def test_sdk_embedding_overrides(semantic_project, monkeypatch, kwargs, expected_calls):
+    from evalview.api import gate
+    from evalview.evaluators.evaluator import Evaluator
+
+    config, embed = semantic_project
+    with config.open("a") as stream:
+        stream.write(yaml.safe_dump({"diff": {"semantic_diff_enabled": True}}))
+    evaluator = Evaluator(skip_llm_judge=True)
+    monkeypatch.setattr("evalview.evaluators.evaluator.Evaluator", lambda **options: evaluator)
+    assert gate("tests", **kwargs).passed
+    assert embed.await_count == expected_calls
+
+
+def test_healing_retry_respects_disabled_embeddings(semantic_project, monkeypatch):
+    from click.testing import CliRunner
+    from evalview.commands.check_cmd import check
+
+    config, embed = semantic_project
+    with config.open("a") as stream:
+        stream.write(yaml.safe_dump({"diff": {"semantic_diff_enabled": True}}))
+    trace = _make_fake_trace()
+    adapter = SimpleNamespace(execute=AsyncMock(side_effect=[
+        trace.model_copy(update={"final_output": "The response changed entirely."}), trace,
+    ]))
+    monkeypatch.setattr("evalview.commands.shared._build_adapter_for_tc", lambda *args: adapter)
+    monkeypatch.setattr("evalview.commands.check_cmd._create_adapter", lambda *args, **kwargs: adapter)
+    result = CliRunner().invoke(check, ["tests", "--no-judge", "--no-semantic-diff", "--heal", "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["healing"]["results"][0]["healed"]
+    assert adapter.execute.await_count == 2
+    embed.assert_not_awaited()
 
 
 def test_display_check_results_labels_multi_turn_regressions(capsys):
     """Console check output should explicitly label failed multi-turn paths."""
     from evalview.commands.check_display import _display_check_results
-    from evalview.core.diff import DiffStatus
+    from evalview.core.diff import DiffStatus, TraceDiff
 
-    diff = MagicMock()
-    diff.overall_severity = DiffStatus.REGRESSION
-    diff.score_diff = -20.0
-    diff.tool_diffs = []
-    diff.output_diff = None
+    diff = TraceDiff(
+        test_name="refund-needs-order-number",
+        overall_severity=DiffStatus.REGRESSION,
+        has_differences=True,
+        score_diff=-20.0,
+        latency_diff=0.0,
+        tool_diffs=[],
+        output_diff=None,
+    )
 
     analysis = {
         "all_passed": False,

@@ -30,6 +30,7 @@ class RootCauseCategory(str, Enum):
     PARAMETER_CHANGED = "parameter_changed"
     OUTPUT_DRIFTED = "output_drifted"
     SCORE_ONLY = "score_only"
+    FORBIDDEN_TOOL = "forbidden_tool"
 
 
 class Confidence(str, Enum):
@@ -105,6 +106,15 @@ def analyze_root_cause(diff: TraceDiff) -> Optional[RootCauseAnalysis]:
     """
     if diff.overall_severity == DiffStatus.PASSED:
         return None
+
+    if diff.forbidden_tool_violations:
+        return RootCauseAnalysis(
+            category=RootCauseCategory.FORBIDDEN_TOOL,
+            summary=f"Forbidden tool called: {', '.join(diff.forbidden_tool_violations)}",
+            root_tool=diff.forbidden_tool_violations[0],
+            confidence=Confidence.HIGH,
+            suggested_fix="Prevent the agent from invoking the forbidden tool before shipping.",
+        )
 
     # Classify tool diffs by type
     added_tools = [td for td in diff.tool_diffs if td.type == "added"]

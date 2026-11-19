@@ -532,9 +532,12 @@ def _display_check_results(
     if json_output:
         token_summary = _aggregate_token_summary(results, golden_traces)
         score_trend_payload = _build_score_trend_payload(diffs, drift_tracker)
+        execution_failures = int(analysis.get("execution_failures", 0))
         output: Dict[str, Any] = {
             "summary": {
                 "total_tests": len(diffs),
+                "requested_tests": len(diffs) + execution_failures,
+                "execution_failures": execution_failures,
                 "unchanged": sum(1 for _, d in diffs if d.overall_severity == DiffStatus.PASSED),
                 "regressions": sum(1 for _, d in diffs if d.overall_severity == DiffStatus.REGRESSION),
                 "tools_changed": sum(1 for _, d in diffs if d.overall_severity == DiffStatus.TOOLS_CHANGED),
@@ -555,6 +558,7 @@ def _display_check_results(
                         else None
                     ),
                     "has_tool_diffs": len(diff.tool_diffs) > 0,
+                    "forbidden_tool_violations": diff.forbidden_tool_violations,
                     "tool_diffs": [
                         {
                             "type": td.type,
@@ -603,6 +607,14 @@ def _display_check_results(
                 for name, diff in diffs
             ],
         }
+        if execution_failures:
+            output.update(
+                status="incomplete", passed=False,
+                error=f"{execution_failures} requested test(s) produced no comparison.",
+                missing_tests=analysis.get("missing_tests", []),
+            )
+        if analysis.get("budget_exhausted"):
+            output.update(status="incomplete", passed=False, error="The check reached its execution budget.")
         if token_summary is not None:
             output["summary"]["token_usage"] = token_summary["token_usage"].model_dump()
             output["summary"]["total_cost"] = token_summary["total_cost"]
@@ -669,7 +681,8 @@ def _display_check_results(
         regression_count = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.REGRESSION)
         quarantined_failures = sum(
             1 for name, d in diffs
-            if d.overall_severity != DiffStatus.PASSED and _q.is_quarantined(name)
+            if d.overall_severity != DiffStatus.PASSED
+            and not d.forbidden_tool_violations and _q.is_quarantined(name)
         )
         exec_failures = int(analysis.get("execution_failures", 0) or 0)
         total_compared = len(diffs)
@@ -785,7 +798,7 @@ def _display_check_results(
                         "This usually means tests were regenerated or renamed since the last snapshot.\n\n"
                         "[bold]To fix:[/bold]\n"
                         "  [bold]evalview snapshot[/bold]         capture new baselines for current tests\n"
-                        "  [bold]evalview snapshot --reset[/bold]  clear old baselines first, then capture fresh",
+                        "  [bold]evalview snapshot --reset[/bold]  replace existing baselines once every selected test passes",
                         border_style="yellow",
                         title="No matching baselines",
                         padding=(1, 2),
@@ -852,7 +865,9 @@ def _display_check_results(
                     # Check if quarantined (uses _q loaded above in scorecard section)
                     _is_quarantined = _q.is_quarantined(name)
 
-                    if _is_quarantined:
+                    if diff.forbidden_tool_violations:
+                        severity_icon = "[red]✗ BLOCKED[/red]"
+                    elif _is_quarantined:
                         severity_icon = "[dim]⏸ QUARANTINED[/dim]"
                     else:
                         severity_icon = {
@@ -971,7 +986,7 @@ def _display_check_results(
                     _print_recommendations(recs)
 
                 # Track flaky tests and suggest quarantine
-                if diff.output_diff and diff.output_diff.similarity and diff.output_diff.similarity > 0.9 and abs(diff.score_diff) < 3:
+                if not diff.forbidden_tool_violations and diff.output_diff and diff.output_diff.similarity and diff.output_diff.similarity > 0.9 and abs(diff.score_diff) < 3:
                     count = _q.increment_flaky(name)
                     if _q.should_quarantine(name) and not _q.is_quarantined(name):
                         quoted_q = f'"{name}"' if " " in name else name
@@ -984,7 +999,7 @@ def _display_check_results(
                 console.print(f"    [dim]\u2192 evalview replay {quoted}[/dim]")
 
                 # Smart accept suggestion
-                if result_for_test is not None:
+                if result_for_test is not None and not diff.forbidden_tool_violations:
                     golden_for_accept = _goldens.get(name)
                     baseline_score = (
                         result_for_test.score - diff.score_diff
