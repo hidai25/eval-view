@@ -2,7 +2,7 @@
 <!-- keywords: AI agent testing, regression detection, golden baselines -->
 
 <p align="center">
-  <img src="assets/logo.png" alt="EvalView" width="350">
+  <img src="https://raw.githubusercontent.com/hidai25/eval-view/v0.9.0/assets/logo.png" alt="EvalView" width="350">
   <br>
   <strong>Snapshot testing for AI agents.</strong><br>
   Record what your agent does today. Get told when it silently changes.
@@ -24,7 +24,7 @@ Your agent returns `200` and looks fine. But a model update, a provider change, 
 
 **EvalView snapshots your agent's behavior — the tools it calls, in what order, with what output — and tells you the moment that behavior changes.** Like Jest snapshots, but for tool-calling, multi-turn agents.
 
-[![demo.gif](assets/demo.gif)](https://github.com/user-attachments/assets/96d8b5f7-3561-44a1-86a4-270fb0d1d8a6)
+[![EvalView terminal demo showing an agent regression check](https://raw.githubusercontent.com/hidai25/eval-view/v0.9.0/assets/demo.gif)](https://github.com/user-attachments/assets/96d8b5f7-3561-44a1-86a4-270fb0d1d8a6)
 
 <sub>↑ 30-second live demo — no API key needed</sub>
 
