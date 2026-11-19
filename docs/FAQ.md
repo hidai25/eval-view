@@ -122,10 +122,10 @@ checks:
 Yes. Use `evalview skill validate` for structure validation and `evalview skill test` for behavior testing. EvalView catches skills that exceed Claude Code's 15k character budget — a common silent failure. See [Skills Testing](SKILLS_TESTING.md).
 
 ### Does EvalView work with OpenAI Codex CLI skills?
-Yes. Codex CLI uses the same SKILL.md format as Claude Code. Your tests work for both platforms.
+Run `evalview skill test suite.yaml --agent codex --no-rubric` with a configured Codex CLI that supports `codex exec --json --ephemeral` (verified with 0.170.0). If Codex reports an unknown flag, check `codex --version` in the shell that runs EvalView and update that installation. EvalView passes the skill instructions and test query to `codex exec --json` and checks the resulting command, file-change, and MCP tool events. Use `agent.timeout` to bound runtime. Omit `tools` and `max_turns` for Codex because its CLI cannot enforce those options.
 
 ### Do I need an API key for skill validation?
-No. `evalview skill validate` runs locally without any API calls. Only `evalview skill test` requires an Anthropic API key.
+No. `evalview skill validate` runs locally without any API calls. Executing a skill uses the credentials and billing of the selected runtime.
 
 ### Can EvalView handle non-deterministic LLM outputs?
 Yes. EvalView provides multiple approaches:

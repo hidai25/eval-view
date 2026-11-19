@@ -1,9 +1,11 @@
 """Decorators for tracking CLI command usage."""
 
-import atexit
 import functools
 import time
 import uuid
+from contextvars import ContextVar
+
+from click.exceptions import Exit
 from typing import Callable, Any, Optional, Dict
 
 from evalview.telemetry.config import is_telemetry_enabled
@@ -19,6 +21,18 @@ _session_id: str = str(uuid.uuid4())
 _session_start: float = time.perf_counter()
 _session_command: str = ""
 _session_commands_run: int = 0
+
+
+_command_properties: ContextVar[Optional[Dict[str, Any]]] = ContextVar(
+    "evalview_command_properties", default=None
+)
+
+
+def record_command_properties(**properties: Any) -> None:
+    """Add resolved, non-content fields to the active command event."""
+    active = _command_properties.get()
+    if active is not None:
+        active.update(properties)
 
 
 def _send_session_event() -> None:
@@ -40,7 +54,6 @@ def _send_session_event() -> None:
         pass
 
 
-atexit.register(_send_session_event)
 
 
 def track_command(
@@ -82,15 +95,24 @@ def track_command(
             start_time = time.perf_counter()
             success = True
             error_class = None
+            resolved: Dict[str, Any] = {}
+            token = _command_properties.set(resolved)
 
             try:
                 result = func(*args, **kwargs)
                 return result
+            except SystemExit as exc:
+                success = exc.code in (None, 0)
+                raise
+            except Exit as exc:
+                success = exc.exit_code == 0
+                raise
             except Exception as e:
                 success = False
                 error_class = type(e).__name__
                 raise
             finally:
+                _command_properties.reset(token)
                 duration_ms = (time.perf_counter() - start_time) * 1000
 
                 properties = {}
@@ -100,6 +122,7 @@ def track_command(
                     except Exception:
                         pass
 
+                properties.update(resolved)
                 event = CommandEvent(
                     command_name=name,
                     duration_ms=duration_ms,

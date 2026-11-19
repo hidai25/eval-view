@@ -23,7 +23,7 @@ from evalview.commands.check_display import (
     _display_check_results,
     _print_trajectory_diff,
 )
-from evalview.telemetry.decorators import track_command
+from evalview.telemetry.decorators import record_command_properties, track_command
 
 from evalview.core.diff import DiffStatus
 from evalview.commands._check_verdict import (
@@ -65,6 +65,7 @@ _WATCH_UNSUPPORTED_HELP = (
 def _abort_incomplete_check(message: str, json_output: bool, requested_tests: int = 0) -> NoReturn:
     """Return a machine-readable error even when execution never started."""
     from evalview.commands.badge_cmd import update_badge_counts
+    record_command_properties(comparison_complete=False)
     update_badge_counts(0, requested_tests, 0, 0, incomplete=True)
     if json_output:
         click.echo(json.dumps({
@@ -549,6 +550,10 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
         update_badge_counts(
             compared, requested_tests, status_counts[DiffStatus.PASSED],
             status_counts[DiffStatus.REGRESSION], bool(execution_failures or budget_halted),
+        )
+        record_command_properties(
+            comparison_complete=not (execution_failures or budget_halted),
+            changed=compared > status_counts[DiffStatus.PASSED],
         )
         sys.exit(0 if passed else 1)
 
@@ -1067,6 +1072,10 @@ def check(test_path: str, test: str, tags: tuple[str, ...], json_output: bool, f
             "[dim]Use --strict or --fail-on REGRESSION,TOOLS_CHANGED,OUTPUT_CHANGED if review cases should fail CI.[/dim]\n"
         )
 
+    record_command_properties(
+        comparison_complete=not (execution_failures or budget_halted),
+        changed=any(diff.overall_severity != DiffStatus.PASSED for _, diff in diffs),
+    )
     sys.exit(exit_code)
 
 

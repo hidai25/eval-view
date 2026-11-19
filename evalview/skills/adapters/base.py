@@ -434,6 +434,7 @@ class CLIAgentAdapter(SkillAgentAdapter):
             return subprocess.run(
                 command,
                 capture_output=capture_output,
+                stdin=subprocess.DEVNULL,
                 text=True,
                 cwd=cwd,
                 env=env,

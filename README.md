@@ -63,6 +63,10 @@ No agent yet? See it work in 30 seconds:
 evalview demo
 ```
 
+### Usage analytics
+
+The installed CLI sends anonymous usage events to PostHog when you run a tracked command. Events use a random installation ID and include the EvalView version, command, runtime, CI environment, and aggregate outcomes. Prompts, tool arguments, outputs, paths, and repository names stay out of these events. Set `EVALVIEW_TELEMETRY_DISABLED=1` before first use or run `evalview telemetry off` to opt out.
+
 ## Why snapshot testing (and not assertions)?
 
 Most eval tools ask you to *write down what "good" looks like* — assertions, metrics, rubrics. That's a lot of upfront work, and you can only catch the failures you thought to assert.

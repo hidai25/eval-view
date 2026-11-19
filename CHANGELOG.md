@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-11-19
+
+### Changed
+
+- Codex skill tests use the non-interactive CLI and capture JSONL tool activity and final answers.
+- Standard Python installs include command telemetry with package version, resolved skill runtime and comparison outcomes. The existing CLI and environment opt-outs apply.
+
 ## [0.9.1] - 2026-11-19
 
 ### Fixed

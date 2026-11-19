@@ -5,7 +5,7 @@ All failures are silently ignored - telemetry should never break functionality.
 
 Person identity strategy:
     Each installation gets a stable UUID (install_id). On first use we call
-    posthog.identify() to attach readable person properties — this is what
+    posthog.set() to attach readable person properties — this is what
     makes users show up with names and OS info in PostHog instead of raw UUIDs.
 
 Developer filtering:
@@ -13,6 +13,7 @@ Developer filtering:
     Filter these out in PostHog with: Properties → is_developer → is not set / false.
 """
 
+import atexit
 import os
 import platform
 import sys
@@ -77,6 +78,38 @@ def _get_os_info() -> str:
     return f"Linux {platform.release()}"
 
 
+_PUBLIC_LABELS = {
+    "anthropic", "openai", "openai-compatible", "openai-assistants", "claude-code",
+    "codex", "openclaw", "langgraph", "crewai", "custom", "system-prompt", "auto",
+    "http", "mcp", "ollama", "cohere", "mistral", "opencode", "pydantic-ai",
+    "gemini", "grok", "deepseek", "huggingface", "no_provider_configured", "unknown",
+}
+
+
+def _usage_properties(event: BaseEvent) -> dict:
+    """Only transmit built-in labels, environment metadata and measurements."""
+    data = event.to_dict()
+    fields = {
+        key: value for key, value in data.items()
+        if isinstance(value, (int, float, bool)) or key in {
+            "command_name", "event_type", "timestamp", "os_info", "python_version",
+            "ci_environment", "error_class",
+        }
+    }
+    for key in ("provider", "adapter_type"):
+        if data.get(key):
+            fields[key] = data[key] if data[key] in _PUBLIC_LABELS else "other"
+    if "properties" in data:
+        details = {}
+        for key, value in data["properties"].items():
+            if isinstance(value, (int, float, bool)):
+                details[key] = value
+            elif key in {"agent", "adapter", "provider", "failure_reason"} and isinstance(value, str):
+                details[key] = value if value in _PUBLIC_LABELS else "other"
+        fields["properties"] = details
+    return fields
+
+
 class TelemetryClient:
     """Telemetry sender."""
 
@@ -95,14 +128,20 @@ class TelemetryClient:
                 host=POSTHOG_HOST,
                 # Send asynchronously — never block the CLI waiting for network.
                 # max_retries=0 means failed sends are dropped, not retried forever.
+                max_retries=0,
+                timeout=1,
+                disable_geoip=True,
                 on_error=lambda e, items: None,
             )
+            # Register after the SDK's exit handler so the final session is queued first.
+            from evalview.telemetry.decorators import _send_session_event
+            atexit.register(_send_session_event)
             return True
-        except ImportError:
+        except Exception:
             return False
 
     def _identify_once(self, install_id: str) -> None:
-        """Send posthog.identify() the first time this install is seen.
+        """Send posthog.set() the first time this install is seen.
 
         This populates the person record in PostHog with readable properties
         so users show up as 'EvalView-3f8a2b (macOS 14.0)' instead of raw UUIDs.
@@ -113,7 +152,7 @@ class TelemetryClient:
             if getattr(config, "identified", False):
                 return  # Already identified
 
-            self._posthog.identify(
+            self._posthog.set(
                 distinct_id=install_id,
                 properties={
                     "$name": _readable_name(install_id),
@@ -149,7 +188,10 @@ class TelemetryClient:
             else:
                 event_name = getattr(event, "command_name", None) or event.event_type
 
-            properties = event.to_dict()
+            from evalview import __version__
+
+            properties = _usage_properties(event)
+            properties["evalview_version"] = __version__
             # Always attach developer flag so events can be filtered in PostHog
             properties["is_developer"] = _is_developer()
             # Attach $session_id so PostHog groups events into sessions and

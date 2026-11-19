@@ -567,7 +567,7 @@ wheels = [
 
 [[package]]
 name = "evalview"
-version = "0.9.1"
+version = "0.9.2"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
@@ -579,6 +579,8 @@ dependencies = [
     { name = "jsonschema", version = "4.26.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "llm-prices" },
     { name = "openai" },
+    { name = "posthog", version = "6.9.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "posthog", version = "7.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "prompt-toolkit" },
     { name = "pydantic" },
     { name = "python-dateutil" },
@@ -595,8 +597,6 @@ all = [
     { name = "mistralai", version = "1.10.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "mistralai", version = "2.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "plotly" },
-    { name = "posthog", version = "6.9.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "posthog", version = "7.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "pydantic-ai-slim", marker = "python_full_version >= '3.10'" },
     { name = "watchdog" },
 ]
@@ -635,10 +635,6 @@ reports = [
 schedule = [
     { name = "croniter" },
 ]
-telemetry = [
-    { name = "posthog", version = "6.9.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "posthog", version = "7.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
-]
 watch = [
     { name = "watchdog" },
 ]
@@ -666,8 +662,7 @@ requires-dist = [
     { name = "plotly", marker = "extra == 'all'", specifier = ">=5.0" },
     { name = "plotly", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "plotly", marker = "extra == 'reports'", specifier = ">=5.0" },
-    { name = "posthog", marker = "extra == 'all'", specifier = ">=3.0.0" },
-    { name = "posthog", marker = "extra == 'telemetry'", specifier = ">=3.0.0" },
+    { name = "posthog", specifier = ">=6.9.3,<8" },
     { name = "prompt-toolkit", specifier = ">=3.0.0" },
     { name = "pydantic", specifier = ">=2.5.0" },
     { name = "pydantic-ai-slim", marker = "python_full_version >= '3.10' and extra == 'all'", specifier = ">=0.0.30" },
