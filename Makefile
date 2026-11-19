@@ -195,11 +195,11 @@ dogfood-agent:
 
 ## Check for regressions in EvalView's evaluation logic (requires dogfood-agent)
 dogfood-check:
-	uv run evalview check dogfood/mock-agent-tests/ --fail-on REGRESSION
+	uv run evalview check dogfood/mock-agent-tests/passing/ --strict --no-judge
 
 ## Save current evaluation results as the new golden baseline (requires dogfood-agent)
 dogfood-snapshot:
-	uv run evalview snapshot dogfood/mock-agent-tests/
+	uv run evalview snapshot --path dogfood/mock-agent-tests/ --no-judge
 
 ## Run the full dogfood suite including failure-detection tests (requires dogfood-agent)
 dogfood-run:

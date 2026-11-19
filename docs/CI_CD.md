@@ -28,7 +28,7 @@ jobs:
 
       - name: Check for regressions
         id: evalview
-        uses: hidai25/eval-view@v0.8.1
+        uses: hidai25/eval-view@v0.9.0
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           fail-on: REGRESSION
@@ -38,7 +38,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: evalview-report
-          path: evalview-report.html
+          path: ${{ steps.evalview.outputs.report-file }}
           if-no-files-found: ignore
 
       - name: Post PR comment

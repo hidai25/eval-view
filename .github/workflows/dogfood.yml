@@ -91,8 +91,16 @@ jobs:
         mkdir -p .evalview
         cp dogfood/mock-agent-tests/config.yaml .evalview/config.yaml
         # pipefail preserves a failed snapshot; never check against stale goldens.
-        uv run evalview snapshot --path dogfood/mock-agent-tests/ --no-judge 2>&1 | tee snapshot-output.txt
-        uv run evalview check dogfood/mock-agent-tests/ --fail-on REGRESSION --no-judge --json 2>&1 | tee regression-output.txt
+        uv run evalview snapshot --path dogfood/mock-agent-tests/ --no-judge --json | tee snapshot-output.txt
+        # All six fixtures must execute. The deliberately broken cases must fail evaluation.
+        jq -e '
+          .snapshot.total_tests == 6 and (.tests | length) == 6 and
+          ([.tests[] | select(.passed and .saved) | .name] | sort) ==
+            ["correct_calculation", "correct_search", "correct_sequence"] and
+          ([.tests[] | select(.passed == false and .saved == false) | .name] | sort) ==
+            ["missing_tool_detection", "wrong_answer_detection", "wrong_tool_detection"]
+        ' snapshot-output.txt
+        uv run evalview check dogfood/mock-agent-tests/passing/ --strict --no-judge --json 2>&1 | tee regression-output.txt
 
     - name: Monitor smoke test
       id: monitor
@@ -117,7 +125,7 @@ jobs:
 
         # SIGTERM at 35s is intentional; other errors must remain failures.
         set +e
-        timeout --preserve-status 35s uv run evalview monitor dogfood/mock-agent-tests/ \
+        timeout --preserve-status 35s uv run evalview monitor dogfood/mock-agent-tests/passing/ \
           --interval 10 --timeout 15 --fail-on REGRESSION \
           --history .evalview/monitor-history.jsonl 2>&1 | tee monitor-output.txt
         MONITOR_EXIT=${PIPESTATUS[0]}

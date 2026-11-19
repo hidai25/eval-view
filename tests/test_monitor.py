@@ -1074,3 +1074,55 @@ class TestHistorySeverityCounts:
         assert regressions == 1
         assert tools_changed == 1  # Still counted even though not in fail_on
         assert passed == 1  # Only test-a (NOT 2, which the old bug would produce)
+
+
+@pytest.mark.parametrize("dashboard", [False, True])
+def test_monitor_only_confirms_and_recovers_from_observed_comparisons(tmp_path, monkeypatch, dashboard):
+    from evalview.commands import monitor_cmd
+
+    monkeypatch.chdir(tmp_path)
+    for name in ("refund", "lookup"):
+        _write_test_yaml(tmp_path / "tests", name)
+        _write_golden(tmp_path, name)
+    good, bad = _make_diff("passed"), _make_diff("regression")
+    cycles = [
+        [("refund", bad), ("lookup", good)],
+        [("lookup", good)],
+        [("refund", bad)],
+        [],
+        [("refund", good)],
+        [("refund", good), ("lookup", good)],
+    ]
+    cycle_number = 0
+    notifications = []
+
+    async def regression_alert(*args, **kwargs):
+        notifications.append(("regression", cycle_number))
+
+    async def recovery_alert(total):
+        assert total == 2
+        notifications.append(("recovery", cycle_number))
+
+    def execute(*args, **kwargs):
+        nonlocal cycle_number
+        cycle_number += 1
+        return cycles[cycle_number - 1], [], None, {}
+
+    def sleep(*args):
+        if cycle_number == len(cycles):
+            monitor_cmd.signal.getsignal(monitor_cmd.signal.SIGINT)(None, None)
+
+    monkeypatch.setattr(monitor_cmd, "_execute_check_tests", execute)
+    monkeypatch.setattr(monitor_cmd, "_sleep_interruptible", sleep)
+    notifier = types.SimpleNamespace(send_regression_alert=regression_alert, send_recovery_alert=recovery_alert)
+    monkeypatch.setattr(monitor_cmd, "_build_notifiers", lambda *args: [("test", notifier)])
+    history_path = tmp_path / "history.jsonl"
+    loop = monitor_cmd._run_monitor_dashboard if dashboard else monitor_cmd._run_monitor_loop
+    loop("tests", 1, None, None, "REGRESSION", 5.0, None, history_path=history_path)
+    history = [json.loads(line) for line in history_path.read_text().splitlines()]
+    assert history[1]["missing_tests"] == ["refund"]
+    assert history[1]["failing_tests"] == ["refund"]
+    assert history[3]["missing_tests"] == ["lookup", "refund"]
+    assert history[3]["failing_tests"] == ["refund"]
+    assert history[4]["failing_tests"] == []
+    assert notifications == [("regression", 3), ("recovery", 6)]

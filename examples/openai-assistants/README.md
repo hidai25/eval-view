@@ -9,8 +9,7 @@
 > assistant to create anymore — model, instructions, and tools are configured
 > per-request from your EvalView config.
 
-> **Installation:** This example requires the **unreleased development source**.
-> PyPI 0.8.1 still uses Assistants. Follow the [migration guide](../../docs/OPENAI_MIGRATION.md)
+> **Installation:** This example requires EvalView 0.9.0 or later. Follow the [migration guide](../../docs/OPENAI_MIGRATION.md)
 > to preserve your agent settings. Custom function execution requires your own
 > agent loop, connected through the HTTP adapter.
 

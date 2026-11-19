@@ -147,4 +147,4 @@ async def check_single_test(
 
     engine = DiffEngine()
     diff = engine.compare_multi_reference(variants, result.trace, result.score)
-    return result, diff
+    return result, diff.with_evaluation(result)

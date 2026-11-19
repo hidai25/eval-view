@@ -185,9 +185,8 @@ EvalView handles both automatically.
 
 ### OpenAI (Responses API)
 
-The Responses migration is currently unreleased. PyPI 0.8.1 still uses the removed
-Assistants API; see the [migration guide](OPENAI_MIGRATION.md) for installation
-status and configuration steps.
+EvalView 0.8.1 uses the retired Assistants API. For 0.9.0, migrate your agent
+configuration using the [migration guide](OPENAI_MIGRATION.md).
 
 #### Timeout
 Responses run synchronously; runs that use code interpreter can still be

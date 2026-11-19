@@ -207,7 +207,7 @@ TOOLS = [
                 },
                 "reset": {
                     "type": "boolean",
-                    "description": "Delete all existing baselines before capturing new ones. Default: false.",
+                    "description": "Replace existing baselines once every selected test passes. Default: false.",
                 },
                 "judge": {
                     "type": "string",
@@ -886,14 +886,16 @@ class MCPServer:
             )
 
             # Build the same JSON structure as `evalview check --json`
-            output = {
+            output: Dict[str, Any] = {
                 "summary": {
                     "total_tests": result.summary.total,
+                    "requested_tests": result.summary.requested_tests,
+                    "execution_failures": result.summary.execution_failures,
                     "unchanged": result.summary.unchanged,
                     "regressions": result.summary.regressions,
                     "tools_changed": result.summary.tools_changed,
                     "output_changed": result.summary.output_changed,
-                    "all_passed": result.summary.regressions == 0 and result.summary.tools_changed == 0 and result.summary.output_changed == 0,
+                    "all_passed": result.passed and all(d.passed for d in result.diffs),
                     "has_regressions": result.summary.regressions > 0,
                     "has_tools_changed": result.summary.tools_changed > 0,
                     "has_output_changed": result.summary.output_changed > 0,
@@ -902,6 +904,7 @@ class MCPServer:
                     {
                         "test_name": d.test_name,
                         "status": d.status.value,
+                        "forbidden_tool_violations": list(d.raw.forbidden_tool_violations),
                         "score_delta": d.score_delta,
                         "has_tool_diffs": d.tool_changes > 0,
                         "output_similarity": d.output_similarity,
@@ -910,6 +913,8 @@ class MCPServer:
                     for d in result.diffs
                 ],
             }
+            if "error" in result.raw_json:
+                output.update(status=result.status.value, passed=False, error=result.raw_json["error"])
 
             # Include observability signals when present
             obs = result.observability

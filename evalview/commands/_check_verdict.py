@@ -49,7 +49,7 @@ def _compute_check_exit_code(
 
     fail_statuses = _parse_fail_statuses(fail_on)
 
-    if execution_failures > 0:
+    if execution_failures > 0 or any(d.forbidden_tool_violations for _, d in diffs):
         return 1
 
     if quarantine is None:
@@ -174,6 +174,8 @@ def _compute_verdict_payload(
     execution_failures: int,
     golden_traces: Optional[Dict[str, Any]] = None,
     quarantine: Optional[Any] = None,
+    retry_forbidden_tool_violations: Optional[Dict[str, List[str]]] = None,
+    budget_exhausted: bool = False,
 ) -> _VerdictOutput:
     """Pure: derive the release verdict + top recs from check outputs.
 
@@ -236,6 +238,10 @@ def _compute_verdict_payload(
 
     cost_delta_ratio = _aggregate_cost_delta_ratio(diffs, results, golden_traces)
 
+    violations = dict(retry_forbidden_tool_violations or {})
+    for name, diff in diffs:
+        if diff.forbidden_tool_violations:
+            violations[name] = diff.forbidden_tool_violations
     signals = VerdictSignals(
         test_statuses=[(name, d.overall_severity.value) for name, d in diffs],
         quarantined_tests=quarantined,
@@ -244,6 +250,8 @@ def _compute_verdict_payload(
         drift_confidence=drift_confidence,
         drift_is_downward=drift_is_downward,
         execution_failures=execution_failures,
+        forbidden_tool_violations=violations,
+        budget_exhausted=budget_exhausted,
     )
 
     verdict, reasons = compute_verdict(signals)

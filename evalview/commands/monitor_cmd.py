@@ -20,9 +20,10 @@ from evalview.commands.shared import (
     _parse_fail_statuses,
     console,
 )
-from evalview.core.diff import DiffStatus
+from evalview.core.diff import DiffStatus, TraceDiff
 from evalview.core.noise_tracker import (
     ConfirmationGate,
+    GateDecision,
     detect_coordinated_incident,
     record_cycle_noise,
 )
@@ -31,6 +32,35 @@ from evalview.telemetry.decorators import track_command
 
 class MonitorError(Exception):
     """Raised when monitor cannot start due to missing prerequisites."""
+
+
+class _MonitorAlerts:
+    """Carry failures across cycles until the affected cases produce passing evidence."""
+
+    def __init__(self, test_names: Set[str], strict: Set[str], fail_statuses: Set[DiffStatus]):
+        if not test_names:
+            raise MonitorError("No test cases found to monitor.")
+        self.test_names = test_names
+        self.strict = strict
+        self.fail_statuses = fail_statuses
+        self.gate = ConfirmationGate()
+        self.unresolved: Set[str] = set()
+        self.missing: Set[str] = set()
+        self.recovery_pending = False
+        self.recovered = False
+
+    def observe(self, diffs: List[Tuple[str, TraceDiff]]) -> GateDecision:
+        statuses = {name: diff.overall_severity for name, diff in diffs}
+        forbidden = {name for name, diff in diffs if diff.forbidden_tool_violations}
+        failed = {name for name, status in statuses.items() if status in self.fail_statuses} | forbidden
+        passed = {name for name, status in statuses.items() if status == DiffStatus.PASSED}
+        self.missing = self.test_names - statuses.keys()
+        unverified = self.unresolved - failed - passed
+        decision = self.gate.evaluate(failed, strict=self.strict | forbidden, unverified=unverified)
+        self.unresolved = unverified | failed
+        self.recovered = self.recovery_pending and not self.missing and not self.unresolved
+        self.recovery_pending = (self.recovery_pending or bool(failed)) and not self.recovered
+        return decision
 
 
 def _resolve_slack_webhook(
@@ -330,14 +360,13 @@ def _run_monitor_loop(
     )
     console.print("[dim]  Press Ctrl+C to stop.[/dim]\n")
 
-    previously_failing: Set[str] = set()
     # Confirmation gate — suppresses n=1 alerts by requiring a failure
     # to persist into a second cycle before paging a human. This is the
     # single highest-leverage noise-reduction lever: it reframes the
     # product's emotional contract so every alert a user sees is one
     # that survived at least two independent runs. Strict tests bypass
     # the gate so safety-critical behaviors still page on n=1.
-    gate = ConfirmationGate()
+    alert_state = _MonitorAlerts(set(test_cases_by_name), strict_tests, _parse_fail_statuses(fail_on))
     cycle_count = 0
     total_cost = 0.0
     shutdown = False
@@ -349,7 +378,6 @@ def _run_monitor_loop(
         shutdown = True
 
     signal.signal(signal.SIGINT, _handle_sigint)
-    fail_statuses = _parse_fail_statuses(fail_on)
 
     try:
         while not shutdown:
@@ -371,19 +399,16 @@ def _run_monitor_loop(
             total_cost += cycle_cost
             analysis = _analyze_check_diffs(diffs)
 
-            currently_failing: Set[str] = {
-                name for name, diff in diffs if diff.overall_severity in fail_statuses
-            }
 
             regressions = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.REGRESSION)
             tools_changed = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.TOOLS_CHANGED)
             output_changed = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.OUTPUT_CHANGED)
-            passed = len(diffs) - regressions - tools_changed - output_changed
+            passed = sum(d.overall_severity == DiffStatus.PASSED for _, d in diffs)
 
             # Run the cycle's failures through the confirmation gate. Only
             # the `decision.alerts_to_fire` set should reach a notifier.
             # Strict-tagged tests bypass the gate (alert on n=1).
-            decision = gate.evaluate(currently_failing, strict=strict_tests)
+            decision = alert_state.observe(diffs)
             record_cycle_noise(decision)
 
             if decision.strict_immediate:
@@ -406,11 +431,13 @@ def _run_monitor_loop(
                     f"confirmation ({names}) — will alert if still failing next cycle[/dim]"
                 )
 
-            if not currently_failing:
+            if alert_state.missing:
+                console.print(f"[red]  Incomplete: no comparison for {', '.join(sorted(alert_state.missing))}[/red]")
+            if not alert_state.missing and not alert_state.unresolved:
                 cost_part = f"  [dim]${cycle_cost:.4f}[/dim]" if cycle_cost > 0 else ""
                 console.print(f"[green]  {get_random_monitor_clean_message()} ({len(diffs)} tests){cost_part}[/green]")
 
-                if previously_failing and notifiers:
+                if alert_state.recovered and notifiers:
                     for label, notifier in notifiers:
                         asyncio.run(notifier.send_recovery_alert(len(diffs)))
                         console.print(f"[dim]  Alert: {label} recovery notification sent[/dim]")
@@ -423,10 +450,11 @@ def _run_monitor_loop(
                 if analysis["has_output_changed"]:
                     parts.append(f"[dim]{output_changed} output change{'s' if output_changed != 1 else ''}[/dim]")
 
-                console.print(f"  Warning: {', '.join(parts)}")
+                if parts:
+                    console.print(f"  Warning: {', '.join(parts)}")
 
                 for name, diff in diffs:
-                    if diff.overall_severity in fail_statuses:
+                    if name in alert_state.unresolved:
                         console.print(f"    [red]x {name}[/red] ({diff.overall_severity.value})")
 
                 # Fire alerts only for failures confirmed by the gate —
@@ -505,13 +533,14 @@ def _run_monitor_loop(
                     "tools_changed": tools_changed,
                     "output_changed": output_changed,
                     "cost": round(cycle_cost, 6),
-                    "failing_tests": sorted(currently_failing),
+                    "failing_tests": sorted(alert_state.unresolved),
+                    "missing_tests": sorted(alert_state.missing),
+                    "requested_tests": len(test_cases),
                     "cost_alerts": sum(1 for a in spike_alerts if a["alert_type"] == "cost_spike"),
                     "latency_alerts": sum(1 for a in spike_alerts if a["alert_type"] == "latency_spike"),
                 }
                 _append_history(history_path, record)
 
-            previously_failing = currently_failing
             wait_seconds, _ = _resolve_wait_seconds(interval, cron_iter)
             _sleep_interruptible(wait_seconds, lambda: shutdown)
     finally:
@@ -576,7 +605,6 @@ def _run_monitor_dashboard(
         if (getattr(tc, "gate", None) or "").lower() == "strict"
     }
 
-    fail_statuses = _parse_fail_statuses(fail_on)
 
     status_dot = {
         DiffStatus.PASSED: "[green]o[/green]",
@@ -585,11 +613,10 @@ def _run_monitor_dashboard(
         DiffStatus.REGRESSION: "[red]o[/red]",
     }
 
-    previously_failing: Set[str] = set()
     # See `_run_monitor_loop` for the confirmation-gate rationale — same
     # pattern applies to the dashboard variant. Strict tests bypass the
     # gate and alert on n=1.
-    gate = ConfirmationGate()
+    alert_state = _MonitorAlerts(set(test_cases_by_name), strict_tests, _parse_fail_statuses(fail_on))
     cycle_count = 0
     total_cost = 0.0
     start_time = time.time()
@@ -705,16 +732,19 @@ def _run_monitor_dashboard(
                     test_history[name] = []
                 test_history[name].append(diff.overall_severity)
 
-            currently_failing: Set[str] = {
-                name for name, diff in diffs if diff.overall_severity in fail_statuses
-            }
 
             # Confirmation gate: suppress n=1 alerts and record noise stats.
-            decision = gate.evaluate(currently_failing, strict=strict_tests)
+            decision = alert_state.observe(diffs)
             record_cycle_noise(decision)
             alerts_suppressed += len(decision.self_resolved)
 
-            if not currently_failing and previously_failing and notifiers:
+            if alert_state.missing:
+                error_msg = "No comparison for " + ", ".join(sorted(alert_state.missing))
+                for name in alert_state.missing:
+                    current_statuses[name] = DiffStatus.INCOMPLETE
+                    test_history.setdefault(name, []).append(DiffStatus.INCOMPLETE)
+
+            if alert_state.recovered and notifiers:
                 for label, notifier in notifiers:
                     asyncio.run(notifier.send_recovery_alert(len(diffs)))
                     alerts_sent += 1
@@ -753,7 +783,7 @@ def _run_monitor_dashboard(
                 regressions = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.REGRESSION)
                 tools_changed = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.TOOLS_CHANGED)
                 output_changed = sum(1 for _, d in diffs if d.overall_severity == DiffStatus.OUTPUT_CHANGED)
-                passed = len(diffs) - regressions - tools_changed - output_changed
+                passed = sum(d.overall_severity == DiffStatus.PASSED for _, d in diffs)
                 record = {
                     "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                     "cycle": cycle_count,
@@ -763,11 +793,12 @@ def _run_monitor_dashboard(
                     "tools_changed": tools_changed,
                     "output_changed": output_changed,
                     "cost": round(cycle_cost, 6),
-                    "failing_tests": sorted(currently_failing),
+                    "failing_tests": sorted(alert_state.unresolved),
+                    "missing_tests": sorted(alert_state.missing),
+                    "requested_tests": len(test_cases),
                 }
                 _append_history(history_path, record)
 
-            previously_failing = currently_failing
             wait_seconds, next_run = _resolve_wait_seconds(interval, cron_iter)
             if next_run is not None:
                 next_check_time = _format_scheduled_run(next_run)

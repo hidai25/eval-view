@@ -492,6 +492,7 @@ def test_check_auto_generates_html_report_on_failures(monkeypatch, tmp_path):
     )
 
     class _Diff:
+        forbidden_tool_violations = []
         overall_severity = DiffStatus.REGRESSION
         score_diff = -30.0
         tool_diffs = []
@@ -595,6 +596,7 @@ def test_check_passes_tag_context_to_html_report(monkeypatch, tmp_path):
     )
 
     class _Diff:
+        forbidden_tool_violations = []
         overall_severity = DiffStatus.REGRESSION
         score_diff = -30.0
         tool_diffs = []
@@ -687,6 +689,7 @@ def test_check_warns_when_heal_leaves_unresolved_but_default_fail_policy_exits_z
     )
 
     class _Diff:
+        forbidden_tool_violations = []
         overall_severity = DiffStatus.TOOLS_CHANGED
         score_diff = 2.0
         tool_diffs = [object()]

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class Verdict(Enum):
@@ -77,6 +77,8 @@ class VerdictSignals:
 
     # Tests that failed to execute (connection errors, timeouts).
     execution_failures: int = 0
+    forbidden_tool_violations: Dict[str, List[str]] = field(default_factory=dict)
+    budget_exhausted: bool = False
 
 
 # Tunables — kept at module scope so they're easy to surface in config later.
@@ -96,7 +98,7 @@ def compute_verdict(signals: VerdictSignals) -> Tuple[Verdict, List[str]]:
         points shown under the headline on the CLI and in the PR comment.
 
     Derivation rules (in order, highest wins):
-        1. Any execution failure or unquarantined regression → BLOCK_RELEASE.
+        1. Any forbidden call, execution failure or unquarantined regression → BLOCK_RELEASE.
         2. Any unquarantined TOOLS_CHANGED / OUTPUT_CHANGED → INVESTIGATE.
         3. High-confidence downward drift → INVESTIGATE (flips a would-be
            SAFE_TO_SHIP into a "look before you ship").
@@ -116,12 +118,16 @@ def compute_verdict(signals: VerdictSignals) -> Tuple[Verdict, List[str]]:
         reasons.append(reason)
 
     quarantined = set(signals.quarantined_tests)
+    for name, tools in signals.forbidden_tool_violations.items():
+        bump(Verdict.BLOCK_RELEASE, f"{name}: forbidden tool called: {', '.join(tools)}")
 
     if signals.execution_failures > 0:
         bump(
             Verdict.BLOCK_RELEASE,
             f"{signals.execution_failures} test(s) failed to execute",
         )
+    if signals.budget_exhausted:
+        bump(Verdict.BLOCK_RELEASE, "The check reached its execution budget.")
 
     # Walk through diff statuses once, classifying each.
     blocking_tests: List[str] = []
@@ -129,6 +135,8 @@ def compute_verdict(signals: VerdictSignals) -> Tuple[Verdict, List[str]]:
     quarantined_failures: List[str] = []
 
     for name, status in signals.test_statuses:
+        if name in signals.forbidden_tool_violations:
+            continue  # Already reported as a blocking contract violation.
         s = (status or "").lower()
         is_quarantined = name in quarantined
 

@@ -106,7 +106,7 @@ outputs:
     description: 'Pass rate percentage'
     value: ${{ steps.run-tests.outputs.pass-rate }}
   status:
-    description: 'Overall status: passed, regression, tools_changed, output_changed'
+    description: 'Overall status: passed, regression, tools_changed, output_changed, or incomplete'
     value: ${{ steps.run-tests.outputs.status }}
 
 runs:
@@ -147,7 +147,9 @@ runs:
       run: |
         REPORT_PATH=""
         if [ "$INPUT_GENERATE_REPORT" = "true" ]; then
-          REPORT_PATH="evalview-report.html"
+          mkdir -p .evalview/reports
+          REPORT_DIR=$(mktemp -d .evalview/reports/ci-XXXXXXXX)
+          REPORT_PATH="$REPORT_DIR/evalview-report.html"
         fi
 
         if [ "$INPUT_MODE" = "check" ]; then
@@ -177,13 +179,20 @@ runs:
 
           echo "results-file=$RESULTS_FILE" >> "$GITHUB_OUTPUT"
 
-          # Parse check JSON output
-          TOTAL=$(jq -r '.summary.total_tests // 0' "$RESULTS_FILE" 2>/dev/null || echo "0")
-          UNCHANGED=$(jq -r '.summary.unchanged // 0' "$RESULTS_FILE" 2>/dev/null || echo "0")
-          REGRESSIONS=$(jq -r '.summary.regressions // 0' "$RESULTS_FILE" 2>/dev/null || echo "0")
-          TOOLS_CHANGED=$(jq -r '.summary.tools_changed // 0' "$RESULTS_FILE" 2>/dev/null || echo "0")
-          OUTPUT_CHANGED=$(jq -r '.summary.output_changed // 0' "$RESULTS_FILE" 2>/dev/null || echo "0")
-          FAILED=$((REGRESSIONS + TOOLS_CHANGED + OUTPUT_CHANGED))
+          if COUNTS=$(jq -ers '
+            select(length == 1) | .[0] | . as $result | .summary |
+            [(.requested_tests // .total_tests), .unchanged, .regressions,
+             .tools_changed, .output_changed, (.execution_failures // 0)] |
+            select(all(.[]; type == "number" and . >= 0 and floor == .)) |
+            . + [($result.status == "incomplete" or ($result.error != null)),
+                 ($result.verdict.verdict == "block_release")] | @tsv
+          ' "$RESULTS_FILE"); then
+            read -r TOTAL UNCHANGED REGRESSIONS TOOLS_CHANGED OUTPUT_CHANGED MISSING INCOMPLETE BLOCKED <<< "$COUNTS"
+          else
+            echo "::error::EvalView did not return a valid check summary."
+            TOTAL=0 UNCHANGED=0 REGRESSIONS=0 TOOLS_CHANGED=0 OUTPUT_CHANGED=0 MISSING=0 INCOMPLETE=true BLOCKED=false
+          fi
+          FAILED=$((REGRESSIONS + TOOLS_CHANGED + OUTPUT_CHANGED + MISSING))
 
           if [ "$TOTAL" -gt 0 ]; then
             PASS_RATE=$(echo "scale=1; $UNCHANGED * 100 / $TOTAL" | bc)
@@ -192,7 +201,10 @@ runs:
           fi
 
           # Determine overall status
-          if [ "$REGRESSIONS" -gt 0 ]; then
+          if [ "$INCOMPLETE" = true ] || [ "$MISSING" -gt 0 ] || [ "$TOTAL" -eq 0 ] || { [ "$EXIT_CODE" -ne 0 ] && [ "$FAILED" -eq 0 ]; }; then
+            STATUS="incomplete"
+            if [ "$EXIT_CODE" -eq 0 ]; then EXIT_CODE=1; fi
+          elif [ "$REGRESSIONS" -gt 0 ] || { [ "$EXIT_CODE" -ne 0 ] && [ "$BLOCKED" = true ]; }; then
             STATUS="regression"
           elif [ "$TOOLS_CHANGED" -gt 0 ]; then
             STATUS="tools_changed"
@@ -278,9 +290,11 @@ runs:
       shell: bash
       env:
         GITHUB_TOKEN: ${{ github.token }}
+        RESULTS_FILE: ${{ steps.run-tests.outputs.results-file }}
       run: |
-        # Post comment (updates existing or creates new; gracefully no-ops outside PRs)
-        evalview ci comment 2>/dev/null || true
+        if [ -f "$RESULTS_FILE" ]; then
+          evalview ci comment --results "$RESULTS_FILE" || true
+        fi
 
     - name: Upload artifacts
       if: always() && inputs.upload-artifact == 'true'
@@ -288,8 +302,8 @@ runs:
       with:
         name: evalview-results
         path: |
-          .evalview/results/*.json
-          evalview-report.html
+          ${{ steps.run-tests.outputs.results-file }}
+          ${{ steps.run-tests.outputs.report-file }}
         retention-days: 30
         if-no-files-found: ignore
 
@@ -298,6 +312,6 @@ runs:
       shell: bash
       run: |
         EXIT_CODE="${{ steps.run-tests.outputs.exit-code }}"
-        if [ "${{ inputs.fail-on-error }}" = "true" ] && [ "${EXIT_CODE:-0}" -ne 0 ]; then
-          exit ${EXIT_CODE}
+        if [ "${{ inputs.fail-on-error }}" = "true" ]; then
+          exit "${EXIT_CODE:-1}"
         fi

@@ -46,6 +46,7 @@ env/
 .evalview/reports/
 .evalview/config.yaml
 .evalview/golden/
+.evalview/.snapshot-reset/
 .evalview/history.jsonl
 # Generated artifacts that should not be tracked
 .evalview/*.html

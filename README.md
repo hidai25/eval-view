@@ -31,10 +31,9 @@ Your agent returns `200` and looks fine. But a model update, a provider change, 
 ## Quick Start
 
 > **OpenAI adapter migration:** OpenAI shut down the Assistants API on **August 26, 2026**.
-> The latest published EvalView release, **0.8.1**, still uses that API; the Responses API
-> migration is currently **unreleased source**. If you use `openai-assistants`, follow the
-> [migration guide](docs/OPENAI_MIGRATION.md) before running your tests. An `assistant_id`
-> alone cannot preserve your agent's configuration. Other adapters are unaffected.
+> EvalView 0.9.0 uses the Responses API. If you use `openai-assistants`, migrate your
+> model, instructions and tools or configure a dashboard Prompt before running checks.
+> [OpenAI migration guide](docs/OPENAI_MIGRATION.md)
 
 ```bash
 pip install evalview
@@ -117,7 +116,7 @@ jobs:
     permissions: { pull-requests: write }
     steps:
       - uses: actions/checkout@v4
-      - uses: hidai25/eval-view@v0.8.1
+      - uses: hidai25/eval-view@v0.9.0
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
 ```

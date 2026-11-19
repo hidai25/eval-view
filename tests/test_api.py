@@ -132,15 +132,17 @@ class TestBuildGateResult:
 
 
 class TestGate:
-    def test_missing_test_dir_returns_passed(self):
+    def test_missing_test_dir_fails_closed(self):
         result = gate(test_dir="/nonexistent/path/that/does/not/exist")
-        assert result.passed is True
+        assert result.passed is False
+        assert result.status is DiffStatus.INCOMPLETE
         assert result.summary.total == 0
         assert "error" in result.raw_json
 
     def test_empty_test_dir(self, tmp_path):
         result = gate(test_dir=str(tmp_path))
-        assert result.passed is True
+        assert result.passed is False
+        assert result.status is DiffStatus.INCOMPLETE
         assert result.summary.total == 0
 
     def test_no_matching_test_name(self, tmp_path):
@@ -149,7 +151,8 @@ class TestGate:
             encoding="utf-8",
         )
         result = gate(test_dir=str(tmp_path), test_name="nonexistent")
-        assert result.passed is True
+        assert result.passed is False
+        assert result.status is DiffStatus.INCOMPLETE
         assert result.summary.total == 0
 
     def test_gate_with_mocked_execution(self, tmp_path, monkeypatch):

@@ -192,7 +192,7 @@ def _group_tests_by_target(test_cases: List, config) -> Dict[tuple[str, str], li
 @click.option("--test", "-t", help="Snapshot only this specific test (by name)")
 @click.option("--variant", help="Save as a named variant for non-deterministic agents (max 5 per test)")
 @click.option("--approve-generated", is_flag=True, help="Approve generated draft tests before snapshotting them.")
-@click.option("--reset", is_flag=True, help="Delete all existing baselines before capturing new ones.")
+@click.option("--reset", is_flag=True, help="Replace all existing baselines once every selected test passes.")
 @click.option("--judge", "judge_model", default=None, help="Judge model for scoring (e.g. gpt-5.4-mini, sonnet, deepseek-chat).")
 @click.option("--no-judge", "no_judge", is_flag=True, default=False, help="Skip LLM-as-judge evaluation. Uses deterministic scoring only (scores capped at 75). No API key required.")
 @click.option("--timeout", default=30.0, type=float, help="Timeout in seconds per test (default: 30).")
@@ -236,6 +236,9 @@ def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant:
         ))
         ctx.exit(2)
 
+    if preview and reset:
+        raise click.UsageError("--preview cannot be combined with --reset.")
+
     if not json_output:
         print_evalview_banner(console, subtitle="[dim]Catch agent regressions before you ship[/dim]")
 
@@ -244,22 +247,6 @@ def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant:
 
     state_store = ProjectStateStore()
     test_path = _resolve_default_test_path(test_path)
-
-    # Reset: delete all existing baselines before capturing new ones
-    if reset:
-        golden_store = GoldenStore()
-        existing = golden_store.list_golden()
-        if existing:
-            golden_dir = golden_store.golden_dir
-            if golden_dir.exists():
-                import shutil
-                shutil.rmtree(golden_dir)
-                golden_dir.mkdir(parents=True, exist_ok=True)
-            if not json_output:
-                console.print(f"[yellow]Cleared {len(existing)} existing baseline(s).[/yellow]\n")
-        else:
-            if not json_output:
-                console.print("[dim]No existing baselines to clear.[/dim]\n")
 
     # Check if this is the first snapshot ever
     is_first = state_store.is_first_snapshot()
@@ -277,6 +264,8 @@ def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant:
             Celebrations.no_tests_found()
         else:
             print(json.dumps({"error": str(e)}, indent=2))
+        if reset:
+            ctx.exit(1)
         return
 
     if not test_cases:
@@ -284,6 +273,8 @@ def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant:
             print(json.dumps({"error": "no tests found"}, indent=2))
         else:
             Celebrations.no_tests_found()
+        if reset:
+            ctx.exit(1)
         return
 
     # Filter to specific test if requested
@@ -294,6 +285,8 @@ def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant:
                 print(json.dumps({"error": f"no test found with name: {test}"}, indent=2))
             else:
                 console.print(f"[red]❌ No test found with name: {test}[/red]\n")
+            if reset:
+                ctx.exit(1)
             return
 
     draft_generated = [tc for tc in test_cases if _is_generated_draft(tc)]
@@ -318,7 +311,7 @@ def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant:
             else:
                 console.print("[dim]Skipped. You can review the YAML files and re-run when ready.[/dim]\n")
                 return
-    if draft_generated and approve_generated:
+    if draft_generated and approve_generated and not preview:
         _approve_generated_tests(draft_generated)
         for test_case in draft_generated:
             if test_case.meta is None:
@@ -333,7 +326,7 @@ def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant:
 
     # Apply judge config: --judge flag > env vars > config.yaml
     from evalview.commands.shared import apply_judge_model
-    apply_judge_model(judge_model)
+    apply_judge_model(judge_model, interactive=not (json_output or no_judge or preview))
     from evalview.core.config import apply_judge_config
     apply_judge_config(config)
 
@@ -398,7 +391,21 @@ def snapshot(ctx: click.Context, test_path: str, notes: str, test: str, variant:
         return
 
     # Save passing results as golden
-    saved_paths = _save_snapshot_results(results, notes, variant=variant, quiet=json_output)
+    if reset:
+        try:
+            if sorted(tc.name for tc in test_cases) != sorted(r.test_case for r in results):
+                raise ValueError("A reset requires a passing result for every selected test.")
+            saved_paths = GoldenStore().replace_all(results, notes, variant)
+        except Exception as exc:
+            message = f"Snapshot reset failed: {exc}"
+            if json_output:
+                print(json.dumps({"error": message}, indent=2))
+            else:
+                console.print(f"[red]{message}[/red]")
+            ctx.exit(1)
+        _cloud_push(list(saved_paths))
+    else:
+        saved_paths = _save_snapshot_results(results, notes, variant=variant, quiet=json_output)
     saved_count = len(saved_paths)
 
     # JSON output mode

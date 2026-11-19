@@ -1110,6 +1110,15 @@ class EvaluationResult(BaseModel):
     # ``evalview simulate``; None for normal check runs.
     simulation: Optional[SimulationResult] = None
 
+    @property
+    def forbidden_tool_violations(self) -> List[str]:
+        """Forbidden calls observed anywhere in this evaluation, including individual turns."""
+        check = self.evaluations.forbidden_tools
+        violations = list(check.violations) if check else []
+        for turn in self.turn_evaluations or []:
+            violations.extend(turn.forbidden_violations)
+        return list(dict.fromkeys(violations))
+
 
 # --- Statistical/Variance Evaluation Types ---
 

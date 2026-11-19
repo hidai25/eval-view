@@ -6,14 +6,14 @@ The diff engine provides deterministic comparison that:
 3. Highlights specific differences for easy debugging
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from collections import defaultdict
 from typing import Dict, List, Optional, Any
 from difflib import SequenceMatcher, unified_diff
 import logging
 
-from evalview.core.types import ExecutionTrace, StepTrace
+from evalview.core.types import EvaluationResult, ExecutionTrace, StepTrace
 from evalview.core.golden import GoldenTrace
 from evalview.core.config import DiffConfig
 from evalview.core.drift_kind import DriftKind, DriftConfidence
@@ -45,6 +45,7 @@ class DiffStatus(Enum):
     OUTPUT_CHANGED = "output_changed"  # Output differs beyond similarity threshold
     REGRESSION = "regression"        # Score dropped >5 points from golden
     CONTRACT_DRIFT = "contract_drift"  # External MCP server interface changed
+    INCOMPLETE = "incomplete"        # Gate-level status when comparisons are missing
 
 
 # Alias for backwards compatibility
@@ -138,6 +139,17 @@ class TraceDiff:
     # behavior for existing callers is unchanged.
     drift_kind: Optional[DriftKind] = None
     drift_confidence: Optional[DriftConfidence] = None
+    forbidden_tool_violations: List[str] = field(default_factory=list)
+
+    def with_evaluation(self, result: EvaluationResult) -> "TraceDiff":
+        """Apply the current test's hard policy to the best-matching baseline."""
+        forbidden = result.forbidden_tool_violations
+        if forbidden:
+            return replace(
+                self, forbidden_tool_violations=forbidden,
+                overall_severity=DiffStatus.REGRESSION, has_differences=True,
+            )
+        return self
 
     def summary(self) -> str:
         """Human-readable summary of differences."""
@@ -145,6 +157,8 @@ class TraceDiff:
             return "No significant differences"
 
         parts = []
+        if self.forbidden_tool_violations:
+            parts.append(f"Forbidden tool called: {', '.join(self.forbidden_tool_violations)}")
         if self.tool_diffs:
             added = [d.actual_tool for d in self.tool_diffs if d.type == "added" and d.actual_tool]
             removed = [d.golden_tool for d in self.tool_diffs if d.type == "removed" and d.golden_tool]

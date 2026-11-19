@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from evalview.core.types import EvaluationResult
+    from evalview.core.healing import HealingSummary
     from evalview.core.diff import TraceDiff
     from evalview.core.observability import (
         AnomalyReportDict,
@@ -258,9 +259,15 @@ def _diff_rows(
     actual_results: Optional[Dict[str, Any]] = None,
     test_metadata: Optional[Dict[str, Dict[str, Any]]] = None,
     root_causes: Optional[Dict[str, Any]] = None,
+    healing_summary: Optional["HealingSummary"] = None,
 ) -> List[Dict[str, Any]]:
     rows = []
     from evalview.core.root_cause import analyze_root_cause
+    from evalview.core.healing import HealingAction
+
+    blocked = {
+        r.test_name for r in healing_summary.results if r.diagnosis.action == HealingAction.BLOCKED
+    } if healing_summary else set()
 
     for d in diffs:
         status = str(getattr(d, "overall_severity", "passed")).lower().replace("diffstatus.", "")
@@ -352,7 +359,8 @@ def _diff_rows(
 
         # Smart accept: suggest accepting if score improved or stayed stable
         accept_suggestion = None
-        if status != "passed" and actual_score is not None and baseline_score is not None:
+        may_accept = status != "passed" and not d.forbidden_tool_violations and test_name not in blocked
+        if may_accept and actual_score is not None and baseline_score is not None:
             s_diff = actual_score - baseline_score
             if s_diff >= -2.0:  # Score didn't drop significantly
                 quoted = f'"{test_name}"' if " " in test_name else test_name
@@ -776,7 +784,7 @@ def generate_visual_report(
             "output_rationale": output_rationale,
         })
     actual_results_dict = {r.test_case: r for r in results}
-    diff_rows = _diff_rows(diffs or [], golden_traces, actual_results_dict, test_metadata, root_causes)
+    diff_rows = _diff_rows(diffs or [], golden_traces, actual_results_dict, test_metadata, root_causes, healing_summary)
     timeline = _timeline_data(results)
     behavior_summary = _behavior_summary(results, diff_rows, test_metadata, healing_summary)
     adapter_compare = _compute_adapter_compare(results)

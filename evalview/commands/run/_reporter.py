@@ -259,7 +259,7 @@ def collect_diffs(results: List[Any]) -> List[Tuple[str, Any]]:
     for result in results:
         golden = store.load_golden(result.test_case)
         if golden:
-            trace_diff = compare_to_golden(golden, result.trace, result.score)
+            trace_diff = compare_to_golden(golden, result.trace, result.score).with_evaluation(result)
             if trace_diff.has_differences:
                 diffs.append((result.test_case, trace_diff))
     return diffs
