@@ -1,7 +1,10 @@
 """Model pricing lookups (evalview.core.pricing)."""
 
+from types import SimpleNamespace
+
 import pytest
 
+from evalview.core import pricing
 from evalview.core.pricing import _find_pricing, calculate_cost, format_pricing_line
 
 
@@ -28,6 +31,7 @@ def test_newer_model_is_not_priced_as_an_older_one():
 
 def test_other_providers_keep_the_table():
     assert _find_pricing("command-r-plus") == (2.50, 10.00, 0.0)
+    assert format_pricing_line("command-r-plus") == "$2.5/M input, $10.0/M output"
     assert _find_pricing("some-unknown-model") == (0.25, 2.00, 0.025)
 
 
@@ -37,3 +41,34 @@ def test_calculate_cost_with_cache():
 
 def test_format_pricing_line():
     assert format_pricing_line("claude-opus-4-6") == "$5.0/M input, $25.0/M output"
+
+
+@pytest.mark.parametrize("provider", ["openai", "anthropic", "google"])
+@pytest.mark.parametrize("model", ["catalog-only-model", "  CATALOG-ONLY-MODEL  "])
+def test_format_catalog_only_model(monkeypatch, provider, model):
+    catalog = {
+        "catalog-only-model": SimpleNamespace(
+            provider=provider, input=2.0, output=10.0, cache_read=0.2
+        )
+    }
+    monkeypatch.setattr(pricing.llm_prices, "lookup", catalog.get)
+
+    assert _find_pricing(model) == (2.0, 10.0, 0.2)
+    assert format_pricing_line(model) == "$2.0/M input, $10.0/M output"
+
+
+@pytest.mark.parametrize(
+    "price",
+    [
+        None,
+        SimpleNamespace(provider="openai", input=None, output=10.0, cache_read=None),
+        SimpleNamespace(provider="openai", input=2.0, output=None, cache_read=None),
+        SimpleNamespace(provider="cohere", input=2.0, output=10.0, cache_read=0.2),
+    ],
+    ids=["unknown", "missing-input", "missing-output", "unsupported-provider"],
+)
+def test_format_does_not_display_fallback_prices(monkeypatch, price):
+    monkeypatch.setattr(pricing.llm_prices, "lookup", lambda model: price)
+
+    assert _find_pricing("unrecognized-model") == pricing.MODEL_PRICING["default"]
+    assert format_pricing_line("unrecognized-model") is None

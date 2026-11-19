@@ -9,6 +9,39 @@ from click.testing import CliRunner
 import pytest
 
 
+def test_judge_usage_summary_displays_catalog_only_model_rates(monkeypatch):
+    from types import SimpleNamespace
+
+    from evalview.commands._check_helpers import _judge_usage_summary
+    from evalview.core import llm_provider, pricing
+
+    monkeypatch.setattr(
+        pricing.llm_prices,
+        "lookup",
+        lambda model: SimpleNamespace(
+            provider="anthropic", input=2.0, output=10.0, cache_read=0.1
+        ) if model == "catalog-only-model" else None,
+    )
+    monkeypatch.setattr(
+        llm_provider,
+        "judge_cost_tracker",
+        SimpleNamespace(
+            model="catalog-only-model",
+            provider="anthropic",
+            call_count=1,
+            total_input_tokens=100,
+            total_output_tokens=50,
+            total_cost=0.0007,
+        ),
+    )
+
+    summary = _judge_usage_summary()
+
+    assert summary["model"] == "anthropic/catalog-only-model"
+    assert summary["pricing"] == "$2.0/M input, $10.0/M output"
+    assert summary["total_cost"] == 0.0007
+
+
 def test_check_dry_run_handles_golden_metadata_objects(monkeypatch, tmp_path):
     """Dry-run should count baselines by name without hashing metadata models."""
     from evalview.commands.check_cmd import check
