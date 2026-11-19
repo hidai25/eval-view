@@ -175,7 +175,7 @@ thresholds:
 > The adapter keeps its historical `openai-assistants` name for config
 > compatibility, but it runs on the Responses API — OpenAI removed the
 > Assistants API on August 26, 2026.
-> This migration is **unreleased**; PyPI 0.8.1 still uses Assistants. Read the
+> EvalView 0.9.0 uses Responses. Read the
 > [migration and installation guide](OPENAI_MIGRATION.md) before upgrading.
 
 **What it supports:**

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-19
+
 ### Added
 - **Score trend slope in `RegressionTracker.get_statistics()`.** The aggregate stats (`avg`/`min`/`max`/`pass_rate`) describe a window but not its direction, so a test that loses a few points every run reports a healthy-looking average right up until it crosses the threshold. `score` now carries a `trend` block — `slope` (score points per run, negative means degrading), `direction` (`improving`/`worsening`/`stable`), `significant`, and `run_count` — computed as an OLS fit over the 10 most recent runs by default. `evalview trends --test <name>` renders it next to the existing score lines, so a test averaging 74.0 across a 68-80 range now also reports `Trend: worsening (-3.00/run over 5 runs)`.
   - The fit uses the shared, public `evalview.core.trends.compute_slope` helper. `statistics.linear_regression` is deliberately not used: it is Python 3.10+ and EvalView supports 3.9.
@@ -16,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Separate core CI from paid provider verification.** Core Dogfood runs the non-live suite and local mock-agent flows daily, on PR/main changes, and on manual dispatch without paid API credentials. Live Provider Checks run only after a maintainer dispatches main with `confirm_paid_api=true`; no automatic live schedule or model substitution. Core and live have separate badges, artifacts, and `dogfood-core` / `dogfood-live` issues. The historical #264 incident remains for maintainer review of fresh evidence from both scopes.
-- **OpenAI Responses migration (not yet released to PyPI).** The Assistants API shut down on August 26, 2026. Both OpenAI adapters (`evalview/adapters/openai_assistants_adapter.py` and `evalview/skills/adapters/openai_assistants_adapter.py`) now use Responses; removed Assistants API calls are gone. The `openai-assistants` adapter name and `AgentType.OPENAI_ASSISTANTS` remain available, but old Assistant definitions must be migrated explicitly. PyPI 0.8.1 does not contain this fix. Requires `openai>=1.101.0`; see [migration instructions](docs/OPENAI_MIGRATION.md).
+- **OpenAI Responses migration.** The Assistants API shut down on August 26, 2026. Both OpenAI adapters (`evalview/adapters/openai_assistants_adapter.py` and `evalview/skills/adapters/openai_assistants_adapter.py`) now use Responses; removed Assistants API calls are gone. The `openai-assistants` adapter name and `AgentType.OPENAI_ASSISTANTS` remain available, but old Assistant definitions must be migrated explicitly. Requires `openai>=1.101.0`; see [migration instructions](docs/OPENAI_MIGRATION.md).
   - Runs are now a single synchronous `responses.create` call — no more thread creation, run polling, or Run Steps fetching. Tool activity is read from the response's typed output items (`function_call`, `code_interpreter_call`, `file_search_call`, ...).
   - Model, `instructions`, and `tools` come from adapter config, or `prompt_id` / `OPENAI_PROMPT_ID` selects a dashboard-managed Prompt. Legacy-only `assistant_id` configurations fail with migration guidance instead of evaluating an unrelated default agent. The interactive assistant auto-creation flow is gone.
   - Custom function requests do not imply execution. Unsupported function execution fails clearly; requested arguments are never reported as files created or commands run. Use the HTTP adapter for an agent that owns a custom tool execution loop.

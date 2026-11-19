@@ -3,33 +3,11 @@
 OpenAI's Assistants API shut down on **August 26, 2026**. It is no longer
 available. See the [official migration guide](https://developers.openai.com/api/docs/assistants/migration).
 
-## Release status
+## Version requirements
 
-As of September 5, 2026:
-
-| Installation | OpenAI adapter behavior |
-| --- | --- |
-| PyPI / GitHub release **0.8.1** | Uses the removed Assistants API. Upgrading the OpenAI SDK alone does not fix it. |
-| Current development source | Uses Responses. Requires `openai>=1.101.0` and an explicit configuration migration. |
-
-The migration has **not been published to PyPI**. A plain `pip install -U evalview`
-still installs 0.8.1. Check the [release notes](https://github.com/hidai25/eval-view/releases)
-before assuming a packaged version includes it.
-
-Until a release is available, use a reviewed source checkout containing the migration
-and its follow-up fixes, in a separate environment:
-
-```bash
-# Run from that reviewed EvalView checkout.
-python -m venv .venv-migration
-source .venv-migration/bin/activate
-python -m pip install .
-git rev-parse HEAD  # Record the source revision alongside your eval results.
-```
-
-Development source may still report the previous package version. The source revision,
-not that version string alone, identifies the migration. Maintainers must follow the
-[release checklist](RELEASING.md) before publishing it.
+EvalView 0.9.0 uses the Responses API and requires `openai>=1.101.0`. EvalView
+0.8.1 uses the retired Assistants API. If you're upgrading from 0.8.1,
+migrate your agent configuration as described below before taking a new baseline.
 
 ## Preserve the agent you intended to test
 
