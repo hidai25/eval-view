@@ -134,7 +134,7 @@ def should_show_first_run_notice() -> bool:
 
     try:
         config = load_config()
-        return not config.first_run_notice_shown
+        return config.enabled and not config.first_run_notice_shown
     except Exception:
         return False
 

@@ -796,25 +796,52 @@ class TestCodexAdapter:
         self, config, skill, mock_subprocess_run
     ):
         """Execute should call codex CLI."""
-        mock_subprocess_run.return_value = MagicMock(
-            stdout=json.dumps({
-                "messages": [
-                    {"role": "assistant", "content": "Done."}
-                ],
-            }),
-            stderr="",
-            returncode=0,
-        )
-
         from evalview.skills.adapters.codex_adapter import CodexAdapter
 
-        # Mock shutil.which to return a fake path
+        shell = {"id": "s", "type": "command_execution", "command": "pwd"}
+        mcp = {"id": "m", "type": "mcp_tool_call", "server": "orders", "tool": "lookup",
+               "arguments": {"id": 7}, "result": {"content": []}, "status": "completed"}
+        events = [
+            {"type": "thread.started", "thread_id": "abc"},
+            {"type": "turn.started"},
+            {"type": "item.started", "item": shell},
+            {"type": "item.completed", "item": mcp},
+            {"type": "item.completed", "item": {**shell, "exit_code": 0, "status": "completed"}},
+            {"type": "item.completed", "item": {"id": "f", "type": "file_change", "status": "completed",
+             "changes": [{"kind": "add", "path": "new.py"}, {"kind": "update", "path": "old.py"}]}},
+            {"type": "item.completed", "item": {"id": "a", "type": "agent_message", "text": "Done."}},
+            {"type": "turn.completed", "usage": {"input_tokens": 12, "output_tokens": 3}},
+        ]
+        mock_subprocess_run.return_value = MagicMock(
+            stdout="\n".join(json.dumps(event) for event in events), stderr="", returncode=0,
+        )
         with patch("shutil.which", return_value="/usr/bin/codex"):
             adapter = CodexAdapter(config)
-            trace = await adapter.execute(skill, "Test query")
+            trace = await adapter.execute(skill, "--not-a-flag")
+        argv = mock_subprocess_run.call_args.args[0]
+        assert argv[:3] == ["/usr/bin/codex", "exec", "--json"]
+        assert argv[-2] == "--"
+        assert skill.instructions in argv[-1] and argv[-1].endswith("--not-a-flag")
+        assert trace.tool_calls == ["command_execution", "lookup", "file_change"]
+        assert trace.commands_ran == ["pwd"]
+        assert trace.events[1].tool_input == {"server": "orders", "arguments": {"id": 7}}
+        assert trace.files_created == ["new.py"] and trace.files_modified == ["old.py"]
+        assert trace.final_output == "Done."
+        assert (trace.total_input_tokens, trace.total_output_tokens) == (12, 3)
 
-        assert isinstance(trace, SkillAgentTrace)
-        mock_subprocess_run.assert_called_once()
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("stdout,code", [
+        ('{"type":"turn.failed","error":{"message":"unavailable"}}', 0),
+        ('{"type":"thread.started","thread_id":"abc"}', 0),
+        ('not JSON', 0), ('', 2),
+    ])
+    async def test_incomplete_trace_fails(self, config, skill, mock_subprocess_run, stdout, code):
+        from evalview.skills.adapters.codex_adapter import CodexAdapter
+
+        mock_subprocess_run.return_value = MagicMock(stdout=stdout, stderr="", returncode=code)
+        with patch("shutil.which", return_value="/usr/bin/codex"):
+            with pytest.raises(SkillAgentAdapterError):
+                await CodexAdapter(config).execute(skill, "hello")
 
     @pytest.mark.asyncio
     async def test_adapter_name_is_codex(self, config):
@@ -827,32 +854,13 @@ class TestCodexAdapter:
 
         assert adapter.name == "codex"
 
-    def test_build_command_includes_max_turns(self, skill):
-        """_build_command should include --max-turns from config."""
+    @pytest.mark.parametrize("option", [{"max_turns": 4}, {"tools": ["Read"]}, {"tools": []}])
+    def test_unsupported_restrictions_are_rejected(self, skill, option):
         from evalview.skills.adapters.codex_adapter import CodexAdapter
 
-        config = AgentConfig(type=AgentType.CODEX, timeout=120.0, max_turns=10)
-        with patch("shutil.which", return_value="/usr/bin/codex"):
-            adapter = CodexAdapter(config)
-            cmd = adapter._build_command(skill, "query")
-
-        assert "--max-turns" in cmd
-        assert "10" in cmd
-
-    def test_build_command_includes_tools(self, skill):
-        """_build_command should include --tools."""
-        from evalview.skills.adapters.codex_adapter import CodexAdapter
-
-        config = AgentConfig(
-            type=AgentType.CODEX, timeout=120.0,
-            tools=["Read", "Write"],
-        )
-        with patch("shutil.which", return_value="/usr/bin/codex"):
-            adapter = CodexAdapter(config)
-            cmd = adapter._build_command(skill, "query")
-
-        assert "--tools" in cmd
-        assert "Read,Write" in cmd
+        adapter = CodexAdapter(AgentConfig(type=AgentType.CODEX, **option))
+        with pytest.raises(SkillAgentAdapterError, match="does not support"):
+            adapter._build_command(skill, "query")
 
 
 # =============================================================================

@@ -89,6 +89,8 @@ def run_agent_skill_test(
 
     if output_json:
         console.print(json.dumps(format_results_as_json(result), indent=2))
+        if not result.passed:
+            raise SystemExit(1)
         return
 
     console.print(build_results_table(result))

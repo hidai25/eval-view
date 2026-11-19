@@ -26,7 +26,7 @@ from evalview.skills.constants import (
     TRUNCATE_OUTPUT_SHORT,
 )
 from evalview.skills.ui_utils import print_evalview_banner
-from evalview.telemetry.decorators import track_command
+from evalview.telemetry.decorators import record_command_properties, track_command
 
 
 @click.group("skill")
@@ -491,7 +491,7 @@ def skill_doctor(path: str, recursive: bool, security_scan: bool) -> None:
 @click.option("--no-rubric", is_flag=True, help="Skip Phase 2 rubric evaluation (deterministic only)")
 @click.option("--cwd", type=click.Path(exists=True), default=None, help="Working directory for agent execution")
 @click.option("--max-turns", type=int, default=None, help="Maximum conversation turns (default: 10)")
-@track_command("skill_test", lambda **kw: {"agent": kw.get("agent"), "no_rubric": kw.get("no_rubric")})
+@track_command("skill_test", lambda **kw: {"no_rubric": kw.get("no_rubric")})
 def skill_test(
     test_file: str,
     model: str,
@@ -534,15 +534,16 @@ def skill_test(
     if "agent" in yaml_data and yaml_data["agent"]:
         yaml_agent_type = yaml_data["agent"].get("type")
 
-    use_agent_mode = (
-        (agent is not None and agent != "system-prompt")
-        or (yaml_agent_type is not None and yaml_agent_type != "system-prompt")
-    )
+    resolved_agent = agent or yaml_agent_type or "system-prompt"
+    from evalview.skills.agent_types import AgentType
 
-    if use_agent_mode:
+    record_command_properties(
+        agent=resolved_agent if resolved_agent in [kind.value for kind in AgentType] else "unknown"
+    )
+    if resolved_agent != "system-prompt":
         run_agent_skill_test(
             test_file=test_file,
-            agent=agent,
+            agent=resolved_agent,
             trace_dir=trace,
             no_rubric=no_rubric,
             cwd=cwd,
