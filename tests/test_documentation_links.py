@@ -78,6 +78,15 @@ def test_only_tracked_root_and_docs_markdown_are_selected(tmp_path, monkeypatch)
     ]
 
 
+def test_github_main_file_links_resolve_from_checkout_root(tmp_path):
+    base = "https://github.com/hidai25/eval-view/blob/main/"
+    (tmp_path / "docs").mkdir()
+    source = Path("docs/guide.md")
+    (tmp_path / source).write_text(f"[valid]({base}docs/guide.md#intro)\n[missing]({base}gone.md)")
+
+    assert [b.target for b in check_links(tmp_path, [source])] == [base + "gone.md"]
+
+
 def test_links_cannot_resolve_to_files_outside_the_checkout(tmp_path):
     (tmp_path / "private.md").write_text("Not part of the repository")
     root = tmp_path / "repo"

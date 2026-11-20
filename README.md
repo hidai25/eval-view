@@ -33,7 +33,7 @@ Your agent returns `200` and looks fine. But a model update, a provider change, 
 > **OpenAI adapter migration:** OpenAI shut down the Assistants API on **August 26, 2026**.
 > EvalView 0.9.0 uses the Responses API. If you use `openai-assistants`, migrate your
 > model, instructions and tools or configure a dashboard Prompt before running checks.
-> [OpenAI migration guide](docs/OPENAI_MIGRATION.md)
+> [OpenAI migration guide](https://github.com/hidai25/eval-view/blob/main/docs/OPENAI_MIGRATION.md)
 
 ```bash
 pip install evalview
@@ -80,17 +80,17 @@ EvalView inverts it: **it records what your agent actually does now, and flags a
 | Non-determinism | Multi-variant baselines (up to 5 valid paths) | You handle it |
 | Unit of comparison | Full tool-call trajectory | Usually final output |
 
-This makes EvalView a **merge-time regression gate**, which is a different job from observability (Langfuse, LangSmith) or metric scoring (promptfoo, DeepEval, Braintrust). Many teams run one of those for visibility **and** EvalView as the gate. [Honest comparisons →](docs/COMPARISONS.md)
+This makes EvalView a **merge-time regression gate**, which is a different job from observability (Langfuse, LangSmith) or metric scoring (promptfoo, DeepEval, Braintrust). Many teams run one of those for visibility **and** EvalView as the gate. [Honest comparisons →](https://github.com/hidai25/eval-view/blob/main/docs/COMPARISONS.md)
 
 ## EvalView tests itself in public, every day
 
 Every day at 09:00 UTC, on pull requests, and on pushes to main,
-[Core Dogfood](.github/workflows/dogfood.yml) exercises the non-live test suite,
+[Core Dogfood](https://github.com/hidai25/eval-view/blob/main/.github/workflows/dogfood.yml) exercises the non-live test suite,
 type checks, local mock-agent `snapshot` / `check`, `evalview demo`, end-to-end
 flows, and an `evalview monitor` smoke test. It uses no paid API credentials and
 makes no paid inference calls. GitHub runner usage is separate.
 
-[Live Provider Checks](.github/workflows/dogfood-live.yml) test the real evaluator and
+[Live Provider Checks](https://github.com/hidai25/eval-view/blob/main/.github/workflows/dogfood-live.yml) test the real evaluator and
 chat assistant only when a maintainer explicitly opts into paid API use on main.
 They have no automatic schedule. Their badge records the last manual run; a green
 core badge does not establish live-provider health or rule out provider drift.
@@ -106,7 +106,7 @@ remains available for maintainer review of fresh evidence from both scopes. Neit
 workflow automatically closes it. Trust warnings are evidence to investigate,
 not proof of gaming or of a particular root cause.
 
-[Core runs →](https://github.com/hidai25/eval-view/actions/workflows/dogfood.yml) · [Manual live runs →](https://github.com/hidai25/eval-view/actions/workflows/dogfood-live.yml) · [Run and triage guide →](docs/INTERNAL_DOGFOODING.md#daily-failure-triage)
+[Core runs →](https://github.com/hidai25/eval-view/actions/workflows/dogfood.yml) · [Manual live runs →](https://github.com/hidai25/eval-view/actions/workflows/dogfood-live.yml) · [Run and triage guide →](https://github.com/hidai25/eval-view/blob/main/docs/INTERNAL_DOGFOODING.md#daily-failure-triage)
 
 ## CI: block regressions in every PR
 
@@ -125,7 +125,7 @@ jobs:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
 ```
 
-You get a PR comment with the diff, cost/latency deltas, and a pass/fail gate. [CI/CD guide →](docs/CI_CD.md)
+You get a PR comment with the diff, cost/latency deltas, and a pass/fail gate. [CI/CD guide →](https://github.com/hidai25/eval-view/blob/main/docs/CI_CD.md)
 
 ## Works with your stack
 
@@ -135,7 +135,7 @@ LangGraph · CrewAI · OpenAI · Claude · Mistral · Ollama · MCP · **any HTT
 evalview check --agent http://localhost:8000/invoke
 ```
 
-[Framework details →](docs/FRAMEWORK_SUPPORT.md)
+[Framework details →](https://github.com/hidai25/eval-view/blob/main/docs/FRAMEWORK_SUPPORT.md)
 
 ## Use it as a library
 
@@ -147,15 +147,15 @@ result.passed   # bool
 result.diffs    # per-test scores and tool diffs
 ```
 
-[Python API →](docs/CLI_REFERENCE.md#python-api)
+[Python API →](https://github.com/hidai25/eval-view/blob/main/examples/pydantic-ai/README.md#python-api)
 
 ## More
 
 EvalView also does multi-turn testing, statistical/pass@k runs, record/replay cassettes, model-drift canaries, production monitoring with Slack alerts, and auto-generated regression tests from incidents. These are power-user features — start with `snapshot` and `check`, reach for the rest when you need them.
 
-→ [Full feature reference](docs/CLI_REFERENCE.md) · [Getting Started](docs/GETTING_STARTED.md) · [FAQ](docs/FAQ.md)
+→ [Full feature reference](https://github.com/hidai25/eval-view/blob/main/docs/CLI_REFERENCE.md) · [Getting Started](https://github.com/hidai25/eval-view/blob/main/docs/GETTING_STARTED.md) · [FAQ](https://github.com/hidai25/eval-view/blob/main/docs/FAQ.md)
 
-→ [Documentation index](docs/README.md) · [OpenAI migration](docs/OPENAI_MIGRATION.md) · [Release process](docs/RELEASING.md)
+→ [Documentation index](https://github.com/hidai25/eval-view/blob/main/docs/README.md) · [OpenAI migration](https://github.com/hidai25/eval-view/blob/main/docs/OPENAI_MIGRATION.md) · [Release process](https://github.com/hidai25/eval-view/blob/main/docs/RELEASING.md)
 
 ### Why I built EvalView
 
@@ -165,7 +165,7 @@ An agent that looked successful kept pulling entire documents into its context a
 
 This is a young project built mostly by one developer. Issues, PRs, and "I tried it and X was confusing" feedback are all genuinely valuable.
 
-- [Open an issue](https://github.com/hidai25/eval-view/issues) · [Discussions](https://github.com/hidai25/eval-view/discussions) · [CONTRIBUTING.md](CONTRIBUTING.md)
+- [Open an issue](https://github.com/hidai25/eval-view/issues) · [Discussions](https://github.com/hidai25/eval-view/discussions) · [CONTRIBUTING.md](https://github.com/hidai25/eval-view/blob/main/CONTRIBUTING.md)
 
 **License:** Apache 2.0
 

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-11-20
+
+### Fixed
+
+- Documentation links in the PyPI project description open their GitHub targets, including the OpenAI migration, Getting Started, and CI/CD guides.
+
 ## [0.9.2] - 2026-11-19
 
 ### Changed
