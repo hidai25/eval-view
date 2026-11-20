@@ -84,19 +84,26 @@ def test_missing_or_unfinished_release_notes_are_rejected(changelog, reason):
 
 
 def make_distributions(
-    dist, *, wheel_version="1.2.3", runtime="1.2.3", sdist_version="1.2.3", typed=True
+    dist, *, wheel_version="1.2.3", runtime="1.2.3", sdist_version="1.2.3", typed=True,
+    wheel_description="[Guide](https://example.org/guide)", sdist_description="[Start](#start)",
 ):
+    def metadata(version, description):
+        return (
+            f"Metadata-Version: 2.1\nName: evalview\nVersion: {version}\n"
+            f"Description-Content-Type: text/markdown\n\n{description}\n"
+        ).encode()
+
     wheel = dist / "evalview-1.2.3-py3-none-any.whl"
     with zipfile.ZipFile(wheel, "w") as archive:
         archive.writestr(
             "evalview-1.2.3.dist-info/METADATA",
-            f"Metadata-Version: 2.1\nName: evalview\nVersion: {wheel_version}\n",
+            metadata(wheel_version, wheel_description),
         )
         archive.writestr("evalview/__init__.py", f'__version__ = "{runtime}"\n')
         if typed:
             archive.writestr("evalview/py.typed", "")
     with tarfile.open(dist / "evalview-1.2.3.tar.gz", "w:gz") as archive:
-        data = f"Metadata-Version: 2.1\nName: evalview\nVersion: {sdist_version}\n".encode()
+        data = metadata(sdist_version, sdist_description)
         member = tarfile.TarInfo("evalview-1.2.3/PKG-INFO")
         member.size = len(data)
         archive.addfile(member, io.BytesIO(data))
@@ -115,6 +122,8 @@ def test_built_distribution_metadata_matches_release(tmp_path):
         ({"sdist_version": "1.2.2"}, "expected evalview 1.2.3"),
         ({"runtime": "1.2.2"}, "mismatched runtime"),
         ({"typed": False}, "missing evalview/py.typed"),
+        ({"wheel_description": "[Guide][doc]\n\n[doc]: docs/GUIDE.md"}, "relative README links"),
+        ({"sdist_description": '<img src="assets/demo.gif">'}, "relative README links"),
     ],
 )
 def test_built_distribution_regressions_are_rejected(tmp_path, change, reason):

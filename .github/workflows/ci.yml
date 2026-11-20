@@ -110,7 +110,7 @@ jobs:
     - name: Install build dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install build twine
+        pip install build twine "readme-renderer[md]"
 
     - name: Build package
       run: |
@@ -119,6 +119,7 @@ jobs:
     - name: Check package
       run: |
         twine check dist/*
+        python scripts/check_release.py --dist dist
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4

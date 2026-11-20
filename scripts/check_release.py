@@ -20,7 +20,9 @@ import venv
 import zipfile
 from datetime import date
 from email.parser import BytesParser
+from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import urlsplit
 
 try:
     import tomllib
@@ -100,13 +102,42 @@ def check_source(root: Path, tag: str | None = None) -> str:
     return version
 
 
+class _DescriptionLinks(HTMLParser):
+    """Collect relative destinations that would send a reader to a path on PyPI."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.relative: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attribute = {"a": "href", "img": "src"}.get(tag)
+        for name, value in attrs:
+            if name == attribute and value and not value.startswith("#"):
+                url = urlsplit(value)
+                if not url.scheme and not url.netloc:
+                    self.relative.append(value)
+
+
 def _check_metadata(data: bytes, version: str, artifact: Path) -> None:
+    from readme_renderer.markdown import render
+
     metadata = BytesParser().parsebytes(data)
     if metadata["Name"] != "evalview" or metadata["Version"] != version:
         raise ValueError(
             f"{artifact.name} contains {metadata['Name']} {metadata['Version']}; "
             f"expected evalview {version}"
         )
+    if metadata["Description-Content-Type"] != "text/markdown":
+        raise ValueError(f"{artifact.name} must declare a Markdown project description")
+    description = metadata.get_payload(decode=True)
+    html = render(description.decode("utf-8")) if description else None
+    if not html:
+        raise ValueError(f"{artifact.name} has no renderable Markdown project description")
+    links = _DescriptionLinks()
+    links.feed(html)
+    links.close()
+    if links.relative:
+        raise ValueError(f"{artifact.name} has relative README links: {', '.join(links.relative)}")
 
 
 def check_distributions(dist: Path, version: str) -> Path:

@@ -22,7 +22,7 @@ the published package has been checked.
    and contents of the latest release notes.
 
 ```bash
-python -m pip install build twine
+python -m pip install build twine "readme-renderer[md]"
 python scripts/check_release.py --tag vX.Y.Z
 ```
 
@@ -42,8 +42,9 @@ python scripts/check_release.py --tag vX.Y.Z --dist "$release_dist" --smoke
 ```
 
 The artifact check requires exactly one wheel and one source distribution with
-matching filenames and metadata. It also checks the wheel's runtime version and
-type marker. The smoke test creates a fresh virtual environment, installs the
+matching filenames and metadata. It renders each package description with the PyPI
+Markdown renderer and checks that links and images can resolve from PyPI. It
+also checks the wheel's runtime version and type marker. The smoke test creates a fresh virtual environment, installs the
 wheel with its dependencies, runs `pip check`, imports the public API, and checks
 the console and module CLI entrypoints from outside the source checkout. It needs
 package-index access, but no provider credentials or LLM calls.

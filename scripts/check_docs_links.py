@@ -16,6 +16,8 @@ from urllib.parse import unquote, urlsplit
 
 from markdown_it import MarkdownIt
 
+_REPO_FILE = "https://github.com/hidai25/eval-view/blob/main/"
+
 
 @dataclass(frozen=True)
 class BrokenLink:
@@ -75,7 +77,10 @@ def check_links(root: Path, sources: Iterable[Path]) -> list[BrokenLink]:
     broken = []
     for source in sources:
         for line, destination in markdown_links((root / source).read_text(encoding="utf-8")):
+            # The package README links back to main so its links also work on PyPI.
             url = urlsplit(destination)
+            if destination.startswith(_REPO_FILE):
+                url = urlsplit("/" + destination.removeprefix(_REPO_FILE))
             if url.scheme or url.netloc or not url.path:
                 continue
             path = unquote(url.path)
